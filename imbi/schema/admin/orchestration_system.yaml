@@ -1,0 +1,156 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new orchestration system record
+      summary: Create Orchestration System
+      requestBody:
+        description: The orchestration system record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Orchestration Systems
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a orchestration system record
+      summary: Get Orchestration System
+      operationId: getOrchestrationSystemRecord
+      tags:
+        - Orchestration Systems
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a orchestration system, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Orchestration Systems
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `icon_class` attribute
+                value:
+                  - op: replace
+                    path: icon_class
+                    value: fas fa-microscope
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a orchestration system record
+      summary: Delete Orchestration System
+      tags:
+        - Orchestration Systems
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: name
+        in: path
+        description: Orchestration System Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+
+components:
+  examples:
+    record:
+      summary: A full orchestration system record
+      value:
+        orchestration_system: Kubernetes
+        description: Production-Grade Container Orchestration
+        icon_class: fas fa-blind
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the orchestration system was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Orchestration System
+      description: Orchestration Management or Storage System
+      type: object
+      properties:
+        name:
+          description: The display name for a orchestration system
+          type: string
+        description:
+          description: A description of the orchestration system
+          oneOf:
+            - type: "null"
+            - type: string
+        icon_class:
+          description: Font Awesome UI icon class
+          oneOf:
+            - type: "null"
+            - type: string
+      required:
+        - name
+      additionalProperties: false
+
+tag:
+  name: Orchestration Systems
+  description: Endpoints for managing the systems used for orchestration management

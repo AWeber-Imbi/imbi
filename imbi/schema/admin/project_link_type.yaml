@@ -1,0 +1,151 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new project link type record
+      summary: Create Project Link Type
+      requestBody:
+        description: The project link type record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Project Link Types
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a project link type record
+      summary: Get Project Link Type
+      operationId: getProjectLinkTypeRecord
+      tags:
+        - Project Link Types
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a project link type, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Project Link Types
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `icon_class` attribute
+                value:
+                  - op: replace
+                    path: icon_class
+                    value: fas fa-microscope
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a project link type record
+      summary: Delete Project Link Type
+      tags:
+        - Project Link Types
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: link_type
+        in: path
+        description: Project Link Type Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+
+components:
+  examples:
+    record:
+      summary: A full project link type record
+      value:
+        project_link_type: documentation
+        icon_class: fab fa-bool
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the project link type was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Project Link Type
+      description: |
+        Defines types of links (URLs) that can be defined for a project
+      type: object
+      properties:
+        link_type:
+          description: The display name for a project link type
+          type: string
+        icon_class:
+          description: Font Awesome UI icon class
+          oneOf:
+            - type: "null"
+            - type: string
+      required:
+        - link_type
+      additionalProperties: false
+
+tag:
+  name: Project Link Types
+  description: Management of recors that define types of links or URLs to associate with a project

@@ -1,0 +1,163 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new group record
+      summary: Create Group
+      requestBody:
+        description: The group record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Groups
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a group record
+      summary: Get Group
+      operationId: getGroupRecord
+      tags:
+        - Groups
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a group, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Groups
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `group_type` attribute
+                value:
+                  - op: replace
+                    path: group_type
+                    value: external
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a group record
+      summary: Delete Group
+      tags:
+        - Groups
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: name
+        in: path
+        required: True
+        description: The group name
+        schema:
+          $ref: '#/components/schemas/record/properties/name'
+
+components:
+  examples:
+    record:
+      summary: A full group record
+      value:
+        name: Administrators
+        group_type: external
+        external_id: cn=admins,ou=users,dc=example,dc=org
+        roles: [admin, user]
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the group was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Group
+      description: A organizational group of users in Imbi
+      type: object
+      properties:
+        name:
+          description: The name of a group
+          type: string
+        group_type:
+          description: Group type (internal/ldap)
+          type: string
+          enum:
+            - internal
+            - ldap
+        external_id:
+          description: The DN for an external ID
+          oneOf:
+            - type: "null"
+            - type: string
+        permissions:
+          description: Array of permissions to grant members of the group
+          type: array
+          items:
+            type: string
+      required:
+        - name
+        - group_type
+      additionalProperties: false
+
+tag:
+  name: Groups
+  description: Endpoints used for the management of organizational groups

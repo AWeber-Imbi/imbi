@@ -1,0 +1,167 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new project dependency record
+      summary: Create Project Dependency
+      requestBody:
+        description: The project dependency record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Projects
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a project dependency record
+      summary: Get Project Dependency
+      operationId: getProjectDependencyRecord
+      tags:
+        - Projects
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    delete:
+      description: Remove a project dependency record
+      summary: Delete Project Dependency
+      tags:
+        - Projects
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: string
+          pattern: '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+      - name: dependency_id
+        in: path
+        description: The project ID for the project that this project depends on
+        required: true
+        schema:
+          type: string
+          pattern: '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+
+    security: [api-key, session]
+
+  collection:
+    get:
+      description: Retrieve a list of all available project dependencies
+      summary: Get Project Dependencies
+      tags:
+        - Projects
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+    security: [api-key, session]
+
+components:
+  examples:
+    record:
+      summary: A full project record
+      value:
+        project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+        dependency_id: ff00ecda-286e-48a4-ad15-54c80811b2e6
+    records:
+      summary: Multiple project dependency records
+      value:
+        - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+          dependency_id: ff00ecda-286e-48a4-ad15-54c80811b2e6
+        - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+          dependency_id: ff11bbda-1024-a489-ff10-32768256ffff
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the project dependency was successful
+      headers:
+        Cache-Control:
+          description: >-
+            Provides guidance indicating how the project dependency record should be cached for
+          schema:
+            type: string
+        Last-Modified:
+          description: Indicates when the last modification of the data occurred
+          schema:
+            type: string
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Project Dependency
+      description: Dependencies related to the project
+      type: object
+      properties:
+        project_id:
+          description: The project ID
+          type: string
+          pattern: '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+          format: uuid
+        dependency_id:
+          description: The project this project is dependent upon
+          type: string
+          pattern: '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+          format: uuid
+      required:
+        - project_id
+        - dependency_id
+      additionalProperties: false

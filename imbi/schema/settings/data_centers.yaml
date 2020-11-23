@@ -1,0 +1,45 @@
+---
+paths:
+  collection:
+    get:
+      description: Retrieve a list of all data centers
+      summary: Get Data Centers
+      tags:
+        - Settings
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/data_center.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/data_center.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            data center:
+              operationId: getDataCenterRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    records:
+      summary: Multiple data center records
+      value:
+        - name: us-east-1
+          description: US East (N. Virginia)
+          icon_class: fab fa-aws
+        - name: us-east-2
+          description: US East (Ohio)
+          icon_class: fab fa-aws

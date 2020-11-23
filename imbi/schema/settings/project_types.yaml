@@ -1,0 +1,47 @@
+---
+paths:
+  collection:
+    get:
+      description: Retrieve a list of all project types
+      summary: Get Project Types
+      tags:
+        - Project Types
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/project_type.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/project_type.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            project_type:
+              operationId: getProjectTypeRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    records:
+      summary: Multiple project_type records
+      value:
+        - project_type: HTTP API
+          description: RESTful HTTP 1.1 API
+          icon_class: fab fa-aws
+          slug: http-api
+        - project_type: Postgres
+          description: A PostgreSQL database
+          icon_class: fab fa-elephant
+          slug: postgres

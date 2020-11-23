@@ -1,0 +1,87 @@
+table {
+  thead {
+    button {
+      color: $primary;
+      border: 0;
+      margin-left: .5em;
+    }
+  }
+  tbody {
+    border-bottom: 1px solid $table-border-color;
+  }
+}
+
+.table {
+  .alert, .badge, .caption, .filter-display {
+    margin: .5em;
+  }
+  .alert-light {
+    border-color: $table-border-color;
+    color: $body-color;
+  }
+  .jumbotron {
+    background: #fff;
+    color: $gray-dark;
+    padding-top: 2em;
+    h2 {
+      span.fas, span.fab, span.far {
+        margin-right: .25em;
+      }
+    }
+  }
+  .loading {
+    color: $gray;
+    padding-top: 2em;
+    h1 {
+      span.fas, span.fab, span.far {
+        margin-right: .25em;
+      }
+      text-align: center;
+    }
+  }
+  .form-control {
+    &.form-control-sm {
+      width: 97%;
+    }
+  }
+  .table-row-icon {
+    margin-left: -1.5em;
+    margin-right: .5em;
+  }
+
+  .table-empty-header,
+  .table-row-checkbox {
+    padding: 1em .5em;
+    width: 3em;
+  }
+
+  .add-button {
+    text-align: right;
+    width: 7em;
+  }
+
+  .delete-button {
+    width: 3em;
+    padding: 1em .5em;
+    text-align: center;
+  }
+
+  .toolbar {
+    background: $table-active-bg;
+    border-top: 1px solid $table-border-color;
+    margin: 0;
+    padding: .5em 0;
+  }
+  .sort {
+    background-color: #fff;
+  }
+
+  td, th {
+    vertical-align: middle;
+  }
+
+  input, select {
+    margin-left: -.5em;
+  }
+
+}

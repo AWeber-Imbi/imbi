@@ -1,0 +1,119 @@
+openapi: 3.0.2
+
+info:
+  title: {{ settings['service'].capitalize() }}
+  description: >-
+    Imbi is a DevOps Service Management Platform designed to provide an efficient
+    way to manage a large environment that contains many services and applications.
+  license:
+    name: BSD 3-Clause
+    url: https://opensource.org/licenses/BSD-3-Clause
+  version: {{ settings['version'] }}
+  contact:
+    name: the PSE Team
+    url: https://gitlib.aweber.io/PSE/Application/imbi
+  x-logo:
+    url: /static/images/logo.png
+
+server:
+  url: {{ scheme }}://{{ host }}/
+
+paths:
+  /admin/configuration_system: {"$ref": "/schema/admin/configuration_system.yaml#/paths/create"}
+  /admin/configuration_system/{configuration_system}: {"$ref": "/schema/admin/configuration_system.yaml#/paths/manage"}
+  /admin/data_center: {"$ref": "/schema/admin/data_center.yaml#/paths/create"}
+  /admin/data_center/{data_center}: {"$ref": "/schema/admin/data_center.yaml#/paths/manage"}
+  /admin/cookie_cutter: {"$ref": "/schema/admin/cookie_cutter.yaml#/paths/create"}
+  /admin/cookie_cutter/{cookie_cutter}: {"$ref": "/schema/admin/cookie_cutter.yaml#/paths/manage"}
+  /admin/deployment_type: {"$ref": "/schema/admin/deployment_type.yaml#/paths/create"}
+  /admin/deployment_type/{deployment_type}: {"$ref": "/schema/admin/deployment_type.yaml#/paths/manage"}
+  /admin/environment: {"$ref": "/schema/admin/environment.yaml#/paths/create"}
+  /admin/environment/{environment}: {"$ref": "/schema/admin/environment.yaml#/paths/manage"}
+  /admin/group: {"$ref": "/schema/admin/group.yaml#/paths/create"}
+  /admin/group/{name}: {"$ref": "/schema/admin/group.yaml#/paths/manage"}
+  /admin/orchestration_system: {"$ref": "/schema/admin/orchestration_system.yaml#/paths/create"}
+  /admin/orchestration_system/{orchestration_system}: {"$ref": "/schema/admin/orchestration_system.yaml#/paths/manage"}
+  /admin/service_link_type: {"$ref": "/schema/admin/service_link_type.yaml#/paths/create"}
+  /admin/service_link_type/{link_type}: {"$ref": "/schema/admin/service_link_type.yaml#/paths/manage"}
+  /admin/service_type: {"$ref": "/schema/admin/service_type.yaml#/paths/create"}
+  /admin/service_type/{service_type}: {"$ref": "/schema/admin/service_type.yaml#/paths/manage"}
+  /admin/team: {"$ref": "/schema/admin/team.yaml#/paths/create"}
+  /admin/team/{id}: {"$ref": "/schema/admin/team.yaml#/paths/manage"}
+
+  /service: {"$ref": "/schema/service/service.yaml#/paths/create"}
+  /service/{id}: {"$ref": "/schema/service/service.yaml#/paths/manage"}
+  /services: {"$ref": "/schema/service/service.yaml#/paths/collection"}
+  /service/{id}/dependency: {"$ref": "/schema/service/dependency.yaml#/paths/create"}
+  /service/{id}/dependency/{service}: {"$ref": "/schema/service/dependency.yaml#/paths/manage"}
+  /service/{id}/dependencies: {"$ref": "/schema/service/dependency.yaml#/paths/collection"}
+  /service/{id}/link: {"$ref": "/schema/service/link.yaml#/paths/create"}
+  /service/{id}/link/{link_type}: {"$ref": "/schema/service/link.yaml#/paths/manage"}
+  /service/{id}/links: {"$ref": "/schema/service/link.yaml#/paths/collection"}
+  /service/options: {"$ref": "/schema/service/options.yaml#/paths/options"}
+
+  /settings/configuration_systems: {"$ref": "/schema/settings/configuration_systems.yaml#/paths/collection"}
+  /settings/cookie_cutters: {"$ref": "/schema/settings/cookie_cutters.yaml#/paths/collection"}
+  /settings/data_centers: {"$ref": "/schema/settings/data_centers.yaml#/paths/collection"}
+  /settings/deployment_types: {"$ref": "/schema/settings/deployment_types.yaml#/paths/collection"}
+  /settings/environments: {"$ref": "/schema/settings/environments.yaml#/paths/collection"}
+  /settings/groups: {"$ref": "/schema/settings/groups.yaml#/paths/collection"}
+  /settings/orchestration_systems: {"$ref": "/schema/settings/orchestration_systems.yaml#/paths/collection"}
+  /settings/service_link_types: {"$ref": "/schema/settings/service_link_types.yaml#/paths/collection"}
+  /settings/service_types: {"$ref": "/schema/settings/service_types.yaml#/paths/collection"}
+  /settings/teams: {"$ref": "/schema/settings/teams.yaml#/paths/collection"}
+
+  /status: {"$ref": "/schema/status.yaml#/paths/status"}
+
+security:
+  - api-key: []
+  - session: []
+
+components:
+  securitySchemes:
+    api-key:
+      type: apiKey
+      description: Uses an API key generated for a user to authenticate each API request
+      in: header
+      name: Private-Token
+    session:
+      type: apiKey
+      description: Uses the session cookie of an authenticated user to authenticate each API request
+      in: cookie
+      name: session
+
+tags:
+  # - {"$ref": "/schema/admin/configuration_system.yaml#/tag"}
+  - {"$ref": "/schema/admin/data_center.yaml#/tag"}
+  - {"$ref": "/schema/admin/deployment_type.yaml#/tag"}
+  - {"$ref": "/schema/admin/environment.yaml#/tag"}
+  - {"$ref": "/schema/admin/group.yaml#/tag"}
+  - {"$ref": "/schema/admin/orchestration_system.yaml#/tag"}
+  - {"$ref": "/schema/admin/service_link_type.yaml#/tag"}
+  - {"$ref": "/schema/admin/service_type.yaml#/tag"}
+  - {"$ref": "/schema/admin/team.yaml#/tag"}
+  - {"$ref": "/schema/service/service.yaml#/tag"}
+  - {"$ref": "/schema/settings/common.yaml#/tag"}
+  - {"$ref": "/schema/status.yaml#/tag"}
+
+x-tagGroups:
+  - name: Administration
+    tags:
+      - Configuration Systems
+      - Data Centers
+      - Deployment Types
+      - Environments
+      - Groups
+      - Orchestration Systems
+      - Service Link Types
+      - Service Types
+      - Teams
+  - name: Other
+    tags:
+      - Health Check
+  - name: Service Management
+    tags:
+      - Services
+
+  - name: Settings
+    tags:
+      - Settings

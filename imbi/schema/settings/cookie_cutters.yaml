@@ -1,0 +1,54 @@
+---
+paths:
+  collection:
+    get:
+      description: Retrieve a list of all cookie cutters
+      summary: Get Cookie Cutters
+      tags:
+        - Settings
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/cookie_cutter.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/cookie_cutter.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            cookie cutter:
+              operationId: getCookieCutterRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    records:
+      summary: Multiple cookie cutter records
+      value:
+        - cookiecutter: buzzops-project
+          project_type: HTTP API
+          type: project
+          description: A HTTP API that runs in Kubernetes on Buzz-Ops
+          url: https://github.com/aweber/project-cookiecutter.git
+        - cookiecutter: buzzops-consumer
+          project_type: Consumer
+          type: project
+          description: A rejected consumer application
+          url: https://github.com/aweber/consumer-cookiecutter.git
+        - cookiecutter: buzzops-consumer-dashboard
+          project_type: Consumer
+          type: dashboard
+          description: A Grafana dashboard for a rejected consumer application
+          url: https://github.com/aweber/consumer-dashboard-cookiecutter.git

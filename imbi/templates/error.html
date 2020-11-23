@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Error &ndash; {{ type }}{% end %}
+{% block content %}
+<div class="alert alert-danger" role="alert">
+   <h4 class="alert-heading pb-0 mb-0"><span class="icon icon-warning"></span> ERROR: {{ type }} &ndash; {{ message }}</h4>
+</div>{% if traceback %}
+<h3>Traceback <small>(most recent call last)</small></h3>
+<pre class="traceback"><code>{% for line in traceback %}{{ line }}
+  {% end %}</code></pre>
+{% end %}{% end %}

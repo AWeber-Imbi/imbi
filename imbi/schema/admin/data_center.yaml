@@ -1,0 +1,164 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new data center record
+      summary: Create Data Center
+      requestBody:
+        description: The data center record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Data Centers
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a data center record
+      summary: Get Data Center
+      operationId: getDataCenterRecord
+      tags:
+        - Data Centers
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a data center, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Data Centers
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `icon_class` attribute
+                value:
+                  - op: replace
+                    path: icon_class
+                    value: fas fa-microscope
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a data center record
+      summary: Delete Data Center
+      tags:
+        - Data Centers
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: name
+        in: path
+        description: Data Center Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+
+components:
+  examples:
+    record:
+      summary: A full data center record
+      value:
+        name: us-east-1
+        description: US East (N. Virginia)
+        icon_class: fab fa-aws
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the data center was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Data Center
+      description: |
+        A large group of networked computer servers typically used by
+        organizations for the remote storage, processing, or distribution of
+        large amounts of data.
+      type: object
+      properties:
+        name:
+          description: The display name for a data center
+          type: string
+        description:
+          description: A description of the data center (location, etc)
+          oneOf:
+            - type: "null"
+            - type: string
+        icon_class:
+          description: Font Awesome UI icon class
+          oneOf:
+            - type: "null"
+            - type: string
+      required:
+        - name
+      additionalProperties: false
+
+tag:
+  name: Data Centers
+  description: |
+    Endpoints used for the management of data centers.
+
+    A data center is a large group of networked computer servers typically used
+    by organizations for the remote storage, processing, or distribution of
+    large amounts of data.

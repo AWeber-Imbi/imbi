@@ -1,0 +1,48 @@
+---
+paths:
+
+  collection:
+    get:
+      description: Retrieve a list of all configuration systems
+      summary: Get Configuration Systems
+      tags:
+        - Settings
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/configuration_system.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/configuration_system.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            configuration system:
+              operationId: getConfigurationSystemRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+    security: [api-key, session]
+
+
+components:
+  examples:
+    records:
+      summary: Multiple configuration system records
+      value:
+        - name: Ansible
+          description: Ansible is powerful IT automation that you can learn quickly.
+          icon_class: fas fa-microscope
+        - name: Consul
+          description: Feature rich key/value store to easily configure projects
+          icon_class: fas fa-blind

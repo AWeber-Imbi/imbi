@@ -1,0 +1,43 @@
+%YAML 1.2
+---
+version: "3.7"
+services:
+  ldap:
+    image: osixia/openldap:1.4.0
+    environment:
+      - LDAP_REMOVE_CONFIG_AFTER_SETUP=false
+      - LDAP_TLS=false
+    ports:
+      - 389
+    volumes:
+      - type: bind
+        source: ./scaffolding/ldap
+        target: /container/service/slapd/assets/config/bootstrap/ldif/custom/
+        volume:
+          nocopy: true
+    healthcheck:
+      test: /usr/bin/ldapsearch -x -h localhost -b dc=example,dc=org cn=test,ou=users,dc=example,dc=org
+    command: --loglevel debug --copy-service
+  postgres:
+    image: gavinmroy/alpine-postgres:13.1-1
+    ports:
+      - 5432
+    volumes:
+      - ./ddl/tests:/tests:rw
+      - ./build:/build:rw
+      - ./scaffolding/postgres:/docker-entrypoint-initdb.d
+  redis:
+    image: gavinmroy/alpine-redis:5.0.9-0
+    ports:
+      - 6379
+
+  test-python3.7:
+    image: python:3.9-alpine
+    links:
+      - ldap
+      - postgres
+      - redis
+    volumes:
+      - ./build:/tmp/test/build:rw
+      - ./:/source:ro
+    command: /source/ci/test.sh

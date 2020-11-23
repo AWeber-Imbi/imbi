@@ -1,0 +1,112 @@
+---
+paths:
+  status:
+    get:
+      description: >-
+        Returns information about the running service, including runtime metrics
+        including counters and durations.
+      summary: Service Status
+      parameters:
+        - in: query
+          name: flush
+          description: Flush the stats / metrics database of recorded values
+          schema:
+            type: string
+            default: false
+            enum:
+              - true
+              - false
+      tags:
+        - Health Check
+      responses:
+        200:
+          description: Success
+          headers:
+            Cache-Control:
+              description: >-
+                Provides guidance indicating how the Swagger definition should be cached for
+              schema:
+                type: string
+          content:
+            'application/json':
+              schema:
+                $ref: '#/components/schemas/status'
+              example:
+                $ref: '#/components/examples/status_ok'
+            'application/msgpack':
+              schema:
+                $ref: '#/components/schemas/status'
+              example:
+                $ref: '#/components/examples/status_ok'
+        503:
+          description: Service Unavailable
+          content:
+            'application/json':
+              schema:
+                $ref: '#/components/schemas/status'
+              example:
+                $ref: '#/components/examples/status_error'
+            'application/msgpack':
+              schema:
+                $ref: '#/components/schemas/status'
+              example:
+                $ref: '#/components/examples/status_error'
+
+    parameters:
+      - $ref: './common.yaml#/components/parameters/Correlation-ID'
+
+components:
+  examples:
+    status_ok:
+      summary: The service is available to process requests
+      value:
+        application: Imbi
+        version: 1.0.0
+        status: ok
+        counters:
+          "response.Base.GET.200": 10
+        durations:
+          "request.Base.GET.200":
+            - ["2018-12-03 23:46:54+00:00", 0.2566049098968506]
+            - ["2018-12-03 23:31:50+00:00", 0.33482813835144043]
+            - ["2018-12-03 23:00:39+00:00", 0.25607776641845703]
+
+    status_error:
+      summary: The service is available to process requests
+      value:
+        application: Imbi
+        version: 1.0.0
+        status: maintenance
+        counters: []
+        durations: []
+
+  schemas:
+    status:
+      type: object
+      properties:
+        application:
+          type: string
+          description: The application name
+        version:
+          type: string
+          description: The version
+        status:
+          type: string
+          description: The current application status
+          enum:
+            - ok
+            - maintenance
+        counters:
+          type: object
+          additionalProperties: true
+          description: A key-value pair of internal counters
+        durations:
+          type: object
+          additionalProperties: true
+          description: A key-value pair of recorded durations where the value is an array of timestamp and duration in seconds.
+
+tag:
+  name: Health Check
+  description: >-
+    The health check endpoint can be used by a load balancer to indicate
+    service health.

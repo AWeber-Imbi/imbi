@@ -1,0 +1,190 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new environment record
+      summary: Create Environment
+      requestBody:
+        description: The environment record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Environments
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a environment record
+      summary: Get Environment
+      operationId: getEnvironmentRecord
+      tags:
+        - Environments
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a environment, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Environments
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `icon_class` attribute
+                value:
+                  - op: replace
+                    path: icon_class
+                    value: fas fa-microscope
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a environment record
+      summary: Delete Environment
+      tags:
+        - Environments
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: name
+        in: path
+        description: Environment Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+
+  collection:
+    get:
+      description: Retrieve a list of all environments
+      summary: Get Environments
+      tags:
+        - Environments
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            environment:
+              operationId: getEnvironmentRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    record:
+      summary: Multiple environment records
+      environment: testing
+      description: |
+        The testing environment reflects the state of HEAD state of the
+        master branch in our Git Repositories for all projects
+      icon_class: fab fa-aws
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the environment was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Environment
+      description: |
+        Used to describe the types of operational environments for projects
+      type: object
+      properties:
+        name:
+          description: The display name for a environment
+          type: string
+        description:
+          description: A description of the environment
+          oneOf:
+            - type: "null"
+            - type: string
+        icon_class:
+          description: Font Awesome UI icon class
+          oneOf:
+            - type: "null"
+            - type: string
+      required:
+        - name
+      additionalProperties: false
+
+tag:
+  name: Environments
+  description: Endpoints used for the management different target environments for projects to run in.

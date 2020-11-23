@@ -1,0 +1,14 @@
+*.egg-info
+*.pyc
+*.env
+env/
+build/
+ddl/build/
+dist/
+ui/node_modules/
+vendor
+__pycache__
+ddl.sql
+imbi/static/css/
+imbi/static/fonts/
+imbi/static/js/
