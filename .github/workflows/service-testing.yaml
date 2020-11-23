@@ -19,9 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v1
+        uses: actions/checkout@v2
       - name: Bootstrap environment
-        run: make bootstrap
+        run: make .env
       - name: Run Tests
         run: docker-compose run --rm -T test-python3.7
       - name: Upload Coverage
