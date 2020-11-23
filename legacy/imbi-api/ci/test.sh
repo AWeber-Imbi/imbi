@@ -23,5 +23,6 @@ export SESSION_REDIS_URL=redis://redis:6379/0
 export STATS_REDIS_URL=redis://redis:6379/1
 export POSTGRES_URL=postgres://postgres@postgres:5432/postgres
 EOF
+ls -al
 pip3 install -e '.[testing]'
 make python-tests
