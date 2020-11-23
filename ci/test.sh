@@ -1,6 +1,6 @@
 #!/bin/sh -e
 echo "Setting up tests"
-apk --update add curl-dev gcc libffi-dev libpq libressl-dev make musl-dev postgresql-dev linux-headers tzdata
+apk --update add curl-dev gcc git libffi-dev libpq libressl-dev make musl-dev postgresql-dev linux-headers tzdata
 cp -R /source/ddl /tmp/test/
 cp -R /source/imbi /tmp/test/
 cp -R /source/scaffolding /tmp/test/
