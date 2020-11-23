@@ -1,0 +1,45 @@
+---
+paths:
+  collection:
+    get:
+      description: Retrieve a list of all orchestration systems
+      summary: Get Orchestration Systems
+      tags:
+        - Settings
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/orchestration_system.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/orchestration_system.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            orchestration system:
+              operationId: getOrchestrationSystemRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    records:
+      summary: Multiple orchestration system records
+      value:
+        - orchestration_system: Kubernetes
+          description: Production-Grade Container Orchestration
+          icon_class: fas fa-blind
+        - orchestration_system: Nomad
+          description: HashiCorp Nomad
+          icon_class: fas fa-blind

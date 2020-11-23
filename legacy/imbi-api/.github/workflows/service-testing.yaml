@@ -1,0 +1,31 @@
+name: Service Testing
+on:
+  push:
+    branches: ["*"]
+    paths:
+      - 'imbi/**'
+      - 'tests/**'
+      - 'setup.*'
+    tags-ignore: ["*"]
+  pull_request:
+    branches: ["*"]
+    paths:
+      - 'imbi/**'
+      - 'tests/**'
+      - 'setup.*'
+  workflow_dispatch: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v1
+      - name: Bootstrap environment
+        run: make bootstrap
+      - name: Run Tests
+        run: docker-compose run --rm -T test-python3.7
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v1.0.2
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          file: build/coverage.xml

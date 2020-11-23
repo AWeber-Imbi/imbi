@@ -1,0 +1,170 @@
+---
+paths:
+  options:
+    get:
+      description: Retrieve options available for creating a project
+      summary: Get Project Options
+      operationId: getProjectOptions
+      tags:
+        - Projects
+      responses:
+        200:
+          description: The request to get the project options was successful
+          headers:
+            Cache-Control:
+              description: >-
+                Provides guidance indicating how the project link record should be cached for
+              schema:
+                type: string
+            Link:
+              $ref: '../common.yaml#/components/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/record'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: string
+          pattern: '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+    security: [api-key, session]
+
+components:
+  examples:
+    record:
+      summary: Options return value example
+      value:
+        configuration_systems:
+          - name: Ansible
+            description: Ansible is powerful IT automation that you can learn quickly.
+            icon_class: fas fa-microscope
+          - name: Consul
+            description: Feature rich key/value store to easily configure projects
+            icon_class: fas fa-blind
+        cookie_cutters:
+          - cookiecutter: buzzops-project
+            project_type: HTTP API
+            type: project
+            description: A HTTP API that runs in Kubernetes on Buzz-Ops
+            url: https://github.com/aweber/project-cookiecutter.git
+          - cookiecutter: buzzops-consumer
+            project_type: Consumer
+            type: project
+            description: A rejected consumer application
+            url: https://github.com/aweber/consumer-cookiecutter.git
+          - cookiecutter: buzzops-consumer-dashboard
+            project_type: Consumer
+            type: dashboard
+            description: A Grafana dashboard for a rejected consumer application
+            url: https://github.com/aweber/consumer-dashboard-cookiecutter.git
+        data_centers:
+          - name: us-east-1
+            description: US East (N. Virginia)
+            icon_class: fab fa-aws
+          - name: us-east-2
+            description: US East (Ohio)
+            icon_class: fab fa-aws
+        deployment_types:
+          - name: gitlab-ci
+            description: Helm
+            icon_class: fab fa-aws
+          - name: Artifcatory
+            description: Package artifact uploaded to artifactory
+            icon_class: fab fa-aws
+        environments:
+          - environment: testing
+            description: |
+              The testing environment reflects the state of HEAD state of the
+              master branch in our Git Repositories for all projects
+            icon_class: fab fa-aws
+          - environment: staging
+            description: |
+              The staging environment reflects tagged project releases that are
+              intended to be to deployed to production
+            icon_class: fab fa-aws
+        orchestration_systems:
+          - orchestration_system: Kubernetes
+            description: Production-Grade Container Orchestration
+            icon_class: fas fa-blind
+          - orchestration_system: Nomad
+            description: HashiCorp Nomad
+            icon_class: fas fa-blind
+        project_link_types:
+          - project_link_type: Documentation
+            icon_class: fab fa-bool
+          - project_link_type: Grafana
+            icon_class: fab fa-graph
+        project_types:
+          - project_type: HTTP API
+            description: RESTful HTTP 1.1 API
+            icon_class: fab fa-aws
+          - project_type: Postgres
+            description: A PostgreSQL database
+            icon_class: fab fa-elephant
+        teams:
+          - team_name: Platform Support Engineering
+            slug: PSE
+            icon_class: fas fa-blind
+          - team_name: Quality Assurance
+            slug: QA
+            icon_class: fas fa-microscope
+
+  schemas:
+    record:
+      title: Options
+      description: Options available for creating a project
+      type: object
+      properties:
+        configuration_systems:
+          type: array
+          items:
+            $ref: '../admin/configuration_system.yaml#/components/schemas/record'
+        cookie_cutters:
+          type: array
+          items:
+            $ref: '../admin/cookie_cutter.yaml#/components/schemas/record'
+        data_centers:
+          type: array
+          items:
+            $ref: '../admin/data_center.yaml#/components/schemas/record'
+        deployment_types:
+          type: array
+          items:
+            $ref: '../admin/deployment_type.yaml#/components/schemas/record'
+        environments:
+          type: array
+          items:
+            $ref: '../admin/environment.yaml#/components/schemas/record'
+        orchestration_systems:
+          type: array
+          items:
+            $ref: '../admin/orchestration_system.yaml#/components/schemas/record'
+        project_link_types:
+          type: array
+          items:
+            $ref: '../admin/project_link_type.yaml#/components/schemas/record'
+        project_types:
+          type: array
+          items:
+            $ref: '../admin/project_type.yaml#/components/schemas/record'
+        teams:
+          type: array
+          items:
+            $ref: '../admin/team.yaml#/components/schemas/record'
+
+
+      additionalProperties: false

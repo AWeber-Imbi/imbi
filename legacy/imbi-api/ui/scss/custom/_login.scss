@@ -1,0 +1,23 @@
+.main.login {
+  .modal.login {
+    .modal-dialog {
+      transform: translateY(-25%);
+      top: 50%;
+      margin: 0 auto;
+    }
+
+    &.show .modal-dialog {
+      transform: translateY(-50%);
+    }
+
+    .modal-content {
+      max-height: 100vh;
+      overflow-y: auto;
+      padding: 40px;
+    }
+  }
+
+  .modal-footer {
+    padding: 1rem 0 0 0;
+  }
+}

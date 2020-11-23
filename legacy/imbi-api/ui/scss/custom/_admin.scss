@@ -1,0 +1,19 @@
+.filter {
+  margin-right: 1em;
+  input {
+    max-width: 10em;
+    &.form-control {
+      &:focus {
+        outline: none;
+        box-shadow: inset 0 0 0 #ddd;
+      }
+    }
+  }
+  span.fas, span.fab, span.far {
+    margin-right: 0;
+  }
+}
+
+span.fas, span.fab, span.far {
+  margin-right: .5em;
+}

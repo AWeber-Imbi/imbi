@@ -1,0 +1,253 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new project record
+      summary: Create Project
+      requestBody:
+        description: The project record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Projects
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a project record
+      summary: Get Project
+      operationId: getProjectRecord
+      tags:
+        - Projects
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a project, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Projects
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `project_type` attribute
+                value:
+                  - op: replace
+                    path: project_type
+                    value: Consumer
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a project record
+      summary: Delete Project
+      tags:
+        - Projects
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: name
+        in: path
+        description: Project Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+    security: [api-key, session]
+
+  collection:
+    get:
+      description: Retrieve a list of all available projects
+      summary: Get Projects
+      tags:
+        - Projects
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+    security: [api-key, session]
+
+
+components:
+  examples:
+    record:
+      summary: A full project record
+      value:
+        name: Consul
+        description: Feature rich key/value store to easily configure projects
+        icon_class: fas fa-blind
+    records:
+      summary: Multiple project records
+      value:
+        - admin
+        - user
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the project was successful
+      headers:
+        Cache-Control:
+          description: >-
+            Provides guidance indicating how the project record should be cached for
+          schema:
+            type: string
+        Last-Modified:
+          description: Indicates when the last modification of the data occurred
+          schema:
+            type: string
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Project
+      description: A organizational group of users in Imbi
+      type: object
+      properties:
+        id:
+          description: A unique ID for the project
+          type: string
+          pattern: '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+          format: uuid
+        name:
+          description: The project name
+          type: string
+        slug:
+          description: The project URL slug (In GitLab and other projects)
+          type: string
+        description:
+          description: Long for description of the project
+          oneOf:
+            - type: "null"
+            - type: string
+        owned_by:
+          description: The team that owns/is responsible for the project
+          type: string
+        project_type:
+          description: The project type (API, Consumer, Database, etc)
+          type: string
+        data_center:
+          description: The data center the project runs in
+          oneOf:
+            - type: "null"
+            - type: string
+        configuration_system:
+          description: The system used to configure the project (Ansible, Consul, etc)
+          oneOf:
+            - type: "null"
+            - type: string
+        deployment_type:
+          description: How the project is deployed (Jenkins, GitLab-CI, etc)
+          oneOf:
+            - type: "null"
+            - type: string
+        orchestration_system:
+          description: TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)
+          oneOf:
+            - type: "null"
+            - type: string
+      required:
+        - id
+        - name
+        - slug
+        - owned_by
+        - data_center
+        - project_type
+      additionalProperties: false
+
+    dependencies:
+      description: Defines relationships between a project and the projects it depends upon
+      type: array
+      items:
+        type: string
+        description: Project IDs
+        pattern: '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+        format: uuid
+
+    link:
+      description: Links related to the project
+      type: object
+      properties:
+        link_type:
+          type: string
+          description: The type of link (Repository, Documentation, Dashboard, etc)
+        url:
+          type: string
+          description: The link URL
+      required:
+        - link_type
+        - url
+      additionalProperties: false
+
+tag:
+  name: Projects
+  description: Endpoints used for the management of projects

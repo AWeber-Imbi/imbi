@@ -1,0 +1,163 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new configuration system record
+      summary: Create Configuration System
+      requestBody:
+        description: The configuration system record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Configuration Systems
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a configuration system record
+      summary: Get Configuration System
+      operationId: getConfigurationSystemRecord
+      tags:
+        - Configuration Systems
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a configuration system, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Configuration Systems
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `icon_class` attribute
+                value:
+                  - op: replace
+                    path: icon_class
+                    value: fas fa-microscope
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a configuration system record
+      summary: Delete Configuration System
+      tags:
+        - Configuration Systems
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: name
+        in: path
+        description: Configuration System Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+    security: [api-key, session]
+
+
+components:
+  examples:
+    record:
+      summary: A full configuration system record
+      value:
+        name: Consul
+        description: Feature rich key/value store to easily configure projects
+        icon_class: fas fa-blind
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the configuration system was successful
+      headers:
+        Cache-Control:
+          description: >-
+            Provides guidance indicating how the configuration system record should be cached for
+          schema:
+            type: string
+        Last-Modified:
+          description: Indicates when the last modification of the data occurred
+          schema:
+            type: string
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Configuration System
+      description: Configuration Management or Storage System
+      type: object
+      properties:
+        name:
+          description: The display name for a configuration system
+          type: string
+        description:
+          description: A description of the configuration system
+          oneOf:
+            - type: "null"
+            - type: string
+        icon_class:
+          description: Font Awesome UI icon class
+          oneOf:
+            - type: "null"
+            - type: string
+      required:
+        - name
+      additionalProperties: false
+
+tag:
+  name: Configuration Systems
+  description: Endpoints used for the management of configuration systems

@@ -1,0 +1,49 @@
+---
+paths:
+  collection:
+    get:
+      description: Retrieve a list of all environments
+      summary: Get Environments
+      tags:
+        - Settings
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/environment.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/environment.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            environment:
+              operationId: getEnvironmentRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    records:
+      summary: Multiple environment records
+      value:
+        - environment: testing
+          description: |
+            The testing environment reflects the state of HEAD state of the
+            master branch in our Git Repositories for all projects
+          icon_class: fab fa-aws
+        - environment: staging
+          description: |
+            The staging environment reflects tagged project releases that are
+            intended to be to deployed to production
+          icon_class: fab fa-aws

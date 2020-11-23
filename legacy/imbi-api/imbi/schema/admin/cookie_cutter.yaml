@@ -1,0 +1,214 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new cookie cutter record
+      summary: Create Cookie Cutters
+      requestBody:
+        description: The cookie cutter record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Cookie Cutters
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a cookie cutter record
+      summary: Get Cookie Cutter
+      operationId: getCookieCutterRecord
+      tags:
+        - Cookie Cutters
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a cookie cutter, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Cookie Cutters
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `project_type` attribute
+                value:
+                  - op: replace
+                    path: project_type
+                    value: Consumer
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a cookie cutter record
+      summary: Delete Cookie Cutter
+      tags:
+        - Cookie Cutters
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: name
+        in: path
+        description: Cookie Cutter Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+
+  collection:
+    get:
+      description: Retrieve a list of all cookie cutters
+      summary: Get Cookie Cutters
+      tags:
+        - Cookie Cutters
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            cookiecutter:
+              operationId: getCookieCutterRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    record:
+      summary: Cookie cutter record
+      value:
+        cookiecutter: buzzops-project
+        type: project
+        project_type: HTTP API
+        description: A HTTP API that runs in Kubernetes on Buzz-Ops
+        url: https://github.com/aweber/project-cookiecutter.git
+    records:
+      summary: Cookie cutter records
+      value:
+        - cookiecutter: buzzops-project
+          type: project
+          project_type: HTTP API
+          description: A HTTP API that runs in Kubernetes on Buzz-Ops
+          url: https://github.com/aweber/project-cookiecutter.git
+        - cookiecutter: buzzops-consumer
+          type: project
+          project_type: Consumer
+          description: A rejected consumer that runs in Kubernetes on Buzz-Ops
+          url: https://github.com/aweber/consumer-cookiecutter.git
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the cookiecutter was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Cookie Cutter
+      description: |
+        Used to describe the cookie cutters available when creating a project
+      type: object
+      properties:
+        name:
+          description: The display name for a cookiecutter
+          type: string
+        type:
+          description: The type of cookie cutter
+          type: string
+          enum:
+            - project
+            - dashboard
+        project_type:
+          description: The project type associated with the cookie cutter
+          type: string
+        description:
+          description: A description of the cookie cutter
+          oneOf:
+            - type: "null"
+            - type: string
+        url:
+          description: The git URL to the cookie cutter
+          type: string
+      required:
+        - name
+        - type
+        - project_type
+        - description
+        - url
+      additionalProperties: false
+
+tag:
+  name: Cookie Cutters
+  description: Endpoints used for the management different target cookie cutters for projects to run in.

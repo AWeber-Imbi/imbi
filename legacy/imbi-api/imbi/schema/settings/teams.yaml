@@ -1,0 +1,45 @@
+---
+paths:
+  collection:
+    get:
+      description: Retrieve a list of all teams
+      summary: Get Teams
+      tags:
+        - Teams
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/team.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/team.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            team:
+              operationId: getTeamRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    records:
+      summary: Multiple Team Records
+      value:
+        - team_name: Platform Support Engineering
+          slug: PSE
+          icon_class: fas fa-blind
+        - team_name: Quality Assurance
+          slug: QA
+          icon_class: fas fa-microscope

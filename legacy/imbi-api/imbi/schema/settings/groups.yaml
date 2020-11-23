@@ -1,0 +1,47 @@
+---
+paths:
+  collection:
+    get:
+      description: Retrieve a list of all groups
+      summary: Get Groups
+      tags:
+        - Settings
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/group.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/group.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            group:
+              operationId: getGroupRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    records:
+      summary: Multiple Group Records
+      value:
+        - name: Administrators
+          group_type: external
+          external_id: cn=admins,ou=users,dc=example,dc=org
+          permissions: [admin, user]
+        - group: Quality Assurance
+          group_type: external
+          external_id: cn=qa,ou=users,dc=example,dc=org
+          permissions: [user]

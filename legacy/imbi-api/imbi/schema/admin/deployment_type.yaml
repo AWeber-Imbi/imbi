@@ -1,0 +1,157 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new deployment type record
+      summary: Create Deployment Type
+      requestBody:
+        description: The deployment type record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Deployment Types
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a deployment type record
+      summary: Get Deployment Type
+      operationId: getDeploymentTypeRecord
+      tags:
+        - Deployment Types
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a deployment type, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Deployment Types
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `icon_class` attribute
+                value:
+                  - op: replace
+                    path: icon_class
+                    value: fas fa-microscope
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a deployment type record
+      summary: Delete Deployment Type
+      tags:
+        - Deployment Types
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: name
+        in: path
+        description: Deployment Type Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+
+components:
+  examples:
+    record:
+      summary: A full deployment type record
+      value:
+        name: gitlab-ci
+        description: Helm
+        icon_class: fab fa-aws
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the deployment type was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Deployment Type
+      description: |
+        Used to describe the types of project deployment systems
+      type: object
+      properties:
+        name:
+          description: The display name for a deployment type
+          type: string
+        description:
+          description: A description of the deployment type
+          oneOf:
+            - type: "null"
+            - type: string
+        icon_class:
+          description: Font Awesome UI icon class
+          oneOf:
+            - type: "null"
+            - type: string
+      required:
+        - name
+      additionalProperties: false
+
+tag:
+  name: Deployment Types
+  description: Endpoints used for the management different types of deployment systems.

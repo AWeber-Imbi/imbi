@@ -1,0 +1,45 @@
+---
+paths:
+  collection:
+    get:
+      description: Retrieve a list of all deployment types
+      summary: Get Deployment Types
+      tags:
+        - Settings
+      responses:
+        200:
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/deployment_type.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '../admin/deployment_type.yaml#/components/schemas/record'
+              examples:
+                Success:
+                  $ref: '#/components/examples/records'
+          links:
+            deployment type:
+              operationId: getDeploymentTypeRecord
+              parameters:
+                $response:
+                  id: '$response.body#/0/id'
+
+components:
+  examples:
+    records:
+      summary: Multiple deployment type records
+      value:
+        - name: gitlab-ci
+          description: Helm
+          icon_class: fab fa-aws
+        - name: Artifcatory
+          description: Package artifact uploaded to artifactory
+          icon_class: fab fa-aws

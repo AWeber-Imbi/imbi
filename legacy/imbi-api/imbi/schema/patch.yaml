@@ -1,0 +1,50 @@
+---
+title: JSON Patch
+description: A JSONPatch document as defined by RFC 6902
+type: array
+items:
+  type: object
+  title: Individual JSON patch operation
+  required:
+    - op
+    - path
+  allOf:
+    - path:
+        description: A JSON Pointer path to apply the operation to
+        type: string
+        pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
+  oneOf:
+    - title: Add / Replace / Test
+      properties:
+        op:
+          description: The operation to perform
+          type: string
+          enum: [add, replace, test]
+        value:
+          description: The value to add, replace or test
+          oneOf:
+            - type: array
+            - type: boolean
+            - type: integer
+            - type: "null"
+            - type: number
+            - type: object
+            - type: string
+      required: [value]
+    - title: Copy / Move
+      properties:
+        op:
+          description: The operation to perform
+          type: string
+          enum: [copy, move]
+        from:
+          description: A JSON Pointer path to the referenced value
+          type: string
+          pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
+      required: [from]
+    - title: Remove
+      properties:
+        op:
+          description: The operation to perform
+          type: string
+          enum: [remove]

@@ -1,0 +1,170 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new team record
+      summary: Create Team
+      requestBody:
+        description: The team record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Teams
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a team record
+      summary: Get Team
+      operationId: getTeamRecord
+      tags:
+        - Teams
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a team, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Teams
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `icon_class` attribute
+                value:
+                  - op: replace
+                    path: icon_class
+                    value: fas fa-microscope
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a team record
+      summary: Delete Team
+      tags:
+        - Teams
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name:
+          name: name
+          in: path
+          required: True
+          description: The team name
+          schema:
+            $ref: '#/components/schemas/record/properties/name'
+
+components:
+  examples:
+    record:
+      summary: Team Record
+      value:
+        team_name: Platform Support Engineering
+        slug: PSE
+        icon_class: fas fa-blind
+
+    records:
+      summary: Multiple Team Records
+      value:
+        - team_name: Platform Support Engineering
+          slug: PSE
+          icon_class: fas fa-blind
+        - team_name: Quality Assurance
+          slug: QA
+          icon_class: fas fa-microscope
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the team was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Imbi Team
+      description: A organizational group of users in Imbi
+      type: object
+      properties:
+        name:
+          description: The team name
+          type: string
+        slug:
+          description: Team path slug / abbreviation
+          type: string
+        icon_class:
+          description: Font Awesome UI icon class
+          oneOf:
+            - type: "null"
+            - type: string
+        group:
+          description: Association of the team to an internal or external Imbi group
+          oneOf:
+            - type: "null"
+            - type: string
+      required:
+        - name
+        - slug
+      additionalProperties: false
+
+tag:
+  name: Teams
+  description: Endpoints used for the management of organizational teams

@@ -1,0 +1,162 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new project type record
+      summary: Create Project Type
+      requestBody:
+        description: The project type record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Project Types
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a project type record
+      summary: Get Project Type
+      operationId: getProjectTypeRecord
+      tags:
+        - Project Types
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a project type, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Project Types
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `icon_class` attribute
+                value:
+                  - op: replace
+                    path: icon_class
+                    value: fas fa-microscope
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a project type record
+      summary: Delete Project Type
+      tags:
+        - Project Types
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: project_type
+        in: path
+        description: Project Type Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+
+components:
+  examples:
+    record:
+      summary: A full project_type record
+      value:
+        project_type: HTTP API
+        description: RESTful HTTP 1.1 API
+        slug: http-api
+        icon_class: fab fa-aws
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the project_type was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Project Type
+      description: |
+        Used to describe the types of operational project_types for projects
+      type: object
+      properties:
+        name:
+          description: The display name for a project type
+          type: string
+        description:
+          description: A description of the project type
+          oneOf:
+            - type: "null"
+            - type: string
+        slug:
+          description: The slug for project types, used in filtering
+          type: string
+        icon_class:
+          description: Font Awesome UI icon class
+          oneOf:
+            - type: "null"
+            - type: string
+      required:
+        - name
+        - slug
+      additionalProperties: false
+
+tag:
+  name: Project Types
+  description: Endpoints used for the management different types of projects managed in Imbi (APIs, Databases, etc)
