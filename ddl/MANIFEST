@@ -26,6 +26,10 @@ tables/v1/project_link_types.sql
 tables/v1/project_types.sql
 tables/v1/projects.sql
 tables/v1/project_dependencies.sql
+tables/v1/project_fact_history.sql
+tables/v1/project_fact_types.sql
+tables/v1/project_fact_type_options.sql
+tables/v1/project_facts.sql
 tables/v1/project_links.sql
 tables/v1/users.sql
 tables/v1/authentication_tokens.sql
