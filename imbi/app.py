@@ -17,16 +17,16 @@ import sprockets_postgres as postgres
 from sprockets import http
 from sprockets.http import app
 from sprockets.mixins import correlation
-from sprockets.mixins.mediatype import content, transcoders
+from sprockets.mixins.mediatype import content
 from tornado import ioloop, web
 
 from imbi import (
     __version__,
     common,
     endpoints,
-    html,
     pkgfiles,
-    stats
+    stats,
+    transcoders
 )
 from imbi.endpoints import default
 
@@ -65,7 +65,7 @@ def make_application(**settings) -> app.Application:
     content.add_transcoder(
         application, transcoders.JSONTranscoder('application/json-patch+json'))
     content.add_transcoder(application, transcoders.MsgPackTranscoder())
-    content.add_transcoder(application, html.HTMLTranscoder())
+    content.add_transcoder(application, transcoders.HTMLTranscoder())
 
     # Instrument which libraries to include in sentry reports
     """

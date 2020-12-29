@@ -1,4 +1,22 @@
+import decimal
+
 from sprockets.mixins.mediatype import transcoders
+
+
+class DecimalMixin:
+
+    def dump_object(self, obj):
+        if isinstance(obj, decimal.Decimal):
+            return float(obj)
+        return super().dump_object(obj)
+
+
+class JSONTranscoder(DecimalMixin, transcoders.JSONTranscoder):
+    """Handle Decimal Values"""
+
+
+class MsgPackTranscoder(DecimalMixin, transcoders.MsgPackTranscoder):
+    """Handle Decimal Values"""
 
 
 class HTMLTranscoder(transcoders.JSONTranscoder):
