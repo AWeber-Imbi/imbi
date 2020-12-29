@@ -103,6 +103,10 @@ class SettingsRequestHandler(base.RequestHandler):
                             'path': '/admin/orchestration_systems'
                         },
                         {
+                            'title': 'Project Fact Types',
+                            'path': '/admin/project_fact_types'
+                        },
+                        {
                             'title': 'Project Link Types',
                             'path': '/admin/project_link_types'
                         },

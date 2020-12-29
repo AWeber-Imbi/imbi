@@ -1,7 +1,3 @@
-"""
-Request Handlers for the Cookie-Cutter Endpoints
-
-"""
 from imbi.endpoints.admin import base
 
 

@@ -1,7 +1,3 @@
-"""
-Base Admin Request Handlers
-
-"""
 from imbi.endpoints import base
 
 

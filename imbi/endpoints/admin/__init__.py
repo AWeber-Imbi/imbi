@@ -1,9 +1,10 @@
 """
-Admin Views
+Admin endpoints for configuring Imbi metadata
 
 """
 from tornado import web
 
+from imbi import common
 from . import (
     configuration_systems,
     cookie_cutters,
@@ -12,6 +13,7 @@ from . import (
     environments,
     groups,
     orchestration_systems,
+    project_fact_types,
     project_link_types,
     project_types,
     teams)
@@ -55,6 +57,13 @@ URLS = [
     web.url(r'/admin/orchestration_system/(?P<name>[\w_\-%\+]+)',
             orchestration_systems.CRUDRequestHandler,
             name='admin-orchestration-systems'),
+
+    web.url(r'/admin/project_fact_type',
+            project_fact_types.CRUDRequestHandler),
+    web.url(r'/admin/project_fact_type/'
+            r'(?P<id>{})$'.format(common.UUID_PATTERN),
+            project_fact_types.CRUDRequestHandler,
+            name='admin-project-fact-types'),
 
     web.url(r'/admin/project_link_type',
             project_link_types.CRUDRequestHandler),

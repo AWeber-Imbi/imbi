@@ -1,7 +1,3 @@
-"""
-Request Handlers for the Orchestration System Endpoints
-
-"""
 from imbi.endpoints.admin import base
 
 
