@@ -17,7 +17,7 @@ class CRUDRequestHandler(base.CRUDRequestHandler):
 
     PATCH_SQL = """\
     UPDATE v1.project_fact_types
-       SET id=%(id)s, 
+       SET id=%(id)s,
            modified_at=CURRENT_TIMESTAMP,
            project_type=%(project_type)s,
            "name"=%(name)s,
