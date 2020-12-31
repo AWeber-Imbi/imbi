@@ -6,10 +6,11 @@ import { useTranslation } from 'react-i18next'
 export function Loading() {
   const { t } = useTranslation()
   return (
-    <main className="content-between align-middle">
-      <div className="text-3xl text-center text-gray-500 block">
+    <main className="flex flex-row flex-grow">
+      <div
+        className="container mx-auto my-auto max-w-xs bg-white shadow rounded-lg px-4 py-5 text-3xl text-center text-gray-500">
         <FontAwesomeIcon icon={faSpinner} spin />
-        <span className="pl-4 text-italic">{t('common.loading')}</span>
+        <span className="pl-3">{t('common.loading')}</span>
       </div>
     </main>
   )

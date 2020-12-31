@@ -17,6 +17,14 @@ class IndexRequestHandler(base.RequestHandler):
         self.render('index.html')
 
 
+class TestRequestHandler(base.RequestHandler):
+
+    ENDPOINT = 'ui-test'
+
+    def get(self, *args, **kwargs):
+        self.render('test.html')
+
+
 class LoginRequestHandler(base.RequestHandler):
 
     ENDPOINT = 'ui-login'

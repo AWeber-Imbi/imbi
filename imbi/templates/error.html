@@ -1,10 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Error &ndash; {{ type }}{% end %}
+{% block title %}Error &ndash; {{ status_code }}{% end %}
 {% block content %}
-<div class="alert alert-danger" role="alert">
-   <h4 class="alert-heading pb-0 mb-0"><span class="icon icon-warning"></span> ERROR: {{ type }} &ndash; {{ message }}</h4>
-</div>{% if traceback %}
-<h3>Traceback <small>(most recent call last)</small></h3>
-<pre class="traceback"><code>{% for line in traceback %}{{ line }}
-  {% end %}</code></pre>
-{% end %}{% end %}
+  {% if 'exc_info' in globals() and handler.application.settings['debug'] and exc_info[2] is not None %}
+    {% import traceback %}
+    <div class="container mx-auto my-auto max-w-2xl bg-white shadow rounded-lg p-5">
+      <h1 class="text-red-700 text-xl">
+        <i class="fas fa-exclamation-circle"></i>
+        <span class="pl-1"><span class="font-bold">ERROR:</span> {{ status_code }} &ndash; {{ reason }}</span>
+      </h1>
+      <h3 class="mt-6 mb-4 mt-2 text-xl">Traceback <small>(most recent call last)</small></h3>
+      <pre class="border border-gray-300 overflow-scroll px-2 py-4 text-mono text-sm text-gray-600">{% for line in traceback.format_list(traceback.extract_tb(exc_info[2])) %}{{ line }}{% end %}</pre>
+    </div>
+  {% else %}
+    <div class="container mx-auto my-auto max-w-xs bg-red-50 shadow rounded-lg p-5 text-red-700">
+      <i class="fas fa-exclamation-circle"></i>
+      <span class="pl-1"><span class="font-bold">ERROR:</span> {{ status_code }} &ndash; {{ reason }}</span>
+    </div>
+  {% end %}
+{% end %}
+{% block ui_js %}{% end %}

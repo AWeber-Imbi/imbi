@@ -6,19 +6,15 @@ Object {
   "baseElement": <body>
     <div>
       <div
-        class="flex flex-1"
+        class="inline-block"
       >
         <div
           id="child"
         >
           Foo
         </div>
-      </div>
-      <div
-        class="hidden"
-      >
         <div
-          class="absolute z-50 pt-9 -ml-8"
+          class="hidden absolute z-50 mt ml-4 text-xs"
         >
           <svg
             class="text-black bottom-full"
@@ -34,7 +30,7 @@ Object {
             />
           </svg>
           <div
-            class="bg-black z-50 text-sm -ml-3 rounded text-white p-1 pl-2 pr-2 "
+            class="bg-black z-50 text-center rounded text-white px-3 py-2 -ml-3"
           >
             Tooltip
           </div>
@@ -44,19 +40,15 @@ Object {
   </body>,
   "container": <div>
     <div
-      class="flex flex-1"
+      class="inline-block"
     >
       <div
         id="child"
       >
         Foo
       </div>
-    </div>
-    <div
-      class="hidden"
-    >
       <div
-        class="absolute z-50 pt-9 -ml-8"
+        class="hidden absolute z-50 mt ml-4 text-xs"
       >
         <svg
           class="text-black bottom-full"
@@ -72,7 +64,7 @@ Object {
           />
         </svg>
         <div
-          class="bg-black z-50 text-sm -ml-3 rounded text-white p-1 pl-2 pr-2 "
+          class="bg-black z-50 text-center rounded text-white px-3 py-2 -ml-3"
         >
           Tooltip
         </div>

@@ -1,3 +1,4 @@
+{% set include_js = True %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -8,40 +9,33 @@
     <link rel="icon" href="{{ static_url('imbi.ico') }}">
     <link href="{{ static_url('imbi.css') }}" rel="stylesheet">
   </head>
-  <body class="h-screen bg-gray-50">
-    <div id="app" class="flex flex-col justify-between min-h-screen"
+  <body class="h-screen bg-gray-200">
+    <div id="app" class="min-h-screen flex flex-col"
          data-logo="{{ static_url('images/logo.png') }}"
          data-service="{{ handler.application.settings['service'] }}"
          data-version="{{ handler.application.settings['version'] }}">
-
-      <header>
-        <nav class="bg-blue-700">
-          <div class="mx-auto px-2 sm:px-6 lg:px-8">
-            <div class="relative flex items-center justify-between h-16">
-              <div class="flex-1 flex items-center justify-center sm:items-stretch sm:justify-start">
-                <div class="flex-shrink-0 flex items-center">
-                  <img class="block lg:hidden h-8 w-8" src="{{ static_url('images/logo.png') }}" alt="{{ handler.application.settings['service'] }}">
-                  <img class="hidden lg:block h-8 w-8" src="{{ static_url('images/logo.png') }}" alt="{{ handler.application.settings['service'] }}">
-                  <h1 class="inline-block text-xl ml-2 text-white">{{ handler.application.settings['service'] }}</h1>
-                </div>
-              </div>
-            </div>
-          </div>
+      <header class="flex-shrink bg-blue-700 h-13 border-b-2 border-blue-700">
+        <nav class="p-2 flex flex-row">
+          <a href="/" class="h-8-w-8 flex-shrink">
+            <img class="h-8 w-8" src="{{ static_url('images/logo.png') }}" alt="{{ handler.application.settings['service'] }}" />
+          </a>
+          <a href="/" class="ml-3 mt-1 flex-1 text-xl text-white hover:text-white">
+            {{ handler.application.settings['service'] }}
+          </a>
         </nav>
       </header>
-
-      <main class="content-between align-middle">
-        {% block "content" %}
-        <div class="text-3xl text-center text-gray-500 block">
-        <i class="fas fa-spinner"></i>
-        <span class="pl-4 text-italic">Loading</span>
-        </div>
+      <main class="flex flex-row flex-grow overflow-y-auto">
+        {% block content %}
+          <div class="container mx-auto my-auto max-w-xs bg-red-50 shadow rounded-lg p-5 text-red-700">
+            <i class="fas fa-exclamation-circle"></i>
+            <span class="pl-1"><span class="font-bold">ERROR:</span> Unextended Template</span>
+          </div>
         {% end %}
       </main>
-      <footer class="h-10 bg-white border-0 border-t-2 align-middle text-sm p-2 text-gray-500">
+      <footer class="flex-shrink h-10 bg-white border-t border-gray-400 align-middle text-sm p-2 text-gray-500">
         {{ handler.application.settings['service'] }} v{{ handler.application.settings['version'] }} &mdash; <a href="/api-docs/">API Documentation</a>
       </footer>
     </div>
-    <script src="{{ static_url('js/imbi.js') }}"></script>
+    {% block ui_js %}<script src="{{ static_url('js/imbi.js') }}"></script>{% end %}
   </body>
 </html>
