@@ -8,6 +8,7 @@ ddl/build/
 dist/
 ui/coverage/
 ui/node_modules/
+ui/src/css/fonts/
 ui/yarn-error.log
 vendor
 __pycache__

@@ -1,26 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Layout Testing{% end %}
+{% block title %}Initializing{% end %}
 {% block content %}
-
-<div class="container mx-auto my-auto">
-  <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-    <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-      <form class="space-y-6" action="#">
-        <div class="rounded-md shadow-sm -space-y-px">
-          <div class="mb-4"><label for="username" class="block text-sm font-medium text-gray-700 mb-1">LDAP
-            Username</label><input id="username" class="form-input" name="username" required="" type="text" value="">
-          </div>
-          <div class="mb-4"><label for="password"
-                                   class="block text-sm font-medium text-gray-700 mb-1">Password</label><input
-            id="password" autocomplete="current-password" class="form-input" name="password" required="" type="password"
-            value=""></div>
-          <div class="pt-4">
-            <button type="submit" class="btn-blue w-full" disabled="">Sign in</button>
-          </div>
-        </div>
-      </form>
-    </div>
-  </div>
+<div class="container mx-auto my-auto max-w-xs bg-white shadow rounded-lg py-5 text-center text-3xl text-gray-500">
+  <i class="fas fa-spinner"></i>
+  <span class="pl-3">Initializing</span>
 </div>
 {% end %}
 {% block ui_js %}{% end %}

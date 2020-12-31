@@ -1,26 +1,35 @@
-const path = require('path');
-const CopyWebpackPlugin = require('copy-webpack-plugin')
+const path = require("path");
+const CopyWebpackPlugin = require("copy-webpack-plugin")
 
 module.exports = {
-  entry: ['babel-polyfill', __dirname + '/src/js/index.jsx'],
+  entry: ["babel-polyfill", __dirname + "/src/js/index.jsx"],
   output: {
-    path: path.resolve(__dirname, '../imbi/static/js/'),
-    filename: 'imbi.js',
+    path: path.resolve(__dirname, "../imbi/static/js/"),
+    filename: "imbi.js",
   },
   performance: {hints: false},
   resolve: {
-    extensions: ['.js', '.jsx']
+    extensions: [".js", ".jsx"]
   },
   module: {
     rules: [
       {
-        test: /\.js?/,
+        test: /\.(js|jsx)$/,
         exclude: /node_modules/,
-        use: 'babel-loader'
+        loader: "babel-loader"
       },
       {
+        test: /\.(eot|svg|ttf|woff|woff2|)$/i,
+        loader: "file-loader",
+        options: {
+          outputPath: 'src/css/fonts',
+          publicPath: './fonts'
+        }
+      },
+
+      {
         test: /\.css$/i,
-        use: ["style-loader", "css-loader", "postcss-loader"]
+        use: ["style-loader", "css-loader", "resolve-url-loader", "postcss-loader"]
       }
     ]
   },
@@ -29,18 +38,18 @@ module.exports = {
       {
         patterns: [
           {
-            from: 'node_modules/@fortawesome/fontawesome-free/webfonts/*',
-            to: path.resolve(__dirname, '../imbi/static/fonts/'),
+            from: "node_modules/@fortawesome/fontawesome-free/webfonts/*",
+            to: path.resolve(__dirname, "../imbi/static/fonts/"),
             flatten: true
           },
           {
-            from: 'node_modules/typeface-inter/Inter Web/*.woff*',
-            to: path.resolve(__dirname, '../imbi/static/fonts/'),
+            from: "node_modules/typeface-inter/Inter Web/*.woff*",
+            to: path.resolve(__dirname, "../imbi/static/fonts/"),
             flatten: true
           },
           {
-            from: 'node_modules/redoc/bundles/redoc.standalone.js',
-            to: path.resolve(__dirname, '../imbi/static/js/'),
+            from: "node_modules/redoc/bundles/redoc.standalone.js",
+            to: path.resolve(__dirname, "../imbi/static/js/"),
             flatten: true
           }
         ]
@@ -48,7 +57,7 @@ module.exports = {
   ],
   externals: {
     config: JSON.stringify({
-      apiUrl: 'http://localhost:8000'
+      apiUrl: "http://localhost:8000"
     })
   }
 };
