@@ -1,0 +1,50 @@
+@layer components {
+
+  .alert {
+    @apply bg-gray-50 border-l-4 border-gray-400 p-4 text-sm;
+  }
+  .alert-info {
+    @apply alert bg-blue-50 border-blue-700 text-blue-700;
+  }
+  .alert-error {
+    @apply alert bg-red-50 border-red-500 text-red-500;
+  }
+  .alert-warning {
+    @apply alert bg-yellow-50 border-yellow-700 text-yellow-700;
+  }
+  .alert-success {
+    @apply alert bg-green-50 border-green-800 text-green-800;
+  }
+
+  .bottom-full{
+    bottom: 100%
+  }
+  .top-full{
+    top: 100%
+  }
+
+  .btn {
+    @apply py-2 px-4 font-semibold rounded-md shadow-md focus:outline-none;
+  }
+  .btn-blue {
+    @apply btn bg-blue-700 hover:bg-blue-600 text-white;
+  }
+  .btn-green {
+    @apply btn bg-green-700 hover:bg-green-600 text-white;
+  }
+
+  .form-input {
+    @apply appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md mb-2 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm;
+  }
+  .form-input-error {
+    @apply form-input border-red-400 focus:ring-red-400 focus:border-red-400;
+  }
+
+  .user-menu-link {
+    @apply block px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm;
+  }
+  .user-menu-link-active {
+    @apply user-menu-link font-bold;
+  }
+
+}

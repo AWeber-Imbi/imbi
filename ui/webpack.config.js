@@ -1,9 +1,8 @@
 const path = require('path');
-const webpack = require('webpack');
 const CopyWebpackPlugin = require('copy-webpack-plugin')
 
 module.exports = {
-  entry: ['babel-polyfill', __dirname + '/js/index.jsx'],
+  entry: ['babel-polyfill', __dirname + '/src/js/index.jsx'],
   output: {
     path: path.resolve(__dirname, '../imbi/static/js/'),
     filename: 'imbi.js',
@@ -13,37 +12,39 @@ module.exports = {
     extensions: ['.js', '.jsx']
   },
   module: {
-    noParse: (content) => /jquery|lodash/.test(content),
     rules: [
       {
-        test: /\.jsx?/,
+        test: /\.js?/,
         exclude: /node_modules/,
         use: 'babel-loader'
+      },
+      {
+        test: /\.css$/i,
+        use: ["style-loader", "css-loader", "postcss-loader"]
       }
     ]
   },
-  // mode: 'production',
   plugins: [
-    new webpack.ProvidePlugin({
-      $: 'jquery',
-      jQuery: 'jquery',
-      'window.jQuery': 'jquery',
-      Tether: 'tether',
-      "window.Tether": "tether",
-      Popper: ['popper.js', 'default'],
-    }),
-    new CopyWebpackPlugin([
+    new CopyWebpackPlugin(
       {
-        from: 'node_modules/@fortawesome/fontawesome-free/webfonts/*',
-        to: path.resolve(__dirname, '../imbi/static/fonts/'),
-        flatten: true
-      },
-      {
-        from: 'node_modules/redoc/bundles/redoc.standalone.js',
-        to: path.resolve(__dirname, '../imbi/static/js/'),
-        flatten: true
-      }
-    ], {})
+        patterns: [
+          {
+            from: 'node_modules/@fortawesome/fontawesome-free/webfonts/*',
+            to: path.resolve(__dirname, '../imbi/static/fonts/'),
+            flatten: true
+          },
+          {
+            from: 'node_modules/typeface-inter/Inter Web/*.woff*',
+            to: path.resolve(__dirname, '../imbi/static/fonts/'),
+            flatten: true
+          },
+          {
+            from: 'node_modules/redoc/bundles/redoc.standalone.js',
+            to: path.resolve(__dirname, '../imbi/static/js/'),
+            flatten: true
+          }
+        ]
+      }, {})
   ],
   externals: {
     config: JSON.stringify({

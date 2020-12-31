@@ -11,8 +11,8 @@ const resources = {
                 git: 'Git URL',
                 username: 'User Name',
                 password: 'Password',
-                login: 'Login',
-                logout: 'Logout',
+                login: 'Sign in',
+                logout: 'Sign Out',
                 profile: 'Profile',
                 settings: 'Settings',
                 home: 'Home',
@@ -27,6 +27,7 @@ const resources = {
                 groups: 'Groups',
                 cancel: 'Cancel',
                 submit: 'Submit',
+                apiDocumentation: 'API Documentation'
             },
             configurationSystem: {
                 errorstring:

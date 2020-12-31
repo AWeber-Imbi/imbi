@@ -3,6 +3,7 @@ API Endpoint for returning UI Settings
 
 """
 import typing
+from itertools import chain
 
 from imbi import common
 from imbi.endpoints import base, settings
@@ -47,85 +48,10 @@ class SettingsRequestHandler(base.RequestHandler):
     ENDPOINT = 'ui-settings'
 
     async def get(self, *args, **kwargs):
-        sidebar = [
-            {
-                'title': 'Projects',
-                'icon': 'fas fa-cubes',
-                'items': [
-                    {
-                        'title': 'Inventory',
-                        'path': '/projects/'
-                    }
-                ]
-            },
-            {
-                'title': 'Operations',
-                'icon': 'fas fa-hat-wizard',
-                'items': [
-                    {
-                        'title': 'Change Log',
-                        'path': '/operations/changelog'
-                    }
-                ]
-            }
-        ]
-        if self._current_user and self._current_user.has_permission('admin'):
-            sidebar.append({
-                    'title': 'Administration',
-                    'icon': 'fas fa-wrench',
-                    'items': [
-                        {
-                            'title': 'Configuration Systems',
-                            'path': '/admin/configuration_systems'
-                        },
-                        {
-                            'title': 'Cookie Cutters',
-                            'path': '/admin/cookie_cutters'
-                        },
-                        {
-                            'title': 'Data Centers',
-                            'path': '/admin/data_centers'
-                        },
-                        {
-                            'title': 'Deployment Types',
-                            'path': '/admin/deployment_types'
-                        },
-                        {
-                            'title': 'Environments',
-                            'path': '/admin/environments'
-                        },
-                        {
-                            'title': 'Groups',
-                            'path': '/admin/groups'
-                        },
-                        {
-                            'title': 'Orchestration Systems',
-                            'path': '/admin/orchestration_systems'
-                        },
-                        {
-                            'title': 'Project Fact Types',
-                            'path': '/admin/project_fact_types'
-                        },
-                        {
-                            'title': 'Project Link Types',
-                            'path': '/admin/project_link_types'
-                        },
-                        {
-                            'title': 'Project Types',
-                            'path': '/admin/project_types'
-                        },
-                        {
-                            'title': 'Teams',
-                            'path': '/admin/teams'
-                        }
-                    ]
-                })
-
         self.send_response({
             'service_name': self.application.settings['service'].title(),
             'gitlab_url': self.application.settings['gitlab_url'],
             'ldap_enabled': common.ldap_enabled(),
-            'sidebar': sidebar,
             'configuration_systems': await self._get_values(
                 settings.ConfigurationSystems.GET_SQL,
                 'configuration-systems'),
@@ -168,4 +94,6 @@ class UserRequestHandler(base.AuthenticatedRequestHandler):
     def get(self, *args, **kwargs):
         user = self.current_user.as_dict()
         del user['password']
+        user['permissions'] = list(set(
+            chain.from_iterable([g['permissions'] for g in user['groups']])))
         self.send_response(user)

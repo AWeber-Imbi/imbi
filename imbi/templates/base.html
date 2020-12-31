@@ -4,28 +4,44 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ handler.application.settings['service'].title() }} &mdash; {% block title %}Tile{% end %}</title>
-    <link href="{{ static_url('css/imbi.css') }}" rel="stylesheet">
+    <title>{{ handler.application.settings['service'] }} &mdash; {% block title %}Tile{% end %}</title>
     <link rel="icon" href="{{ static_url('imbi.ico') }}">
+    <link href="{{ static_url('imbi.css') }}" rel="stylesheet">
   </head>
-  <body class="logged-out">
-    <div id="app">
+  <body class="h-screen bg-gray-50">
+    <div id="app" class="flex flex-col justify-between min-h-screen"
+         data-logo="{{ static_url('images/logo.png') }}"
+         data-service="{{ handler.application.settings['service'] }}"
+         data-version="{{ handler.application.settings['version'] }}">
+
       <header>
-        <nav class="navbar navbar-inverse navbar-expand-lg bg-primary fixed-top">
-          <a class="navbar-brand text-white h1 mb-0" href="/">
-            <i class="fab fa-earlybirds"></i> Imbi
-          </a>
+        <nav class="bg-blue-700">
+          <div class="mx-auto px-2 sm:px-6 lg:px-8">
+            <div class="relative flex items-center justify-between h-16">
+              <div class="flex-1 flex items-center justify-center sm:items-stretch sm:justify-start">
+                <div class="flex-shrink-0 flex items-center">
+                  <img class="block lg:hidden h-8 w-8" src="{{ static_url('images/logo.png') }}" alt="{{ handler.application.settings['service'] }}">
+                  <img class="hidden lg:block h-8 w-8" src="{{ static_url('images/logo.png') }}" alt="{{ handler.application.settings['service'] }}">
+                  <h1 class="inline-block text-xl ml-2 text-white">{{ handler.application.settings['service'] }}</h1>
+                </div>
+              </div>
+            </div>
+          </div>
         </nav>
       </header>
-      <div class="main">
-        <div class="loading">
-          <h1><span class="fas fa-spinner fa-spin"></span> Loading</h1>
+
+      <main class="content-between align-middle">
+        {% block "content" %}
+        <div class="text-3xl text-center text-gray-500 block">
+        <i class="fas fa-spinner"></i>
+        <span class="pl-4 text-italic">Loading</span>
         </div>
-      </div>
+        {% end %}
+      </main>
+      <footer class="h-10 bg-white border-0 border-t-2 align-middle text-sm p-2 text-gray-500">
+        {{ handler.application.settings['service'] }} v{{ handler.application.settings['version'] }} &mdash; <a href="/api-docs/">API Documentation</a>
+      </footer>
     </div>
-    <footer>
-      Imbi v{{ handler.application.settings['version'] }} &mdash; <a href="/api-docs/">API Documentation</a>
-    </footer>
     <script src="{{ static_url('js/imbi.js') }}"></script>
   </body>
 </html>
