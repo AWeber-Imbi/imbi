@@ -100,7 +100,7 @@ function Header({logo, service}) {
                     <UserMenuItem to='/user/profile'>Your Profile</UserMenuItem>
                     <UserMenuItem to='/user/settings'>Settings</UserMenuItem>
                     <Menu.Item>
-                      <a className="user-menu-item" href="/ui/logout">Sign Out</a>
+                      <a className="user-menu-link" href="/ui/logout">Sign Out</a>
                     </Menu.Item>
                   </Menu.Items>
                 </Menu>
