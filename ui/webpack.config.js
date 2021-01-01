@@ -23,10 +23,9 @@ module.exports = {
         loader: "file-loader",
         options: {
           outputPath: 'src/css/fonts',
-          publicPath: './fonts'
+          publicPath: '/static/fonts'
         }
       },
-
       {
         test: /\.css$/i,
         use: ["style-loader", "css-loader", "resolve-url-loader", "postcss-loader"]
