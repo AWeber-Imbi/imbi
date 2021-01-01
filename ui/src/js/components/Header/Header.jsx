@@ -12,7 +12,7 @@ function Header({logo, service}) {
   const currentUser = useContext(UserContext)
   return (
     <header
-      className={"flex-shrink bg-blue-700 h-13 border-b-2 border-blue-700" + (currentUser.authenticated !== true ? " pb-1" : "")}>
+      className={"flex-shrink bg-blue-700 h-13" + (currentUser.authenticated !== true ? " pb-1" : "")}>
       <nav className="p-2 flex flex-row">
         <Link to="/ui/" className="h-8 w-8 flex-shrink">
           <img className={"h-8 w-8 mt-1" + (currentUser.authenticated !== true ? " mb-1" : "")}

@@ -1,16 +1,13 @@
-import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {
-  faExclamationCircle, faInfoCircle, faExclamationTriangle,
-  faCheckCircle
-} from "@fortawesome/free-solid-svg-icons"
 import PropTypes from "prop-types";
 import React from "react"
 
+import {Icon} from ".."
+
 const icons = {
-  info: faInfoCircle,
-  warning: faExclamationTriangle,
-  error: faExclamationCircle,
-  success: faCheckCircle
+  info: "fas info-circle",
+  warning: "fas exclamation-Triangle",
+  error: "fas exclamation-circle",
+  success: "fas check-circle"
 }
 
 function Alert({level, children}) {
@@ -18,7 +15,7 @@ function Alert({level, children}) {
     <div className={"alert-" + level}>
       <div className="flex">
         <div className="flex-shrink-0">
-          <FontAwesomeIcon icon={icons[level]}/>
+          <Icon icon={icons[level]}/>
         </div>
         <div className="ml-3">
           {typeof children == "string" ? (<h3 className="font-medium">{children}</h3>) : children}

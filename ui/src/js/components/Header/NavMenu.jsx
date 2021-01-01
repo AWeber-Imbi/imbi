@@ -1,11 +1,10 @@
-import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faWrench} from "@fortawesome/free-solid-svg-icons"
 import {Link} from "@reach/router"
 import {Menu} from "@headlessui/react"
 import React from "react"
 import PropTypes from "prop-types"
+import {useTranslation} from "react-i18next"
 
-import {Tooltip} from "../"
+import {Icon, Tooltip} from "../"
 import {User} from "../../schema"
 
 function MenuItem({children, to}) {
@@ -28,20 +27,21 @@ MenuItem.propTypes = {
 }
 
 function NavMenu({currentUser}) {
+  const {t} = useTranslation()
   if (currentUser.authenticated === true)
-  return (
-    <Menu as="div" className="flex-grow ml-2 mt-2 space-x-2">
-      <MenuItem to="/ui/">Dashboard</MenuItem>
-      <MenuItem to="/ui/projects">Projects</MenuItem>
-      <MenuItem to="/ui/changelog">Change Log</MenuItem>
-      {currentUser.permissions.includes("admin") && (
-        <Tooltip value="Admin Tools">
-          <MenuItem to="/ui/admin">
-            <FontAwesomeIcon icon={faWrench} className="p-0 m-0"/>
-          </MenuItem>
-        </Tooltip>
-      )}
-    </Menu>)
+    return (
+      <Menu as="div" className="flex-grow ml-2 mt-2 space-x-2">
+        <MenuItem to="/ui/">{t("headerNavItems.dashboard")}</MenuItem>
+        <MenuItem to="/ui/projects">{t("headerNavItems.projects")}</MenuItem>
+        <MenuItem to="/ui/changelog">{t("headerNavItems.changeLog")}</MenuItem>
+        {currentUser.permissions.includes("admin") && (
+          <Tooltip value={t("headerNavItems.administration")}>
+            <MenuItem to="/ui/admin">
+              <Icon icon="fas wrench" className="p-0 m-0"/>
+            </MenuItem>
+          </Tooltip>
+        )}
+      </Menu>)
   return null
 }
 

@@ -65,7 +65,7 @@ function Login({onLoginCallback}) {
                 <div className="mb-4">
                   <label htmlFor="username"
                          className="block text-sm font-medium text-gray-700 mb-1">
-                    {(settings.ldap_enabled ? "LDAP " : "") + "Username"}
+                    {(settings.ldap_enabled ? "LDAP " : "") + t("login.username")}
                   </label>
                   <input id="username"
                          className={errorMessage !== null ? "form-input-error" : "form-input"}
@@ -80,7 +80,7 @@ function Login({onLoginCallback}) {
                 <div className="mb-4">
                   <label htmlFor="password"
                          className="block text-sm font-medium text-gray-700 mb-1">
-                    {t("common.password")}</label>
+                    {t("login.password")}</label>
                   <input id="password"
                          autoComplete="current-password"
                          className={errorMessage !== null ? "form-input-error" : "form-input"}
@@ -94,7 +94,7 @@ function Login({onLoginCallback}) {
                   <button type="submit"
                           className="btn-blue w-full"
                           disabled={submitting || credentials.username === null || credentials.password === null}>
-                    {t("common.login")}
+                    {t("login.signIn")}
                   </button>
                 </div>
               </div>
