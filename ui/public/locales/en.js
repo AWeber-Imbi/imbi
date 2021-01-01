@@ -18,19 +18,20 @@ const resources = {
         settings: 'Settings',
         home: 'Home',
         inventory: 'Inventory',
+        cancel: 'Cancel',
+        submit: 'Submit',
+        apiDocumentation: 'API Documentation'
+      },
+      profile: {
         displayName: 'Display Name',
         userName: 'User Name',
         userType: 'User Type',
         externalId: 'External ID',
         emailAddress: 'Email Address',
-        groups: 'Groups',
-        cancel: 'Cancel',
-        submit: 'Submit',
-        apiDocumentation: 'API Documentation'
+        groups: 'Groups'
       },
       configurationSystem: {
-        errorstring:
-          'duplicate key value violates unique constraint "configuration_systems_pkey"',
+        errorstring: 'duplicate key value violates unique constraint "configuration_systems_pkey"',
         errormsg: 'The Configuration System you entered already exists',
         configuartionSystempPlaceholder: 'Configuration System',
         configurationSystem: 'Configuration Systems',
