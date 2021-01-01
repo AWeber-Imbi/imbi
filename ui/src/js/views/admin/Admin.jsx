@@ -11,7 +11,7 @@ function Admin() {
   const currentUser = useContext(UserContext)
   if (currentUser.authenticated !== true) return null
   return (
-    <div className="flex flex-row h-full">
+    <div className="flex-auto flex flex-row">
       <Sidebar title="Administration">
         <Sidebar.Section name="Settings" open={true}>
           <Sidebar.MenuItem value="Configuration Systems" to="/ui/admin/configuration-systems" icon={faBox} />

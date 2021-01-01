@@ -1,9 +1,8 @@
 import React, {useContext} from 'react'
-import {Router} from '@reach/router'
-import {UserContext} from '../contexts'
 
 import {Admin} from './admin/'
-
+import {Router} from '../components'
+import {UserContext} from '../contexts'
 import User from './user'
 
 function Main() {
@@ -12,8 +11,8 @@ function Main() {
   return (
     <main className="flex flex-row flex-grow overflow-y-auto">
       <Router primary={true} basepath="/ui">
-        <Admin path="admin/*"/>
-        <User path="user/*"/>
+        <Admin path="admin/*" />
+        <User path="user/*" />
       </Router>
     </main>
   )

@@ -1,10 +1,10 @@
 import React from 'react'
-import {Router} from '@reach/router'
 
+import {Router} from '../../components'
 import {Profile} from './Profile'
 
 export default () => (
-  <Router>
+  <Router primary={false}>
     <Profile path="profile"/>
   </Router>
 )
