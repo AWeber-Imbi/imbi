@@ -1,7 +1,7 @@
 import React, {useContext} from 'react'
 import {
-  faBox, faBuilding, faCloud, faCogs, faCookie, faCubes, faExternalLinkAlt,
-  faRuler, faUserFriends, faUsers
+  faBox, faBuilding, faCogs, faCookie, faCubes, faExternalLinkAlt,
+  faRuler, faTree, faUserFriends, faUsers
 } from "@fortawesome/free-solid-svg-icons";
 
 import {Sidebar} from '../../components'
@@ -17,7 +17,7 @@ function Admin() {
           <Sidebar.MenuItem value="Configuration Systems" to="/ui/admin/configuration-systems" icon={faBox} />
           <Sidebar.MenuItem value="Cookie Cutters" to="/ui/admin/cookie-cutters" icon={faCookie} />
           <Sidebar.MenuItem value="Data Centers" to="/ui/admin/data-centers" icon={faBuilding} />
-          <Sidebar.MenuItem value="Environments" to="/ui/admin/environments" icon={faCloud} />
+          <Sidebar.MenuItem value="Environments" to="/ui/admin/environments" icon={faTree} />
           <Sidebar.MenuItem value="Orchestration Systems" to="/ui/admin/orchestration-systems" icon={faCogs} />
           <Sidebar.MenuItem value="Project Fact Types" to="/ui/admin/project-fact-types" icon={faRuler} />
           <Sidebar.MenuItem value="Project Link Types" to="/ui/admin/project-link-types" icon={faExternalLinkAlt} />

@@ -40,7 +40,7 @@ function UserMenu({currentUser}) {
     return (
       <Menu as="div" className="flex-shrink mr-3">
         <Menu.Button as={React.Fragment}>
-          <button className="bg-gray-800 flex text-sm rounded-full focus:outline-none" title="User Menu">
+          <button className="bg-gray-800 flex my-1 text-sm rounded-full focus:outline-none" title="User Menu">
             <span className="sr-only">Open user menu</span>
             <Gravatar className="h-8 w-8 rounded-full"
                       default="mp"
@@ -50,7 +50,7 @@ function UserMenu({currentUser}) {
         </Menu.Button>
         <Menu.Items aria-labelledby="user-menu"
                     aria-orientation="vertical"
-                    className="origin-top-right absolute right-0 mr-3 mt-2 w-48 rounded-md shadow-lg py-1 focus:outline-none bg-white ring-1 ring-gray-300 ring-opacity-5">
+                    className="origin-top-right absolute right-3 mt-1 w-48 rounded-md shadow-lg py-1 focus:outline-none bg-white ring-1 ring-gray-300 ring-opacity-5">
           <MenuItem to='/ui/user/profile' icon={faIdCard} value="Profile" />
           <MenuItem to='/ui/user/settings' icon={faUserCog} value="Settings" />
           <Menu.Item>

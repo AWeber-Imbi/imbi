@@ -10,8 +10,8 @@ import {User} from '../../schema'
 
 function MenuItem({children, to}) {
   const itemClass = {
-    true: 'bg-blue-600 px-3 py-2 rounded-md ',
-    false: 'hover:bg-blue-600 hover:text-white px-3 py-2 rounded-md'
+    true: 'bg-blue-600 px-3 py-2 rounded-md text-sm text-white hover:text-white',
+    false: 'hover:bg-blue-600 px-3 py-2 rounded-md text-sm text-white hover:text-white '
   }
   return (
     <Link getProps={({isCurrent}) => {return {className: itemClass[isCurrent]}}}
@@ -30,9 +30,10 @@ MenuItem.propTypes = {
 function NavMenu({currentUser}) {
   if (currentUser.authenticated === true)
   return (
-    <Menu as="div" className="flex-grow ml-2 mt-2 space-x-2 font-medium text-sm text-white">
+    <Menu as="div" className="flex-grow ml-2 mt-2 space-x-2">
       <MenuItem to="/ui/">Dashboard</MenuItem>
       <MenuItem to="/ui/projects">Projects</MenuItem>
+      <MenuItem to="/ui/changelog">Change Log</MenuItem>
       {currentUser.permissions.includes('admin') && (
         <Tooltip value="Admin Tools">
           <MenuItem to="/ui/admin">
