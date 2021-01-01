@@ -1,8 +1,8 @@
 import PropTypes from "prop-types";
 import React from "react"
 
-import { default as Section } from './Section'
-import { default as MenuItem } from './MenuItem'
+import { default as Section } from "./Section"
+import { default as MenuItem } from "./MenuItem"
 
 function Sidebar({title, children}) {
   return (

@@ -1,7 +1,6 @@
 import PropTypes from "prop-types";
 import React, {useState} from "react"
 
-
 function Section({name, open, children}) {
   const [state, setState] = useState(open)
   const indicatorClasses = "h-5 w-5 ml transform text-gray-400 group-hover:text-gray-400 transition-colors ease-in-out duration-150  "

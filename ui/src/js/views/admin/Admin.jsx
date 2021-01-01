@@ -4,8 +4,10 @@ import {
   faRuler, faTree, faUserFriends, faUsers
 } from "@fortawesome/free-solid-svg-icons";
 
-import {Sidebar} from '../../components'
+import {Router, Sidebar} from '../../components'
 import {UserContext} from '../../contexts'
+import {default as ConfigurationSystems} from './ConfigurationSystems'
+
 
 function Admin() {
   const currentUser = useContext(UserContext)
@@ -14,7 +16,7 @@ function Admin() {
     <div className="flex-auto flex flex-row">
       <Sidebar title="Administration">
         <Sidebar.Section name="Settings" open={true}>
-          <Sidebar.MenuItem value="Configuration Systems" to="/ui/admin/configuration-systems" icon={faBox} />
+          <Sidebar.MenuItem value="Configuration Systems" to="configuration-systems" icon={faBox} />
           <Sidebar.MenuItem value="Cookie Cutters" to="/ui/admin/cookie-cutters" icon={faCookie} />
           <Sidebar.MenuItem value="Data Centers" to="/ui/admin/data-centers" icon={faBuilding} />
           <Sidebar.MenuItem value="Environments" to="/ui/admin/environments" icon={faTree} />
@@ -29,7 +31,9 @@ function Admin() {
         </Sidebar.Section>
       </Sidebar>
       <div className="flex flex-col w-auto p-4">
-        Content
+        <Router>
+          <ConfigurationSystems path="configuration-systems" />
+        </Router>
       </div>
     </div>
   )

@@ -1,27 +1,27 @@
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faUserCog, faIdCard, faSignOutAlt} from '@fortawesome/free-solid-svg-icons'
-import Gravatar from 'react-gravatar'
-import {Link} from '@reach/router'
-import {Menu} from '@headlessui/react'
-import React from 'react'
+import {faUserCog, faIdCard, faSignOutAlt} from "@fortawesome/free-solid-svg-icons"
+import Gravatar from "react-gravatar"
+import {Link} from "@reach/router"
+import {Menu} from "@headlessui/react"
+import React from "react"
 import PropTypes from "prop-types"
 
-import {User} from '../../schema'
+import {User} from "../../schema"
 
-const menuClasses = 'block px-4 py-2 text-gray-600 hover:bg-gray-100 hover:text-blue-700 focus:outline-none text-sm'
+const menuClasses = "block px-4 py-2 text-gray-600 hover:bg-gray-100 hover:text-blue-700 focus:outline-none text-sm"
 
-function MenuItem({value, to, icon}) {
+function UserMenuItem({value, to, icon}) {
   const itemClass = {
-    true: menuClasses + ' font-bold',
+    true: menuClasses + " font-bold",
     false: menuClasses
   }
   return (
     <Menu.Item>
-      <Link getProps={({isCurrent}) => { return {className: itemClass[isCurrent]}}}
-            key={to.replace(/\//gi, '_') + '-nav-item'}
+      <Link getProps={({isCurrent}) => {return {className: itemClass[isCurrent]}}}
+            key={to.replace(/\//gi, "_") + "-nav-item"}
             to={to}>
         <div className="inline-block w-6 mr-2 text-center">
-          <FontAwesomeIcon icon={icon} />
+          <FontAwesomeIcon icon={icon}/>
         </div>
         {value}
       </Link>
@@ -29,7 +29,7 @@ function MenuItem({value, to, icon}) {
   )
 }
 
-MenuItem.propTypes = {
+UserMenuItem.propTypes = {
   value: PropTypes.string.isRequired,
   to: PropTypes.string.isRequired,
   icon: PropTypes.object.isRequired
@@ -51,15 +51,15 @@ function UserMenu({currentUser}) {
         <Menu.Items aria-labelledby="user-menu"
                     aria-orientation="vertical"
                     className="origin-top-right absolute right-3 mt-1 w-48 rounded-md shadow-lg py-1 focus:outline-none bg-white ring-1 ring-gray-300 ring-opacity-5">
-          <MenuItem to='/ui/user/profile' icon={faIdCard} value="Profile" />
-          <MenuItem to='/ui/user/settings' icon={faUserCog} value="Settings" />
+          <UserMenuItem to="/ui/user/profile" icon={faIdCard} value="Profile"/>
+          <UserMenuItem to="/ui/user/settings" icon={faUserCog} value="Settings"/>
           <Menu.Item>
-              <a className={menuClasses} href="/ui/logout">
-                <div className="inline-block w-6 mr-2 text-center">
-                  <FontAwesomeIcon icon={faSignOutAlt} />
-                </div>
-                Sign Out
-              </a>
+            <a className={menuClasses} href="/ui/logout">
+              <div className="inline-block w-6 mr-2 text-center">
+                <FontAwesomeIcon icon={faSignOutAlt}/>
+              </div>
+              Sign Out
+            </a>
           </Menu.Item>
         </Menu.Items>
       </Menu>

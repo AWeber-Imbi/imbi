@@ -1,6 +1,6 @@
 import {Link} from '@reach/router'
-import React, {Fragment, useContext} from 'react'
 import PropTypes from "prop-types";
+import React, {Fragment, useContext} from 'react'
 import {useTranslation} from 'react-i18next'
 
 import {UserContext} from '../../contexts'

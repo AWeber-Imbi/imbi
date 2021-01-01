@@ -7,7 +7,7 @@ function Tooltip({children, value}) {
     <div className="inline-block"
          onMouseOver={() => setShowTooltip(true)}
          onMouseOut={() => setShowTooltip(false)}>
-        {children}
+      {children}
       <div className={(showTooltip === true ? 'visible' : 'hidden') + " absolute z-50 mt ml-4 text-xs"}
            onMouseOver={() => setShowTooltip(true)}
            onMouseOut={() => setShowTooltip(false)}>

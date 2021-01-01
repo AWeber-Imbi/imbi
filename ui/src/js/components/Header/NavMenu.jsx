@@ -1,21 +1,21 @@
 import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {faWrench} from '@fortawesome/free-solid-svg-icons'
-import {Link} from '@reach/router'
-import {Menu} from '@headlessui/react'
-import React from 'react'
+import {faWrench} from "@fortawesome/free-solid-svg-icons"
+import {Link} from "@reach/router"
+import {Menu} from "@headlessui/react"
+import React from "react"
 import PropTypes from "prop-types"
 
-import {Tooltip} from '../'
-import {User} from '../../schema'
+import {Tooltip} from "../"
+import {User} from "../../schema"
 
 function MenuItem({children, to}) {
   const itemClass = {
-    true: 'bg-blue-600 px-3 py-2 rounded-md text-sm text-white hover:text-white',
-    false: 'hover:bg-blue-600 px-3 py-2 rounded-md text-sm text-white hover:text-white '
+    true: "bg-blue-600 px-3 py-2 rounded-md text-sm text-white hover:text-white",
+    false: "hover:bg-blue-600 px-3 py-2 rounded-md text-sm text-white hover:text-white "
   }
   return (
     <Link getProps={({isCurrent}) => {return {className: itemClass[isCurrent]}}}
-          key={to.replace(/\//gi, '_') + '-nav-item'}
+          key={to.replace(/\//gi, "_") + "-nav-item"}
           to={to}>
       {children}
     </Link>
@@ -34,7 +34,7 @@ function NavMenu({currentUser}) {
       <MenuItem to="/ui/">Dashboard</MenuItem>
       <MenuItem to="/ui/projects">Projects</MenuItem>
       <MenuItem to="/ui/changelog">Change Log</MenuItem>
-      {currentUser.permissions.includes('admin') && (
+      {currentUser.permissions.includes("admin") && (
         <Tooltip value="Admin Tools">
           <MenuItem to="/ui/admin">
             <FontAwesomeIcon icon={faWrench} className="p-0 m-0"/>
