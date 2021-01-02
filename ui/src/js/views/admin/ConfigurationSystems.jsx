@@ -24,8 +24,8 @@ function ConfigurationSystems() {
               title: t("common.iconClass"),
               name: "icon_class",
               type: "icon",
-              placeholder: "fa-sliders-h",
-              default: "fa-sliders-h",
+              placeholder: "fas sliders-h",
+              default: "fas sliders-h",
             }
           ]}
           schema={ConfigurationSystem}

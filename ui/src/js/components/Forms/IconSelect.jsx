@@ -16,12 +16,14 @@ function IconSelect({className, defaultValue, value, ...props}) {
       <Icon className="absolute z-50 ml-3 mt-3" icon={icon} />
       <select className={className + " pl-10"}
               {...props}
-              onChange={(event) => setIcon(event.target.value)}
-              value={icon}>
-        <option value="">Select</option>
+              defaultValue={initialValue}
+              onChange={(event) => setIcon(event.target.value)}>
+        <option value="" />
         {icons.map((icon) => {
           return (
-            <option key={"icon-select-" + icon} value={icon}>{icon}</option>
+            <option key={"icon-select-" + icon}
+                    value={icon}>{icon}
+            </option>
           )
         })}
       </select>

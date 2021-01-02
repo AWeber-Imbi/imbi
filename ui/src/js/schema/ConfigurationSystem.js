@@ -1,10 +1,10 @@
 export const ConfigurationSystem = {
-  "$ref": "schema/ConfigurationSystem.js",
   "$schema": "http://json-schema.org/draft-07/schema#",
   type: "object",
   properties: {
     name: {
-      type: "string"
+      type: "string",
+      minLength: 3
     },
     description: {
       oneOf: [
