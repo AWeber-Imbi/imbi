@@ -1,8 +1,17 @@
 import React from "react"
 import {render} from "@testing-library/react"
 import "@testing-library/jest-dom/extend-expect"
+import {library} from "@fortawesome/fontawesome-svg-core"
+import {
+  faCheckCircle,
+  faInfoCircle,
+  faExclamationCircle,
+  faExclamationTriangle
+} from "@fortawesome/free-solid-svg-icons"
 
 import Alert from "./Alert"
+
+library.add(faCheckCircle, faInfoCircle, faExclamationCircle, faExclamationTriangle)
 
 describe("Alert", () => {
   it("should render an alert with info attributes", () => {

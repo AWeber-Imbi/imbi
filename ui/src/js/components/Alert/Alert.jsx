@@ -5,7 +5,7 @@ import {Icon} from ".."
 
 const icons = {
   info: "fas info-circle",
-  warning: "fas exclamation-Triangle",
+  warning: "fas exclamation-triangle",
   error: "fas exclamation-circle",
   success: "fas check-circle"
 }
