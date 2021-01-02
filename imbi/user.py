@@ -50,7 +50,7 @@ class User:
                   FROM v1.authentication_tokens
                  WHERE token = %(token)s
                    AND expires_at > CURRENT_TIMESTAMP)
-    RETURNING username, user_type, external_id;"""
+    RETURNING username, user_type, external_id;"""  # nosec
 
     SQL_GROUPS = """\
     SELECT a.name, a.permissions

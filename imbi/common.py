@@ -14,7 +14,7 @@ from tornado import web
 
 LOGGER = logging.getLogger(__name__)
 
-DEFAULT_COOKIE_SECRET = 'imbi'
+DEFAULT_COOKIE_SECRET = 'imbi'  # nosec
 SIGNED_VALUE_PATTERN = re.compile(r'^(?:[1-9][0-9]*)\|(?:.*)$')
 UUID_PATTERN = r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
 
