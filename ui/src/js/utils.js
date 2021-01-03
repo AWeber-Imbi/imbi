@@ -1,6 +1,6 @@
 export function getErrorMessage(response, data) {
   return (
-    (data && data.message) || response.status + ": " + response.statusText
+    (data && data.title) || response.status + ": " + response.statusText
   )
 }
 

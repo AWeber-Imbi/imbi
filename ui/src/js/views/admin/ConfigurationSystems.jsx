@@ -1,14 +1,16 @@
 import React from "react"
 import {useTranslation} from 'react-i18next'
 
-import {ConfigurationSystem} from "../../schema"
+import {jsonSchema} from "../../schema/ConfigurationSystem"
 
 import {CRUD} from "../../components"
 
 function ConfigurationSystems() {
   const {t} = useTranslation()
   return (
-    <CRUD addButton={t("admin.configurationSystems.createNew")}
+    <CRUD addPath="/admin/configuration_system"
+          collectionName={t("admin.configurationSystems.collectionName")}
+          collectionPath="/settings/configuration_systems"
           columns={[
             {
               title: t("common.name"),
@@ -28,18 +30,12 @@ function ConfigurationSystems() {
               default: "fas sliders-h",
             }
           ]}
-          schema={ConfigurationSystem}
           errorStrings={{
-            "duplicate key value violates unique constraint \"configuration_systems_pkey\"": {
-              column: "name",
-              message: t("admin.configurationSystems.errors.duplicateKey"),
-            },
+            "Unique Violation":  t("admin.configurationSystems.errors.uniqueViolation")
           }}
-          itemPath="/admin/configuration_system"
-          itemsPath="/settings/configuration_systems"
-          itemTitle={t("admin.configurationSystems.singular")}
-          itemsTitle={t("admin.configurationSystems.plural")}
-          keyField="name"/>
+          itemKey="name"
+          itemName={t("admin.configurationSystems.itemName")}
+          jsonSchema={jsonSchema}/>
   )
 }
 

@@ -13,7 +13,7 @@ function Admin() {
     <div className="flex-auto flex flex-row">
       <Sidebar title={t("admin.title")}>
         <Sidebar.Section name={t("admin.sidebar.settings")} open={true}>
-          <Sidebar.MenuItem value={t("admin.configurationSystems.title")} to="configuration-systems" icon="fas box" />
+          <Sidebar.MenuItem value={t("admin.configurationSystems.collectionName")} to="configuration-systems" icon="fas box" />
           <Sidebar.MenuItem value="Cookie Cutters" to="/ui/admin/cookie-cutters" icon="fas cookie" />
           <Sidebar.MenuItem value="Data Centers" to="/ui/admin/data-centers" icon="fas building" />
           <Sidebar.MenuItem value="Environments" to="/ui/admin/environments" icon="fas tree" />

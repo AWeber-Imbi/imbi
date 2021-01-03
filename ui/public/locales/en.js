@@ -34,17 +34,19 @@ const resources = {
 
       admin: {
         title: "Administration",
+        crud: {
+          itemAdded: "{{keyValue}} was added to the {{collectionName}}",
+          newAction: "New {{itemName}}"
+        },
         sidebar: {
           settings: "Settings",
           userManagement: "User Management"
         },
         configurationSystems: {
-          title: "Configuration Systems",
-          createNew: "New Configuration System",
-          plural: "Configuration Systems",
-          singular: "Configuration System",
+          collectionName: "Configuration Systems",
+          itemName: "Configuration System",
           errors: {
-            duplicateKey: "A configuration system with the same name already exists"
+            uniqueViolation: "A configuration system with the same name already exists"
           }
         }
       },

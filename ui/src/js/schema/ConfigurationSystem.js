@@ -1,4 +1,6 @@
-export const ConfigurationSystem = {
+import PropTypes from "prop-types";
+
+export const jsonSchema = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   type: "object",
   properties: {
@@ -23,4 +25,10 @@ export const ConfigurationSystem = {
   required: [
     "name"
   ]
+}
+
+export const propTypes = {
+  name: PropTypes.string.isRequired,
+  description: PropTypes.string,
+  icon_class: PropTypes.string
 }

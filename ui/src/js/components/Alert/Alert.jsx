@@ -10,9 +10,9 @@ const icons = {
   success: "fas check-circle"
 }
 
-function Alert({level, children}) {
+function Alert({level, children, className, ...props}) {
   return (
-    <div className={"alert-" + level}>
+    <div className={(className !== undefined ? className + " " : "") + "alert-" + level} {...props}>
       <div className="flex">
         <div className="flex-shrink-0">
           <Icon icon={icons[level]}/>
@@ -26,8 +26,9 @@ function Alert({level, children}) {
 }
 
 Alert.propTypes = {
-  level: PropTypes.oneOf(["info", "warning", "error", "success"]).isRequired,
-  children: PropTypes.oneOfType([PropTypes.string, PropTypes.object])
+  className: PropTypes.string,
+  children: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
+  level: PropTypes.oneOf(["info", "warning", "error", "success"]).isRequired
 }
 
 export default Alert

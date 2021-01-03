@@ -29,6 +29,9 @@
   .btn-blue {
     @apply btn bg-blue-700 hover:bg-blue-600 border-blue-700 text-white ;
   }
+  .btn-disabled {
+    @apply btn bg-gray-600 hover:bg-gray-600 border-gray-600 text-white cursor-not-allowed;
+  }
   .btn-green {
     @apply btn bg-green-600 hover:bg-green-500 border-green-600 text-white;
   }
