@@ -88,7 +88,7 @@ function CRUD({addPath,
       }, 30000)
     }
   }, [errorMessage])
-  
+
   // Remove the success message after 30 seconds
   useEffect(() => {
     if (successMessage !== null) {

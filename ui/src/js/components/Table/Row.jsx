@@ -39,7 +39,7 @@ function Row({columns, data, index, itemKey, onDeleteClick, onEditClick}) {
         <Column>
           <Fragment>
             {onEditClick !== undefined && (
-              <button type="button" className="text-center text-blue-400 hover:text-blue-700 focus:outline-none" onClick={editOnCick}>
+              <button type="button" className="text-center text-gray-400 hover:text-blue-700 focus:outline-none" onClick={editOnCick}>
                 {t("common.edit")}
               </button>
             )}
@@ -47,7 +47,7 @@ function Row({columns, data, index, itemKey, onDeleteClick, onEditClick}) {
               <span className="mx-2">&ndash;</span>
             )}
             {onDeleteClick !== undefined && (
-              <button type="button" className="text-center text-red-400 hover:text-red-700 focus:outline-none" onClick={deleteOnCick}>
+              <button type="button" className="text-center text-gray-400 hover:text-red-700 focus:outline-none" onClick={deleteOnCick}>
                 {t("common.delete")}
               </button>
             )}
