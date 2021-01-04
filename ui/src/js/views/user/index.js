@@ -1,10 +1,10 @@
 import React from "react"
+import {Switch, Route} from "react-router-dom"
 
-import {Router} from "../../components"
 import {Profile} from "./Profile"
 
 export default () => (
-  <Router primary={false}>
-    <Profile path="profile"/>
-  </Router>
+  <Switch>
+    <Route path="/ui/user/profile" component={Profile}/>
+  </Switch>
 )

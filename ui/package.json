@@ -21,6 +21,7 @@
   "devDependencies": {
     "@babel/core": "^7.2.0",
     "@babel/plugin-proposal-class-properties": "^7.2.3",
+    "@babel/plugin-syntax-dynamic-import": "^7.8.3",
     "@babel/plugin-transform-react-jsx": "^7.12.7",
     "@babel/plugin-transform-runtime": "^7.9.0",
     "@babel/preset-env": "^7.2.0",
@@ -31,7 +32,6 @@
     "@fortawesome/free-solid-svg-icons": "^5.15.1",
     "@fortawesome/react-fontawesome": "^0.1.14",
     "@headlessui/react": "^0.2.0",
-    "@reach/router": "^1.2.1",
     "@tailwindcss/forms": "^0.2.1",
     "@testing-library/dom": "^7.1.4",
     "@testing-library/jest-dom": "^5.3.0",
@@ -64,6 +64,7 @@
     "json-loader": "^0.5.7",
     "jsonschema": "^1.4.0",
     "lint-staged": "^10.1.6",
+    "loadable-components": "^2.2.3",
     "mem": "^6.1.0",
     "mobx": "^4.7.0",
     "node-sass": "^5.0.0",
@@ -79,6 +80,7 @@
     "react-dom": "^16.8.0",
     "react-gravatar": "^2.6.3",
     "react-i18next": "^11.3.4",
+    "react-router-dom": "^5.2.0",
     "redoc": "^2.0.0-rc.48",
     "regenerator-runtime": "^0.13.1",
     "resolve-url-loader": "^3.1.2",
@@ -91,5 +93,8 @@
     "webpack": "^4.27.1",
     "webpack-cli": "^3.1.2",
     "yargs": "^16.1.1"
+  },
+  "dependencies": {
+    "react-router": "^5.2.0"
   }
 }

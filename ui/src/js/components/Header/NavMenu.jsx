@@ -1,4 +1,4 @@
-import {Link} from "@reach/router"
+import {Link, NavLink} from "react-router-dom"
 import {Menu} from "@headlessui/react"
 import React from "react"
 import PropTypes from "prop-types"
@@ -8,16 +8,11 @@ import {Icon, Tooltip} from "../"
 import {User} from "../../schema"
 
 function MenuItem({children, to}) {
-  const itemClass = {
-    true: "bg-blue-600 px-3 py-2 rounded-md text-sm text-white hover:text-white",
-    false: "hover:bg-blue-600 px-3 py-2 rounded-md text-sm text-white hover:text-white "
-  }
   return (
-    <Link getProps={({isCurrent}) => {return {className: itemClass[isCurrent]}}}
-          key={to.replace(/\//gi, "_") + "-nav-item"}
-          to={to}>
+    <NavLink className="nav-menu-link"
+             to={to}>
       {children}
-    </Link>
+    </NavLink>
   )
 }
 
@@ -31,14 +26,14 @@ function NavMenu({currentUser}) {
   if (currentUser.authenticated === true)
     return (
       <Menu as="div" className="flex-grow ml-2 mt-2 space-x-2">
-        <MenuItem to="/ui/">{t("headerNavItems.dashboard")}</MenuItem>
-        <MenuItem to="/ui/projects">{t("headerNavItems.projects")}</MenuItem>
-        <MenuItem to="/ui/changelog">{t("headerNavItems.changeLog")}</MenuItem>
+        <Link className="nav-menu-link" to="/ui/">{t("headerNavItems.dashboard")}</Link>
+        <NavLink className="nav-menu-link" to="/ui/projects">{t("headerNavItems.projects")}</NavLink>
+        <NavLink className="nav-menu-link" to="/ui/changelog">{t("headerNavItems.changeLog")}</NavLink>
         {currentUser.permissions.includes("admin") && (
           <Tooltip value={t("headerNavItems.administration")}>
-            <MenuItem to="/ui/admin">
+            <NavLink className="nav-menu-link" to="/ui/admin">
               <Icon icon="fas wrench" className="p-0 m-0"/>
-            </MenuItem>
+            </NavLink>
           </Tooltip>
         )}
       </Menu>)

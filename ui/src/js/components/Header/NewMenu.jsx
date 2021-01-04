@@ -1,4 +1,4 @@
-import {Link} from "@reach/router"
+import {NavLink} from "react-router-dom"
 import {Menu} from "@headlessui/react"
 import React from "react"
 import PropTypes from "prop-types"
@@ -7,20 +7,14 @@ import {useTranslation} from "react-i18next"
 import {Icon} from "../"
 import {User} from "../../schema"
 
-const menuClasses = "block px-4 py-2 text-gray-600 hover:bg-gray-100 hover:text-blue-700 focus:outline-none text-sm"
-
 function NewMenuItem({value, to}) {
-  const itemClass = {
-    true: menuClasses + " font-bold",
-    false: menuClasses
-  }
   return (
     <Menu.Item>
-      <Link getProps={({isCurrent}) => {return {className: itemClass[isCurrent]}}}
+      <NavLink className="new-menu-link"
             key={to.replace(/\//gi, "_") + "-nav-item"}
             to={to}>
         {value}
-      </Link>
+      </NavLink>
     </Menu.Item>
   )
 }

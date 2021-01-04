@@ -1,9 +1,10 @@
-import {Link} from '@reach/router'
+import {Link} from "@reach/router"
 import PropTypes from "prop-types";
-import React, {Fragment, useContext} from 'react'
-import {useTranslation} from 'react-i18next'
+import React, {Fragment, useContext} from "react"
+import {useTranslation} from "react-i18next"
 
-import {UserContext} from '../../contexts'
+import {SettingsContext, UserContext} from "../../contexts"
+import {setDocumentTitle} from "../../utils"
 
 function Groups({groups}) {
   return (
@@ -11,7 +12,7 @@ function Groups({groups}) {
       return (
         <Link className="inline-flex items-center px-2.5 py-0.5 mr-2 rounded-full text-xs font-medium bg-blue-700 text-white"
               key={group.name}
-              to={'/ui/admin/groups#' + group.name}>
+              to={"/ui/admin/groups#" + group.name}>
           {group.name}
         </Link>
       )
@@ -41,7 +42,9 @@ Item.propTypes = {
 
 function Profile() {
   const {t} = useTranslation()
+  const settings = useContext(SettingsContext)
   const user = useContext(UserContext)
+  setDocumentTitle(settings, t("user.profile.title", {displayName: user.display_name}))
   return (
     <div className="container mx-auto my-auto max-w-4xl pb-0 bg-white shadow overflow-hidden sm:rounded-lg">
       <div className="px-4 py-5 sm:px-6">
@@ -51,14 +54,14 @@ function Profile() {
       </div>
       <div className="bg-gray-50 border-t border-gray-200 py-5">
         <dl>
-          <Item label={t('profile.displayName')} value={user.display_name} />
-          <Item label={t('profile.userName')} value={user.username} />
-          <Item label={t('profile.userType')} value={user.user_type} />
-          {user.user_type !== 'internal' && (
-            <Item label={t('profile.externalId')} value={user.external_id} />
+          <Item label={t("user.profile.displayName")} value={user.display_name} />
+          <Item label={t("user.profile.userName")} value={user.username} />
+          <Item label={t("user.profile.userType")} value={user.user_type} />
+          {user.user_type !== "internal" && (
+            <Item label={t("user.profile.externalId")} value={user.external_id} />
           )}
-          <Item label={t('profile.emailAddress')} value={user.email_address} />
-          <Item label={t('profile.groups')}>
+          <Item label={t("user.profile.emailAddress")} value={user.email_address} />
+          <Item label={t("user.profile.groups")}>
             <Groups groups={user.groups} />
           </Item>
         </dl>

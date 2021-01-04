@@ -1,6 +1,6 @@
 import Gravatar from "react-gravatar"
-import {Link} from "@reach/router"
 import {Menu} from "@headlessui/react"
+import {NavLink} from "react-router-dom"
 import React from "react"
 import PropTypes from "prop-types"
 import {useTranslation} from "react-i18next"
@@ -8,23 +8,17 @@ import {useTranslation} from "react-i18next"
 import {Icon} from "../"
 import {User} from "../../schema"
 
-const menuClasses = "block px-4 py-2 text-gray-600 hover:bg-gray-100 hover:text-blue-700 focus:outline-none text-sm"
-
 function UserMenuItem({value, to, icon}) {
-  const itemClass = {
-    true: menuClasses + " font-bold",
-    false: menuClasses
-  }
   return (
     <Menu.Item>
-      <Link getProps={({isCurrent}) => {return {className: itemClass[isCurrent]}}}
+      <NavLink className="user-menu-link"
             key={to.replace(/\//gi, "_") + "-nav-item"}
             to={to}>
         <div className="inline-block w-6 mr-2 text-center">
           <Icon icon={icon}/>
         </div>
         {value}
-      </Link>
+      </NavLink>
     </Menu.Item>
   )
 }
@@ -55,7 +49,7 @@ function UserMenu({currentUser}) {
           <UserMenuItem to="/ui/user/profile" icon="fas id-card" value={t("headerNavItems.profile")}/>
           <UserMenuItem to="/ui/user/settings" icon="fas user-cog" value={t("headerNavItems.settings")}/>
           <Menu.Item>
-            <a className={menuClasses} href="/ui/logout">
+            <a className="user-menu-link" href="/ui/logout">
               <div className="inline-block w-6 mr-2 text-center">
                 <Icon icon="fas sign-out-alt"/>
               </div>
