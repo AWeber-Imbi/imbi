@@ -1,5 +1,5 @@
 import PropTypes from "prop-types"
-import React, {Fragment, useContext, useState} from "react"
+import React, {Fragment, useContext, useEffect, useState} from "react"
 import {useTranslation} from "react-i18next";
 
 import {Alert, ConfirmationDialog, Icon, Table} from ".."
@@ -38,7 +38,6 @@ function CRUD({addPath,
   const {t} = useTranslation()
 
   const [data, dataErrorMessage] = useFetch(collectionPath, [], false, dataIndex)
-
   if (dataErrorMessage !== undefined) setErrorMessage(dataErrorMessage)
 
   function onAddFormClosed(keyValue) {
@@ -47,7 +46,6 @@ function CRUD({addPath,
       setSuccessMessage(t("admin.crud.itemAdded", {value: keyValue, ...strings}))
     refreshData()
   }
-
   onAddFormClosed.propTypes = {
     keyValue: PropTypes.string
   }
@@ -81,6 +79,24 @@ function CRUD({addPath,
     setItemToDelete(keyValue)
     setShowDeleteConfirmation(true)
   }
+
+  // Remove the error message after 30 seconds
+  useEffect(() => {
+    if (errorMessage !== null) {
+      setTimeout(() => {
+        setErrorMessage(null)
+      }, 30000)
+    }
+  }, [errorMessage])
+  
+  // Remove the success message after 30 seconds
+  useEffect(() => {
+    if (successMessage !== null) {
+      setTimeout(() => {
+        setSuccessMessage(null)
+      }, 30000)
+    }
+  }, [successMessage])
 
   return (
     <Fragment>
