@@ -36,11 +36,11 @@
     @apply btn bg-green-600 hover:bg-green-500 border-green-600 text-white;
   }
   .btn-white {
-    @apply btn bg-white hover:bg-gray-200 border-gray-500 text-gray-500;
+    @apply btn bg-white hover:bg-gray-200 border-gray-300 text-gray-500;
   }
 
   .form-input {
-    @apply appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md mb-2 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm;
+    @apply appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md mb-2 shadow-sm placeholder-gray-400 focus:outline-none focus:ring-gray-300 focus:border-gray-300 sm:text-sm;
   }
   .form-input-error {
     @apply form-input border-red-400 focus:ring-red-400 focus:border-red-400;

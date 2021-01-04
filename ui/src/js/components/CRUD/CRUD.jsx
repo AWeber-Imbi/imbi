@@ -47,6 +47,10 @@ function CRUD({addPath,
     console.log('Edit ' + keyValue + ' clicked')
   }
 
+  function onDeleteClick(keyValue) {
+    console.log('Delete ' + keyValue + ' clicked')
+  }
+
   return (
     <Fragment>
       <div className="grid grid-cols-2 mb-3">
@@ -81,6 +85,7 @@ function CRUD({addPath,
       )}
       <Table columns={columns}
              data={data !== undefined ? data : []}
+             onDeleteClick={onDeleteClick}
              onEditClick={onEditClick}/>
     </Fragment>
   )

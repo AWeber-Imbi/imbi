@@ -19,7 +19,10 @@ function Column({definition, children}) {
 
 Column.propTypes = {
   definition: PropTypes.exact(ColumnPropTypes),
-  children: PropTypes.oneOfType([PropTypes.string, PropTypes.element])
+  children: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.element
+  ])
 }
 
 export default Column

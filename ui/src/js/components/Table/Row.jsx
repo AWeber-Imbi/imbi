@@ -1,12 +1,12 @@
 import PropTypes from "prop-types"
-import React from 'react'
+import React, {Fragment} from 'react'
 import {useTranslation} from "react-i18next";
 
 import {Columns} from "../../schema"
 
 import {Column} from "."
 
-function Row({columns, data, index, onEditClick}) {
+function Row({columns, data, index, onDeleteClick, onEditClick}) {
   const {t} = useTranslation()
   const toRender = columns.map((column) => {
     if (column.tableOptions === undefined) return column
@@ -24,13 +24,25 @@ function Row({columns, data, index, onEditClick}) {
           </Column>
         )
       })}
-      {onEditClick !== undefined && (
+      {(onEditClick !== undefined || onDeleteClick !== undefined) && (
         <Column>
-          <button type="button" className="text-center w-full text-blue-700 hover:text-blue:800" onClick={onEditClick}>
-            {t("common.edit")}
-          </button>
-        </Column>)
-      }
+          <Fragment>
+            {onEditClick !== undefined && (
+              <button type="button" className="text-center text-blue-700 hover:text-blue:800" onClick={onEditClick}>
+                {t("common.edit")}
+              </button>
+            )}
+            {(onEditClick !== undefined && onDeleteClick !== undefined) && (
+              <span className="mx-2">&ndash;</span>
+            )}
+            {onDeleteClick !== undefined && (
+              <button type="button" className="text-center text-blue-700 hover:text-blue:800" onClick={onDeleteClick}>
+                {t("common.delete")}
+              </button>
+            )}
+          </Fragment>
+        </Column>
+      )}
     </tr>
   )
 }
@@ -38,6 +50,7 @@ Row.propTypes = {
   columns: Columns.isRequired,
   data: PropTypes.object.isRequired,
   index: PropTypes.number.isRequired,
+  onDeleteClick: PropTypes.func,
   onEditClick: PropTypes.func
 }
 

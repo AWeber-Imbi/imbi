@@ -14,6 +14,7 @@ function FormField({autoFocus, jsonSchema, setErrorState, setFormValue, ...props
 
   function validateValue(e) {
     e.preventDefault()
+    console.log('setFormValue', props.name, e.target.value)
     const result = validate(e.target.value, jsonSchema)
     if (result.errors.length > 0) {
       result.errors.map((err) => {
@@ -42,6 +43,7 @@ function FormField({autoFocus, jsonSchema, setErrorState, setFormValue, ...props
                       defaultValue={props.default}
                       id={"field-" + props.name}
                       name={props.name}
+                      onChange={validateValue}
                       placeholder={props.placeholder}  />
         )}
         {props.type === "select" && (
@@ -50,6 +52,7 @@ function FormField({autoFocus, jsonSchema, setErrorState, setFormValue, ...props
                   defaultValue={props.default}
                   id={"field-" + props.name}
                   name={props.name}
+                  onChange={validateValue}
                   placeholder={props.placeholder}>
             <option value="" />
             {props.options.map((option) => {

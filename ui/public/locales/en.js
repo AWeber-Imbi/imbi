@@ -43,7 +43,7 @@ export default {
       admin: {
         title: "Administration",
         crud: {
-          itemAdded: "{{keyValue}} was added to the {{collectionName}}",
+          itemAdded: "{{keyValue}} was successfully added to {{collectionName}}",
           newAction: "New {{itemName}}"
         },
         sidebar: {
