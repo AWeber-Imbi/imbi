@@ -58,5 +58,10 @@ module.exports = {
     config: JSON.stringify({
       apiUrl: "http://localhost:8000"
     })
+  },
+  watchOptions: {
+    aggregateTimeout: 1000,
+    ignored: 'node_modules/**',
+    poll: 1000
   }
 };

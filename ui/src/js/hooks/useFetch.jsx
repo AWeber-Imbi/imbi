@@ -1,3 +1,4 @@
+import PropTypes from "prop-types"
 import {useContext, useEffect, useState} from "react"
 
 import {FetchContext} from "../contexts"
@@ -5,12 +6,7 @@ import {httpGet} from "../utils"
 
 let cachedData = {}
 
-export default function (
-  path,
-  defaultValue = undefined,
-  useCache = false,
-  dataIndex = 0
-) {
+function useFetch(path, defaultValue = undefined, useCache = false, dataIndex = 0) {
   const fetchMethod = useContext(FetchContext)
   const [data, setData] = useState(defaultValue)
   const [errorMessage, setErrorMessage] = useState(undefined)
@@ -30,5 +26,13 @@ export default function (
       httpGet(fetchMethod, path, onFetch, setErrorMessage)
     }
   }, [path, dataIndex])
+
   return [data, errorMessage]
 }
+useFetch.propTypes = {
+  path: PropTypes.string.isRequired,
+  defaultValue: PropTypes.node,
+  useCache: PropTypes.bool,
+  dataIndex: PropTypes.number
+}
+export {useFetch}

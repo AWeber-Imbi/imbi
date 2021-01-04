@@ -1,13 +1,21 @@
-const resources = {
+export default {
   en: {
     translation: {
       common: {
         loading: "Initializing",
         name: "Name",
         description: "Description",
+        slug: "Slug",
         iconClass: "Icon Class",
+        edit: "Edit",
+        delete: "Delete",
         cancel: "Cancel",
-        save: "Save"
+        save: "Save",
+        welcome: "Welcome"
+      },
+      error: {
+        title: "ERROR",
+        notFound: "Not Found"
       },
       headerNavItems: {
         administration: "Administration",
@@ -48,30 +56,38 @@ const resources = {
           errors: {
             uniqueViolation: "A configuration system with the same name already exists"
           }
+        },
+        cookieCutters: {
+          collectionName: "Cookie Cutters",
+          itemName: "Cookie Cutter",
+          type: "Type",
+          url: "Git URL",
+          urlDescription: "The Git URL to the cookie cutter",
+          errors: {
+            uniqueViolation: "A cookie cutter with the same name already exists"
+          }
+        },
+        projectTypes: {
+          collectionName: "Project Types",
+          itemName: "Project Type",
+          slugDescription: "A slug is the part of a URL which identifies a particular page on a website in an easy to read form.",
+          errors: {
+            uniqueViolation: "A project type with the same name already exists"
+          }
+        }
+      },
+      user: {
+        profile: {
+          title: "{{displayName}}'s Profile",
+          displayName: "Display Name",
+          userName: "User Name",
+          userType: "User Type",
+          externalId: "External ID",
+          emailAddress: "Email Address",
+          groups: "Groups"
         }
       },
 
-      profile: {
-        displayName: "Display Name",
-        userName: "User Name",
-        userType: "User Type",
-        externalId: "External ID",
-        emailAddress: "Email Address",
-        groups: "Groups"
-      },
-
-      cookieCutter: {
-        dashboard: "Dashboard",
-        project: "Project",
-        selectType: "Select a type",
-        type: "Type",
-        errormsg: "The cookie cutter name you entered already exists",
-        itemTitle: "Title",
-        cookieTitle: "Cookie Cutter",
-        cookieTitles: "Cookie Cutters",
-        projectType: "Project Type",
-        selectProjectType: "Select a Project Type",
-      },
       add: {
         step1: "Step 1: Details",
         step2: "Step 2: Automations",
@@ -186,38 +202,7 @@ const resources = {
         title: "Group",
         titles: "Groups",
         iconClass: "Icon Class",
-      },
-      orchestration: {
-        iconClass: "Icon Class",
-        message: "The Orchestration System you entered already exists",
-        title: "Orchestration System",
-        titles: "Orchestration Systems",
-      },
-      projectLinkType: {
-        title: "Project Link Type",
-        titles: "Project Link Types",
-        iconClass: "Icon Class",
-        message: "The Project Link Type you entered already exists"
-      },
-      projectType: {
-        title: "Project Type",
-        titles: "Project Types",
-        iconClass: "Icon Class",
-        message: "The Project Type you entered already exists",
-        slug: "Slug",
-      },
-      teams: {
-        name: "Team name",
-        slug: "Slug",
-        group: "Group",
-        title: "Team",
-        titles: "Teams",
-        iconClass: "Icon Class",
-
-        message: "TThe Team Name you entered already exists",
-      },
-    },
-  },
+      }
+    }
+  }
 }
-
-export default resources

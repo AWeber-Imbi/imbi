@@ -2,52 +2,93 @@ import PropTypes from "prop-types"
 import React, {Fragment, useState} from "react"
 import {useTranslation} from "react-i18next";
 
-import {default as AddForm} from "./AddForm"
-import {Columns} from "./Columns"
-import {Alert, Icon} from ".."
+import {Alert, Icon, Table} from ".."
+import {Columns} from "../../schema"
+import {useFetch} from "../../hooks"
 
-function CRUD({addPath, collectionName, collectionPath, columns, errorStrings, itemKey, itemName, jsonSchema}) {
-  const [state, setState] = useState({showAddForm: false, successMessage: null})
+import {default as AddForm} from "./AddForm"
+
+
+function CRUD({addPath,
+               collectionIcon,
+               collectionName,
+               collectionPath,
+               columns,
+               errorStrings,
+               itemKey,
+               itemName,
+               jsonSchema}) {
+  const [dataIndex, setDataIndex] = useState(0)
+  const [errorMessage, setErrorMessage] = useState(null)
+  const [successMessage, setSuccessMessage] = useState(null)
+  const [showAddForm, setShowAddForm] = useState(false)
   const {t} = useTranslation()
 
+  const [data, dataErrorMessage] = useFetch(collectionPath, [], false, dataIndex)
+
+  if (dataErrorMessage !== undefined) setErrorMessage(dataErrorMessage)
+
   function onAddFormClosed(keyValue) {
-    setState({...state,
-      showAddForm: false,
-      successMessage: keyValue !== undefined
-        ? t("admin.crud.itemAdded", {keyValue: keyValue, collectionName: collectionName})
-        : null
-    })
+    setShowAddForm(false)
+    if (keyValue !== undefined)
+      setSuccessMessage(t("admin.crud.itemAdded", {keyValue: keyValue, collectionName: collectionName}))
+    refreshData()
   }
+
   onAddFormClosed.propTypes = {
     keyValue: PropTypes.string
   }
+
+  function refreshData() {
+    setDataIndex(dataIndex + 1)
+  }
+
+  function onEditClick(keyValue) {
+    console.log('Edit ' + keyValue + ' clicked')
+  }
+
   return (
     <Fragment>
-      <div className="text-right">
-        <button className="btn-green"
-                onClick={() => {setState({...state, showAddForm: true})}}>
-          <Icon className="mr-3" icon="fas plus-circle"/>
-          {t("admin.crud.newAction", {itemName: itemName})}
-        </button>
+      <div className="grid grid-cols-2 mb-3">
+        <h1 className="inline-block text-xl pt-2">
+          <Icon icon={collectionIcon} className="mr-2"/>
+          {collectionName}
+        </h1>
+        <div className="text-right">
+          <button className="btn-green" onClick={() => {
+            setShowAddForm(true)
+          }}>
+            <Icon className="mr-3" icon="fas plus-circle"/>
+            {t("admin.crud.newAction", {itemName: itemName})}
+          </button>
+        </div>
       </div>
-      {state.successMessage !== null && (
-        <Alert className="my-3" level="success">{state.successMessage}</Alert>
+      {errorMessage !== null && (
+        <Alert className="my-3" level="success">{successMessage}</Alert>
       )}
-      {state.showAddForm === true && (
+      {successMessage !== null && (
+        <Alert className="my-3" level="success">{successMessage}</Alert>
+      )}
+      {showAddForm === true && (
         <AddForm addPath={addPath}
                  columns={columns}
                  errorStrings={errorStrings}
                  itemKey={itemKey}
                  jsonSchema={jsonSchema}
                  onClose={onAddFormClosed}
+                 onEditClick={onEditClick}
                  title={t("admin.crud.newAction", {itemName: itemName})}/>
       )}
+      <Table columns={columns}
+             data={data !== undefined ? data : []}
+             onEditClick={onEditClick}/>
     </Fragment>
   )
 }
 
 CRUD.propTypes = {
   addPath: PropTypes.string.isRequired,
+  collectionIcon: PropTypes.string.isRequired,
   collectionName: PropTypes.string.isRequired,
   collectionPath: PropTypes.string.isRequired,
   columns: Columns.isRequired,

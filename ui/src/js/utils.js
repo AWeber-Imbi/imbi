@@ -69,3 +69,7 @@ export async function httpRequest(fetchMethod, path, options = requestOptions) {
     return {success: true, data: data}
   return {success: false, data: getErrorMessage(response, data)}
 }
+
+export function setDocumentTitle(settings, value) {
+  document.title = settings.service_name + " - " + value
+}

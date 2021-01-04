@@ -1,17 +1,17 @@
 import React from "react"
 import {useTranslation} from 'react-i18next'
 
-import {jsonSchema} from "../../schema/ConfigurationSystem"
+import {jsonSchema} from "../../schema/ProjectType"
 
 import {CRUD} from "../../components"
 
-export function ConfigurationSystems() {
+export function ProjectTypes() {
   const {t} = useTranslation()
   return (
-    <CRUD addPath="/admin/configuration_system"
-          collectionIcon="fas box"
-          collectionName={t("admin.configurationSystems.collectionName")}
-          collectionPath="/settings/configuration_systems"
+    <CRUD addPath="/admin/project_type"
+          collectionIcon="fas cubes"
+          collectionName={t("admin.projectTypes.collectionName")}
+          collectionPath="/settings/project_types"
           columns={[
             {
               title: t("common.name"),
@@ -22,29 +22,38 @@ export function ConfigurationSystems() {
               }
             },
             {
+              title: t("common.slug"),
+              name: "slug",
+              type: "text",
+              description: t("admin.projectTypes.slugDescription"),
+              tableOptions: {
+                className: "max-w-lg truncate"
+              }
+            },
+            {
               title: t("common.description"),
               name: "description",
               type: "textarea",
               tableOptions: {
-                className: "max-w-lg truncate"
+                hide: true
               }
             },
             {
               title: t("common.iconClass"),
               name: "icon_class",
               type: "icon",
-              placeholder: "fas sliders-h",
-              default: "fas sliders-h",
+              placeholder: "fas cubes",
+              default: "fas cubes",
               tableOptions: {
                 className: "w-min"
               }
             }
           ]}
           errorStrings={{
-            "Unique Violation":  t("admin.configurationSystems.errors.uniqueViolation")
+            "Unique Violation":  t("admin.projectTypes.errors.uniqueViolation")
           }}
           itemKey="name"
-          itemName={t("admin.configurationSystems.itemName")}
+          itemName={t("admin.projectTypes.itemName")}
           jsonSchema={jsonSchema}/>
   )
 }

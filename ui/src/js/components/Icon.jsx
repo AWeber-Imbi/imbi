@@ -9,7 +9,7 @@ function Icon({icon, ...props}) {
 }
 
 Icon.propTypes = {
-  icon: PropTypes.string,
+  icon: PropTypes.string.isRequired,
   props: PropTypes.object
 }
 

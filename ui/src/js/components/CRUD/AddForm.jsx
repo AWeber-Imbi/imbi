@@ -4,7 +4,7 @@ import {useTranslation} from "react-i18next";
 import {validate} from "jsonschema"
 
 import {Alert} from ".."
-import {Column, Columns} from "./Columns"
+import {Column, Columns} from "../../schema"
 import {FetchContext} from "../../contexts"
 import {IconSelect} from "../Forms"
 import {httpPost} from "../../utils"
@@ -51,6 +51,7 @@ function FormField({autoFocus, jsonSchema, setErrorState, setFormValue, ...props
                   id={"field-" + props.name}
                   name={props.name}
                   placeholder={props.placeholder}>
+            <option value="" />
             {props.options.map((option) => {
               return (
                 <option key={props.name + "-" + option.value} value={option.value}>

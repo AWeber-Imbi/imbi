@@ -10,7 +10,9 @@ export const Column = {
   })),
   placeholder: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),
   tableOptions: PropTypes.exact({
+    className: PropTypes.string,
     headerClassName: PropTypes.string,
+    hide: PropTypes.bool,
     sortable: PropTypes.bool
   }),
   title: PropTypes.string.isRequired,
