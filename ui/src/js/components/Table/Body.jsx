@@ -5,7 +5,7 @@ import {Columns} from "../../schema"
 
 import {Row} from "."
 
-function Body({columns, data, onDeleteClick, onEditClick}) {
+function Body({columns, data, itemKey, onDeleteClick, onEditClick}) {
   let rowOffset = -1
   return (
     <tbody className="bg-white divide-y divide-gray-200">
@@ -14,6 +14,7 @@ function Body({columns, data, onDeleteClick, onEditClick}) {
         return (<Row columns={columns}
                      data={row}
                      index={rowOffset}
+                     itemKey={itemKey}
                      key={"table-row-" + rowOffset}
                      onDeleteClick={onDeleteClick}
                      onEditClick={onEditClick}/>)
@@ -27,6 +28,7 @@ Body.defaultProps = {
 Body.propTypes = {
   columns: Columns.isRequired,
   data: PropTypes.arrayOf(PropTypes.object).isRequired,
+  itemKey: PropTypes.string,
   onDeleteClick: PropTypes.func,
   onEditClick: PropTypes.func
 }

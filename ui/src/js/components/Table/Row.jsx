@@ -6,12 +6,23 @@ import {Columns} from "../../schema"
 
 import {Column} from "."
 
-function Row({columns, data, index, onDeleteClick, onEditClick}) {
+function Row({columns, data, index, itemKey, onDeleteClick, onEditClick}) {
   const {t} = useTranslation()
   const toRender = columns.map((column) => {
     if (column.tableOptions === undefined) return column
     if (column.tableOptions.hide !== true) return column
   }).filter(column => column !== undefined)
+
+  function deleteOnCick(e) {
+    e.preventDefault()
+    onDeleteClick(data[itemKey])
+  }
+
+  function editOnCick(e) {
+    e.preventDefault()
+    onEditClick(data[itemKey])
+  }
+
   let colOffset = -1
   return (
     <tr className={"hover:bg-gray-100"}>
@@ -28,7 +39,7 @@ function Row({columns, data, index, onDeleteClick, onEditClick}) {
         <Column>
           <Fragment>
             {onEditClick !== undefined && (
-              <button type="button" className="text-center text-blue-700 hover:text-blue:800" onClick={onEditClick}>
+              <button type="button" className="text-center text-blue-400 hover:text-blue-700 focus:outline-none" onClick={editOnCick}>
                 {t("common.edit")}
               </button>
             )}
@@ -36,7 +47,7 @@ function Row({columns, data, index, onDeleteClick, onEditClick}) {
               <span className="mx-2">&ndash;</span>
             )}
             {onDeleteClick !== undefined && (
-              <button type="button" className="text-center text-blue-700 hover:text-blue:800" onClick={onDeleteClick}>
+              <button type="button" className="text-center text-red-400 hover:text-red-700 focus:outline-none" onClick={deleteOnCick}>
                 {t("common.delete")}
               </button>
             )}
@@ -50,6 +61,7 @@ Row.propTypes = {
   columns: Columns.isRequired,
   data: PropTypes.object.isRequired,
   index: PropTypes.number.isRequired,
+  itemKey: PropTypes.string,
   onDeleteClick: PropTypes.func,
   onEditClick: PropTypes.func
 }

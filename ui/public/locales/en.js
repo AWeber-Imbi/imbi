@@ -43,7 +43,13 @@ export default {
       admin: {
         title: "Administration",
         crud: {
-          itemAdded: "{{keyValue}} was successfully added to {{collectionName}}",
+          deleteConfirmation: {
+            title: "Delete {{itemName}}?",
+            text: "Are you sure you would like to delete \"{{value}}\" from the available {{collectionName}}?",
+            button: "Delete"
+          },
+          itemAdded: "\"{{value}}\" was successfully added to the available {{collectionName}}",
+          itemDeleted: "\"{{value}}\" was successfully deleted from the available {{collectionName}}",
           newAction: "New {{itemName}}"
         },
         sidebar: {

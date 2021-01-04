@@ -45,6 +45,7 @@ export function ConfigurationSystems() {
           }}
           itemKey="name"
           itemName={t("admin.configurationSystems.itemName")}
+          itemPath="/admin/configuration_system/{{value}}"
           jsonSchema={jsonSchema}/>
   )
 }

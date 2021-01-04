@@ -1,4 +1,5 @@
 export {default as Alert} from "./Alert/Alert"
+export {default as ConfirmationDialog} from "./ConfirmationDialog/ConfirmationDialog"
 export {default as CRUD} from "./CRUD/CRUD"
 export {default as Footer} from "./Footer"
 export {default as Header} from "./Header/Header"

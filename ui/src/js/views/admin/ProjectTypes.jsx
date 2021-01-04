@@ -54,6 +54,7 @@ export function ProjectTypes() {
           }}
           itemKey="name"
           itemName={t("admin.projectTypes.itemName")}
+          itemPath="/admin/project_type/{{value}}"
           jsonSchema={jsonSchema}/>
   )
 }

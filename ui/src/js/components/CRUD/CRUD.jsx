@@ -1,9 +1,11 @@
 import PropTypes from "prop-types"
-import React, {Fragment, useState} from "react"
+import React, {Fragment, useContext, useState} from "react"
 import {useTranslation} from "react-i18next";
 
-import {Alert, Icon, Table} from ".."
+import {Alert, ConfirmationDialog, Icon, Table} from ".."
 import {Columns} from "../../schema"
+import {FetchContext} from "../../contexts"
+import {httpDelete} from "../../utils"
 import {useFetch} from "../../hooks"
 
 import {default as AddForm} from "./AddForm"
@@ -17,11 +19,22 @@ function CRUD({addPath,
                errorStrings,
                itemKey,
                itemName,
+               itemPath,
                jsonSchema}) {
+  const fetchMethod = useContext(FetchContext)
+
   const [dataIndex, setDataIndex] = useState(0)
   const [errorMessage, setErrorMessage] = useState(null)
+  const [itemToDelete, setItemToDelete] = useState(null)
   const [successMessage, setSuccessMessage] = useState(null)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
+
+  const strings = {
+    collectionName: collectionName,
+    itemName: itemName
+  }
+
   const {t} = useTranslation()
 
   const [data, dataErrorMessage] = useFetch(collectionPath, [], false, dataIndex)
@@ -31,7 +44,7 @@ function CRUD({addPath,
   function onAddFormClosed(keyValue) {
     setShowAddForm(false)
     if (keyValue !== undefined)
-      setSuccessMessage(t("admin.crud.itemAdded", {keyValue: keyValue, collectionName: collectionName}))
+      setSuccessMessage(t("admin.crud.itemAdded", {value: keyValue, ...strings}))
     refreshData()
   }
 
@@ -39,16 +52,34 @@ function CRUD({addPath,
     keyValue: PropTypes.string
   }
 
+  async function deleteItem(e) {
+    e.preventDefault
+    e.target.disabled = true
+    const result = await httpDelete(
+      fetchMethod,
+      itemPath.replace(/{{value}}/, itemToDelete)
+    )
+    if (result.success === true) {
+      setSuccessMessage(t("admin.crud.itemDeleted", {value: itemToDelete, ...strings}))
+      refreshData()
+    } else {
+      setErrorMessage(result.data)
+    }
+    setItemToDelete(null)
+    setShowDeleteConfirmation(false)
+  }
+
   function refreshData() {
     setDataIndex(dataIndex + 1)
   }
 
   function onEditClick(keyValue) {
-    console.log('Edit ' + keyValue + ' clicked')
+    console.log("Edit clicked", keyValue)
   }
 
   function onDeleteClick(keyValue) {
-    console.log('Delete ' + keyValue + ' clicked')
+    setItemToDelete(keyValue)
+    setShowDeleteConfirmation(true)
   }
 
   return (
@@ -85,8 +116,21 @@ function CRUD({addPath,
       )}
       <Table columns={columns}
              data={data !== undefined ? data : []}
+             itemKey={itemKey}
              onDeleteClick={onDeleteClick}
              onEditClick={onEditClick}/>
+      {showDeleteConfirmation === true && (
+        <ConfirmationDialog mode="error"
+                            title={t("admin.crud.deleteConfirmation.title", {value: itemToDelete, ...strings})}
+                            confirmationButtonText={t("admin.crud.deleteConfirmation.button", {value: itemToDelete, ...strings})}
+                            onCancel={() => {
+                              setItemToDelete(null)
+                              setShowDeleteConfirmation(false)
+                            }}
+                            onConfirm={deleteItem}>
+          {t("admin.crud.deleteConfirmation.text", {value: itemToDelete, ...strings})}
+        </ConfirmationDialog>
+      )}
     </Fragment>
   )
 }
@@ -100,6 +144,7 @@ CRUD.propTypes = {
   errorStrings: PropTypes.object.isRequired,
   itemKey: PropTypes.oneOfType([PropTypes.string, PropTypes.arrayOf(PropTypes.String)]),
   itemName: PropTypes.string.isRequired,
+  itemPath: PropTypes.string.isRequired,
   jsonSchema: PropTypes.object.isRequired
 }
 

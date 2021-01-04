@@ -80,6 +80,7 @@ export function CookieCutters() {
           }}
           itemKey="name"
           itemName={t("admin.cookieCutters.itemName")}
+          itemPath="/admin/cookie_cutter/{{value}}"
           jsonSchema={jsonSchema}/>
   )
 }
