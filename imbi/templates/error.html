@@ -12,7 +12,7 @@
       <pre class="border border-gray-300 overflow-scroll px-2 py-4 text-mono text-sm text-gray-600">{% for line in traceback.format_list(traceback.extract_tb(exc_info[2])) %}{{ line }}{% end %}</pre>
     </div>
   {% else %}
-    <div class="container mx-auto my-auto max-w-xs bg-red-50 shadow rounded-lg p-5 text-red-700">
+    <div class="container mx-auto my-auto max-w-md bg-red-50 shadow rounded-lg p-5 text-red-700">
       <i class="fas fa-exclamation-circle"></i>
       <span class="pl-1"><span class="font-bold">ERROR:</span> {{ status_code }} &ndash; {{ reason }}</span>
     </div>
