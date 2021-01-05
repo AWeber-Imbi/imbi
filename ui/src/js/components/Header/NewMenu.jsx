@@ -23,7 +23,7 @@ NewMenuItem.propTypes = {
   to: PropTypes.string.isRequired
 }
 
-export function NewMenu() {
+function NewMenu() {
   const {t} = useTranslation()
   return (
     <Menu as="div" className="flex-shrink mr-3">
@@ -43,3 +43,5 @@ export function NewMenu() {
 }
 
 NewMenu.propTypes = {}
+
+export default NewMenu

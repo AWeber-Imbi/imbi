@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Initializing{% end %}
+{% block title %}Loading{% end %}
 {% block content %}
-<div class="container mx-auto my-auto max-w-xs bg-white shadow rounded-lg py-5 text-center text-3xl text-gray-500">
-  Loading
-</div>
+<p>$ load "imbi.js", 8, 1<p>
+<p class="loading">
+  Loading {{ handler.application.settings['service'] }} v{{ handler.application.settings['version'] }} <span class="blink">&hellip;</span>
+</p>
 {% end %}

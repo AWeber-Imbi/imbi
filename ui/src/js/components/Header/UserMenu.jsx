@@ -29,7 +29,7 @@ UserMenuItem.propTypes = {
   icon: PropTypes.string.isRequired
 }
 
-export function UserMenu({user}) {
+function UserMenu({user}) {
   const {t} = useTranslation()
   return (
     <Menu as="div" className="flex-shrink mr-3">
@@ -63,3 +63,5 @@ export function UserMenu({user}) {
 UserMenu.propTypes = {
   user: PropTypes.shape(User)
 }
+
+export default UserMenu

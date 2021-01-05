@@ -7,37 +7,27 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ handler.application.settings['service'] }} &mdash; {% block title %}Tile{% end %}</title>
-    <link rel="icon" href="{{ static_url('imbi.ico') }}">
-    <link href="{{ static_url('imbi.css') }}" rel="stylesheet">
+    <link rel="icon" href="{{ static_url('images/logo.ico') }}">
+    <link rel="stylesheet" href="{{ static_url('css/backend.css') }}">
   </head>
-  <body class="h-screen bg-gray-200">
-    <div id="app" class="min-h-screen flex flex-col"
+  <body>
+    <div id="app"
          data-logo="{{ static_url('images/logo.png') }}"
          data-service="{{ handler.application.settings['service'] }}"
          data-ldap="{{ str(imbi.common.ldap_enabled()).lower() }}"
          data-version="{{ handler.application.settings['version'] }}">
-      <header class="flex-shrink bg-blue-700 h-13">
-        <nav class="p-2 flex flex-row">
-          <a href="/" class="h-8-w-8 flex-shrink">
-            <img class="mt-1 mb-1 h-8 w-8" src="{{ static_url('images/logo.png') }}" alt="{{ handler.application.settings['service'] }}" />
-          </a>
-          <a href="/" class="ml-3 mt-2 flex-1 text-xl text-white hover:text-white">
-            {{ handler.application.settings['service'] }}
-          </a>
-        </nav>
-      </header>
-      <main class="flex flex-row flex-grow overflow-y-auto">
+      <h1>
+        <img src="{{ static_url('images/logo.png') }}" alt="{{ handler.application.settings['service'] }}" />
+      </h1>
+      <div>
         {% block content %}
-          <div class="container mx-auto my-auto max-w-md bg-red-50 shadow rounded-lg p-5 text-red-700">
-            <i class="fas fa-exclamation-circle"></i>
-            <span class="pl-1"><span class="font-bold">ERROR:</span> Unextended Template</span>
-          </div>
+        <p>$ load "imbi.js", 8, 1<p>
+        <p class="loading">
+          Loading {{ handler.application.settings['service'] }} v{{ handler.application.settings['version'] }} <span class="blink">&hellip;</span>
+        </p>
         {% end %}
-      </main>
-      <footer class="flex-shrink h-10 bg-white border-t border-gray-400 align-middle text-sm p-2 text-gray-500">
-        {{ handler.application.settings['service'] }} v{{ handler.application.settings['version'] }} &mdash; <a href="/api-docs/">API Documentation</a>
-      </footer>
+      </div>
     </div>
-    {% block ui_js %}<script src="{{ static_url('js/imbi.js') }}"></script>{% end %}
+    {% block ui_js %}<script src="{{ static_url('imbi.js') }}"></script>{% end %}
   </body>
 </html>

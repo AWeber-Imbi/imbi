@@ -3,9 +3,10 @@ import PropTypes from "prop-types"
 import React, {useEffect, useState} from "react"
 import {render} from "react-dom"
 
-import "./i18n"
-import "./icons"
-import "../css/imbi.css";
+require("./i18n")
+require("./icons")
+require("../css/imbi.css")
+require("typeface-inter")
 
 import {
   FetchContext,

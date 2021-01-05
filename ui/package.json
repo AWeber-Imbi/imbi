@@ -5,7 +5,6 @@
   "main": "src/js/index.js",
   "scripts": {
     "build": "webpack -p --progress --config webpack.config.js",
-    "build-css": "postcss  --verbose -m --config html src/css/imbi.css -o ../imbi/static/imbi.css",
     "dev-build": "webpack --progress -d --config webpack.config.js",
     "eslint": "eslint src/js/**",
     "test": "jest",
@@ -93,8 +92,5 @@
     "webpack": "^4.27.1",
     "webpack-cli": "^3.1.2",
     "yargs": "^16.1.1"
-  },
-  "dependencies": {
-    "react-router": "^5.2.0"
   }
 }

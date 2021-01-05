@@ -18,7 +18,6 @@ from . import (
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
-    web.url(r'^/test.html$', ui.TestRequestHandler),
     web.url(r'^/schema/(.*)$', web.StaticFileHandler,
             {'path': path.abspath(
                 path.join(path.dirname(__file__), '..', 'schema'))}),

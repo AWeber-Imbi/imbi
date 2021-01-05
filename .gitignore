@@ -1,3 +1,4 @@
+__pycache__
 .bak
 *.egg-info
 *.pyc
@@ -6,13 +7,11 @@ env/
 build/
 ddl/build/
 dist/
+ddl.sql
+imbi/static/
+imbi/static/fonts/
+imbi/static/*.js
 ui/coverage/
 ui/node_modules/
-ui/src/css/fonts/
 ui/yarn-error.log
 vendor
-__pycache__
-ddl.sql
-imbi/static/imbi.css
-imbi/static/fonts/
-imbi/static/js/

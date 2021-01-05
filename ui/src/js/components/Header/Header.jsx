@@ -2,9 +2,9 @@ import {Link} from "react-router-dom"
 import PropTypes from "prop-types"
 import React, {Fragment} from "react"
 
-import {NavMenu} from "./NavMenu"
-import {NewMenu} from "./NewMenu"
-import {UserMenu} from "./UserMenu"
+import {default as NavMenu} from "./NavMenu"
+import {default as NewMenu} from "./NewMenu"
+import {default as UserMenu} from "./UserMenu"
 import {User} from "../../schema"
 
 export function Header({logo, service, authenticated, user}) {

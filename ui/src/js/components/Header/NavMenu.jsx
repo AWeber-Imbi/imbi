@@ -21,7 +21,7 @@ MenuItem.propTypes = {
   to: PropTypes.string.isRequired
 }
 
-export function NavMenu({user}) {
+function NavMenu({user}) {
   const {t} = useTranslation()
   return (
     <Menu as="div" className="flex-grow ml-2 mt-2 space-x-2">
@@ -41,3 +41,5 @@ export function NavMenu({user}) {
 NavMenu.propTypes = {
   user: PropTypes.shape(User)
 }
+
+export default NavMenu

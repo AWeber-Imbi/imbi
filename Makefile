@@ -10,18 +10,17 @@ all: setup scaffolding/postgres/ddl.sql all-tests build-ui
 
 .PHONY: build-ui
 build-ui:
-	@ cd ui && npm run-script build
-
+	@ cd ui && NODE_ENV=production npm run-script build
 
 .PHONY: build-ui-dev
 build-ui-dev:
-	@ cd ui && npm run-script dev-build
+	@ cd ui && yarn run dev-build
 
 .PHONY: clean
 clean:
 	@ docker-compose down
 	@ rm -f scaffolding/postgres/ddl.sql
-	@ rm -rf imbi/static/css/* imbi/static/fonts/* imbi/static/js/*
+	@ rm -rf imbi/static/fonts/* imbi/static/js/*
 	@ rm -rf .env build dist imbi.egg-info env ui/node_modules
 
 .env: scaffolding/postgres/ddl.sql
@@ -55,14 +54,16 @@ ui-setup: ui/node_modules
 .PHONY: dist
 dist: ui-setup
 	@ rm -rf dist
-	@ mkdir -p imbi/static/css imbi/static/js
-	@ cd ui && npm run sass
-	@ cd ui && npm run build
+	@ cd ui && NODE_ENV=production yarn run build
 	@ cd ddl && bin/build.sh ../ddl.sql
 	@ python3 setup.py sdist
 
 ui/node_modules:
-	@ cd ui && npm install
+	@ cd ui && yarn install
+
+.PHONY: watch
+watch: ui/node_modules
+	@ cd ui && yarn run watch
 
 # Testing
 
@@ -81,7 +82,7 @@ coverage: .env env
 .PHONY: eslint
 eslint: ui/node_modules
 	@ printf "\nRunning eslint\n\n"
-	@ cd ui && npm run eslint
+	@ cd ui && yarn run eslint
 
 .PHONY: flake8
 flake8: env
@@ -91,7 +92,7 @@ flake8: env
 .PHONY: jest
 jest: ui/node_modules
 	@ printf "\nRunning jest\n\n"
-	@ cd ui && npm run test
+	@ cd ui && yarn run test
 
 # Testing Groups
 

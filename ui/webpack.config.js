@@ -4,7 +4,8 @@ const CopyWebpackPlugin = require("copy-webpack-plugin")
 module.exports = {
   entry: ["babel-polyfill", __dirname + "/src/js/index.jsx"],
   output: {
-    path: path.resolve(__dirname, "../imbi/static/js/"),
+    path: path.resolve(__dirname, "../imbi/static/"),
+    publicPath: "/static/",
     filename: "imbi.js",
   },
   performance: {hints: false},
@@ -19,11 +20,11 @@ module.exports = {
         loader: "babel-loader"
       },
       {
-        test: /\.(eot|svg|ttf|woff|woff2|)$/i,
+        test: /\.(woff(2)?|ttf|eot|svg)(\?v=\d+\.\d+\.\d+)?$/,
         loader: "file-loader",
         options: {
-          outputPath: "src/css/fonts",
-          publicPath: "/static/fonts"
+          name: "[name].[ext]",
+          outputPath: "fonts/"
         }
       },
       {
@@ -37,31 +38,16 @@ module.exports = {
       {
         patterns: [
           {
-            from: "node_modules/@fortawesome/fontawesome-free/webfonts/*",
-            to: path.resolve(__dirname, "../imbi/static/fonts/"),
-            flatten: true
-          },
-          {
-            from: "node_modules/typeface-inter/Inter Web/*.woff*",
-            to: path.resolve(__dirname, "../imbi/static/fonts/"),
-            flatten: true
-          },
-          {
             from: "node_modules/redoc/bundles/redoc.standalone.js",
-            to: path.resolve(__dirname, "../imbi/static/js/"),
+            to: path.resolve(__dirname, "../imbi/static/"),
             flatten: true
           }
         ]
       }, {})
   ],
-  externals: {
-    config: JSON.stringify({
-      apiUrl: "http://localhost:8000"
-    })
-  },
   watchOptions: {
     aggregateTimeout: 1000,
-    ignored: 'node_modules/**',
+    ignored: "node_modules/**",
     poll: 1000
   }
 };

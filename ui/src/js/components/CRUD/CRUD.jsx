@@ -9,7 +9,6 @@ import {httpGet, httpDelete} from "../../utils"
 
 import {default as Form} from "./Form"
 
-
 function CRUD({addPath,
                collectionIcon,
                collectionName,
