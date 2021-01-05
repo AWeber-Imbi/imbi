@@ -1,19 +1,19 @@
 @layer components {
 
   .alert {
-    @apply bg-gray-50 border-l-4 border-gray-400 p-4 text-sm;
+    @apply bg-gray-50 py-4 px-6 text-sm rounded-lg border;
   }
   .alert-info {
-    @apply alert bg-blue-50 border-blue-700 text-blue-700;
+    @apply alert bg-blue-50 text-blue-700 border-blue-100;
   }
   .alert-error {
-    @apply alert bg-red-50 border-red-500 text-red-500;
+    @apply alert bg-red-50 text-red-500 border-red-100;
   }
   .alert-warning {
-    @apply alert bg-yellow-50 border-yellow-700 text-yellow-700;
+    @apply alert bg-yellow-50 text-yellow-700 border-yellow-100;
   }
   .alert-success {
-    @apply alert bg-green-50 border-green-800 text-green-800;
+    @apply alert bg-green-50 text-green-800 border-green-100;
   }
 
   .bottom-full{

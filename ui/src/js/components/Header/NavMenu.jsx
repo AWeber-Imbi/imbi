@@ -21,27 +21,23 @@ MenuItem.propTypes = {
   to: PropTypes.string.isRequired
 }
 
-function NavMenu({currentUser}) {
+export function NavMenu({user}) {
   const {t} = useTranslation()
-  if (currentUser.authenticated === true)
-    return (
-      <Menu as="div" className="flex-grow ml-2 mt-2 space-x-2">
-        <Link className="nav-menu-link" to="/ui/">{t("headerNavItems.dashboard")}</Link>
-        <NavLink className="nav-menu-link" to="/ui/projects">{t("headerNavItems.projects")}</NavLink>
-        <NavLink className="nav-menu-link" to="/ui/changelog">{t("headerNavItems.changeLog")}</NavLink>
-        {currentUser.permissions.includes("admin") && (
-          <Tooltip value={t("headerNavItems.administration")}>
-            <NavLink className="nav-menu-link" to="/ui/admin">
-              <Icon icon="fas wrench" className="p-0 m-0"/>
-            </NavLink>
-          </Tooltip>
-        )}
-      </Menu>)
-  return null
+  return (
+    <Menu as="div" className="flex-grow ml-2 mt-2 space-x-2">
+      <Link className="nav-menu-link" to="/ui/">{t("headerNavItems.dashboard")}</Link>
+      <NavLink className="nav-menu-link" to="/ui/projects">{t("headerNavItems.projects")}</NavLink>
+      <NavLink className="nav-menu-link" to="/ui/changelog">{t("headerNavItems.changeLog")}</NavLink>
+      {user.permissions.includes("admin") && (
+        <Tooltip value={t("headerNavItems.administration")}>
+          <NavLink className="nav-menu-link" to="/ui/admin">
+            <Icon icon="fas wrench" className="p-0 m-0"/>
+          </NavLink>
+        </Tooltip>
+      )}
+    </Menu>)
 }
 
 NavMenu.propTypes = {
-  currentUser: PropTypes.shape(User)
+  user: PropTypes.shape(User)
 }
-
-export default NavMenu

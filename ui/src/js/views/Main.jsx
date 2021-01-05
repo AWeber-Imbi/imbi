@@ -1,24 +1,33 @@
-import React, {useContext} from "react"
+import PropTypes from "prop-types"
+import React from "react"
 import {Switch, Route} from "react-router-dom";
 
 import {Admin, Dashboard, NotFound, User} from "."
-import {UserContext} from "../contexts"
+import {User as UserSchema} from "../schema"
 
-function Main() {
-  const currentUser = useContext(UserContext)
-  if (currentUser.authenticated !== true) return null
+function Main({user}) {
   return (
     <main className="flex flex-row flex-grow overflow-y-auto">
       <Switch>
-        <Route path="/ui/admin" component={Admin}/>
-        <Route path="/ui/user" component={User}/>
-        <Route path="/ui/" component={Dashboard}/>
-        <Route path="*" component={NotFound}/>
+        <Route path="/ui/admin">
+          <Admin user={user}/>
+        </Route>
+        <Route path="/ui/user">
+          <User user={user}/>
+        </Route>
+        <Route path="/ui/">
+          <Dashboard user={user}/>
+        </Route>
+        <Route path="*">
+          <NotFound/>
+        </Route>
       </Switch>
     </main>
   )
 }
 
-Main.propTypes = {}
+Main.propTypes = {
+  user: PropTypes.exact(UserSchema)
+}
 
 export default Main

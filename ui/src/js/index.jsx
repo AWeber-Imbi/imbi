@@ -9,82 +9,166 @@ import "../css/imbi.css";
 
 import {
   FetchContext,
-  SettingsContext,
-  UserContext
+  FetchSettingsContext,
+  SettingsContext
 } from "./contexts"
 
 import {httpGet} from "./utils"
 import {Header, Footer} from "./components"
-import {Loading, Login, Main} from "./views"
+import {Error, Loading, Login, Main} from "./views"
 
 export const loggedOutUser = {
-  authenticated: undefined,
   username: null,
   display_name: null,
   email_address: null,
   user_type: "internal",
-  external_id: null
+  external_id: null,
+  permissions: []
 }
 
-function App({service, version, logo}) {
-  const [currentUser, setCurrentUser] = useState(loggedOutUser)
-  const [initialized, setInitialized] = useState({
-    settings: false,
-    user: false,
+function App({logo, service, ldap, version}) {
+  const [content, setContent] = useState(<Loading />)
+  const [errorMessage, setErrorMessage] = useState(null)
+  const [settings, setSettings] = useState({
+      service_name: service,
+      ldap_enabled: ldap === 'true'
   })
-  const [settings, setSettings] = useState({service_name: service})
+  const [state, setState] = useState({
+    settings: {
+      fetch: false,
+      fetching: false,
+      initialized: false
+    },
+    user: {
+      authenticated: false,
+      fetching: false,
+      initialized: false
+    }
+  })
+  const [user, setUser] = useState(loggedOutUser)
+
+  const authenticatedFetch = (input, init) => {
+    return fetch(input, init).then((response) => {
+      if (response.status === 401) {
+        setState({...state, user: {...state.user, authenticated: false}})
+        setUser(loggedOutUser)
+      }
+      return response
+    })
+  }
+
+  const fetchSettings = () => {
+    setState({...state, settings: {...state.settings, fetch: true}})
+  }
+
+  const setUserData = (data) => {
+    delete data.password
+    setUser({
+      ...data,
+      permissions: data.groups.reduce((accumulator, group) => {
+        const permissions = new Set(accumulator)
+        group.permissions.map((permission) => {
+          permissions.add(permission)
+        })
+        return Array.from(permissions)
+      }, [])
+    })
+    setState({
+      ...state,
+      user: {
+        authenticated: true,
+        fetching: false,
+        initialized: true
+      }
+    })
+  }
 
   useEffect(() => {
-    if (currentUser.authenticated !== true) {
+    if (state.user.initialized === false
+        && state.user.fetching === false) {
+      // Check if the user is logged in
+      setState({...state, user: {...state.user, fetching: true}})
       httpGet(
         fetch,
         "/ui/user",
         (result) => {
-          setCurrentUser({...result, authenticated: true})
-          setInitialized({...initialized, user: true})
+          setUserData(result)
+
         },
-        (error) => {  // eslint-disable-line no-unused-vars
-          setCurrentUser({...loggedOutUser, authenticated: false})
-          setInitialized({...initialized, user: true})
-        }
-      )
+        () => {
+          setState({
+            ...state,
+            user: {
+              authenticated: false,
+              fetching: false,
+              initialized: true
+            }
+          })
+        })
+    } else if (state.user.initialized === true
+               && state.user.authenticated === false) {
+      // Display Login Form
+      setContent(<Login onLoginCallback={setUserData}/>)
+    } else if (state.user.authenticated === true
+               && state.settings.initialized === false
+               && state.settings.fetching === false
+               && state.settings.fetch === false) {
+      // Set state to toggle settings fetch
+      setState({...state, settings: {...state.settings, fetch: true}})
+    } else if (state.settings.fetch === true
+               && state.settings.fetching === false) {
+      // Fetch settings
+      setState({...state, settings: {...state.settings, fetching: true}})
+      httpGet(
+        fetch,
+        "/ui/settings",
+        (result) => {
+          setState({
+            ...state,
+            settings: {
+              ...state.settings,
+              fetch: false,
+              fetching: false,
+              initialized: true
+            }})
+          setSettings(result)
+        },
+        (error) => {
+          setErrorMessage(error)
+          setState({
+            ...state,
+            settings: {
+              ...state.settings,
+              fetch: false,
+              fetching: false,
+              initialized: true
+            }})
+        })
+    } else if (state.settings.initialized === true
+               && state.user.authenticated === true) {
+      // User is logged in, show main content
+      setContent(<Main user={user} />)
     }
-  }, [currentUser.username])
+  }, [state, user])
 
   useEffect(() => {
-    if (initialized.user === true)
-      httpGet(fetch, "/ui/settings", (result) => {
-        setSettings(result)
-        setInitialized({...initialized, settings: true})
-      })
-  }, [currentUser.authenticated, initialized.user])
-
-  if (initialized.user === false || initialized.settings === false)
-    return (<>
-      <Header logo={logo} service={service}/>
-      <Loading/>
-      <Footer service={service} version={version}/>
-    </>)
+    if (errorMessage !== null)
+      setContent(<Error>{errorMessage}</Error>)
+  }, [errorMessage])
 
   return (
-    <FetchContext.Provider value={(input, init) => {
-      return fetch(input, init).then((response) => {
-        if (response.status === 401)
-          setCurrentUser({
-            ...loggedOutUser,
-            authenticated: false,
-          })
-        return response
-      })
-    }}>
-      <UserContext.Provider value={currentUser}>
+    <FetchContext.Provider value={authenticatedFetch}>
+      <FetchSettingsContext.Provider value={fetchSettings}>
         <SettingsContext.Provider value={settings}>
-          <Header logo={logo} service={service}/>
-          {currentUser.authenticated === false && (<Login onLoginCallback={setCurrentUser}/>)}
-          {currentUser.authenticated === true && <Main/>}
+          <Header authenticated={state.settings.initialized === true
+                                 && state.user.authenticated === true}
+                  logo={logo}
+                  service={service}
+                  user={user}/>
+          {content}
           <Footer service={service} version={version}/>
         </SettingsContext.Provider>
-      </UserContext.Provider>
+      </FetchSettingsContext.Provider>
     </FetchContext.Provider>
   )
 }
@@ -92,6 +176,7 @@ function App({service, version, logo}) {
 App.propTypes = {
   logo: PropTypes.string,
   service: PropTypes.string,
+  ldap: PropTypes.string,
   version: PropTypes.string
 }
 

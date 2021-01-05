@@ -1,39 +1,41 @@
 import {Link} from "react-router-dom"
 import PropTypes from "prop-types"
-import React, {useContext} from "react"
+import React, {Fragment} from "react"
 
-import {default as NavMenu} from "./NavMenu"
-import {default as NewMenu} from "./NewMenu"
-import {default as UserMenu} from "./UserMenu"
+import {NavMenu} from "./NavMenu"
+import {NewMenu} from "./NewMenu"
+import {UserMenu} from "./UserMenu"
+import {User} from "../../schema"
 
-import {UserContext} from "../../contexts"
-
-function Header({logo, service}) {
-  const currentUser = useContext(UserContext)
+export function Header({logo, service, authenticated, user}) {
   return (
     <header
-      className={"flex-shrink bg-blue-700 h-13" + (currentUser.authenticated !== true ? " pb-1" : "")}>
+      className={"flex-shrink bg-blue-700 h-13" + (authenticated !== true ? " pb-1" : "")}>
       <nav className="p-2 flex flex-row">
         <Link to="/ui/" className="h-8 w-8 flex-shrink">
-          <img className={"h-8 w-8 mt-1" + (currentUser.authenticated !== true ? " mb-1" : "")}
+          <img className={"h-8 w-8 mt-1" + (authenticated !== true ? " mb-1" : "")}
                src={logo} alt={service}/>
         </Link>
-        {currentUser.authenticated !== true && (
+        {authenticated !== true && (
           <Link to="/ui/" className="ml-3 mt-2 flex-1 text-xl text-white hover:text-white">
             {service}
           </Link>
         )}
-        <NavMenu currentUser={currentUser}/>
-        <NewMenu currentUser={currentUser}/>
-        <UserMenu currentUser={currentUser}/>
+        {authenticated === true && (
+          <Fragment>
+            <NavMenu user={user}/>
+            <NewMenu/>
+            <UserMenu user={user}/>
+          </Fragment>
+        )}
       </nav>
     </header>
   )
 }
 
 Header.propTypes = {
-  logo: PropTypes.string,
-  service: PropTypes.string
+  logo: PropTypes.string.isRequired,
+  service: PropTypes.string.isRequired,
+  authenticated: PropTypes.bool.isRequired,
+  user: PropTypes.exact(User).isRequired
 }
-
-export default Header

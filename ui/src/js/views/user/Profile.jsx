@@ -3,8 +3,9 @@ import PropTypes from "prop-types";
 import React, {Fragment, useContext} from "react"
 import {useTranslation} from "react-i18next"
 
-import {SettingsContext, UserContext} from "../../contexts"
+import {SettingsContext} from "../../contexts"
 import {setDocumentTitle} from "../../utils"
+import {User} from "../../schema"
 
 function Groups({groups}) {
   return (
@@ -40,10 +41,9 @@ Item.propTypes = {
   children: PropTypes.node
 }
 
-function Profile() {
+function Profile({user}) {
   const {t} = useTranslation()
   const settings = useContext(SettingsContext)
-  const user = useContext(UserContext)
   setDocumentTitle(settings, t("user.profile.title", {displayName: user.display_name}))
   return (
     <div className="container mx-auto my-auto max-w-4xl pb-0 bg-white shadow overflow-hidden sm:rounded-lg">
@@ -68,6 +68,10 @@ function Profile() {
       </div>
     </div>
   )
+}
+
+Profile.propTypes = {
+  user: PropTypes.exact(User)
 }
 
 export {Profile}

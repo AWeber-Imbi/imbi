@@ -1,4 +1,5 @@
 {% set include_js = True %}
+{% import imbi.common %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -13,6 +14,7 @@
     <div id="app" class="min-h-screen flex flex-col"
          data-logo="{{ static_url('images/logo.png') }}"
          data-service="{{ handler.application.settings['service'] }}"
+         data-ldap="{{ str(imbi.common.ldap_enabled()).lower() }}"
          data-version="{{ handler.application.settings['version'] }}">
       <header class="flex-shrink bg-blue-700 h-13">
         <nav class="p-2 flex flex-row">

@@ -1,20 +1,19 @@
-import PropTypes from "prop-types";
+import PropTypes from "prop-types"
 import React, {useContext, useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {Alert} from "../components"
-import {FetchContext, SettingsContext, UserContext} from "../contexts"
+import {FetchContext, SettingsContext} from "../contexts"
 import {httpPost} from "../utils"
 
 function Login({onLoginCallback}) {
 
   const {t} = useTranslation()
-  const currentUser = useContext(UserContext)
   const fetch = useContext(FetchContext)
   const settings = useContext(SettingsContext)
 
   const [credentials, setCredentials] = useState({
-    username: currentUser.username,
+    username: null,
     password: null,
   })
   const [errorMessage, setErrorMessage] = useState(null)

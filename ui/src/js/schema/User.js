@@ -14,4 +14,5 @@ export const User = {
   })),
   last_refreshed_at: PropTypes.string,
   last_seen_at: PropTypes.string,
+  permissions:PropTypes.arrayOf(PropTypes.string)  // Computed distinct array
 }

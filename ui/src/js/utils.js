@@ -19,19 +19,19 @@ export const requestOptions = {
   init: {credentials: "include"},
 }
 
-export async function httpGet(
-  fetchMethod,
-  path,
-  onSuccess = undefined,
-  onError = undefined
-) {
-  const result = await httpRequest(fetchMethod, path, requestOptions)
-  if (result.success === true) {
-    if (isFunction(onSuccess)) onSuccess(result.data)
-  } else {
-    if (isFunction(onError)) onError(result.data)
-  }
+export function httpGet(fetchMethod,
+                        path,
+                        onSuccess = undefined,
+                        onError = undefined) {
+  httpRequest(fetchMethod, path, requestOptions).then(({data, success}) => {
+    if (success === true) {
+      onSuccess(data)
+    } else {
+      onError({data})
+    }
+  })
 }
+
 
 export function httpDelete(fetchMethod, path) {
   return httpRequest(fetchMethod, path, {

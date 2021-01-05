@@ -11,10 +11,12 @@ export default {
         delete: "Delete",
         cancel: "Cancel",
         save: "Save",
+        saving: "Saving ...",
         welcome: "Welcome"
       },
       error: {
         title: "ERROR",
+        accessDenied: "Access Denied",
         notFound: "Not Found"
       },
       headerNavItems: {
@@ -50,7 +52,10 @@ export default {
           },
           itemAdded: "\"{{value}}\" was successfully added to the available {{collectionName}}",
           itemDeleted: "\"{{value}}\" was successfully deleted from the available {{collectionName}}",
-          newAction: "New {{itemName}}"
+          itemUpdated: "\"{{value}}\" was successfully updated in the available {{collectionName}}",
+          newTitle: "New {{itemName}}",
+          savingTitle: "Saving {{itemName}}",
+          updateTitle: "Edit {{itemName}}"
         },
         sidebar: {
           settings: "Settings",
