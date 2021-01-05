@@ -1,37 +1,57 @@
 import React from "react"
-import {render} from "@testing-library/react"
+import {render, screen} from "@testing-library/react"
 import "@testing-library/jest-dom/extend-expect"
-import {library} from "@fortawesome/fontawesome-svg-core"
-import {
-  faCheckCircle,
-  faInfoCircle,
-  faExclamationCircle,
-  faExclamationTriangle
-} from "@fortawesome/free-solid-svg-icons"
 
+import "../../icons"
 import Alert from "./Alert"
-
-library.add(faCheckCircle, faInfoCircle, faExclamationCircle, faExclamationTriangle)
 
 describe("Alert", () => {
   it("should render an alert with info attributes", () => {
-    const tree = render(<Alert level="info">Info</Alert>)
-    expect(tree).toMatchSnapshot()
+    render(
+      <div data-testid="alert">
+        <Alert level="info">
+          Alert Info Content
+        </Alert>
+      </div>
+    )
+    const alert = screen.getByTestId("alert").children[0]
+    expect(alert).toHaveClass("alert-info")
+    const svg = alert.getElementsByTagName("svg")[0]
+    expect(svg.dataset.prefix).toBe("fas")
+    expect(svg.dataset.icon).toBe("info-circle")
+    const h3 = alert.getElementsByTagName("h3")[0]
+    expect(h3).toHaveTextContent("Alert Info Content")
   })
   it("should render an alert with warning attributes", () => {
-    const tree = render(<Alert level="warning">Warning</Alert>)
-    expect(tree).toMatchSnapshot()
+    render(
+      <div data-testid="alert">
+        <Alert level="warning">
+          Alert Warning Content
+        </Alert>
+      </div>
+    )
+    const alert = screen.getByTestId("alert").children[0]
+    expect(alert).toHaveClass("alert-warning")
+    const svg = alert.getElementsByTagName("svg")[0]
+    expect(svg.dataset.prefix).toBe("fas")
+    expect(svg.dataset.icon).toBe("exclamation-triangle")
+    const h3 = alert.getElementsByTagName("h3")[0]
+    expect(h3).toHaveTextContent("Alert Warning Content")
   })
-  it("should render an alert with error attributes", () => {
-    const tree = render(<Alert level="error">Error</Alert>)
-    expect(tree).toMatchSnapshot()
-  })
-  it("should render an alert with success attributes", () => {
-    const tree = render(<Alert level="success">Success</Alert>)
-    expect(tree).toMatchSnapshot()
-  })
-  it("should render an alert with an object for a child", () => {
-    const tree = render(<Alert level="info"><span>Foo</span></Alert>)
-    expect(tree).toMatchSnapshot()
+  it("should render children even if they are element", () => {
+    render(
+      <div data-testid="alert">
+        <Alert level="success">
+          <h1>Foo Bar</h1>
+        </Alert>
+      </div>
+    )
+    const alert = screen.getByTestId("alert").children[0]
+    expect(alert).toHaveClass("alert-success")
+    const svg = alert.getElementsByTagName("svg")[0]
+    expect(svg.dataset.prefix).toBe("fas")
+    expect(svg.dataset.icon).toBe("check-circle")
+    const child = alert.getElementsByTagName("h1")[0]
+    expect(child).toHaveTextContent("Foo Bar")
   })
 })

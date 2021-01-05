@@ -10,7 +10,8 @@ function Tooltip({children, value}) {
       {children}
       <div className={(showTooltip === true ? 'visible' : 'hidden') + " absolute z-50 mt ml-4 text-xs"}
            onMouseOver={() => setShowTooltip(true)}
-           onMouseOut={() => setShowTooltip(false)}>
+           onMouseOut={() => setShowTooltip(false)}
+           role="tooltip">
         <svg className="text-black bottom-full" x="0px" y="0px" height="10px" width="10px"
              xmlSpace="preserve">
           <polygon className="fill-current" points="0,10 5,5 10,10"/>

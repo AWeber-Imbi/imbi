@@ -92,7 +92,7 @@ flake8: env
 .PHONY: jest
 jest: ui/node_modules
 	@ printf "\nRunning jest\n\n"
-	@ cd ui && yarn run test
+	@ cd ui && yarn run test-coverage
 
 # Testing Groups
 
