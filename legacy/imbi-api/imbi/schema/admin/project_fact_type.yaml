@@ -1,0 +1,169 @@
+---
+paths:
+  create:
+    post:
+      description: Create a new project fact type record
+      summary: Create Project Fact Type
+      requestBody:
+        description: The project fact type record to create
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+          'application/msgpack':
+            schema:
+              $ref: '#/components/schemas/record'
+            examples:
+              pse:
+                $ref: '#/components/examples/record'
+      tags:
+        - Project Fact Types
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+
+  manage:
+    get:
+      description: Retrieve a project fact type record
+      summary: Get Project Fact Type
+      operationId: getProjectFactTypeRecord
+      tags:
+        - Project Fact Types
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+
+    patch:
+      summary: Update
+      description: >-
+        Update a project link type, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Project Link Types
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          'application/json':
+            schema:
+              $ref: /schema/patch.yaml
+            examples:
+              update:
+                description: This JSON patch would change the `weight` attribute
+                value:
+                  - op: replace
+                    path: weight
+                    value: 10.0
+      responses:
+        200:
+          $ref: '#/components/responses/Success'
+        304:
+          $ref: '../common.yaml#/components/responses/NoChanges'
+        400:
+          $ref: '../common.yaml#/components/responses/RequestError'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    delete:
+      description: Remove a project fact type record
+      summary: Delete Project Fact Type
+      tags:
+        - Project Fact Types
+      responses:
+        204:
+          description: The record was removed as requested
+        404:
+          $ref: '../common.yaml#/components/responses/NotFound'
+        409:
+          $ref: '../common.yaml#/components/responses/Conflict'
+
+    parameters:
+      - $ref: '../common.yaml#/components/parameters/Correlation-ID'
+      - name: id
+        in: path
+        description: Project Fact Type ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+components:
+  examples:
+    record:
+      summary: A full project fact type record
+      value:
+        id: d2560576-b339-4f2c-9ec5-268969634c7b
+        project_type: API
+        name: Programming Language
+        weight: 25.0
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the project fact type was successful
+      headers:
+        Cache-Control:
+          $ref: '../common.yaml#/components/headers/Cache-Control'
+        Last-Modified:
+          $ref: '../common.yaml#/components/headers/Last-Modified'
+        Link:
+          $ref: '../common.yaml#/components/headers/Link'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          schema:
+            $ref: '#/components/schemas/record'
+          examples:
+            pse:
+              $ref: '#/components/examples/record'
+
+  schemas:
+    record:
+      title: Project Fact Type
+      description: |
+        Defines types of facts that can be recorded about a project
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_type:
+          description: The type of project the fact is associated with
+          type: string
+        name:
+          description: The display name of the fact type
+          type: string
+        weight:
+          description: The weight of the fact type when computing a project score
+          type: number
+          min: 0
+          max: 100
+          default: 0
+      required:
+        - id
+        - project_type
+        - name
+        - weight
+      additionalProperties: false
+
+tag:
+  name: Project Fact Types
+  description: |-
+    Management of records that define types facts that may be collected for a project.
+
+    Project facts may be used to calculate a current project health score. For more
+    information on project health score, see the compliance documentation.

@@ -25,7 +25,6 @@ items:
           oneOf:
             - type: array
             - type: boolean
-            - type: integer
             - type: "null"
             - type: number
             - type: object

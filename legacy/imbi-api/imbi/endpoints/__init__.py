@@ -28,5 +28,6 @@ URLS = [
     web.url(r'^/ui/login$', ui.LoginRequestHandler),
     web.url(r'^/ui/logout$', ui.LogoutRequestHandler),
     web.url(r'^/ui/settings$', ui.SettingsRequestHandler),
-    web.url(r'^/ui/user$', ui.UserRequestHandler)
+    web.url(r'^/ui/user$', ui.UserRequestHandler),
+    web.url(r'^/ui/.*$', ui.IndexRequestHandler)
 ] + operations.URLS + project.URLS + settings.URLS + admin.URLS

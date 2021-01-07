@@ -134,6 +134,13 @@ class RequestHandler(mixins.ErrorLogger,
         self.set_header('Server', '{}/{}'.format(
             self.settings['service'], __version__))
 
+    def write_error(self, status_code, **kwargs):
+        LOGGER.debug('KWArgs: %r', kwargs)
+        if self._respond_with_html:
+            print(kwargs['exc_info'][2])
+            return self.render('error.html', status_code=status_code, **kwargs)
+        super().write_error(status_code, **kwargs)
+
     def _add_last_modified_header(self, value: datetime.datetime) -> None:
         """Add a RFC-822 formatted timestamp for the Last-Modified HTTP
         response header.

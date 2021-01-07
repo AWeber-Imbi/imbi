@@ -9,7 +9,6 @@ from . import base
 
 class SettingsRequestHandler(base.ItemsRequestHandler):
 
-    @base.require_permission('admin')
     async def get(self, *args, **kwargs):
         await super().get(*args, **kwargs)
 

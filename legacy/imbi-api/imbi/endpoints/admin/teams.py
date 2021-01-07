@@ -1,7 +1,3 @@
-"""
-Request Handlers for the Teams Endpoints
-
-"""
 from imbi.endpoints.admin import base
 
 

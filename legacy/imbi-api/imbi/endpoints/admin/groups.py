@@ -1,7 +1,3 @@
-"""
-Request Handlers for the Groups Endpoints
-
-"""
 from imbi.endpoints.admin import base
 
 

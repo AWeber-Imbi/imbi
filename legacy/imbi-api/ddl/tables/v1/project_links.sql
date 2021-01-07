@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS project_links (
   FOREIGN KEY   (link_type) REFERENCES project_link_types (link_type) ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
-COMMENT ON TABLE project_links IS 'Service specific links';
+COMMENT ON TABLE project_links IS 'Project specific links';
 COMMENT ON COLUMN project_links.project_id IS 'The project the link is for';
 COMMENT ON COLUMN project_links.link_type IS 'The type of link';
 COMMENT ON COLUMN project_links.url IS 'The URL of the link';
