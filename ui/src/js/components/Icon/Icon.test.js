@@ -3,7 +3,7 @@ import {render, screen} from "@testing-library/react"
 import "@testing-library/jest-dom/extend-expect"
 
 import "../../icons"
-import Icon from "./Icon"
+import{Icon} from "./Icon"
 
 describe("Icon", () => {
   it("should render the check icon", () => {
