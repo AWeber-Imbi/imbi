@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(16);
+SELECT plan(20);
 
 SELECT has_table('v1'::NAME, 'authentication_tokens'::NAME);
 SELECT has_table('v1'::NAME, 'configuration_systems'::NAME);
@@ -11,6 +11,10 @@ SELECT has_table('v1'::NAME, 'group_members'::NAME);
 SELECT has_table('v1'::NAME, 'groups'::NAME);
 SELECT has_table('v1'::NAME, 'orchestration_systems'::NAME);
 SELECT has_table('v1'::NAME, 'project_dependencies'::NAME);
+SELECT has_table('v1'::NAME, 'project_fact_history'::NAME);
+SELECT has_table('v1'::NAME, 'project_fact_type_options'::NAME);
+SELECT has_table('v1'::NAME, 'project_fact_types'::NAME);
+SELECT has_table('v1'::NAME, 'project_facts'::NAME);
 SELECT has_table('v1'::NAME, 'project_link_types'::NAME);
 SELECT has_table('v1'::NAME, 'project_links'::NAME);
 SELECT has_table('v1'::NAME, 'project_types'::NAME);

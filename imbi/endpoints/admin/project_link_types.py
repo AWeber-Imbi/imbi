@@ -1,7 +1,3 @@
-"""
-Request Handlers for the Environments Endpoints
-
-"""
 from imbi.endpoints.admin import base
 
 

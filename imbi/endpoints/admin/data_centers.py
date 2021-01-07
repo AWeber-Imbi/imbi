@@ -1,7 +1,3 @@
-"""
-Request Handlers for the Data Center Endpoints
-
-"""
 from imbi.endpoints.admin import base
 
 

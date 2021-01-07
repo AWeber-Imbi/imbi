@@ -1,7 +1,3 @@
-"""
-Request Handlers for the Configuration System Endpoints
-
-"""
 from imbi.endpoints.admin import base
 
 

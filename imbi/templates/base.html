@@ -1,31 +1,33 @@
+{% set include_js = True %}
+{% import imbi.common %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ handler.application.settings['service'].title() }} &mdash; {% block title %}Tile{% end %}</title>
-    <link href="{{ static_url('css/imbi.css') }}" rel="stylesheet">
-    <link rel="icon" href="{{ static_url('imbi.ico') }}">
+    <title>{{ handler.application.settings['service'] }} &mdash; {% block title %}Tile{% end %}</title>
+    <link rel="icon" href="{{ static_url('images/logo.ico') }}">
+    <link rel="stylesheet" href="{{ static_url('css/backend.css') }}">
   </head>
-  <body class="logged-out">
-    <div id="app">
-      <header>
-        <nav class="navbar navbar-inverse navbar-expand-lg bg-primary fixed-top">
-          <a class="navbar-brand text-white h1 mb-0" href="/">
-            <i class="fab fa-earlybirds"></i> Imbi
-          </a>
-        </nav>
-      </header>
-      <div class="main">
-        <div class="loading">
-          <h1><span class="fas fa-spinner fa-spin"></span> Loading</h1>
-        </div>
+  <body>
+    <div id="app"
+         data-logo="{{ static_url('images/logo.png') }}"
+         data-service="{{ handler.application.settings['service'] }}"
+         data-ldap="{{ str(imbi.common.ldap_enabled()).lower() }}"
+         data-version="{{ handler.application.settings['version'] }}">
+      <h1>
+        <img src="{{ static_url('images/logo.png') }}" alt="{{ handler.application.settings['service'] }}" />
+      </h1>
+      <div>
+        {% block content %}
+        <p>$ load "imbi.js", 8, 1<p>
+        <p class="loading">
+          Loading {{ handler.application.settings['service'] }} v{{ handler.application.settings['version'] }} <span class="blink">&hellip;</span>
+        </p>
+        {% end %}
       </div>
     </div>
-    <footer>
-      Imbi v{{ handler.application.settings['version'] }} &mdash; <a href="/api-docs/">API Documentation</a>
-    </footer>
-    <script src="{{ static_url('js/imbi.js') }}"></script>
+    {% block ui_js %}<script src="{{ static_url('imbi.js') }}"></script>{% end %}
   </body>
 </html>
