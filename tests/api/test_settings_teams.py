@@ -76,4 +76,4 @@ class AsyncHTTPUnauthorizedTestCase(common.AsyncHTTPTestCase):
 
         # Validate response
         result = self.fetch('/settings/teams', headers=self.headers)
-        self.assertEqual(result.code, 403)
+        self.assertEqual(result.code, 200)
