@@ -28,7 +28,9 @@ clean:
 
 env:
 	@ python3 -m venv env
-	@ pip3 install -e '.[testing]'
+	@ source env/bin/activate && env/bin/pip3 install --upgrade pip
+	@ source env/bin/activate && env/bin/pip3 install wheel
+	@ source env/bin/activate && env/bin/pip3 install -e '.[testing]'
 
 .PHONY: postgres-ready
 postgres-ready: .env

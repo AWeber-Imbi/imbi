@@ -44,9 +44,7 @@ Imbi runtime configuration is configured by way of environment variables. The fo
 
 Building Static Assets
 ----------------------
-Imbi uses npm and gulp to build the static assets for the site. Ensure you
-have a current version of nodejs and Python 2.7 available to build the
-JavaScript and CSS.
+Imbi uses webpack to build the static assets for the site.
 
 .. code-block:: sh
 
