@@ -4,10 +4,10 @@ import {useTranslation} from "react-i18next";
 
 import {Alert, ConfirmationDialog, Icon, Table} from ".."
 import {Columns} from "../../schema"
-import {FetchContext} from "../../contexts"
+import {FetchContext, FetchSettingsContext} from "../../contexts"
 import {httpGet, httpDelete} from "../../utils"
 
-import {default as Form} from "./Form"
+import {Form} from "./Form"
 
 function CRUD({addPath,
                collectionIcon,
@@ -187,4 +187,4 @@ CRUD.propTypes = {
   jsonSchema: PropTypes.object.isRequired
 }
 
-export default CRUD
+export {CRUD}

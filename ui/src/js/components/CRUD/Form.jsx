@@ -209,4 +209,4 @@ Form.propTypes = {
   values: PropTypes.object
 }
 
-export default Form
+export {Form}
