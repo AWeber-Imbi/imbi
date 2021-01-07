@@ -19,16 +19,9 @@ export const requestOptions = {
   init: {credentials: "include"},
 }
 
-export function httpGet(fetchMethod,
-                        path,
-                        onSuccess = undefined,
-                        onError = undefined) {
+export function httpGet(fetchMethod, path, onSuccess, onError) {
   httpRequest(fetchMethod, path, requestOptions).then(({data, success}) => {
-    if (success === true) {
-      onSuccess(data)
-    } else {
-      onError({data})
-    }
+    success ? onSuccess(data) : onError(data)
   })
 }
 
