@@ -7,6 +7,7 @@ export default {
         description: "Description",
         slug: "Slug",
         iconClass: "Icon Class",
+        "id": "ID",
         edit: "Edit",
         delete: "Delete",
         cancel: "Cancel",
@@ -76,6 +77,51 @@ export default {
           urlDescription: "The Git URL to the cookie cutter",
           errors: {
             uniqueViolation: "A cookie cutter with the same name already exists"
+          }
+        },
+        dataCenters: {
+          collectionName: "Data Centers",
+          itemName: "Data Center",
+          errors: {
+            uniqueViolation: "A data center with the same name already exists"
+          }
+        },
+        deploymentTypes: {
+          collectionName: "Deployment Types",
+          itemName: "Deployment Type",
+          errors: {
+            uniqueViolation: "A deployment type with the same name already exists"
+          }
+        },
+        environments: {
+          collectionName: "Environments",
+          itemName: "Environment",
+          errors: {
+            uniqueViolation: "An environment with the same name already exists"
+          }
+        },
+        orchestrationSystems: {
+          collectionName: "Orchestration Systems",
+          itemName: "Orchestration System",
+          errors: {
+            uniqueViolation: "An orchestration system with the same name already exists"
+          }
+        },
+        projectFactTypes: {
+          collectionName: "Project Fact Types",
+          itemName: "Project Fact Type",
+          description: "The weight from 0 to 100 of the total score for a project. Total weight should across all types for a project type should not exceed 100.",
+          weight: "Weight",
+          errors: {
+            uniqueViolation: "A project fact type with the same name already exists"
+          }
+        },
+        projectLinkTypes: {
+          linkType: "Link Type",
+          collectionName: "Project Link Types",
+          itemName: "Project Link Type",
+          errors: {
+            uniqueViolation: "A project link type with the same name already exists"
           }
         },
         projectTypes: {

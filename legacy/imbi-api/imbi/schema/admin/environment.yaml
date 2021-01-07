@@ -130,8 +130,7 @@ paths:
 components:
   examples:
     record:
-      summary: Multiple environment records
-      environment: testing
+      name: testing
       description: |
         The testing environment reflects the state of HEAD state of the
         master branch in our Git Repositories for all projects

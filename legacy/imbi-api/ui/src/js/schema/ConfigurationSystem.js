@@ -15,15 +15,13 @@ export const jsonSchema = {
       ]
     },
     icon_class: {
-      oneOf: [
-        {type: "string"},
-        {type: "null"}
-      ]
+      type: "string"
     }
   },
   additionalProperties: false,
   required: [
-    "name"
+    "name",
+    "icon_class"
   ]
 }
 

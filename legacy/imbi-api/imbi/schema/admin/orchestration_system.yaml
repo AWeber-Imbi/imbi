@@ -100,7 +100,7 @@ components:
     record:
       summary: A full orchestration system record
       value:
-        orchestration_system: Kubernetes
+        name: Kubernetes
         description: Production-Grade Container Orchestration
         icon_class: fas fa-blind
 
