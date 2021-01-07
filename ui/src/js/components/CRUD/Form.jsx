@@ -98,61 +98,59 @@ function Form({columns, errorStrings, isEdit, itemKey, itemPath, jsonSchema, onC
     return result
   }, {})
 
-  const [state, setState] = useState({
-    errors: {...emptyErrors},
-    errorMessage: null,
-    formReady: false,
-    saving: false,
-    originalValues: values,
-    values: columns.reduce((result, column) => {
-      result[column.name] = values !== null
-                           ? (values[column.name] !== undefined ? values[column.name] : null)
-                           : (column.default !== undefined ? column.default : null)
-      return result
-    }, {})
-  })
+  const [errors, setErrors] = useState(emptyErrors)
+  const [errorMessage, setErrorMessage] = useState(null)
+  const [formReady, setFormReady] = useState(false)
+  const [formValues, setFormValues] = useState(columns.reduce((result, column) => {
+    result[column.name] = values !== null
+      ? (values[column.name] !== undefined ? values[column.name] : null)
+      : (column.default !== undefined ? column.default : null)
+    return result
+  }, {}))
+  const [originalValues, _] = useState(values)   // eslint-disable-line
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    const result = validate(state.values, jsonSchema)
+    const result = validate(formValues, jsonSchema)
     if (result.errors.length > 0) {
       const errors = {...emptyErrors}
       result.errors.map((err) => {
         err.path.map((field) => {
-          if (state.values[field] !== null) {
+          if (formValues[field] !== null) {
             errors[field] = err.message
           }
         })
       })
-      setState({...state, errors: errors, formReady: false})
+      setErrors(errors)
+      setFormReady(false)
     } else {
-      setState({...state, errors: {...emptyErrors}, formReady: true})
+      setErrors({...emptyErrors})
+      setFormReady(true)
     }
-  }, [state.values])
+  }, [formValues])
 
   function handleFieldUpdate(name, value) {
-    setState({...state, values: {...state.values, [name]: value}})
+    setFormValues({...formValues, [name]: value})
   }
 
   async function handleSubmit(event) {
     event.preventDefault()
-    setState({...state, formReady: false, saving: true})
+    setFormReady(false)
+    setSaving(true)
     let result = null
     if (isEdit === true) {
-      const patchValue = compare(state.originalValues, state.values)
+      const patchValue = compare(originalValues, formValues)
       result = await httpPatch(
-        fetchMethod, itemPath.replace(/{{value}}/, state.originalValues[itemKey]),
+        fetchMethod, itemPath.replace(/{{value}}/, originalValues[itemKey]),
         patchValue)
     } else {
-      result = await httpPost(fetchMethod, itemPath, state.values)
+      result = await httpPost(fetchMethod, itemPath, formValues)
     }
-    setState({...state, formReady: false, saving: false})
+    setSaving(false)
     if (result.success === true) {
-      onClose(state.values[itemKey])
+      onClose(formValues[itemKey])
     } else {
-      setState({
-        ...state,
-        errorMessage: errorStrings[result.data] !== undefined ? errorStrings[result.data] : result.data
-      })
+      setErrorMessage(errorStrings[result.data] !== undefined ? errorStrings[result.data] : result.data)
     }
   }
 
@@ -165,30 +163,30 @@ function Form({columns, errorStrings, isEdit, itemKey, itemPath, jsonSchema, onC
         <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
         <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6"
              role="dialog" aria-modal="true" aria-labelledby="modal-headline">
-          <h1 className="text-xl text-gray-500 border-b border-gray-400 pb-2 mb-3">{state.saving ? savingTitle : title}</h1>
-          {state.errorMessage !== null && (
-            <Alert className="mb-3" level="error">{state.errorMessage}</Alert>
+          <h1 className="text-xl text-gray-500 border-b border-gray-400 pb-2 mb-3">{saving ? savingTitle : title}</h1>
+          {errorMessage !== null && (
+            <Alert className="mb-3" level="error">{errorMessage}</Alert>
           )}
           <form onSubmit={handleSubmit}>
             {columns.map((column, index) => {
               return (<Field autoFocus={index === 0}
-                             errorMessage={state.errors[column.name]}
+                             errorMessage={errors[column.name]}
                              handleUpdate={handleFieldUpdate}
                              key={"field-" + column.name}
-                             value={state.values[column.name]}
+                             value={formValues[column.name]}
                              {...column} />)
             })}
             <div className="mt-5 sm:mt-6 text-right border-t border-t-gray-400 pt-5 mt-5 space-x-3">
-              <button className={state.saving === false ? "btn-white" : "btn-disabled"}
-                      disabled={state.saving}
+              <button className={saving ? "btn-disabled": "btn-white"}
+                      disabled={saving}
                       onClick={() => {onClose()}}
                       type="button">
                 {t("common.cancel")}
               </button>
-              <button className={state.formReady === true ? "btn-green" : "btn-disabled"}
-                      disabled={!state.formReady}
+              <button className={formReady ? "btn-green" : "btn-disabled"}
+                      disabled={!formReady}
                       type="submit">
-                {state.saving ? t("common.saving") : t("common.save")}
+                {saving ? t("common.saving") : t("common.save")}
               </button>
             </div>
           </form>

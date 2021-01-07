@@ -21,17 +21,15 @@ function CRUD({addPath,
                jsonSchema}) {
   const fetchMethod = useContext(FetchContext)
 
-  const [state, setState] = useState({
-    data: [],
-    errorMessage: null,
-    fetchData: true,
-    itemToDelete: null,
-    itemToEdit: null,
-    refreshData: false,
-    showDeleteConfirmation: false,
-    showForm: false,
-    successMessage: null
-  })
+  const [data, setData] = useState([])
+  const [errorMessage, setErrorMessage] = useState(null)
+  const [fetchData, setFetchData] = useState(true)
+  const [itemToDelete, setItemToDelete] = useState(null)
+  const [itemToEdit, setItemToEdit] = useState(null)
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [successMessage, setSuccessMessage] = useState(null)
+  const [timerHandle, setTimerHandle] = useState(null)
 
   const strings = {
     collectionName: collectionName,
@@ -41,33 +39,20 @@ function CRUD({addPath,
 
   async function deleteItem() {
     const result = await httpDelete(
-      fetchMethod,
-      itemPath.replace(/{{value}}/, state.itemToDelete)
-    )
-
-    const newState = {
-      ...state,
-      fetchData: true,
-      itemToDelete: null,
-      showDeleteConfirmation: false
-    }
-
+      fetchMethod, itemPath.replace(/{{value}}/, itemToDelete))
     if (result.success === true) {
-      newState.successMessage = t("admin.crud.itemDeleted",
-                                  {value: state.itemToDelete, ...strings})
+      setSuccessMessage(t("admin.crud.itemDeleted", {value: itemToDelete, ...strings}))
+      setItemToDelete(null)
+      setFetchData(true)
     } else {
-      newState.errorMessage = result.data
+      setErrorMessage(errorStrings[result.data] !== undefined ? errorStrings[result.data] : result.data)
     }
-    setState(newState)
+    setShowDeleteConfirmation(false)
   }
 
   function onDeleteClick(value) {
-    setState({
-      ...state,
-      fetchData: true,
-      itemToDelete: value,
-      showDeleteConfirmation: true
-    })
+    setItemToDelete(value)
+    setShowDeleteConfirmation(true)
   }
 
   async function onEditClick(value) {
@@ -75,66 +60,58 @@ function CRUD({addPath,
       fetchMethod,
       itemPath.replace(/{{value}}/, value),
       (data) => {
-        setState({
-          ...state,
-          itemToEdit: data,
-          showForm: true})
+        setItemToEdit(data)
+        setShowForm(true)
       },
       (message) => {
-        setState({
-          ...state,
-          errorMessage: message})
+        setErrorMessage(errorStrings[message] !== undefined ? errorStrings[message] : message)
       }
     )
   }
 
   function onFormClosed(value) {
-    const newState = {
-      ...state,
-      itemToEdit: null,
-      showForm: false
-    }
     if (value !== undefined) {
-      const message = state.itemToEdit === null
+      const message = itemToEdit === null
                       ? "admin.crud.itemAdded"
                       : "admin.crud.itemUpdated"
-      newState.successMessage = t(message, {value: value, ...strings})
-      newState.fetchData = true
+      setSuccessMessage(t(message, {value: value, ...strings}))
+      setFetchData(true)
     }
-    setState(newState)
+    setItemToEdit(null)
+    setShowForm(false)
   }
 
   useEffect(() => {
-    if (state.fetchData === true) {
+    if (fetchData === true) {
+      setFetchData(false)
       httpGet(fetchMethod,
               collectionPath,
-              (result) => {
-                setState({...state, fetchData: false, data: result})
-              },
-              (error) => {
-                setState({...state, fetchData: false, errorMessage: error})
-              })
+              (result) => {setData(result)},
+              (error) => {setErrorMessage(error)})
     }
-  }, [state.fetchData])
-
+  }, [fetchData])
 
   // Remove the error message after 30 seconds
   useEffect(() => {
-    if (state.errorMessage !== null) {
-      setTimeout(() => {
-        setState({...state, errorMessage: null})
-      }, 30000)
+    if (errorMessage !== null) {
+      if (timerHandle !== null) clearTimeout(timerHandle)
+      setTimerHandle(setTimeout(() => {
+        setErrorMessage(null)
+        setTimerHandle(null)
+      }, 30000))
     }
-  }, [state.errorMessage])
+  }, [errorMessage])
 
   // Remove the success message after 30 seconds
   useEffect(() => {
-    if (state.successMessage !== null) {
-      setTimeout(() => {
-        setState({...state, successMessage: null})
-      }, 30000)
+    if (successMessage !== null) {
+      if (timerHandle !== null) clearTimeout(timerHandle)
+      setTimerHandle(setTimeout(() => {
+        setSuccessMessage(null)
+        setTimerHandle(null)
+      }, 30000))
     }
-  }, [state.successMessage])
+  }, [successMessage])
 
   return (
     <Fragment>
@@ -144,54 +121,50 @@ function CRUD({addPath,
           {collectionName}
         </h1>
         <div className="text-right">
-          <button className="btn-green" onClick={() => {
-            setState({...state, showForm: true})
-          }}>
+          <button className="btn-green" onClick={() => {setShowForm(true)}}>
             <Icon className="mr-3" icon="fas plus-circle"/>
             {t("admin.crud.newTitle", {itemName: itemName, ...strings})}
           </button>
         </div>
       </div>
-      {state.errorMessage !== null && (
-        <Alert level="success">{state.errorMessage}</Alert>
+      {errorMessage !== null && (
+        <Alert level="error">{errorMessage}</Alert>
       )}
-      {state.successMessage !== null && (
-        <Alert level="success">{state.successMessage}</Alert>
+      {successMessage !== null && (
+        <Alert level="success">{successMessage}</Alert>
       )}
-      {state.showForm === true && (
+      {showForm === true && (
         <Form columns={columns}
               errorStrings={errorStrings}
-              isEdit={state.itemToEdit !== null}
+              isEdit={itemToEdit !== null}
               itemKey={itemKey}
-              itemPath={state.itemToEdit === null ? addPath : itemPath}
+              itemPath={itemToEdit === null ? addPath : itemPath}
               jsonSchema={jsonSchema}
               onClose={onFormClosed}
               onEditClick={onEditClick}
               savingTitle={t("admin.crud.savingTitle", {itemName: itemName})}
-              title={t(state.itemToEdit === null ? "admin.crud.newTitle" : "admin.crud.updateTitle",
+              title={t(itemToEdit === null ? "admin.crud.newTitle" : "admin.crud.updateTitle",
                        {itemName: itemName})}
-              values={state.itemToEdit}/>
+              values={itemToEdit}/>
       )}
       <Table columns={columns}
-             data={state.data}
+             data={data}
              itemKey={itemKey}
              onDeleteClick={onDeleteClick}
              onEditClick={onEditClick}/>
-      {state.showDeleteConfirmation === true && (
+      {showDeleteConfirmation === true && (
         <ConfirmationDialog mode="error"
                             title={t("admin.crud.deleteConfirmation.title",
-                                     {value: state.itemToDelete, ...strings})}
+                                     {value: itemToDelete, ...strings})}
                             confirmationButtonText={t("admin.crud.deleteConfirmation.button",
-                                                      {value: state.itemToDelete, ...strings})}
+                                                      {value: itemToDelete, ...strings})}
                             onCancel={() => {
-                              setState({
-                                ...state,
-                                itemToDelete: null,
-                                showDeleteConfirmation: false})
+                              setItemToDelete(null)
+                              setShowDeleteConfirmation(null)
                             }}
                             onConfirm={deleteItem}>
           {t("admin.crud.deleteConfirmation.text",
-             {value: state.itemToDelete, ...strings})}
+             {value: itemToDelete, ...strings})}
         </ConfirmationDialog>
       )}
     </Fragment>
