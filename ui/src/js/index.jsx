@@ -2,6 +2,7 @@ import {BrowserRouter as Router} from "react-router-dom"
 import PropTypes from "prop-types"
 import React, {useEffect, useState} from "react"
 import {render} from "react-dom"
+import {useHistory} from "react-router-dom"
 
 require("./i18n")
 require("./icons")
@@ -11,6 +12,7 @@ require("typeface-inter")
 import {
   FetchContext,
   FetchSettingsContext,
+  LogoutContext,
   SettingsContext
 } from "./contexts"
 
@@ -30,28 +32,27 @@ export const loggedOutUser = {
 function App({logo, service, ldap, version}) {
   const [content, setContent] = useState(<Loading />)
   const [errorMessage, setErrorMessage] = useState(null)
+  const history = useHistory()
   const [settings, setSettings] = useState({
       service_name: service,
       ldap_enabled: ldap === 'true'
   })
-  const [state, setState] = useState({
-    settings: {
-      fetch: false,
-      fetching: false,
-      initialized: false
-    },
-    user: {
-      authenticated: false,
-      fetching: false,
-      initialized: false
-    }
+  const [settingsState, setSettingsState] = useState({
+    fetch: false,
+    fetching: false,
+    initialized: false
   })
   const [user, setUser] = useState(loggedOutUser)
+  const [userState, setUserState] = useState({
+    authenticated: false,
+    fetching: false,
+    initialized: false
+  })
 
   const authenticatedFetch = (input, init) => {
     return fetch(input, init).then((response) => {
       if (response.status === 401) {
-        setState({...state, user: {...state.user, authenticated: false}})
+        setUserState({...userState, authenticated: false})
         setUser(loggedOutUser)
       }
       return response
@@ -59,7 +60,34 @@ function App({logo, service, ldap, version}) {
   }
 
   const fetchSettings = () => {
-    setState({...state, settings: {...state.settings, fetch: true}})
+    setSettingsState({...settingsState, fetch: true})
+  }
+
+  const logout = () => {
+    fetch('/ui/logout').then(() => {
+      resetState()
+      history.push(`/ui/`)
+    })
+  }
+
+  const resetState = () => {
+    setContent(<Loading />)
+    setErrorMessage(null)
+    setSettings({
+      service_name: service,
+      ldap_enabled: ldap === 'true'
+    })
+    setSettingsState({
+      fetch: false,
+      fetching: false,
+      initialized: false
+    })
+    setUser({...loggedOutUser})
+    setUserState({
+      authenticated: false,
+      fetching: false,
+      initialized: false
+    })
   }
 
   const setUserData = (data) => {
@@ -74,83 +102,56 @@ function App({logo, service, ldap, version}) {
         return Array.from(permissions)
       }, [])
     })
-    setState({
-      ...state,
-      user: {
-        authenticated: true,
-        fetching: false,
-        initialized: true
-      }
+    setUserState({
+      authenticated: true,
+      fetching: false,
+      initialized: true
     })
   }
 
   useEffect(() => {
-    if (state.user.initialized === false
-        && state.user.fetching === false) {
+    if (!userState.initialized && userState.fetching === false) {
       // Check if the user is logged in
-      setState({...state, user: {...state.user, fetching: true}})
+      setUserState({...userState, fetching: true})
       httpGet(
         fetch,
         "/ui/user",
         (result) => {
           setUserData(result)
-
         },
         () => {
-          setState({
-            ...state,
-            user: {
-              authenticated: false,
-              fetching: false,
-              initialized: true
-            }
+          setUserState({
+            authenticated: false,
+            fetching: false,
+            initialized: true
           })
         })
-    } else if (state.user.initialized === true
-               && state.user.authenticated === false) {
+    } else if (userState.initialized && !userState.authenticated) {
       // Display Login Form
       setContent(<Login onLoginCallback={setUserData}/>)
-    } else if (state.user.authenticated === true
-               && state.settings.initialized === false
-               && state.settings.fetching === false
-               && state.settings.fetch === false) {
+    } else if (userState.authenticated
+               && !settingsState.initialized && !settingsState.fetching && !settingsState.fetch) {
       // Set state to toggle settings fetch
-      setState({...state, settings: {...state.settings, fetch: true}})
-    } else if (state.settings.fetch === true
-               && state.settings.fetching === false) {
+      setSettingsState({...settingsState, fetch: true})
+    } else if (settingsState.fetch && !settingsState.fetching) {
       // Fetch settings
-      setState({...state, settings: {...state.settings, fetching: true}})
+      setSettingsState({fetch: false, fetching: true, initialized: false})
       httpGet(
         fetch,
         "/ui/settings",
         (result) => {
-          setState({
-            ...state,
-            settings: {
-              ...state.settings,
-              fetch: false,
-              fetching: false,
-              initialized: true
-            }})
+          setSettingsState({fetch: false, fetching: false, initialized: true})
           setSettings(result)
         },
         (error) => {
+          setSettingsState({fetch: false, fetching: false, initialized: true})
           setErrorMessage(error)
-          setState({
-            ...state,
-            settings: {
-              ...state.settings,
-              fetch: false,
-              fetching: false,
-              initialized: true
-            }})
         })
-    } else if (state.settings.initialized === true
-               && state.user.authenticated === true) {
+    } else if (settingsState.initialized && userState.authenticated) {
       // User is logged in, show main content
       setContent(<Main user={user} />)
     }
-  }, [state, user])
+  }, [settingsState, user, userState])
 
   useEffect(() => {
     if (errorMessage !== null)
@@ -160,15 +161,16 @@ function App({logo, service, ldap, version}) {
   return (
     <FetchContext.Provider value={authenticatedFetch}>
       <FetchSettingsContext.Provider value={fetchSettings}>
-        <SettingsContext.Provider value={settings}>
-          <Header authenticated={state.settings.initialized === true
-                                 && state.user.authenticated === true}
-                  logo={logo}
-                  service={service}
-                  user={user}/>
-          {content}
-          <Footer service={service} version={version}/>
-        </SettingsContext.Provider>
+        <LogoutContext.Provider value={logout}>
+          <SettingsContext.Provider value={settings}>
+            <Header authenticated={settingsState.initialized && userState.authenticated}
+                    logo={logo}
+                    service={service}
+                    user={user}/>
+            {content}
+            <Footer service={service} version={version}/>
+          </SettingsContext.Provider>
+        </LogoutContext.Provider>
       </FetchSettingsContext.Provider>
     </FetchContext.Provider>
   )

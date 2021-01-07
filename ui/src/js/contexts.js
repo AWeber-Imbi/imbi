@@ -1,10 +1,13 @@
 import React from "react"
 
-// Used for keeping
-export const FetchContext = React.createContext(null)
+// Wraps the fetch function to handle authenticated requests
+export const FetchContext = React.createContext(() => {})
 
-// Wraps a function to trigger refreshing the values in the Settings context
-export const FetchSettingsContext = React.createContext(null)
+// Used to trigger a refresh of the settings
+export const FetchSettingsContext = React.createContext(() => {})
 
-// Settings and metadata
-export const SettingsContext = React.createContext(null)
+// Used to invoke the logout function in index.jsx
+export const LogoutContext = React.createContext(() => {})
+
+// Expose common settings
+export const SettingsContext = React.createContext({})
