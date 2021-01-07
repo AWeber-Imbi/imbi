@@ -35,6 +35,14 @@ export function ProjectTypes() {
               name: "description",
               type: "textarea",
               tableOptions: {
+                className: "max-w-lg truncate"
+              }
+            },
+            {
+              title: t("common.description"),
+              name: "description",
+              type: "textarea",
+              tableOptions: {
                 hide: true
               }
             },
