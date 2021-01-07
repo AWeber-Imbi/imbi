@@ -44,4 +44,4 @@ function NewMenu() {
 
 NewMenu.propTypes = {}
 
-export default NewMenu
+export {NewMenu}

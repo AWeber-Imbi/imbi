@@ -25,4 +25,4 @@ Column.propTypes = {
   ])
 }
 
-export default Column
+export {Column}

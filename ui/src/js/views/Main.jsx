@@ -30,4 +30,4 @@ Main.propTypes = {
   user: PropTypes.exact(UserSchema)
 }
 
-export default Main
+export {Main}

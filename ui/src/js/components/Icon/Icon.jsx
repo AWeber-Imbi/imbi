@@ -11,5 +11,5 @@ Icon.propTypes = {
   props: PropTypes.object
 }
 
-export default Icon
+export {Icon}
 

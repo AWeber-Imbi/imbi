@@ -14,4 +14,4 @@ Footer.propTypes = {
   columns: PropTypes.number.isRequired
 }
 
-export default Footer
+export {Footer}

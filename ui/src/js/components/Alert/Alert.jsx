@@ -31,4 +31,4 @@ Alert.propTypes = {
   level: PropTypes.oneOf(["info", "warning", "error", "success"]).isRequired
 }
 
-export default Alert
+export {Alert}

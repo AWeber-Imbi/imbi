@@ -19,4 +19,4 @@ User.propTypes = {
   user: PropTypes.exact(Schema)
 }
 
-export default User
+export {User}

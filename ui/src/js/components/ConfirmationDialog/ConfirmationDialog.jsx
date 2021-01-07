@@ -81,4 +81,4 @@ ConfirmationDialog.propTypes = {
 
 }
 
-export default ConfirmationDialog
+export {ConfirmationDialog}

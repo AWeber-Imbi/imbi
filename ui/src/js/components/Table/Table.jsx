@@ -27,4 +27,4 @@ Table.propTypes = {
   onEditClick: PropTypes.func
 }
 
-export default Table
+export {Table}

@@ -51,4 +51,4 @@ Admin.propTypes = {
   user: PropTypes.exact(User)
 }
 
-export default Admin
+export {Admin}

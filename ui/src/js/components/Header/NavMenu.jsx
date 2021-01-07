@@ -42,4 +42,4 @@ NavMenu.propTypes = {
   user: PropTypes.shape(User)
 }
 
-export default NavMenu
+export {NavMenu}

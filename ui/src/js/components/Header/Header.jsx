@@ -2,12 +2,12 @@ import {Link} from "react-router-dom"
 import PropTypes from "prop-types"
 import React, {Fragment} from "react"
 
-import {default as NavMenu} from "./NavMenu"
-import {default as NewMenu} from "./NewMenu"
-import {default as UserMenu} from "./UserMenu"
+import {NavMenu} from "./NavMenu"
+import {NewMenu} from "./NewMenu"
+import {UserMenu} from "./UserMenu"
 import {User} from "../../schema"
 
-export function Header({logo, service, authenticated, user}) {
+function Header({logo, service, authenticated, user}) {
   return (
     <header
       className={"flex-shrink bg-blue-700 h-13" + (authenticated !== true ? " pb-1" : "")}>
@@ -39,3 +39,5 @@ Header.propTypes = {
   authenticated: PropTypes.bool.isRequired,
   user: PropTypes.exact(User).isRequired
 }
+
+export {Header}

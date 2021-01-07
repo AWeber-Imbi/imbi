@@ -21,4 +21,4 @@ MenuItem.propTypes = {
   icon: PropTypes.string.isRequired
 }
 
-export default MenuItem
+export {MenuItem}

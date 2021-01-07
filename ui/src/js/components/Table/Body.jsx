@@ -33,4 +33,4 @@ Body.propTypes = {
   onEditClick: PropTypes.func
 }
 
-export default Body
+export {Body}

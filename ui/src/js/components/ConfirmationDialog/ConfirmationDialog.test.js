@@ -5,7 +5,7 @@ import "@testing-library/jest-dom/extend-expect"
 import "../../icons"
 import "../../i18n"
 
-import ConfirmationDialog from "./ConfirmationDialog"
+import {ConfirmationDialog} from "./ConfirmationDialog"
 
 describe("Alert", () => {
   it("should render an alert with info attributes", () => {

@@ -17,4 +17,4 @@ Logo.propTypes = {
   className: PropTypes.string
 }
 
-export default Logo
+export {Logo}

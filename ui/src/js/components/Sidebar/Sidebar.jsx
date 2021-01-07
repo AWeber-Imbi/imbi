@@ -1,8 +1,8 @@
 import PropTypes from "prop-types"
 import React from "react"
 
-import { default as Section } from "./Section"
-import { default as MenuItem } from "./MenuItem"
+import {Section} from "./Section"
+import {MenuItem} from "./MenuItem"
 
 function Sidebar({title, children}) {
   return (
@@ -21,4 +21,4 @@ Sidebar.propTypes = {
   children: PropTypes.arrayOf(PropTypes.node)
 }
 
-export default Sidebar
+export {Sidebar}

@@ -27,13 +27,15 @@ function Section({name, open, children}) {
   )
 }
 Section.displayName = "SideBarSection"
+
 Section.propTypes = {
   name: PropTypes.string.isRequired,
   open: PropTypes.bool,
   children: PropTypes.arrayOf(PropTypes.node)
 }
+
 Section.defaultProps = {
   open: false
 }
 
-export default Section
+export {Section}

@@ -2,7 +2,7 @@ import PropTypes from "prop-types";
 import React from "react"
 import {useTranslation} from "react-i18next"
 
-import {default as Logo} from "./AWeber"
+import {Logo} from "./AWeber"
 
 function Footer({service, version}) {
   const {t} = useTranslation()
@@ -25,4 +25,4 @@ Footer.propTypes = {
   version: PropTypes.string
 }
 
-export default Footer
+export {Footer}

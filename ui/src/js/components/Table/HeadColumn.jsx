@@ -38,4 +38,4 @@ HeadColumn.propTypes = {
   srOnly: PropTypes.bool
 }
 
-export default HeadColumn
+export {HeadColumn}

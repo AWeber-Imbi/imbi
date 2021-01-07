@@ -9,8 +9,6 @@ function Tooltip({children, value}) {
          onMouseOut={() => setShowTooltip(false)}>
       {children}
       <div className={(showTooltip === true ? 'visible' : 'hidden') + " absolute z-50 mt ml-4 text-xs"}
-           onMouseOver={() => setShowTooltip(true)}
-           onMouseOut={() => setShowTooltip(false)}
            role="tooltip">
         <svg className="text-black bottom-full" x="0px" y="0px" height="10px" width="10px"
              xmlSpace="preserve">
@@ -29,4 +27,4 @@ Tooltip.propTypes = {
   value: PropTypes.string.isRequired
 }
 
-export default Tooltip
+export {Tooltip}

@@ -66,4 +66,4 @@ Row.propTypes = {
   onEditClick: PropTypes.func
 }
 
-export default Row
+export {Row}

@@ -1,12 +1,14 @@
 import Gravatar from "react-gravatar"
 import {Menu} from "@headlessui/react"
 import {NavLink} from "react-router-dom"
-import React from "react"
+import React, {useContext} from "react"
 import PropTypes from "prop-types"
 import {useTranslation} from "react-i18next"
 
+import {LogoutContext} from "../../contexts"
 import {Icon} from "../"
 import {User} from "../../schema"
+
 
 function UserMenuItem({value, to, icon}) {
   return (
@@ -30,7 +32,14 @@ UserMenuItem.propTypes = {
 }
 
 function UserMenu({user}) {
+  const logout = useContext(LogoutContext)
   const {t} = useTranslation()
+
+  function onLogoutClick(event) {
+    event.preventDefault()
+    logout()
+  }
+
   return (
     <Menu as="div" className="flex-shrink mr-3">
       <Menu.Button as={React.Fragment}>
@@ -48,7 +57,7 @@ function UserMenu({user}) {
         <UserMenuItem to="/ui/user/profile" icon="fas id-card" value={t("headerNavItems.profile")}/>
         <UserMenuItem to="/ui/user/settings" icon="fas user-cog" value={t("headerNavItems.settings")}/>
         <Menu.Item>
-          <a className="user-menu-link" href="/ui/logout">
+          <a className="user-menu-link" href="/ui/logout" onClick={onLogoutClick}>
             <div className="inline-block w-6 mr-2 text-center">
               <Icon icon="fas sign-out-alt"/>
             </div>
@@ -64,4 +73,4 @@ UserMenu.propTypes = {
   user: PropTypes.shape(User)
 }
 
-export default UserMenu
+export {UserMenu}

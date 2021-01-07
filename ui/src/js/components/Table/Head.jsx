@@ -4,7 +4,7 @@ import {useTranslation} from "react-i18next";
 
 import {Columns} from "../../schema"
 
-import {default as HeadColumn} from "./HeadColumn"
+import {HeadColumn} from "./HeadColumn"
 
 function Head({columns, includeEdit}) {
   const {t} = useTranslation()
@@ -33,4 +33,4 @@ Head.propTypes = {
   includeEdit: PropTypes.bool
 }
 
-export default Head
+export {Head}

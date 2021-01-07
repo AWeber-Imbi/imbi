@@ -3,7 +3,7 @@ import {render, screen} from "@testing-library/react"
 import userEvent from '@testing-library/user-event'
 import "@testing-library/jest-dom/extend-expect"
 
-import Tooltip from "./Tooltip"
+import {Tooltip} from "./Tooltip"
 
 describe("Tooltip", () => {
   it("should change the visibility on mouse over/out", () => {

@@ -109,4 +109,4 @@ Login.propTypes = {
   onLoginCallback: PropTypes.func
 }
 
-export default Login
+export {Login}

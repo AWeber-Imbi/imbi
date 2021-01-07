@@ -3,7 +3,7 @@ import {render, screen} from "@testing-library/react"
 import "@testing-library/jest-dom/extend-expect"
 
 import "../../icons"
-import Alert from "./Alert"
+import {Alert} from "./Alert"
 
 describe("Alert", () => {
   it("should render an alert with info attributes", () => {
