@@ -6,7 +6,7 @@ import typing
 from itertools import chain
 
 from imbi import common
-from imbi.endpoints import base, settings
+from imbi.endpoints import base
 
 
 class IndexRequestHandler(base.RequestHandler):
@@ -42,7 +42,7 @@ class LogoutRequestHandler(base.RequestHandler):
 
     async def get(self, *args, **kwargs):
         await self.session.clear()
-        self.send_response({"loggedOut": True})
+        self.send_response({'loggedOut': True})
 
 
 class SettingsRequestHandler(base.RequestHandler):
