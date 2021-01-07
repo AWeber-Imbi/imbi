@@ -42,7 +42,7 @@ class LogoutRequestHandler(base.RequestHandler):
 
     async def get(self, *args, **kwargs):
         await self.session.clear()
-        self.redirect('/')
+        self.send_response({"loggedOut": True})
 
 
 class SettingsRequestHandler(base.RequestHandler):
@@ -53,26 +53,7 @@ class SettingsRequestHandler(base.RequestHandler):
         self.send_response({
             'service_name': self.application.settings['service'].title(),
             'gitlab_url': self.application.settings['gitlab_url'],
-            'ldap_enabled': common.ldap_enabled(),
-            'configuration_systems': await self._get_values(
-                settings.ConfigurationSystems.GET_SQL,
-                'configuration-systems'),
-            'cookie_cutters': await self._get_values(
-                settings.CookieCutters.GET_SQL, 'cookie-cutters'),
-            'data_centers': await self._get_values(
-                settings.DataCenters.GET_SQL, 'data-centers'),
-            'deployment_types': await self._get_values(
-                settings.DeploymentTypes.GET_SQL, 'deployment-types'),
-            'environments': await self._get_values(
-                settings.Environments.GET_SQL, 'environments'),
-            'orchestration_systems': await self._get_values(
-                settings.OrchestrationSystems.GET_SQL,
-                'orchestration-systems'),
-            'project_link_types': await self._get_values(
-                settings.ProjectLinkTypes.GET_SQL, 'project-link-types'),
-            'project_types': await self._get_values(
-                settings.ProjectTypes.GET_SQL, 'project-types'),
-            'teams': await self._get_values(settings.Teams.GET_SQL, 'teams')
+            'ldap_enabled': common.ldap_enabled()
         })
 
     async def _get_values(self, sql: str, name: str) -> typing.List[dict]:
