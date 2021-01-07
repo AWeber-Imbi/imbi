@@ -80,7 +80,7 @@ class OrchestrationSystems(SettingsRequestHandler):
 
 class Permissions(base.AuthenticatedRequestHandler):
 
-    ENDPOINT = 'settings-teams'
+    ENDPOINT = 'settings-permissions'
 
     @base.require_permission('admin')
     async def get(self):
