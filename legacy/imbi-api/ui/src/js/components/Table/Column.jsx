@@ -21,6 +21,7 @@ Column.propTypes = {
   definition: PropTypes.exact(ColumnPropTypes),
   children: PropTypes.oneOfType([
     PropTypes.string,
+    PropTypes.number,
     PropTypes.element
   ])
 }

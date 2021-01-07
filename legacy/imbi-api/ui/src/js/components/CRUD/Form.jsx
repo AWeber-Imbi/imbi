@@ -17,6 +17,13 @@ function Field({autoFocus, errorMessage, handleUpdate, value, ...props}) {
     handleUpdate(props.name, event.target.value)
   }
 
+  function handleNumberChange(event) {
+    event.preventDefault()
+    handleUpdate(props.name, parseInt(event.target.value))
+  }
+
+  const numbers = "0123456789"
+
   return (
     <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:pt-5">
       <label htmlFor={"field-" + props.name} className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
@@ -31,6 +38,20 @@ function Field({autoFocus, errorMessage, handleUpdate, value, ...props}) {
                       name={props.name}
                       onChange={handleChange}
                       placeholder={props.placeholder}/>
+        )}
+        {props.type === "number" && (
+          <input autoComplete={props.name}
+                 autoFocus={autoFocus}
+                 className={"form-input" + (errorMessage !== null ? " border-red-700" : "")}
+                 defaultValue={value !== null ? value.toString() : value}
+                 id={"field-" + props.name}
+                 name={props.name}
+                 onBlur={handleNumberChange}
+                 onKeyPress={(event) => {
+                   if (!numbers.includes(event.key)) event.preventDefault()
+                 }}
+                 placeholder={props.placeholder}
+                 type="text"/>
         )}
         {props.type === "select" && (
           <select autoFocus={autoFocus}
@@ -85,7 +106,7 @@ Field.propTypes = {
   autoFocus: PropTypes.bool.isRequired,
   errorMessage: PropTypes.string,
   handleUpdate: PropTypes.func.isRequired,
-  value: PropTypes.string,
+  value: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   ...Column
 }
 
@@ -104,7 +125,9 @@ function Form({columns, errorStrings, isEdit, itemKey, itemPath, jsonSchema, onC
   const [formValues, setFormValues] = useState(columns.reduce((result, column) => {
     result[column.name] = values !== null
       ? (values[column.name] !== undefined ? values[column.name] : null)
-      : (column.default !== undefined ? column.default : null)
+      : (column.default !== undefined ? (typeof(column.default) === "function"
+                                         ? column.default()
+                                         : column.default) : null)
     return result
   }, {}))
   const [originalValues, _] = useState(values)   // eslint-disable-line
