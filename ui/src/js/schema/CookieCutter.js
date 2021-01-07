@@ -39,5 +39,5 @@ export const propTypes = {
   type: PropTypes.oneOf(["dashboard", "project"]).isRequired,
   project_type: PropTypes.string.isRequired,
   description: PropTypes.string,
-  url: PropTypes.string.isRequired,
+  url: PropTypes.string.isRequired
 }

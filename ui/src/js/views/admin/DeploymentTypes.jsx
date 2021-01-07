@@ -1,17 +1,17 @@
 import React from "react"
 import {useTranslation} from 'react-i18next'
 
-import {jsonSchema} from "../../schema/ProjectType"
+import {jsonSchema} from "../../schema/DataCenter"
 
 import {CRUD} from "../../components"
 
-export function ProjectTypes() {
+export function DeploymentTypes() {
   const {t} = useTranslation()
   return (
-    <CRUD addPath="/admin/project_type"
-          collectionIcon="fas cubes"
-          collectionName={t("admin.projectTypes.collectionName")}
-          collectionPath="/settings/project_types"
+    <CRUD addPath="/admin/deployment_type"
+          collectionIcon="fas upload"
+          collectionName={t("admin.deploymentTypes.collectionName")}
+          collectionPath="/settings/deployment_types"
           columns={[
             {
               title: t("common.name"),
@@ -22,39 +22,30 @@ export function ProjectTypes() {
               }
             },
             {
-              title: t("common.slug"),
-              name: "slug",
-              type: "text",
-              description: t("admin.projectTypes.slugDescription"),
-              tableOptions: {
-                className: "max-w-lg truncate"
-              }
-            },
-            {
               title: t("common.description"),
               name: "description",
               type: "textarea",
               tableOptions: {
-                className: "max-w-lg truncate"
+                hide: true
               }
             },
             {
               title: t("common.iconClass"),
               name: "icon_class",
               type: "icon",
-              placeholder: "fas cubes",
-              default: "fas cubes",
+              placeholder: "fas upload",
+              default: "fas upload",
               tableOptions: {
                 className: "w-min"
               }
             }
           ]}
           errorStrings={{
-            "Unique Violation":  t("admin.projectTypes.errors.uniqueViolation")
+            "Unique Violation":  t("admin.deploymentTypes.errors.uniqueViolation")
           }}
           itemKey="name"
-          itemName={t("admin.projectTypes.itemName")}
-          itemPath="/admin/project_type/{{value}}"
+          itemName={t("admin.deploymentTypes.itemName")}
+          itemPath="/admin/deployment_type/{{value}}"
           jsonSchema={jsonSchema}/>
   )
 }

@@ -96,6 +96,15 @@ class ProjectLinkTypes(SettingsRequestHandler):
      ORDER BY link_type ASC;"""
 
 
+class ProjectFactTypes(SettingsRequestHandler):
+
+    ENDPOINT = 'settings-project-fact-types'
+    GET_SQL = """\
+    SELECT id, "name", created_at, modified_at, project_type, weight
+      FROM v1.project_fact_types
+     ORDER BY "name" ASC;"""
+
+
 class ProjectTypes(SettingsRequestHandler):
 
     ENDPOINT = 'settings-project-types'
@@ -122,6 +131,7 @@ URLS = [
     web.url('/settings/groups', Groups),
     web.url('/settings/orchestration_systems', OrchestrationSystems),
     web.url('/settings/permissions', Permissions),
+    web.url('/settings/project_fact_types', ProjectFactTypes),
     web.url('/settings/project_link_types', ProjectLinkTypes),
     web.url('/settings/project_types', ProjectTypes),
     web.url('/settings/teams', Teams),
