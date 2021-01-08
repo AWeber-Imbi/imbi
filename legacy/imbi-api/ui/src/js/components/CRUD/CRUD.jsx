@@ -4,7 +4,7 @@ import {useTranslation} from "react-i18next";
 
 import {Alert, ConfirmationDialog, Icon, Table} from ".."
 import {Columns} from "../../schema"
-import {FetchContext, FetchSettingsContext} from "../../contexts"
+import {FetchContext} from "../../contexts"
 import {httpGet, httpDelete} from "../../utils"
 
 import {Form} from "./Form"
@@ -112,6 +112,11 @@ function CRUD({addPath,
       }, 30000))
     }
   }, [successMessage])
+
+  // Handle unmounting while timer is active
+  useEffect(() => {
+    if (timerHandle !== null) clearTimeout(timerHandle)
+  })
 
   return (
     <Fragment>
