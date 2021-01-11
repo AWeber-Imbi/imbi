@@ -9,6 +9,6 @@ properties:
     description: Font Awesome UI icon class
     type: string
 required:
-  - name
+  - link_type
   - icon_class
 additionalProperties: false
