@@ -61,8 +61,9 @@ python-setup: .env env
 ui-setup: ui/node_modules
 
 .PHONY: dist
-dist: ui-setup
+dist: openapi-setup ui-setup
 	@ rm -rf dist
+	@ cd openapi && yarn run build
 	@ cd ui && NODE_ENV=production yarn run build
 	@ cd ddl && bin/build.sh ../ddl.sql
 	@ python3 setup.py sdist
