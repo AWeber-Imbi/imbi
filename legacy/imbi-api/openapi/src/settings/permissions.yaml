@@ -1,0 +1,26 @@
+paths:
+  collection:
+    get:
+      description: Retrieve the collection of available permissions
+      summary: Get Permissions
+      tags: [Settings]
+      responses:
+        "200":
+          description: Success
+          headers:
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  type: string
+              examples:
+                records:
+                  summary: Multiple permissions
+                  value:
+                    - admin
+                    - user
+            application/msgpack:
+              <<: *responseContent
+      security: [{apiKey: []}, {session: []}]

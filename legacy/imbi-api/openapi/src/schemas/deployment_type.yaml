@@ -1,0 +1,18 @@
+title: Deployment Type
+description: Used to describe the types of project deployment systems
+type: object
+properties:
+  name:
+    description: The display name for a deployment type
+    type: string
+  description:
+    description: A description of the deployment type
+    type: string
+    nullable: true
+  icon_class:
+    description: Font Awesome UI icon class
+    type: string
+required:
+  - name
+  - icon_class
+additionalProperties: false

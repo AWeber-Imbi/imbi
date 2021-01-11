@@ -1,0 +1,23 @@
+title: Project Type
+description: |
+  Used to describe the types of operational project_types for projects
+type: object
+properties:
+  name:
+    description: The display name for a project type
+    type: string
+  description:
+    description: A description of the project type
+    type: string
+    nullable: true
+  slug:
+    description: The slug for project types, used in filtering
+    type: string
+  icon_class:
+    description: Font Awesome UI icon class
+    type: string
+required:
+  - name
+  - slug
+  - icon_class
+additionalProperties: false

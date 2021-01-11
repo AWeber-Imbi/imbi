@@ -1,0 +1,7 @@
+---
+jsonPatch:
+  description: This JSON patch would change the `icon_class` attribute
+  value:
+    - op: replace
+      path: icon_class
+      value: fas fa-microscope

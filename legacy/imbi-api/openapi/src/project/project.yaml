@@ -1,0 +1,103 @@
+paths:
+  create:
+    post:
+      summary: Create Project
+      description: Create a new project record
+      requestBody:
+        description: The project record to create
+        content:
+          application/json: &postContent
+            schema:
+              $ref: '../schemas/project.yaml'
+            examples:
+              record:
+                $ref: '#/components/examples/record'
+          application/msgpack:
+            <<: *postContent
+      tags: [Projects]
+      responses:
+        "200": {$ref: '#/components/responses/Success'}
+        "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "409": {$ref: '../components/responses.yaml#/Conflict'}
+      security: [{apiKey: []}, {session: []}]
+
+  manage:
+    get:
+      summary: Get Project
+      description: Retrieve a project record
+      tags: [Projects]
+      responses:
+        "200": {$ref: '#/components/responses/Success'}
+        "404": {$ref: '../components/responses.yaml#/NotFound'}
+      security: [{apiKey: []}, {session: []}]
+    patch:
+      summary: Update Project
+      description: >-
+        Update a project, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags: [Projects]
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json: &patchContent
+            schema:
+              $ref: '../components/schemas.yaml#/jsonPatch'
+          application/msgpack:
+            <<: *patchContent
+      responses:
+        "200": {$ref: '#/components/responses/Success'}
+        "304": {$ref: '../components/responses.yaml#/NoChanges'}
+        "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "404": {$ref: '../components/responses.yaml#/NotFound'}
+        "409": {$ref: '../components/responses.yaml#/Conflict'}
+      security: [{apiKey: []}, {session: []}]
+    delete:
+      summary: Delete Project
+      description: Remove a project record
+      tags: [Projects]
+      responses:
+        "204": {$ref: '../components/responses.yaml#/RecordRemoved'}
+        "404": {$ref: '../components/responses.yaml#/NotFound'}
+      security: [{apiKey: []}, {session: []}]
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+components:
+  examples:
+    record:
+      summary: An example of a project record
+      value:
+        id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+        name: User Service
+        slug: user
+        description: |-
+          The user service is used to manage user specific data, including profiles and content.
+        owned_by: User Experience
+        project_type: HTTP API
+        data_center: us-east-1
+        configuration_system: SSM Parameter Store
+        deployment_type: ecs-pipeline-deploy
+        orchestration_system: ECS
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the project was successful
+      headers:
+        Cache-Control: {$ref: '../components/headers.yaml#/Cache-Control'}
+        Last-Modified: {$ref: '../components/headers.yaml#/Last-Modified'}
+        Link: {$ref: '../components/headers.yaml#/Link'}
+      content:
+        application/json: &responsesSuccess
+          schema:
+            $ref: '../schemas/project.yaml'
+          examples:
+            record:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          <<: *responsesSuccess

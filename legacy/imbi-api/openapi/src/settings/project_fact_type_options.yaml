@@ -1,0 +1,44 @@
+paths:
+  collection:
+    get:
+      description: Retrieve the collection of project fact type options
+      summary: Get Project Fact Type Options
+      tags: [Settings]
+      responses:
+        "200":
+          description: Success
+          headers:
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/project_fact_type_option.yaml'
+              examples:
+                records:
+                  summary: Multiple project fact type option records
+                  value:
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.9
+                      score: 100
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.7
+                      score: 75
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.6
+                      score: 50
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.5
+                      score: 50
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 2.7
+                      score: 0
+            application/msgpack:
+              <<: *responseContent
+      security: [{apiKey: []}, {session: []}]

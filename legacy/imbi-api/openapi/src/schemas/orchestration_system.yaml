@@ -1,0 +1,20 @@
+title: Orchestration System
+description: |-
+  Orchestration systems provide automated configuration, coordination and
+  management of complex computing networks, systems and services.
+type: object
+properties:
+  name:
+    description: The display name for a orchestration system
+    type: string
+  description:
+    description: A description of the orchestration system
+    type: string
+    nullable: true
+  icon_class:
+    description: Font Awesome UI icon class
+    type: string
+required:
+  - name
+  - icon_class
+additionalProperties: false

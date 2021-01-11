@@ -1,0 +1,101 @@
+paths:
+  create:
+    post:
+      summary: Create Record
+      description: Create a new cookie cutter record
+      requestBody:
+        description: The cookie cutter record to create
+        content:
+          application/json: &postContent
+            schema:
+              $ref: '../schemas/cookie_cutter.yaml'
+            examples:
+              record:
+                $ref: '#/components/examples/record'
+          application/msgpack:
+            <<: *postContent
+      tags: [Cookie Cutters]
+      responses:
+        "200": {$ref: '#/components/responses/Success'}
+        "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "409": {$ref: '../components/responses.yaml#/Conflict'}
+      security: [{apiKey: []}, {session: []}]
+
+  manage:
+    get:
+      summary: Get Record
+      description: Retrieve a cookie cutter record
+      tags: [Cookie Cutters]
+      responses:
+        "200": {$ref: '#/components/responses/Success'}
+        "404": {$ref: '../components/responses.yaml#/NotFound'}
+      security: [{apiKey: []}, {session: []}]
+    patch:
+      summary: Update Record
+      description: |-
+        Update a cookie cutter, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags: [Cookie Cutters]
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json: &patchContent
+            schema:
+              $ref: '../components/schemas.yaml#/jsonPatch'
+          application/msgpack:
+            <<: *patchContent
+      responses:
+        "200": {$ref: '#/components/responses/Success'}
+        "304": {$ref: '../components/responses.yaml#/NoChanges'}
+        "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "404": {$ref: '../components/responses.yaml#/NotFound'}
+        "409": {$ref: '../components/responses.yaml#/Conflict'}
+      security: [{apiKey: []}, {session: []}]
+    delete:
+      summary: Delete Record
+      description: Remove a cookie cutter record
+      tags: [Cookie Cutters]
+      responses:
+        "204": {$ref: '../components/responses.yaml#/RecordRemoved'}
+        "404": {$ref: '../components/responses.yaml#/NotFound'}
+      security: [{apiKey: []}, {session: []}]
+    parameters:
+      - name: name
+        in: path
+        description: Cookie Cutter Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+
+components:
+  examples:
+    record:
+      summary: A full cookie cutter record
+      value:
+        name: k8s-rejected-consumer
+        type: project
+        project_type: Consumer
+        description: A rejected consumer that runs in Kubernetes
+        url: https://gitlab.com/aweber/cookiecutters/k8s-rejected-consumer.git
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the cookie cutter was successful
+      headers:
+        Cache-Control: {$ref: '../components/headers.yaml#/Cache-Control'}
+        Last-Modified: {$ref: '../components/headers.yaml#/Last-Modified'}
+        Link: {$ref: '../components/headers.yaml#/Link'}
+      content:
+        application/json: &responsesSuccess
+          schema:
+            $ref: '../schemas/cookie_cutter.yaml'
+          examples:
+            record:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          <<: *responsesSuccess
+
+tag:
+  name: Cookie Cutters
+  description: Endpoints used for the management of project creation cookie cutters

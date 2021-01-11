@@ -6,11 +6,15 @@ ifneq (,$(wildcard ./.env))
 endif
 
 .PHONY: all
-all: setup scaffolding/postgres/ddl.sql all-tests build-ui
+all: setup scaffolding/postgres/ddl.sql build-openapi all-tests build-ui
+
+.PHONY: build-openapi
+build-openapi:
+	@ cd openapi && yarn run build
 
 .PHONY: build-ui
 build-ui:
-	@ cd ui && NODE_ENV=production npm run-script build
+	@ cd ui && NODE_ENV=production yarn run build
 
 .PHONY: build-ui-dev
 build-ui-dev:
@@ -42,10 +46,13 @@ scaffolding/postgres/ddl.sql:
 	@ cd ddl && bin/build.sh ../scaffolding/postgres/ddl.sql
 
 .PHONY: setup
-setup: .env env ui/node_modules
+setup: .env env openapi/node_modules ui/node_modules
 
 .PHONY: ddl-setup
 ddl-setup: .env
+
+.PHONY: openapi-setup
+openapi-setup: openapi/node_modules
 
 .PHONY: python-setup
 python-setup: .env env
@@ -59,6 +66,9 @@ dist: ui-setup
 	@ cd ui && NODE_ENV=production yarn run build
 	@ cd ddl && bin/build.sh ../ddl.sql
 	@ python3 setup.py sdist
+
+openapi/node_modules:
+	@ cd openapi && yarn install
 
 ui/node_modules:
 	@ cd ui && yarn install
@@ -95,6 +105,11 @@ flake8: env
 jest: ui/node_modules
 	@ printf "\nRunning jest\n\n"
 	@ cd ui && yarn run test-coverage
+
+.PHONY: openapi-validate
+openapi-validate:
+	@ printf "\nRunning swagger-cli-validate\n\n"
+	@ cd openapi && yarn run validate
 
 # Testing Groups
 

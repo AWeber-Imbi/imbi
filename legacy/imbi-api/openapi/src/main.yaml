@@ -1,0 +1,124 @@
+openapi: 3.0.3
+
+info:
+  title: Imbi
+  description: |-
+    Imbi is an operational management platform for medium to large environments.
+  license:
+    name: BSD 3-Clause
+    url: https://opensource.org/licenses/BSD-3-Clause
+  version: '{{ settings["version"] }}'
+  contact:
+    name: AWeber
+    url: https://github.com/aweber/imbi
+  x-logo:
+    url: /static/images/logo.png
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      description: Uses an API key generated for a user to authenticate each API request
+      in: header
+      name: Private-Token
+    session:
+      type: apiKey
+      description: Uses the session cookie of an authenticated user to authenticate each API request
+      in: cookie
+      name: session
+
+paths:
+  /admin/configuration_system: {$ref: 'admin/configuration_system.yaml#/paths/create'}
+  /admin/configuration_system/{name}: {$ref: 'admin/configuration_system.yaml#/paths/manage'}
+  /admin/cookie_cutter: {$ref: 'admin/cookie_cutter.yaml#/paths/create'}
+  /admin/cookie_cutter/{name}: {$ref: 'admin/cookie_cutter.yaml#/paths/manage'}
+  /admin/data_center: {$ref: 'admin/data_center.yaml#/paths/create'}
+  /admin/data_center/{name}: {$ref: 'admin/data_center.yaml#/paths/manage'}
+  /admin/deployment_type: {$ref: 'admin/deployment_type.yaml#/paths/create'}
+  /admin/deployment_type/{name}: {$ref: 'admin/deployment_type.yaml#/paths/manage'}
+  /admin/environment: {$ref: 'admin/environment.yaml#/paths/create'}
+  /admin/environment/{name}: {$ref: 'admin/environment.yaml#/paths/manage'}
+  /admin/group: {$ref: 'admin/group.yaml#/paths/create'}
+  /admin/group/{name}: {$ref: 'admin/group.yaml#/paths/manage'}
+  /admin/orchestration_system: {$ref: 'admin/orchestration_system.yaml#/paths/create'}
+  /admin/orchestration_system/{name}: {$ref: 'admin/orchestration_system.yaml#/paths/manage'}
+  /admin/project_fact_type: {$ref: 'admin/project_fact_type.yaml#/paths/create'}
+  /admin/project_fact_type/{name}: {$ref: 'admin/project_fact_type.yaml#/paths/manage'}
+  /admin/project_fact_type_option: {$ref: 'admin/project_fact_type_option.yaml#/paths/create'}
+  /admin/project_fact_type_option/{fact_type_id}/{option_id}: {$ref: 'admin/project_fact_type_option.yaml#/paths/manage'}
+  /admin/project_link_type: {$ref: 'admin/project_link_type.yaml#/paths/create'}
+  /admin/project_link_type/{link_type}: {$ref: 'admin/project_link_type.yaml#/paths/manage'}
+  /admin/project_type: {$ref: 'admin/project_type.yaml#/paths/create'}
+  /admin/project_type/{name}: {$ref: 'admin/project_type.yaml#/paths/manage'}
+  /admin/team: {$ref: 'admin/team.yaml#/paths/create'}
+  /admin/team/{name}: {$ref: 'admin/team.yaml#/paths/manage'}
+
+  /projects: {"$ref": "project/projects.yaml#/paths/collection"}
+  /project: {"$ref": "project/project.yaml#/paths/create"}
+  /project/{id}: {"$ref": "project/project.yaml#/paths/manage"}
+  /project/{id}/dependencies: {"$ref": "project/dependencies.yaml#/paths/collection"}
+  /project/{id}/dependency: {"$ref": "project/dependency.yaml#/paths/create"}
+  /project/{id}/dependency/{dependency_id}: {"$ref": "project/dependency.yaml#/paths/manage"}
+  /project/{id}/links: {"$ref": "project/links.yaml#/paths/collection"}
+  /project/{id}/link: {"$ref": "project/link.yaml#/paths/create"}
+  /project/{id}/link/{link_id}: {"$ref": "project/link.yaml#/paths/manage"}
+
+  /settings/configuration_systems: {$ref: 'settings/configuration_systems.yaml#/paths/collection'}
+  /settings/cookie_cutters: {$ref: 'settings/cookie_cutters.yaml#/paths/collection'}
+  /settings/data_centers: {$ref: 'settings/data_centers.yaml#/paths/collection'}
+  /settings/deployment_types: {$ref: 'settings/deployment_types.yaml#/paths/collection'}
+  /settings/environments: {$ref: 'settings/environments.yaml#/paths/collection'}
+  /settings/groups: {$ref: 'settings/groups.yaml#/paths/collection'}
+  /settings/orchestration_systems: {$ref: 'settings/orchestration_systems.yaml#/paths/collection'}
+  /settings/permissions: {$ref: 'settings/permissions.yaml#/paths/collection'}
+  /settings/project_fact_type_options: {$ref: 'settings/project_fact_type_options.yaml#/paths/collection'}
+  /settings/project_fact_types: {$ref: 'settings/project_fact_types.yaml#/paths/collection'}
+  /settings/project_link_types: {$ref: 'settings/project_link_types.yaml#/paths/collection'}
+  /settings/project_types: {$ref: 'settings/project_types.yaml#/paths/collection'}
+  /settings/teams: {$ref: 'settings/teams.yaml#/paths/collection'}
+
+  /status: {$ref: 'status.yaml#/paths/status'}
+
+tags:
+  - { "$ref": "admin/configuration_system.yaml#/tag" }
+  - { "$ref": "admin/cookie_cutter.yaml#/tag" }
+  - { "$ref": "admin/data_center.yaml#/tag" }
+  - { "$ref": "admin/deployment_type.yaml#/tag" }
+  - { "$ref": "admin/environment.yaml#/tag" }
+  - { "$ref": "admin/group.yaml#/tag" }
+  - { "$ref": "admin/orchestration_system.yaml#/tag" }
+  - { "$ref": "admin/project_fact_type.yaml#/tag" }
+  - { "$ref": "admin/project_fact_type_option.yaml#/tag" }
+  - { "$ref": "admin/project_link_type.yaml#/tag" }
+  - { "$ref": "admin/project_type.yaml#/tag" }
+  - { "$ref": "admin/team.yaml#/tag" }
+  - name: Projects
+    description: Endpoints used for the management of projects
+  - name: Settings
+    description: Endpoints used for retrieving settings for the Imbi UI
+  - { "$ref": "status.yaml#/tag" }
+
+x-tagGroups:
+  - name: Administration
+    tags:
+      - Configuration Systems
+      - Cookie Cutters
+      - Data Centers
+      - Deployment Types
+      - Environments
+      - Groups
+      - Orchestration Systems
+      - Project Fact Types
+      - Project Fact Type Options
+      - Project Link Types
+      - Project Types
+      - Teams
+  - name: Project Management
+    tags:
+      - Projects
+  - name: Settings
+    tags:
+      - Settings
+  - name: Other
+    tags:
+      - Health Check

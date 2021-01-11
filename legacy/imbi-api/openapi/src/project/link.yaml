@@ -1,0 +1,110 @@
+paths:
+  create:
+    post:
+      summary: Create Link
+      description: Create a new project link record
+      requestBody:
+        description: The project link record to create
+        content:
+          application/json: &postContent
+            schema:
+              $ref: '../schemas/project_link.yaml'
+            examples:
+              record:
+                $ref: '#/components/examples/record'
+          application/msgpack:
+            <<: *postContent
+      tags: [Projects]
+      responses:
+        "200": {$ref: '#/components/responses/Success'}
+        "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "409": {$ref: '../components/responses.yaml#/Conflict'}
+      security: [{apiKey: []}, {session: []}]
+    parameters:
+      - name: id
+        in: path
+        description: The Project ID to add the link to
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+  manage:
+    get:
+      summary: Get Link
+      description: Retrieve a project link record
+      tags: [Projects]
+      responses:
+        "200": {$ref: '#/components/responses/Success'}
+        "404": {$ref: '../components/responses.yaml#/NotFound'}
+      security: [{apiKey: []}, {session: []}]
+    patch:
+      summary: Update Link
+      description: >-
+        Update a project link, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags: [Projects]
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json: &patchContent
+            schema:
+              $ref: '../components/schemas.yaml#/jsonPatch'
+          application/msgpack:
+            <<: *patchContent
+      responses:
+        "200": {$ref: '#/components/responses/Success'}
+        "304": {$ref: '../components/responses.yaml#/NoChanges'}
+        "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "404": {$ref: '../components/responses.yaml#/NotFound'}
+        "409": {$ref: '../components/responses.yaml#/Conflict'}
+      security: [{apiKey: []}, {session: []}]
+    delete:
+      summary: Delete Link
+      description: Remove a project link record
+      tags: [Projects]
+      responses:
+        "204": {$ref: '../components/responses.yaml#/RecordRemoved'}
+        "404": {$ref: '../components/responses.yaml#/NotFound'}
+      security: [{apiKey: []}, {session: []}]
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: link_id
+        in: path
+        description: The ID of the link to get, update, or delete
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+components:
+  examples:
+    record:
+      summary: A project link record
+      value:
+        project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+        link_type: Documentation
+        url: https://imbi.readthedocs.io
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the project was successful
+      headers:
+        Cache-Control: {$ref: '../components/headers.yaml#/Cache-Control'}
+        Last-Modified: {$ref: '../components/headers.yaml#/Last-Modified'}
+        Link: {$ref: '../components/headers.yaml#/Link'}
+      content:
+        application/json: &responsesSuccess
+          schema:
+            $ref: '../schemas/project_link.yaml'
+          examples:
+            record:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          <<: *responsesSuccess
