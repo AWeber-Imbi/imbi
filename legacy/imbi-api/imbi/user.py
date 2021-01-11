@@ -8,7 +8,7 @@ import typing
 
 from tornado import web
 
-from imbi import common, ldap, timestamp
+from imbi import ldap, timestamp
 
 LOGGER = logging.getLogger(__name__)
 
@@ -96,9 +96,9 @@ class User:
     def __init__(self, application,
                  username: typing.Optional[str] = None,
                  password: typing.Optional[str] = None,
-                 token: typing.Optional[str] = None):
+                 token: typing.Optional[str] = None) -> None:
         self._application = application
-        self._ldap = ldap.Client()
+        self._ldap = ldap.Client(application.settings['ldap'])
         self._ldap_conn = None
         self.username = username
         self.created_at = None
@@ -111,24 +111,19 @@ class User:
         self.token = token
         self.groups = []
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: typing.Any) -> None:
         """Intercept the assignment of a signed password and decrypt it
         if it appears to be encrypted.
 
-        :param str name: The attribute name that is being set
-        :param mixed value: The attribute value being assigned
-
         """
-        if name == 'password' and common.is_encrypted_value(value):
-            value = common.decrypt_value(name, value).decode('utf-8')
+        if name == 'password' \
+                and self._application.is_encrypted_value(value):
+            value = self._application.decrypt_value(
+                name, value).decode('utf-8')
         object.__setattr__(self, name, value)
 
-    def as_dict(self):
-        """Return a representation of the user data as a dict.
-
-        :rtype: dict
-
-        """
+    def as_dict(self) -> dict:
+        """Return a representation of the user data as a dict"""
         return {
             'username': self.username,
             'user_type': self.user_type,
@@ -138,31 +133,28 @@ class User:
             'email_address': self.email_address,
             'display_name': self.display_name,
             'groups': [dict(g) for g in self.groups],
-            'password': common.encrypt_value('password', self.password),
+            'password': self._application.encrypt_value(
+                'password', self.password),
             'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at)
         }
 
-    async def authenticate(self):
+    async def authenticate(self) -> bool:
         """Validate that the current session is valid. Returns boolean
         if successful.
 
-        :rtype: boolean
-
         """
         if self.token:
-            result = await self._token_auth()
-            return result
+            return await self._token_auth()
         result = await self._db_auth()
         if not result and self._ldap.is_enabled:
-            result = await self._ldap_auth()
+            return await self._ldap_auth()
         return result
 
-    def has_permission(self, value):
-        """Check all of the permissions assigned to the user, returning `True` if
-        the role is assigned through any group memberships
+    def has_permission(self, value: str) -> bool:
+        """Check all of the permissions assigned to the user, returning
+        `True` if the role is assigned through any group memberships
 
-        :param str value: The role to check for
-        :rtype: bool
+        :param value: The role to check for
 
         """
         return any(value in group.permissions for group in self.groups)
@@ -171,7 +163,7 @@ class User:
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
         raise web.HTTPError(500, 'System error')
 
-    async def refresh(self):
+    async def refresh(self) -> None:
         """Update the attributes from LDAP"""
         if self.external_id and self._ldap.is_enabled:
             await self._ldap_refresh()
@@ -179,11 +171,9 @@ class User:
             await self._db_refresh()
 
     @property
-    def should_refresh(self):
+    def should_refresh(self) -> bool:
         """Returns True if the amount of time that has passed since the last
         refresh has exceeded the threshold.
-
-        :rtype: bool
 
         """
         age = timestamp.age(self.last_refreshed_at)
@@ -194,7 +184,7 @@ class User:
         return ((self.REFRESH_AFTER < age) or
                 (self.last_refreshed_at < self.last_seen_at))
 
-    async def update_last_seen_at(self):
+    async def update_last_seen_at(self) -> None:
         """Update the last_seen_at column in the database for the user"""
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
@@ -209,20 +199,16 @@ class User:
         for key, value in data.items():
             setattr(self, key, value)
 
-    async def _db_auth(self):
-        """Validate via the v1.users table in the database
-
-        :rtype: boolean
-
-        """
+    async def _db_auth(self) -> bool:
+        """Validate via the v1.users table in the database"""
+        LOGGER.debug('Authenticating with the database')
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
             result = await conn.execute(
                 self.SQL_AUTHENTICATE,
                 {'username': self.username,
-                 'password':
-                     common.encrypt_value('password', self.password)
-                     if self.password else None},
+                 'password': self._application.encrypt_value(
+                     'password', self.password) if self.password else None},
                 'user-authenticate')
             if not result.row_count:
                 self._reset()
@@ -252,14 +238,11 @@ class User:
             timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
 
     async def _ldap_auth(self) -> bool:
-        """Authenticate via LDAP
-
-        Returns `True` if the user has authenticated
-
-        """
+        """Authenticate via LDAP"""
         if not self.password:
             LOGGER.debug('Can not LDAP authenticate without a password')
             return False
+        LOGGER.debug('Authenticating via LDAP')
         self._conn = await self._ldap.connect(self.username, self.password)
         if self._conn:
             LOGGER.debug('Authenticated as %s', self.username)
@@ -320,12 +303,8 @@ class User:
         self.groups = []
 
     async def _token_auth(self) -> bool:
-        """Validate via v1.authentication_tokens table.
-
-        Returns `True` if the token is valid.
-
-        """
-        LOGGER.debug('Authenticating with token: %r', self.token)
+        """Validate via v1.authentication_tokens table"""
+        LOGGER.debug('Authenticating with token: %s', self.token)
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
             result = await conn.execute(

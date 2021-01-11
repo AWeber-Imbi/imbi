@@ -66,10 +66,50 @@ export LDAP_GROUPS_DN=ou=groups,dc=example,dc=org
 export LDAP_USERS_DN=ou=users,dc=example,dc=org
 export LDAP_USERNAME=cn
 export LDAP_POOLSIZE=5
-export NUMBER_OF_PROCS=1
 export SESSION_REDIS_URL=redis://${TEST_HOST}:$(get_exposed_port redis 6379)/0
 export STATS_REDIS_URL=redis://${TEST_HOST}:$(get_exposed_port redis 6379)/1
 export POSTGRES_URL=postgres://postgres@${TEST_HOST}:$(get_exposed_port postgres 5432)/postgres
 EOF
+
+cat > build/test.yaml <<EOF
+---
+ldap:
+  enabled: true
+  host: ${TEST_HOST}
+  port: $(get_exposed_port ldap 389)
+  ssl: false
+  groups_dn: ou=groups,dc=example,dc=org
+  users_dn: ou=users,dc=example,dc=org
+  username: cn
+  pool_size: 5
+postgres:
+  url: postgres://postgres@${TEST_HOST}:$(get_exposed_port postgres 5432)/postgres
+session:
+  redis_url: redis://${TEST_HOST}:$(get_exposed_port redis 6379)/0
+stats:
+  redis_url: redis://${TEST_HOST}:$(get_exposed_port redis 6379)/1
+logging:
+  version: 1
+  formatters:
+    verbose:
+      format: "%(levelname) -10s %(asctime)s %(process)-6d %(processName) -25s %(name) -20s %(funcName) -25s: %(message)s"
+      datefmt: "%Y-%m-%d %H:%M:%S"
+  handlers:
+    console:
+      class: logging.StreamHandler
+      formatter: verbose
+  loggers:
+    imbi:
+      level: INFO
+      propagate: true
+      handlers: [console]
+    tornado:
+      level: INFO
+      propagate: true
+      handlers: [console]
+  disable_existing_loggers: true
+  incremental: false
+EOF
+
 
 printf "\nBootstrap complete\n\n"

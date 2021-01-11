@@ -22,9 +22,9 @@ class Stats:
     collector.
 
     """
-    def __init__(self, redis_pool: aioredis.ConnectionsPool):
+    def __init__(self, client: aioredis.Redis):
         """Create a new instance of the Stats class"""
-        self._pool = aioredis.Redis(redis_pool)
+        self._client = client
 
     async def decr(self, key, value=1):
         """Decrement a counter
@@ -33,7 +33,7 @@ class Stats:
         :param int value: The value to decrement by
 
         """
-        await self._pool.decrby('c:{}'.format(key), value)
+        await self._client.decrby('c:{}'.format(key), value)
 
     async def incr(self, key, value=1):
         """Increment a counter
@@ -42,7 +42,7 @@ class Stats:
         :param int value: The value to increment by
 
         """
-        await self._pool.incrby('c:{}'.format(key), value)
+        await self._client.incrby('c:{}'.format(key), value)
 
     async def add_duration(self, key, value):
         """Add a duration for the specified key
@@ -51,7 +51,7 @@ class Stats:
         :param float value: The value
 
         """
-        await self._pool.lpush(
+        await self._client.lpush(
             'd:{}'.format(key), '{},{}'.format(
                 timestamp.isoformat(), value))
 
@@ -77,14 +77,14 @@ class Stats:
 
         """
         counters = {}
-        keys = await self._pool.keys('c:*')
+        keys = await self._client.keys('c:*')
         LOGGER.debug('Counters: %r', keys)
         if keys:
-            values = await self._pool.mget(*keys)
+            values = await self._client.mget(*keys)
             for offset, key in enumerate(keys):
                 counters[key[2:].decode('utf-8')] = int(values[offset])
             if flush:
-                self._pool.delete(*keys)
+                self._client.delete(*keys)
         return counters
 
     async def durations(self, flush=False):
@@ -95,15 +95,15 @@ class Stats:
 
         """
         durations = {}
-        keys = await self._pool.keys('d:*')
+        keys = await self._client.keys('d:*')
         LOGGER.debug('Durations: %r', keys)
         for key in keys:
-            values = await self._pool.lrange(key, 0, -1)
+            values = await self._client.lrange(key, 0, -1)
             values = [v.decode('utf-8') for v in values]
             durations[key[2:].decode('utf-8')] = \
                 [(r.split(',')[0], float(r.split(',')[1])) for r in values]
             if flush:
-                await self._pool.delete(key)
+                await self._client.delete(key)
         return durations
 
 

@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 
-from imbi import common, timestamp, user
+from imbi import timestamp, user
 
 LOGGER = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class Session:
             return
 
         if 'password' in data['user']:
-            data['user']['password'] = common.decrypt_value(
+            data['user']['password'] = self._handler.application.decrypt_value(
                 'password', data['user']['password']).decode('utf-8')
 
         user_obj = user.User(self._handler.application)
