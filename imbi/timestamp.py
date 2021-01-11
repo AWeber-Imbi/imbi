@@ -7,13 +7,29 @@ import typing
 from email import utils
 
 import arrow
+import iso8601
 from dateutil import tz
+
+
+class ISO8601Formatter:
+
+    @staticmethod
+    def validate(value) -> bool:
+        try:
+            iso8601.parse_date(value)
+        except iso8601.ParseError:
+            return False
+        return True
+
+    @staticmethod
+    def unmarshal(value):
+        return iso8601.parse_date(value)
 
 
 def age(value: typing.Union[datetime.datetime, str]) -> datetime.timedelta:
     """Return the age of a timestamp as a datetime.timedelta"""
     if isinstance(value, str):
-        return utcnow() - arrow.get(value).datetime
+        return utcnow() - iso8601.parse_date(value).datetime
     return utcnow() - value
 
 
@@ -33,7 +49,7 @@ def isoformat(value: typing.Optional[datetime.datetime] = None) -> str:
 
 def parse(value: str) -> datetime.datetime:
     """Parse an ISO-8601 formatted timestamp"""
-    return arrow.get(value).datetime
+    return iso8601.parse_date(value)
 
 
 def parse_rfc822(value: str) -> typing.Optional[datetime.datetime]:

@@ -1,0 +1,31 @@
+---
+postgres:
+  url: postgresql://postgres@locahost:5432/postgres
+  min_pool_size: 1
+  max_pool_size: 10
+  connect_timeout: 3
+  timeout: 10
+
+redis_url: redis://redis:6379/0
+
+logging:
+  version: 1
+  formatters:
+    verbose:
+      format: "%(levelname) -10s %(asctime)s %(process)-6d %(name) -20s %(funcName) -25s: %(message)s"
+      datefmt: "%Y-%m-%d %H:%M:%S"
+  handlers:
+    console:
+      class: logging.StreamHandler
+      formatter: verbose
+  loggers:
+    imbi:
+      level: INFO
+      propagate: true
+      handlers: [console]
+    tornado:
+      level: INFO
+      propagate: true
+      handlers: [console]
+  disable_existing_loggers: true
+  incremental: false
