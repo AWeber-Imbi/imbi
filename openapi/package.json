@@ -1,0 +1,18 @@
+{
+  "name": "imbi-openapi",
+  "description": "Composable OpenAPI spec for Imbi",
+  "repository": {
+    "type": "git",
+    "url": "https://gitlab.com/AWeber/imbi"
+  },
+  "author": "Gavin M. Roy",
+  "license": "BSD-3-Clause",
+  "scripts": {
+    "build": "swagger-cli bundle src/main.yaml  --outfile ../imbi/templates/openapi.yaml --type yaml",
+    "validate": "swagger-cli validate src/main.yaml"
+  },
+  "devDependencies": {
+    "openapi-types": ">=7",
+    "swagger-cli": "^4.0.4"
+  }
+}

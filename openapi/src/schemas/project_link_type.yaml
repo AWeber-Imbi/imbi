@@ -1,0 +1,14 @@
+title: Link Type
+description: Used to describe the types of project deployment systems
+type: object
+properties:
+  link_type:
+    description: The display name for a link type
+    type: string
+  icon_class:
+    description: Font Awesome UI icon class
+    type: string
+required:
+  - name
+  - icon_class
+additionalProperties: false

@@ -1,0 +1,38 @@
+paths:
+  collection:
+    get:
+      description: Retrieve the collection of links for a project
+      summary: Get Links
+      tags: [Projects]
+      parameters:
+        - name: id
+          in: path
+          description: Project ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success
+          headers:
+            Cache-Control: {$ref: '../components/headers.yaml#/Cache-Control'}
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/project_link.yaml'
+              examples:
+                records:
+                  summary: Multiple group records
+                  value:
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      link_type: Documentation
+                      url: https://imbi.readthedocs.io
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      link_type: Repository
+                      url: https://gitlab.com/AWeber/Imbi
+            application/msgpack:
+              <<: *responseContent
+      security: [{apiKey: []}, {session: []}]

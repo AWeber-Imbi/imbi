@@ -1,0 +1,15 @@
+title: Project Link
+description: Links related to the project
+type: object
+properties:
+  link_type:
+    description: The type of link (Repository, Documentation, Dashboard, etc)
+    type: string
+  url:
+    description: The link URL
+    type: string
+    format: uri
+required:
+  - link_type
+  - url
+additionalProperties: false

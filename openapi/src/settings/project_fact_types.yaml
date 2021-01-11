@@ -1,0 +1,48 @@
+paths:
+  collection:
+    get:
+      description: Retrieve the collection of project fact types
+      summary: Get Project Fact Types
+      tags: [Settings]
+      responses:
+        "200":
+          description: Success
+          headers:
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/project_fact_type.yaml'
+              examples:
+                records:
+                  summary: Multiple project fact type records
+                  value:
+                    - id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      project_type: Consumer
+                      name: Programming Language
+                      weight: 25
+                    - id: 1f04d510-6a24-4be8-9536-27b61df7f1b7
+                      project_type: Consumer
+                      name: Test Coverage
+                      weight: 25
+                    - id: cb4396b0-07c4-40df-a5ab-6a79cdafce0f
+                      project_type: Consumer
+                      name: Deployed to all Environments
+                      weight: 20
+                    - id: 5f818763-7181-40d6-aeef-1e561d7a9f13
+                      project_type: Consumer
+                      name: Has Acceptance Tests
+                      weight: 10
+                    - id: bb3a7869-16d8-4475-977a-33efceb4be26
+                      project_type: Consumer
+                      name: Meets Current Standards
+                      weight: 10
+                    - id: fb7bfb6a-9b9b-4c52-849a-b6fab8e49950
+                      project_type: Consumer
+                      name: Has working CI pipeline
+                      weight: 10
+            application/msgpack:
+              <<: *responseContent
+      security: [{apiKey: []}, {session: []}]

@@ -1,0 +1,24 @@
+title: Project Fact Type
+description: |
+  Defines types of facts that can be recorded about a project
+type: object
+properties:
+  id:
+    type: string
+    format: uuid
+  project_type:
+    description: The type of project the fact is associated with
+    type: string
+  name:
+    description: The display name of the fact type
+    type: string
+  weight:
+    description: The weight of the fact type when computing a project score
+    type: number
+    default: 0
+required:
+  - id
+  - project_type
+  - name
+  - weight
+additionalProperties: false

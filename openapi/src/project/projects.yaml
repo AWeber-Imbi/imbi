@@ -1,0 +1,35 @@
+paths:
+  collection:
+    get:
+      description: Retrieve the collection of projects
+      summary: Get Projects
+      tags: [Projects]
+      responses:
+        "200":
+          description: Success
+          headers:
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/project.yaml'
+              examples:
+                records:
+                  summary: Multiple project records
+                  value:
+                    - id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+                      name: User Service
+                      slug: user
+                      description: |-
+                        The user service is used to manage user specific data, including profiles and content.
+                      owned_by: User Experience
+                      project_type: HTTP API
+                      data_center: us-east-1
+                      configuration_system: SSM Parameter Store
+                      deployment_type: ecs-pipeline-deploy
+                      orchestration_system: ECS
+            application/msgpack:
+              <<: *responseContent
+      security: [{apiKey: []}, {session: []}]

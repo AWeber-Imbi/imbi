@@ -1,0 +1,48 @@
+title: Project
+description: Describes a project managed by Imbi
+type: object
+properties:
+  id:
+    description: A unique ID for the project
+    type: string
+    format: uuid
+  name:
+    description: The project name
+    type: string
+  slug:
+    description: The project URL slug (In GitLab and other projects)
+    type: string
+  description:
+    description: Long for description of the project
+    type: string
+    nullable: true
+  owned_by:
+    description: The team that owns/is responsible for the project
+    type: string
+  project_type:
+    description: The project type (API, Consumer, Database, etc)
+    type: string
+  data_center:
+    description: The data center the project runs in
+    type: string
+    nullable: true
+  configuration_system:
+    description: The system used to configure the project (Ansible, Consul, etc)
+    type: string
+    nullable: true
+  deployment_type:
+    description: How the project is deployed (Jenkins, GitLab-CI, etc)
+    type: string
+    nullable: true
+  orchestration_system:
+    description: TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)
+    type: string
+    nullable: true
+required:
+  - id
+  - name
+  - slug
+  - owned_by
+  - data_center
+  - project_type
+additionalProperties: false

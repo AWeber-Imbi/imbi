@@ -1,0 +1,36 @@
+paths:
+  collection:
+    get:
+      description: Retrieve the collection of dependencies for a project
+      summary: Get Dependencies
+      tags: [Projects]
+      parameters:
+        - name: id
+          in: path
+          description: Project ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Success
+          headers:
+            Cache-Control: {$ref: '../components/headers.yaml#/Cache-Control'}
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/project_dependency.yaml'
+              examples:
+                records:
+                  summary: Multiple records
+                  value:
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      dependency_id: adce0e08-99d5-47e7-9f6b-931214e20724
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      dependency_id: 2ab8d72b-eacf-4521-8780-559008d075ae
+            application/msgpack:
+              <<: *responseContent
+      security: [{apiKey: []}, {session: []}]
