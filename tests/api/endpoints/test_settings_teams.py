@@ -1,12 +1,12 @@
 import json
 import uuid
 
-from tests import common
+from tests import base
 
 
-class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
+class AsyncHTTPTestCase(base.TestCaseWithReset):
 
-    ADMIN = True
+    ADMIN_ACCESS = True
 
     def test_teams(self):
         # Setup test values

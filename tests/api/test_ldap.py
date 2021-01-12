@@ -2,12 +2,13 @@ import ldap3
 from tornado import testing
 
 from imbi import ldap
+from tests import base
 
 LDAP_USER = 'test'
 LDAP_PASSWORD = 'password'
 
 
-class ClientTestCase(testing.AsyncTestCase):
+class ClientTestCase(base.TestCase):
 
     @staticmethod
     def get_user_dn(conn):
@@ -16,7 +17,7 @@ class ClientTestCase(testing.AsyncTestCase):
 
     @testing.gen_test
     async def test_attributes(self):
-        client = ldap.Client()
+        client = ldap.Client(self.settings['ldap'])
         conn = await client.connect(LDAP_USER, LDAP_PASSWORD)
         self.assertIsInstance(conn, ldap3.Connection)
         attributes = await client.attributes(conn, self.get_user_dn(conn))
@@ -27,7 +28,7 @@ class ClientTestCase(testing.AsyncTestCase):
 
     @testing.gen_test
     async def test_groups(self):
-        client = ldap.Client()
+        client = ldap.Client(self.settings['ldap'])
         conn = await client.connect(LDAP_USER, LDAP_PASSWORD)
         self.assertIsInstance(conn, ldap3.Connection)
         groups = await client.groups(conn, self.get_user_dn(conn))

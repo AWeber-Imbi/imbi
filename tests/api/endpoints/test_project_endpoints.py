@@ -5,12 +5,12 @@ import jsonpatch
 from ietfparse import headers
 
 from imbi.endpoints.project import link, project
-from tests import common
+from tests import base
 
 
-class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
+class AsyncHTTPTestCase(base.TestCaseWithReset):
 
-    ADMIN = True
+    ADMIN_ACCESS = True
 
     def setUp(self):
         super().setUp()
@@ -125,6 +125,7 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
         result = self.fetch('/project/', method='POST',
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
+
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
@@ -326,8 +327,8 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
                             method='POST',
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
-        link_record = json.loads(result.body.decode('utf-8'))
         self.assertEqual(result.code, 200)
+        link_record = json.loads(result.body.decode('utf-8'))
 
         parsed = headers.parse_link(result.headers['Link'])
         link_url = parsed[0].target
@@ -355,6 +356,7 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
 
         result = self.fetch(
             link_url, method='PATCH', body=patch_value, headers=self.headers)
+
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, link_url)
         self.assertDictEqual(json.loads(result.body.decode('utf-8')), updated)

@@ -4,12 +4,12 @@ import uuid
 import jsonpatch
 
 from imbi.endpoints.admin import deployment_types
-from tests import common
+from tests import base
 
 
-class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
+class AsyncHTTPTestCase(base.TestCaseWithReset):
 
-    ADMIN = True
+    ADMIN_ACCESS = True
 
     def test_deployment_type_lifecycle(self):
         record = {
@@ -93,7 +93,8 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
 
     def test_create_with_missing_fields(self):
         record = {
-            'name': str(uuid.uuid4())
+            'name': str(uuid.uuid4()),
+            'icon_class': 'fas fa-blind'
         }
         result = self.fetch('/admin/deployment_type', method='POST',
                             body=json.dumps(record).encode('utf-8'),

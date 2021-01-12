@@ -1,17 +1,10 @@
-import asyncio
-import contextlib
-import os
 import unittest
 import uuid
 
-from aiopg import pool
-from psycopg2 import extras
 from tornado import testing
 
-from imbi import app, common, timestamp, user
-
-LDAP_USERNAME = 'test'
-LDAP_PASSWORD = 'password'
+from imbi import timestamp, user
+from tests import base
 
 
 class GroupTestCase(unittest.TestCase):
@@ -19,8 +12,9 @@ class GroupTestCase(unittest.TestCase):
     def test_as_dict(self):
         name = str(uuid.uuid4())
         permissions = [str(uuid.uuid4()), str(uuid.uuid4())]
-        self.assertDictEqual(dict(user.Group(name, permissions)),
-                             {'name': name, 'permissions': permissions})
+        self.assertDictEqual(
+            dict(user.Group(name, permissions)),
+            {'name': name, 'permissions': permissions})
 
     def test_repr(self):
         name = str(uuid.uuid4())
@@ -31,67 +25,7 @@ class GroupTestCase(unittest.TestCase):
             '<Group name={} permissions={}>'.format(name, permissions))
 
 
-class AsyncTestCase(testing.AsyncTestCase):
-
-    SQL_INSERT_TOKEN = """\
-    INSERT INTO v1.authentication_tokens (token, username)
-         VALUES (%(token)s, %(username)s);"""
-
-    def setUp(self):
-        super().setUp()
-        self.app = None
-        self.postgres = None
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        self.io_loop.add_callback(self.async_setup)
-        self.io_loop.start()
-
-    def tearDown(self) -> None:
-        self.io_loop.add_callback(self.async_teardown)
-        self.io_loop.start()
-        super().tearDown()
-
-    async def async_setup(self):
-        self.app = app.make_application()
-        self.postgres = pool.Pool(
-            dsn=os.environ.get(
-                'POSTGRES_URL',
-                'postgres://postgres@localhost:5432/postgres'),
-            minsize=1,
-            maxsize=int(os.environ.get('POSTGRES_MAX_POOL_SIZE', '25')),
-            loop=self.loop,
-            timeout=pool.TIMEOUT,
-            enable_hstore=True,
-            enable_json=True,
-            enable_uuid=True,
-            echo=False,
-            on_connect=None,
-            pool_recycle=-1)
-        for cb in self.app.runner_callbacks.get('on_start', []):
-            await cb(self.app, self.io_loop)
-        self.io_loop.stop()
-
-    async def async_teardown(self):
-        for cb in self.app.runner_callbacks.get('shutdown', []):
-            await cb(self.io_loop)
-        self.postgres.close()
-        await self.postgres.wait_closed()
-        self.io_loop.stop()
-
-    @contextlib.asynccontextmanager
-    async def cursor(self):
-        """Return a Postgres cursor for the pool
-
-        :rtype: psycopg2.extensions.cursor
-
-        """
-        async with self.postgres.acquire() as conn:
-            async with conn.cursor(
-                    cursor_factory=extras.RealDictCursor) as cursor:
-                yield cursor
-
-
-class InternalTestCase(AsyncTestCase):
+class InternalTestCase(base.TestCase):
 
     SQL_INSERT_GROUP = """\
     INSERT INTO v1.groups ("name", permissions)
@@ -123,8 +57,9 @@ class InternalTestCase(AsyncTestCase):
 
     async def setup_group_membership(self, username, group):
         async with self.cursor() as cursor:
-            await cursor.execute(self.SQL_INSERT_GROUP_MEMBERSHIP,
-                                 {'group': group, 'username': username})
+            await cursor.execute(
+                self.SQL_INSERT_GROUP_MEMBERSHIP,
+                {'group': group, 'username': username})
 
     async def setup_user(self, values=None):
         if not values:
@@ -134,13 +69,10 @@ class InternalTestCase(AsyncTestCase):
         values.setdefault('email_address', '{}@{}'.format(
             str(uuid.uuid4()), str(uuid.uuid4())))
         values.setdefault('last_seen_at', timestamp.utcnow())
-
         password = values.get('password', str(uuid.uuid4()))
-        values['password'] = common.encrypt_value('password', password)
-
+        values['password'] = self._app.encrypt_value('password', password)
         async with self.cursor() as cursor:
             await cursor.execute(self.SQL_INSERT_USER, values)
-
         values['password'] = password
         return values
 
@@ -152,7 +84,7 @@ class InternalTestCase(AsyncTestCase):
             user_value['username'], group_value['name'])
 
         obj = user.User(
-            self.app, user_value['username'], user_value['password'])
+            self._app, user_value['username'], user_value['password'])
         self.assertTrue(await obj.authenticate())
 
         values = obj.as_dict()
@@ -181,8 +113,9 @@ class InternalTestCase(AsyncTestCase):
     async def test_password_is_decrypted_on_assignment(self):
         username = str(uuid.uuid4())
         password = str(uuid.uuid4())
-        obj = user.User(self.app, username,
-                        common.encrypt_value('password', password))
+        obj = user.User(
+            self._app, username,
+            self._app.encrypt_value('password', password))
         self.assertEqual(obj.password, password)
 
     @testing.gen_test
@@ -193,7 +126,7 @@ class InternalTestCase(AsyncTestCase):
             user_value['username'], group_value['name'])
 
         obj = user.User(
-            self.app, user_value['username'], user_value['password'])
+            self._app, user_value['username'], user_value['password'])
         self.assertTrue(await obj.authenticate())
 
         display_name = str(uuid.uuid4())
@@ -229,7 +162,7 @@ class InternalTestCase(AsyncTestCase):
     async def test_reset_on_authentication_failure(self):
         user_value = await self.setup_user()
         obj = user.User(
-            self.app, user_value['username'], user_value['password'])
+            self._app, user_value['username'], user_value['password'])
         self.assertTrue(await obj.authenticate())
         for key in {'display_name', 'email_address'}:
             self.assertEqual(user_value[key], getattr(obj, key))
@@ -241,36 +174,22 @@ class InternalTestCase(AsyncTestCase):
     @testing.gen_test
     async def test_token_authentication(self):
         user_value = await self.setup_user()
-
-        token = str(uuid.uuid4())
-        async with self.cursor() as cursor:
-            await cursor.execute(
-                self.SQL_INSERT_TOKEN,
-                {'username': user_value['username'], 'token': token})
-
-        obj = user.User(self.app, None, None, token)
+        token = await self.get_token(user_value['username'])
+        obj = user.User(self._app, None, None, token)
         self.assertTrue(await obj.authenticate())
         for key in {'display_name', 'email_address'}:
             self.assertEqual(user_value[key], getattr(obj, key))
 
     @testing.gen_test
     async def test_token_authentication_failure(self):
-        user_value = await self.setup_user()
-
-        token = str(uuid.uuid4())
-        async with self.cursor() as cursor:
-            await cursor.execute(
-                self.SQL_INSERT_TOKEN,
-                {'username': user_value['username'], 'token': token})
-
-        obj = user.User(self.app, None, None, str(uuid.uuid4()))
+        obj = user.User(self._app, 'foo', None, str(uuid.uuid4()))
         self.assertFalse(await obj.authenticate())
 
     @testing.gen_test
     async def test_should_refresh_false(self):
         user_value = await self.setup_user()
         obj = user.User(
-            self.app, user_value['username'], user_value['password'])
+            self._app, user_value['username'], user_value['password'])
         self.assertTrue(await obj.authenticate())
         self.assertFalse(obj.should_refresh)
 
@@ -278,7 +197,7 @@ class InternalTestCase(AsyncTestCase):
     async def test_should_refresh_true(self):
         user_value = await self.setup_user()
         obj = user.User(
-            self.app, user_value['username'], user_value['password'])
+            self._app, user_value['username'], user_value['password'])
         self.assertTrue(await obj.authenticate())
         self.assertFalse(obj.should_refresh)
         obj.last_refreshed_at = timestamp.utcnow() - (obj.REFRESH_AFTER * 2)
@@ -288,14 +207,17 @@ class InternalTestCase(AsyncTestCase):
     async def test_update_last_seen_at(self):
         user_value = await self.setup_user()
         obj = user.User(
-            self.app, user_value['username'], user_value['password'])
+            self._app, user_value['username'], user_value['password'])
         self.assertTrue(await obj.authenticate())
         last_seen_at = obj.last_seen_at
         await obj.update_last_seen_at()
         self.assertGreater(obj.last_seen_at, last_seen_at)
 
 
-class LDAPTestCase(AsyncTestCase):
+class LDAPTestCase(base.TestCase):
+
+    LDAP_USERNAME = 'test'
+    LDAP_PASSWORD = 'password'
 
     @staticmethod
     def get_user_dn(conn):
@@ -304,7 +226,7 @@ class LDAPTestCase(AsyncTestCase):
 
     @testing.gen_test
     async def test_authenticate(self):
-        obj = user.User(self.app, LDAP_USERNAME, LDAP_PASSWORD)
+        obj = user.User(self._app, self.LDAP_USERNAME, self.LDAP_PASSWORD)
         self.assertTrue(await obj.authenticate())
 
         await obj.refresh()
@@ -333,44 +255,38 @@ class LDAPTestCase(AsyncTestCase):
 
     @testing.gen_test
     async def test_authentication_failure_without_password(self):
-        obj = user.User(self.app, LDAP_USERNAME)
+        obj = user.User(self._app, self.LDAP_USERNAME)
         self.assertFalse(await obj.authenticate())
 
     @testing.gen_test
     async def test_reset_on_authentication_failure(self):
-        obj = user.User(self.app, LDAP_USERNAME, LDAP_PASSWORD)
+        obj = user.User(self._app, self.LDAP_USERNAME, self.LDAP_PASSWORD)
         self.assertTrue(await obj.authenticate())
         for key in {'display_name', 'email_address', 'external_id'}:
             self.assertIsNotNone(getattr(obj, key))
-        obj = user.User(self.app, LDAP_USERNAME, str(uuid.uuid4()))
+        obj = user.User(self._app, self.LDAP_USERNAME, str(uuid.uuid4()))
         self.assertFalse(await obj.authenticate())
         for key in {'display_name', 'email_address', 'external_id'}:
             self.assertIsNone(getattr(obj, key))
 
     @testing.gen_test
     async def test_token_authentication(self):
-        obj1 = user.User(self.app, LDAP_USERNAME, LDAP_PASSWORD)
+        obj1 = user.User(self._app, self.LDAP_USERNAME, self.LDAP_PASSWORD)
         self.assertTrue(await obj1.authenticate())
-
-        token = str(uuid.uuid4())
-        async with self.cursor() as cursor:
-            await cursor.execute(
-                self.SQL_INSERT_TOKEN,
-                {'username': obj1.username, 'token': token})
-
-        obj2 = user.User(self.app, None, None, token)
+        token = await self.get_token(self.LDAP_USERNAME)
+        obj2 = user.User(self._app, None, None, token)
         self.assertTrue(await obj2.authenticate())
         self.assertEqual(obj1.username, obj2.username)
 
     @testing.gen_test
     async def test_should_refresh_false(self):
-        obj = user.User(self.app, LDAP_USERNAME, LDAP_PASSWORD)
+        obj = user.User(self._app, self.LDAP_USERNAME, self.LDAP_PASSWORD)
         self.assertTrue(await obj.authenticate())
         self.assertFalse(obj.should_refresh)
 
     @testing.gen_test
     async def test_should_refresh_true(self):
-        obj = user.User(self.app, LDAP_USERNAME, LDAP_PASSWORD)
+        obj = user.User(self._app, self.LDAP_USERNAME, self.LDAP_PASSWORD)
         self.assertTrue(await obj.authenticate())
         self.assertFalse(obj.should_refresh)
         obj.last_refreshed_at = timestamp.utcnow() - (obj.REFRESH_AFTER * 2)
