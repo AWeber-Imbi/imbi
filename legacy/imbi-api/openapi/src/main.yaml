@@ -54,7 +54,7 @@ paths:
   /admin/team/{name}: {$ref: 'admin/team.yaml#/paths/manage'}
 
   /projects: {"$ref": "project/projects.yaml#/paths/collection"}
-  /project: {"$ref": "project/project.yaml#/paths/create"}
+  /project/: {"$ref": "project/project.yaml#/paths/create"}
   /project/{id}: {"$ref": "project/project.yaml#/paths/manage"}
   /project/{id}/dependencies: {"$ref": "project/dependencies.yaml#/paths/collection"}
   /project/{id}/dependency: {"$ref": "project/dependency.yaml#/paths/create"}
