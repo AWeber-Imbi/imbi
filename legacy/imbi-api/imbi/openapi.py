@@ -103,7 +103,8 @@ def _get_openapi_spec(settings: dict) -> models.Spec:
 
     """
     rendered = pathlib.Path(tempfile.gettempdir()) / 'imbi-openapi.yaml'
-    if not rendered.exists() and not settings.get('debug'):
+    if not rendered.exists() or settings.get('debug'):
+        LOGGER.debug('Rendering %s', rendered)
         loader = template.Loader(str(settings['template_path']))
         spec_str = loader.load('openapi.yaml').generate(**{
             'settings': settings
