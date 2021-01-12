@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>{{ settings['service'].capitalize() }} {{ settings['version'] }}</title>
+    <title>Imbi &mdash; API Documentation</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
       body {margin: 0;padding: 0;}
@@ -9,6 +9,6 @@
   </head>
   <body>
     <redoc spec-url="/api-docs/openapi.yaml?{{ settings['version'] }}"></redoc>
-    <script src="{{ static_url('redoc.standalone.js' }}"></script>
+    <script src="{{ static_url('redoc.standalone.js') }}"></script>
   </body>
 </html>

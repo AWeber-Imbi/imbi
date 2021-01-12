@@ -1,30 +1,26 @@
 {% set include_js = True %}
-{% import imbi.common %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ handler.application.settings['service'] }} &mdash; {% block title %}Tile{% end %}</title>
+    <title>Imbi &mdash; {% block title %}Tile{% end %}</title>
     <link rel="icon" href="{{ static_url('images/logo.ico') }}">
     <link rel="stylesheet" href="{{ static_url('css/backend.css') }}">
   </head>
   <body>
     <div id="app"
          data-logo="{{ static_url('images/logo.png') }}"
-         data-service="{{ handler.application.settings['service'] }}"
-         data-ldap="{{ str(imbi.common.ldap_enabled()).lower() }}"
+         data-service="Imbi"
+         data-ldap="{{ str(handler.application.settings['ldap']['enabled']).lower() }}"
          data-version="{{ handler.application.settings['version'] }}">
       <h1>
-        <img src="{{ static_url('images/logo.png') }}" alt="{{ handler.application.settings['service'] }}" />
+        <img src="{{ static_url('images/logo.png') }}" alt="Imbi" />
       </h1>
       <div>
         {% block content %}
-        <p>$ load "imbi.js", 8, 1<p>
-        <p class="loading">
-          Loading {{ handler.application.settings['service'] }} v{{ handler.application.settings['version'] }} <span class="blink">&hellip;</span>
-        </p>
+        Unextend Base
         {% end %}
       </div>
     </div>
