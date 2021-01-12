@@ -58,9 +58,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             method='POST', body=json.dumps(record).encode('utf-8'),
             headers=self.headers)
 
-        import pprint
-        pprint.pprint(json.loads(result.body.decode('utf-8')))
-
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
