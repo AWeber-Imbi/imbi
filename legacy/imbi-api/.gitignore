@@ -11,7 +11,6 @@ ddl.sql
 imbi/static/
 imbi/static/fonts/
 imbi/static/*.js
-imbi/templates/openapi.yaml
 openapi/node_modules/
 ui/coverage/
 ui/node_modules/

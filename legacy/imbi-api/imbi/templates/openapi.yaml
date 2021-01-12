@@ -1,0 +1,3455 @@
+openapi: 3.0.3
+info:
+  title: Imbi
+  description: Imbi is an operational management platform for medium to large environments.
+  license:
+    name: BSD 3-Clause
+    url: 'https://opensource.org/licenses/BSD-3-Clause'
+  version: '{{ settings["version"] }}'
+  contact:
+    name: AWeber
+    url: 'https://github.com/aweber/imbi'
+  x-logo:
+    url: /static/images/logo.png
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      description: Uses an API key generated for a user to authenticate each API request
+      in: header
+      name: Private-Token
+    session:
+      type: apiKey
+      description: Uses the session cookie of an authenticated user to authenticate each API request
+      in: cookie
+      name: session
+paths:
+  /admin/configuration_system:
+    post:
+      summary: Create Record
+      description: Create a new configuration system record
+      requestBody:
+        description: The configuration system record to create
+        content:
+          application/json:
+            schema:
+              title: Configuration System
+              description: Configuration Management or Storage System
+              type: object
+              properties:
+                name:
+                  description: The display name for a configuration system
+                  type: string
+                description:
+                  description: A description of the configuration system
+                  type: string
+                  nullable: true
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+              required:
+                - name
+                - icon_class
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full configuration system record
+                value:
+                  name: Consul
+                  description: Feature rich key/value store to easily configure projects
+                  icon_class: fas fa-blind
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full configuration system record
+                value:
+                  name: Consul
+                  description: Feature rich key/value store to easily configure projects
+                  icon_class: fas fa-blind
+      tags:
+        - Configuration Systems
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the configuration system was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/configuration_system/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve a configuration system record
+      tags:
+        - Configuration Systems
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1configuration_system/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update a configuration system, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Configuration Systems
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1configuration_system/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove a configuration system record
+      tags:
+        - Configuration Systems
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Configuration System Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/cookie_cutter:
+    post:
+      summary: Create Record
+      description: Create a new cookie cutter record
+      requestBody:
+        description: The cookie cutter record to create
+        content:
+          application/json:
+            schema:
+              title: Cookie Cutter
+              description: Used to describe the cookie cutters available when creating a project
+              type: object
+              properties:
+                name:
+                  description: The display name for a cookiecutter
+                  type: string
+                type:
+                  description: The type of cookie cutter
+                  type: string
+                  enum:
+                    - project
+                    - dashboard
+                project_type:
+                  description: The project type associated with the cookie cutter
+                  type: string
+                description:
+                  description: A description of the cookie cutter
+                  type: string
+                  nullable: true
+                url:
+                  description: The git URL to the cookie cutter
+                  type: string
+              required:
+                - name
+                - type
+                - project_type
+                - url
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full cookie cutter record
+                value:
+                  name: k8s-rejected-consumer
+                  type: project
+                  project_type: Consumer
+                  description: A rejected consumer that runs in Kubernetes
+                  url: 'https://gitlab.com/aweber/cookiecutters/k8s-rejected-consumer.git'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full cookie cutter record
+                value:
+                  name: k8s-rejected-consumer
+                  type: project
+                  project_type: Consumer
+                  description: A rejected consumer that runs in Kubernetes
+                  url: 'https://gitlab.com/aweber/cookiecutters/k8s-rejected-consumer.git'
+      tags:
+        - Cookie Cutters
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the cookie cutter was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/cookie_cutter/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve a cookie cutter record
+      tags:
+        - Cookie Cutters
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1cookie_cutter/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: |-
+        Update a cookie cutter, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Cookie Cutters
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1cookie_cutter/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove a cookie cutter record
+      tags:
+        - Cookie Cutters
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Cookie Cutter Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/data_center:
+    post:
+      summary: Create Record
+      description: Create a new data center record
+      requestBody:
+        description: The data center record to create
+        content:
+          application/json:
+            schema:
+              title: Data Center
+              description: |-
+                A large group of networked computer servers typically used by
+                organizations for the remote storage, processing, or distribution of
+                large amounts of data.
+              type: object
+              properties:
+                name:
+                  description: The display name for a data center
+                  type: string
+                description:
+                  description: A description of the data center
+                  type: string
+                  nullable: true
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+              required:
+                - name
+                - icon_class
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full data center record
+                value:
+                  name: us-east-1
+                  description: US East (N. Virginia)
+                  icon_class: fab fa-aws
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full data center record
+                value:
+                  name: us-east-1
+                  description: US East (N. Virginia)
+                  icon_class: fab fa-aws
+      tags:
+        - Data Centers
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the data center was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/data_center/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve a data center record
+      tags:
+        - Data Centers
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1data_center/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update a data center, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Data Centers
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1data_center/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove a data center record
+      tags:
+        - Data Centers
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Data Center Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/deployment_type:
+    post:
+      summary: Create Record
+      description: Create a new deployment type record
+      requestBody:
+        description: The deployment type record to create
+        content:
+          application/json:
+            schema:
+              title: Deployment Type
+              description: Used to describe the types of project deployment systems
+              type: object
+              properties:
+                name:
+                  description: The display name for a deployment type
+                  type: string
+                description:
+                  description: A description of the deployment type
+                  type: string
+                  nullable: true
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+              required:
+                - name
+                - icon_class
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full deployment type record
+                value:
+                  name: gitlab-ci
+                  description: Helm
+                  icon_class: fab fa-aws
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full deployment type record
+                value:
+                  name: gitlab-ci
+                  description: Helm
+                  icon_class: fab fa-aws
+      tags:
+        - Deployment Types
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the deployment type was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/deployment_type/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve a deployment type record
+      tags:
+        - Deployment Types
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1deployment_type/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update a deployment type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Deployment Types
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1deployment_type/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove a deployment type record
+      tags:
+        - Deployment Types
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Deployment Type Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/environment:
+    post:
+      summary: Create Record
+      description: Create a new environment record
+      requestBody:
+        description: The environment record to create
+        content:
+          application/json:
+            schema:
+              title: Environment
+              description: Used to describe the types of project deployment systems
+              type: object
+              properties:
+                name:
+                  description: The display name for a environment
+                  type: string
+                description:
+                  description: A description of the environment
+                  type: string
+                  nullable: true
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+              required:
+                - name
+                - icon_class
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full environment record
+                value:
+                  name: testing
+                  description: |
+                    The testing environment reflects the state of HEAD state of the
+                    master branch in our Git Repositories for all projects
+                  icon_class: fab fa-aws
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full environment record
+                value:
+                  name: testing
+                  description: |
+                    The testing environment reflects the state of HEAD state of the
+                    master branch in our Git Repositories for all projects
+                  icon_class: fab fa-aws
+      tags:
+        - Environments
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the environment was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/environment/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve an environment record
+      tags:
+        - Environments
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1environment/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update an environment, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Environments
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1environment/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove an environment record
+      tags:
+        - Environments
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Environment Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/group:
+    post:
+      summary: Create Record
+      description: Create a new group record
+      requestBody:
+        description: The group record to create
+        content:
+          application/json:
+            schema:
+              title: Group
+              description: A organizational group of users in Imbi
+              type: object
+              properties:
+                name:
+                  description: The name of a group
+                  type: string
+                group_type:
+                  description: Group type (internal/ldap)
+                  type: string
+                  enum:
+                    - internal
+                    - ldap
+                external_id:
+                  description: The DN for an external ID
+                  type: string
+                  nullable: true
+                permissions:
+                  description: Array of permissions to grant members of the group
+                  type: array
+                  items:
+                    type: string
+              required:
+                - name
+                - group_type
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full group record
+                value:
+                  name: Administrators
+                  group_type: ldap
+                  external_id: 'cn=admins,ou=users,dc=example,dc=org'
+                  roles:
+                    - admin
+                    - user
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full group record
+                value:
+                  name: Administrators
+                  group_type: ldap
+                  external_id: 'cn=admins,ou=users,dc=example,dc=org'
+                  roles:
+                    - admin
+                    - user
+      tags:
+        - Groups
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the group was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/group/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve a group record
+      tags:
+        - Groups
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1group/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update a group, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Groups
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1group/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove a group record
+      tags:
+        - Groups
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Group Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/orchestration_system:
+    post:
+      summary: Create Record
+      description: Create a new orchestration system record
+      requestBody:
+        description: The orchestration system record to create
+        content:
+          application/json:
+            schema:
+              title: Orchestration System
+              description: |-
+                Orchestration systems provide automated configuration, coordination and
+                management of complex computing networks, systems and services.
+              type: object
+              properties:
+                name:
+                  description: The display name for a orchestration system
+                  type: string
+                description:
+                  description: A description of the orchestration system
+                  type: string
+                  nullable: true
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+              required:
+                - name
+                - icon_class
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full orchestration system record
+                value:
+                  name: Kubernetes
+                  description: Production-Grade Container Orchestration
+                  icon_class: fas fa-blind
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full orchestration system record
+                value:
+                  name: Kubernetes
+                  description: Production-Grade Container Orchestration
+                  icon_class: fas fa-blind
+      tags:
+        - Orchestration Systems
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the orchestration system was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/orchestration_system/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve an orchestration system record
+      tags:
+        - Orchestration Systems
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1orchestration_system/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update an orchestration system, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Orchestration Systems
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1orchestration_system/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove an orchestration system record
+      tags:
+        - Orchestration Systems
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Orchestration System Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/project_fact_type:
+    post:
+      summary: Create Record
+      description: Create a new project fact type record
+      requestBody:
+        description: The project fact type record to create
+        content:
+          application/json:
+            schema:
+              title: Project Fact Type
+              description: |
+                Defines types of facts that can be recorded about a project
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                project_type:
+                  description: The type of project the fact is associated with
+                  type: string
+                name:
+                  description: The display name of the fact type
+                  type: string
+                weight:
+                  description: The weight of the fact type when computing a project score
+                  type: number
+                  default: 0
+              required:
+                - id
+                - project_type
+                - name
+                - weight
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full project fact type record
+                value:
+                  id: d2560576-b339-4f2c-9ec5-268969634c7b
+                  project_type: API
+                  name: Programming Language
+                  weight: 25
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1project_fact_type/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full project fact type record
+                value:
+                  id: d2560576-b339-4f2c-9ec5-268969634c7b
+                  project_type: API
+                  name: Programming Language
+                  weight: 25
+      tags:
+        - Project Fact Types
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the project fact type was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1project_fact_type/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1project_fact_type/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1project_fact_type/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1project_fact_type/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/project_fact_type/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve a project fact type record
+      tags:
+        - Project Fact Types
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1project_fact_type/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update a project fact type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Project Fact Types
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1project_fact_type/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove a project fact type record
+      tags:
+        - Project Fact Types
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Project Fact Type Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  '/admin/project_fact_type_option/{fact_type_id}':
+    post:
+      summary: Create Record
+      description: Create a new project fact type option record
+      requestBody:
+        description: The project fact type option record to create
+        content:
+          application/json:
+            schema:
+              title: Project Fact Type Option
+              description: |
+                Defines options that are available for a project fact type
+              type: object
+              properties:
+                fact_type_id:
+                  type: string
+                  format: uuid
+                option_id:
+                  type: string
+                  format: uuid
+                value:
+                  description: The option value
+                  type: string
+                score:
+                  description: The score value for the option
+                  type: number
+                  default: 0
+              required:
+                - fact_type_id
+                - option_id
+                - value
+                - score
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full project fact type option record
+                value:
+                  fact_type_id: d2560576-b339-4f2c-9ec5-268969634c7b
+                  option_id: 98a112b5-4568-4e91-973a-49b0c5481407
+                  value: Python 3.5
+                  weight: 50
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full project fact type option record
+                value:
+                  fact_type_id: d2560576-b339-4f2c-9ec5-268969634c7b
+                  option_id: 98a112b5-4568-4e91-973a-49b0c5481407
+                  value: Python 3.5
+                  weight: 50
+      tags:
+        - Project Fact Type Options
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the project fact type option was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: fact_type_id
+        in: path
+        description: Project Fact Type ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+  '/admin/project_fact_type_option/{fact_type_id}/{option_id}':
+    get:
+      summary: Get Record
+      description: Retrieve a project fact type option record
+      tags:
+        - Project Fact Type Options
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update a project fact type option, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Project Fact Type Options
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove a project fact type option record
+      tags:
+        - Project Fact Type Options
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: fact_type_id
+        in: path
+        description: Project Fact Type ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: option_id
+        in: path
+        description: Option ID ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /admin/project_link_type:
+    post:
+      summary: Create Record
+      description: Create a new link type record
+      requestBody:
+        description: The link type record to create
+        content:
+          application/json:
+            schema:
+              title: Link Type
+              description: Used to describe the types of project deployment systems
+              type: object
+              properties:
+                link_type:
+                  description: The display name for a link type
+                  type: string
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+              required:
+                - link_type
+                - icon_class
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full link type record
+                value:
+                  link_type: documentation
+                  icon_class: fab fa-bool
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1project_link_type/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full link type record
+                value:
+                  link_type: documentation
+                  icon_class: fab fa-bool
+      tags:
+        - Project Link Types
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the link type was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1project_link_type/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1project_link_type/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1project_link_type/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1project_link_type/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/project_link_type/{link_type}':
+    get:
+      summary: Get Record
+      description: Retrieve an link type record
+      tags:
+        - Project Link Types
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1project_link_type/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update an link type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Project Link Types
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1project_link_type/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove an link type record
+      tags:
+        - Project Link Types
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: link_type
+        in: path
+        description: Link Type Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/project_type:
+    post:
+      summary: Create Record
+      description: Create a new project type record
+      requestBody:
+        description: The project type record to create
+        content:
+          application/json:
+            schema:
+              title: Project Type
+              description: |
+                Used to describe the types of operational project_types for projects
+              type: object
+              properties:
+                name:
+                  description: The display name for a project type
+                  type: string
+                description:
+                  description: A description of the project type
+                  type: string
+                  nullable: true
+                slug:
+                  description: 'The slug for project types, used in filtering'
+                  type: string
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+              required:
+                - name
+                - slug
+                - icon_class
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full project type record
+                value:
+                  project_type: HTTP API
+                  description: RESTful HTTP 1.1 API
+                  slug: http-api
+                  icon_class: fab fa-aws
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1project_type/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full project type record
+                value:
+                  project_type: HTTP API
+                  description: RESTful HTTP 1.1 API
+                  slug: http-api
+                  icon_class: fab fa-aws
+      tags:
+        - Project Types
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the project type was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1project_type/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1project_type/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1project_type/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1project_type/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/project_type/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve a project type record
+      tags:
+        - Project Types
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1project_type/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update a project type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Project Types
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1project_type/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove a project type record
+      tags:
+        - Project Types
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Project Type Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/team:
+    post:
+      summary: Create Record
+      description: Create a new team record
+      requestBody:
+        description: The team record to create
+        content:
+          application/json:
+            schema:
+              title: Team
+              description: Used to describe the types of project deployment systems
+              type: object
+              properties:
+                name:
+                  description: The display name for a team
+                  type: string
+                slug:
+                  description: Team path slug / abbreviation
+                  type: string
+                group:
+                  description: Association of the team to an internal or external Imbi group
+                  type: string
+                  nullable: true
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+              required:
+                - name
+                - slug
+                - icon_class
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full team record
+                value:
+                  team_name: Platform Support Engineering
+                  slug: PSE
+                  icon_class: fas fa-blind
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full team record
+                value:
+                  team_name: Platform Support Engineering
+                  slug: PSE
+                  icon_class: fas fa-blind
+      tags:
+        - Teams
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the team was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+  '/admin/team/{name}':
+    get:
+      summary: Get Record
+      description: Retrieve a team record
+      tags:
+        - Teams
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1team/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Record
+      description: 'Update a team, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Teams
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1team/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Record
+      description: Remove a team record
+      tags:
+        - Teams
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: name
+        in: path
+        description: Team Name
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /projects:
+    get:
+      description: Retrieve the collection of projects
+      summary: Get Projects
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              description: Provides guidance indicating how the group record should be cached for
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1project~1/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project records
+                  value:
+                    - id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+                      name: User Service
+                      slug: user
+                      description: 'The user service is used to manage user specific data, including profiles and content.'
+                      owned_by: User Experience
+                      project_type: HTTP API
+                      data_center: us-east-1
+                      configuration_system: SSM Parameter Store
+                      deployment_type: ecs-pipeline-deploy
+                      orchestration_system: ECS
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1project~1/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project records
+                  value:
+                    - id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+                      name: User Service
+                      slug: user
+                      description: 'The user service is used to manage user specific data, including profiles and content.'
+                      owned_by: User Experience
+                      project_type: HTTP API
+                      data_center: us-east-1
+                      configuration_system: SSM Parameter Store
+                      deployment_type: ecs-pipeline-deploy
+                      orchestration_system: ECS
+      security:
+        - apiKey: []
+        - session: []
+  /project/:
+    post:
+      summary: Create Project
+      description: Create a new project record
+      requestBody:
+        description: The project record to create
+        content:
+          application/json:
+            schema:
+              title: Project
+              description: Describes a project managed by Imbi
+              type: object
+              properties:
+                id:
+                  description: A unique ID for the project
+                  type: string
+                  format: uuid
+                name:
+                  description: The project name
+                  type: string
+                slug:
+                  description: The project URL slug (In GitLab and other projects)
+                  type: string
+                description:
+                  description: Long for description of the project
+                  type: string
+                  nullable: true
+                owned_by:
+                  description: The team that owns/is responsible for the project
+                  type: string
+                project_type:
+                  description: 'The project type (API, Consumer, Database, etc)'
+                  type: string
+                data_center:
+                  description: The data center the project runs in
+                  type: string
+                  nullable: true
+                configuration_system:
+                  description: 'The system used to configure the project (Ansible, Consul, etc)'
+                  type: string
+                  nullable: true
+                deployment_type:
+                  description: 'How the project is deployed (Jenkins, GitLab-CI, etc)'
+                  type: string
+                  nullable: true
+                orchestration_system:
+                  description: 'TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)'
+                  type: string
+                  nullable: true
+              required:
+                - id
+                - name
+                - slug
+                - owned_by
+                - data_center
+                - project_type
+              additionalProperties: false
+            examples:
+              record:
+                summary: An example of a project record
+                value:
+                  id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+                  name: User Service
+                  slug: user
+                  description: 'The user service is used to manage user specific data, including profiles and content.'
+                  owned_by: User Experience
+                  project_type: HTTP API
+                  data_center: us-east-1
+                  configuration_system: SSM Parameter Store
+                  deployment_type: ecs-pipeline-deploy
+                  orchestration_system: ECS
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: An example of a project record
+                value:
+                  id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+                  name: User Service
+                  slug: user
+                  description: 'The user service is used to manage user specific data, including profiles and content.'
+                  owned_by: User Experience
+                  project_type: HTTP API
+                  data_center: us-east-1
+                  configuration_system: SSM Parameter Store
+                  deployment_type: ecs-pipeline-deploy
+                  orchestration_system: ECS
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the project was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              description: Indicates when the last modification of the data occurred
+              schema:
+                type: string
+            Link:
+              description: |
+                Links to related resources, in the format defined by
+                [RFC 5988](https://tools.ietf.org/html/rfc5988#section-5).
+                This will include a link with relation type `canonical` with the
+                canonical link to the item.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1project~1/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1project~1/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1project~1/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1project~1/post/requestBody/content/application~1json/examples/record'
+        '400':
+          description: The request data could not be validated or contained an error
+          content:
+            application/json:
+              schema:
+                title: Problem Detail
+                description: A problem detail document as defined by RFC 7807
+                externalDocs:
+                  url: 'https://tools.ietf.org/html/rfc7807'
+                type: object
+                properties:
+                  type:
+                    description: Machine-readable error type
+                    type: string
+                    format: url
+                  title:
+                    description: 'A short, human-readable summary of the problem type.'
+                    type: string
+                  status:
+                    description: |-
+                      The HTTP status code generated by the origin server for this
+                      occurrence of the problem.
+                    type: integer
+                  detail:
+                    description: |-
+                      A human-readable explanation specific to this occurrence of the
+                      problem.
+                  instance:
+                    description: URI that identifies this specific problem occurrence
+                    type: string
+                    format: url
+                additionalProperties: false
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 400 Request Error
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 400 Request Error
+        '409':
+          description: The request could not be completed due to a race condition
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: 'HTTP 409: Conflict'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: 'HTTP 409: Conflict'
+      security:
+        - apiKey: []
+        - session: []
+  '/project/{id}':
+    get:
+      summary: Get Project
+      description: Retrieve a project record
+      tags:
+        - Projects
+      responses:
+        '200':
+          $ref: '#/paths/~1project~1/post/responses/200'
+        '404':
+          description: The requested resource was not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: 'HTTP 404: Resource not found'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: 'HTTP 404: Resource not found'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Project
+      description: 'Update a project, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Projects
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              title: JSON Patch
+              description: A JSONPatch document as defined by RFC 6902
+              type: array
+              items:
+                type: object
+                title: Individual JSON patch operation
+                required:
+                  - op
+                  - path
+                properties:
+                  path:
+                    description: A JSON Pointer path to apply the operation to
+                    type: string
+                    pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                oneOf:
+                  - title: Add / Replace / Test
+                    properties:
+                      op:
+                        description: The operation to perform
+                        type: string
+                        enum:
+                          - add
+                          - replace
+                          - test
+                      value:
+                        description: 'The value to add, replace or test'
+                        oneOf:
+                          - type: array
+                          - type: boolean
+                          - type: number
+                          - type: object
+                          - type: string
+                        nullable: true
+                    required:
+                      - value
+                  - title: Copy / Move
+                    properties:
+                      op:
+                        description: The operation to perform
+                        type: string
+                        enum:
+                          - copy
+                          - move
+                      from:
+                        description: A JSON Pointer path to the referenced value
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                    required:
+                      - from
+                  - title: Remove
+                    properties:
+                      op:
+                        description: The operation to perform
+                        type: string
+                        enum:
+                          - remove
+              example:
+                - op: replace
+                  path: icon_class
+                  value: fas fa-microscope
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1project~1/post/responses/200'
+        '304':
+          description: No changes were found in the requested update
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Project
+      description: Remove a project record
+      tags:
+        - Projects
+      responses:
+        '204':
+          description: The record was removed as requested
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+  '/project/{id}/dependencies':
+    get:
+      description: Retrieve the collection of dependencies for a project
+      summary: Get Dependencies
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          description: Project ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple records
+                  value:
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      dependency_id: adce0e08-99d5-47e7-9f6b-931214e20724
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      dependency_id: 2ab8d72b-eacf-4521-8780-559008d075ae
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple records
+                  value:
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      dependency_id: adce0e08-99d5-47e7-9f6b-931214e20724
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      dependency_id: 2ab8d72b-eacf-4521-8780-559008d075ae
+      security:
+        - apiKey: []
+        - session: []
+  '/project/{id}/dependency':
+    post:
+      summary: Create Dependency
+      description: Create a new project dependency record
+      requestBody:
+        description: The project dependency record to create
+        content:
+          application/json:
+            schema:
+              title: Project
+              description: A record that indicates one project is dependent upon another
+              type: object
+              properties:
+                dependency_id:
+                  description: The project that is dependend upon
+                  type: string
+                  format: uuid
+              required:
+                - dependency_id
+              additionalProperties: false
+            examples:
+              record:
+                summary: A project dependency record
+                value:
+                  project_id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+                  dependency_id: cc64115b-ffe5-49c1-be14-4ff8bb322daf
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A project dependency record
+                value:
+                  project_id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+                  dependency_id: cc64115b-ffe5-49c1-be14-4ff8bb322daf
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the project was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: id
+        in: path
+        description: The Project ID to add the dependency to
+        required: true
+        schema:
+          type: string
+          format: uuid
+  '/project/{id}/dependency/{dependency_id}':
+    get:
+      summary: Get Dependency
+      description: Retrieve a project dependency record
+      tags:
+        - Projects
+      responses:
+        '200':
+          $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Dependency
+      description: Remove a project dependency record
+      tags:
+        - Projects
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: dependency_id
+        in: path
+        description: The ID of the project that this project is dependent upon
+        required: true
+        schema:
+          type: string
+          format: uuid
+  '/project/{id}/links':
+    get:
+      description: Retrieve the collection of links for a project
+      summary: Get Links
+      tags:
+        - Projects
+      parameters:
+        - name: id
+          in: path
+          description: Project ID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1project~1%7Bid%7D~1link/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple group records
+                  value:
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      link_type: Documentation
+                      url: 'https://imbi.readthedocs.io'
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      link_type: Repository
+                      url: 'https://gitlab.com/AWeber/Imbi'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1project~1%7Bid%7D~1link/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple group records
+                  value:
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      link_type: Documentation
+                      url: 'https://imbi.readthedocs.io'
+                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                      link_type: Repository
+                      url: 'https://gitlab.com/AWeber/Imbi'
+      security:
+        - apiKey: []
+        - session: []
+  '/project/{id}/link':
+    post:
+      summary: Create Link
+      description: Create a new project link record
+      requestBody:
+        description: The project link record to create
+        content:
+          application/json:
+            schema:
+              title: Project Link
+              description: Links related to the project
+              type: object
+              properties:
+                project_id:
+                  description: The project the link is associated with
+                  type: string
+                  format: uuid
+                link_type:
+                  description: 'The type of link (Repository, Documentation, Dashboard, etc)'
+                  type: string
+                url:
+                  description: The link URL
+                  type: string
+                  format: uri
+              required:
+                - project_id
+                - link_type
+                - url
+              additionalProperties: false
+            examples:
+              record:
+                summary: A project link record
+                value:
+                  project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                  link_type: Documentation
+                  url: 'https://imbi.readthedocs.io'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D~1link/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A project link record
+                value:
+                  project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                  link_type: Documentation
+                  url: 'https://imbi.readthedocs.io'
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the project was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1project~1%7Bid%7D~1link/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1project~1%7Bid%7D~1link/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1project~1%7Bid%7D~1link/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1project~1%7Bid%7D~1link/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: id
+        in: path
+        description: The Project ID to add the link to
+        required: true
+        schema:
+          type: string
+          format: uuid
+  '/project/{id}/link/{link_id}':
+    get:
+      summary: Get Link
+      description: Retrieve a project link record
+      tags:
+        - Projects
+      responses:
+        '200':
+          $ref: '#/paths/~1project~1%7Bid%7D~1link/post/responses/200'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    patch:
+      summary: Update Link
+      description: 'Update a project link, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Projects
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1project~1%7Bid%7D~1link/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+      security:
+        - apiKey: []
+        - session: []
+    delete:
+      summary: Delete Link
+      description: Remove a project link record
+      tags:
+        - Projects
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+      security:
+        - apiKey: []
+        - session: []
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: link_id
+        in: path
+        description: 'The ID of the link to get, update, or delete'
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /settings/configuration_systems:
+    get:
+      description: Retrieve the collection of configuration systems
+      summary: Get Configuration Systems
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple configuration system records
+                  value:
+                    - name: Ansible
+                      description: Ansible is powerful IT automation that you can learn quickly
+                      icon_class: fas fa-microscope
+                    - name: Consul
+                      description: Feature rich key/value store to easily configure projects
+                      icon_class: fas fa-blind
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple configuration system records
+                  value:
+                    - name: Ansible
+                      description: Ansible is powerful IT automation that you can learn quickly
+                      icon_class: fas fa-microscope
+                    - name: Consul
+                      description: Feature rich key/value store to easily configure projects
+                      icon_class: fas fa-blind
+      security:
+        - apiKey: []
+        - session: []
+  /settings/cookie_cutters:
+    get:
+      description: Retrieve the collection of cookie cutters
+      summary: Get Cookie Cutters
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple cookie cutter records
+                  value:
+                    - cookiecutter: buzzops-project
+                      project_type: HTTP API
+                      type: project
+                      description: A HTTP API that runs in Kubernetes
+                      url: 'https://github.com/aweber/k8s-api-cookiecutter.git'
+                    - cookiecutter: buzzops-consumer
+                      project_type: Consumer
+                      type: project
+                      description: A rejected consumer application
+                      url: 'https://github.com/aweber/k8s-consumer-cookiecutter.git'
+                    - cookiecutter: buzzops-consumer-dashboard
+                      project_type: Consumer
+                      type: dashboard
+                      description: A Grafana dashboard for a rejected consumer application
+                      url: 'https://github.com/aweber/grafana-consumer-cookiecutter.git'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple cookie cutter records
+                  value:
+                    - cookiecutter: buzzops-project
+                      project_type: HTTP API
+                      type: project
+                      description: A HTTP API that runs in Kubernetes
+                      url: 'https://github.com/aweber/k8s-api-cookiecutter.git'
+                    - cookiecutter: buzzops-consumer
+                      project_type: Consumer
+                      type: project
+                      description: A rejected consumer application
+                      url: 'https://github.com/aweber/k8s-consumer-cookiecutter.git'
+                    - cookiecutter: buzzops-consumer-dashboard
+                      project_type: Consumer
+                      type: dashboard
+                      description: A Grafana dashboard for a rejected consumer application
+                      url: 'https://github.com/aweber/grafana-consumer-cookiecutter.git'
+      security:
+        - apiKey: []
+        - session: []
+  /settings/data_centers:
+    get:
+      description: Retrieve the collection of data centers
+      summary: Get Data Centers
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple data center records
+                  value:
+                    - name: us-east-1
+                      description: US East (N. Virginia)
+                      icon_class: fab fa-aws
+                    - name: us-east-2
+                      description: US East (Ohio)
+                      icon_class: fab fa-aws
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple data center records
+                  value:
+                    - name: us-east-1
+                      description: US East (N. Virginia)
+                      icon_class: fab fa-aws
+                    - name: us-east-2
+                      description: US East (Ohio)
+                      icon_class: fab fa-aws
+      security:
+        - apiKey: []
+        - session: []
+  /settings/deployment_types:
+    get:
+      description: Retrieve the collection of deployment types
+      summary: Get Deployment Types
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple deployment type records
+                  value:
+                    - name: Helm
+                      description: The package manager for Kubernetes
+                      icon_class: icon helm
+                    - name: Artifcatory
+                      description: Package artifact uploaded to artifactory
+                      icon_class: fab fa-aws
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple deployment type records
+                  value:
+                    - name: Helm
+                      description: The package manager for Kubernetes
+                      icon_class: icon helm
+                    - name: Artifcatory
+                      description: Package artifact uploaded to artifactory
+                      icon_class: fab fa-aws
+      security:
+        - apiKey: []
+        - session: []
+  /settings/environments:
+    get:
+      description: Retrieve the collection of environments
+      summary: Get Environments
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple environment records
+                  value:
+                    - name: testing
+                      description: |
+                        The testing environment reflects the state of HEAD state of the
+                        master branch in our Git Repositories for all projects
+                      icon_class: fab fa-aws
+                    - name: staging
+                      description: |
+                        The staging environment reflects tagged project releases that are
+                        intended to be to deployed to production
+                      icon_class: fab fa-aws
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple environment records
+                  value:
+                    - name: testing
+                      description: |
+                        The testing environment reflects the state of HEAD state of the
+                        master branch in our Git Repositories for all projects
+                      icon_class: fab fa-aws
+                    - name: staging
+                      description: |
+                        The staging environment reflects tagged project releases that are
+                        intended to be to deployed to production
+                      icon_class: fab fa-aws
+      security:
+        - apiKey: []
+        - session: []
+  /settings/groups:
+    get:
+      description: Retrieve the collection of groups
+      summary: Get Groups
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple group records
+                  value:
+                    - name: Administrators
+                      group_type: external
+                      external_id: 'cn=admins,ou=users,dc=example,dc=org'
+                      permissions:
+                        - admin
+                        - user
+                    - group: Quality Assurance
+                      group_type: external
+                      external_id: 'cn=qa,ou=users,dc=example,dc=org'
+                      permissions:
+                        - user
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple group records
+                  value:
+                    - name: Administrators
+                      group_type: external
+                      external_id: 'cn=admins,ou=users,dc=example,dc=org'
+                      permissions:
+                        - admin
+                        - user
+                    - group: Quality Assurance
+                      group_type: external
+                      external_id: 'cn=qa,ou=users,dc=example,dc=org'
+                      permissions:
+                        - user
+      security:
+        - apiKey: []
+        - session: []
+  /settings/orchestration_systems:
+    get:
+      description: Retrieve the collection of orchestration systems
+      summary: Get Orchestration Systems
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple orchestration system records
+                  value:
+                    - orchestration_system: Kubernetes
+                      description: Production-Grade Container Orchestration
+                      icon_class: fas fa-blind
+                    - orchestration_system: Nomad
+                      description: HashiCorp Nomad
+                      icon_class: fas fa-blind
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple orchestration system records
+                  value:
+                    - orchestration_system: Kubernetes
+                      description: Production-Grade Container Orchestration
+                      icon_class: fas fa-blind
+                    - orchestration_system: Nomad
+                      description: HashiCorp Nomad
+                      icon_class: fas fa-blind
+      security:
+        - apiKey: []
+        - session: []
+  /settings/permissions:
+    get:
+      description: Retrieve the collection of available permissions
+      summary: Get Permissions
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              examples:
+                records:
+                  summary: Multiple permissions
+                  value:
+                    - admin
+                    - user
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: string
+              examples:
+                records:
+                  summary: Multiple permissions
+                  value:
+                    - admin
+                    - user
+      security:
+        - apiKey: []
+        - session: []
+  /settings/project_fact_type_options:
+    get:
+      description: Retrieve the collection of project fact type options
+      summary: Get Project Fact Type Options
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project fact type option records
+                  value:
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.9
+                      score: 100
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.7
+                      score: 75
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.6
+                      score: 50
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.5
+                      score: 50
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 2.7
+                      score: 0
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project fact type option records
+                  value:
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.9
+                      score: 100
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.7
+                      score: 75
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.6
+                      score: 50
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 3.5
+                      score: 50
+                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                      value: Python 2.7
+                      score: 0
+      security:
+        - apiKey: []
+        - session: []
+  /settings/project_fact_types:
+    get:
+      description: Retrieve the collection of project fact types
+      summary: Get Project Fact Types
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1project_fact_type/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project fact type records
+                  value:
+                    - id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      project_type: Consumer
+                      name: Programming Language
+                      weight: 25
+                    - id: 1f04d510-6a24-4be8-9536-27b61df7f1b7
+                      project_type: Consumer
+                      name: Test Coverage
+                      weight: 25
+                    - id: cb4396b0-07c4-40df-a5ab-6a79cdafce0f
+                      project_type: Consumer
+                      name: Deployed to all Environments
+                      weight: 20
+                    - id: 5f818763-7181-40d6-aeef-1e561d7a9f13
+                      project_type: Consumer
+                      name: Has Acceptance Tests
+                      weight: 10
+                    - id: bb3a7869-16d8-4475-977a-33efceb4be26
+                      project_type: Consumer
+                      name: Meets Current Standards
+                      weight: 10
+                    - id: fb7bfb6a-9b9b-4c52-849a-b6fab8e49950
+                      project_type: Consumer
+                      name: Has working CI pipeline
+                      weight: 10
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1project_fact_type/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project fact type records
+                  value:
+                    - id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
+                      project_type: Consumer
+                      name: Programming Language
+                      weight: 25
+                    - id: 1f04d510-6a24-4be8-9536-27b61df7f1b7
+                      project_type: Consumer
+                      name: Test Coverage
+                      weight: 25
+                    - id: cb4396b0-07c4-40df-a5ab-6a79cdafce0f
+                      project_type: Consumer
+                      name: Deployed to all Environments
+                      weight: 20
+                    - id: 5f818763-7181-40d6-aeef-1e561d7a9f13
+                      project_type: Consumer
+                      name: Has Acceptance Tests
+                      weight: 10
+                    - id: bb3a7869-16d8-4475-977a-33efceb4be26
+                      project_type: Consumer
+                      name: Meets Current Standards
+                      weight: 10
+                    - id: fb7bfb6a-9b9b-4c52-849a-b6fab8e49950
+                      project_type: Consumer
+                      name: Has working CI pipeline
+                      weight: 10
+      security:
+        - apiKey: []
+        - session: []
+  /settings/project_link_types:
+    get:
+      description: Retrieve the collection of project link types
+      summary: Get Project Link Types
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1project_link_type/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project link type records
+                  value:
+                    - project_link_type: documentation
+                      icon_class: fab fa-bool
+                    - project_link_type: grafana
+                      icon_class: fab fa-graph
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1project_link_type/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project link type records
+                  value:
+                    - project_link_type: documentation
+                      icon_class: fab fa-bool
+                    - project_link_type: grafana
+                      icon_class: fab fa-graph
+      security:
+        - apiKey: []
+        - session: []
+  /settings/project_types:
+    get:
+      description: Retrieve the collection of project types
+      summary: Get Project Types
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1project_type/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project type records
+                  value:
+                    - project_type: HTTP API
+                      description: RESTful HTTP 1.1 API
+                      icon_class: fab fa-aws
+                      slug: http-api
+                    - project_type: Postgres
+                      description: A PostgreSQL database
+                      icon_class: imbi postgres
+                      slug: postgres
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1project_type/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple project type records
+                  value:
+                    - project_type: HTTP API
+                      description: RESTful HTTP 1.1 API
+                      icon_class: fab fa-aws
+                      slug: http-api
+                    - project_type: Postgres
+                      description: A PostgreSQL database
+                      icon_class: imbi postgres
+                      slug: postgres
+      security:
+        - apiKey: []
+        - session: []
+  /settings/teams:
+    get:
+      description: Retrieve the collection of teams
+      summary: Get Teams
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple team records
+                  value:
+                    - team_name: Platform Support Engineering
+                      slug: PSE
+                      icon_class: fas fa-blind
+                    - team_name: Quality Assurance
+                      slug: QA
+                      icon_class: fas fa-microscope
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple team records
+                  value:
+                    - team_name: Platform Support Engineering
+                      slug: PSE
+                      icon_class: fas fa-blind
+                    - team_name: Quality Assurance
+                      slug: QA
+                      icon_class: fas fa-microscope
+      security:
+        - apiKey: []
+        - session: []
+  /status:
+    get:
+      description: |-
+        Returns information about the running service, including runtime metrics
+        including counters and durations.
+      summary: Service Status
+      operationId: status
+      parameters:
+        - in: query
+          name: flush
+          description: Flush the stats / metrics database of recorded values
+          schema:
+            type: string
+            default: 'false'
+            enum:
+              - 'true'
+              - 'false'
+      tags:
+        - Health Check
+      responses:
+        '200':
+          description: Service Available
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  counters:
+                    type: object
+                    additionalProperties:
+                      type: number
+                    description: A key-value pair of internal counters
+                  durations:
+                    type: object
+                    description: |-
+                      A key-value pair of recorded durations where the value is an array
+                      of timestamp and duration in seconds
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: array
+                        items:
+                          oneOf:
+                            - type: string
+                              format: iso8601-timestamp
+                            - type: number
+                              format: float
+                        minItems: 2
+                        maxItems: 2
+                  postgres:
+                    type: object
+                    description: PostgreSQL pool information
+                    properties:
+                      pool_free:
+                        type: number
+                        description: |-
+                          Indicates the current number of idle connections available to
+                          process queries
+                      pool_size:
+                        type: number
+                        description: Indicates the current quantity of open connections to Postgres
+                  started_at:
+                    type: string
+                    format: iso8601-timestamp
+                    description: The ISO-8601 formatted timestamp of when the service started
+                  status:
+                    type: string
+                    description: The current application status
+                    enum:
+                      - ok
+                      - maintenance
+                  uptime:
+                    type: string
+                    description: ISO-8601 formatted duration indicating how long the service has been running
+                  version:
+                    type: string
+                    description: The version
+              example:
+                counters:
+                  response.Base.GET.200: 10
+                durations:
+                  request.Base.GET.200:
+                    - - '2018-12-03 23:46:54+00:00'
+                      - 0.2566049098968506
+                    - - '2018-12-03 23:31:50+00:00'
+                      - 0.33482813835144043
+                    - - '2018-12-03 23:00:39+00:00'
+                      - 0.25607776641845703
+                postgres:
+                  available: true
+                  pool_size: 10
+                  pool_free: 9
+                started_at: 2020-01-01T00:00:00.000Z
+                status: ok
+                system:
+                  language:
+                    name: python
+                    implementation: CPython
+                    version: 3.7.6
+                  os:
+                    name: Alpine Linux
+                    version: 3.11.6
+                uptime: PT6M9.053148S
+                version: '{{ settings["version"] }}'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1status/get/responses/200/content/application~1json/schema'
+              example:
+                $ref: '#/paths/~1status/get/responses/200/content/application~1json/example'
+        '503':
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1status/get/responses/200/content/application~1json/schema'
+              example:
+                counters:
+                  response.Base.GET.200: 10
+                durations:
+                  request.Base.GET.200:
+                    - - '2018-12-03 23:46:54+00:00'
+                      - 0.2566049098968506
+                    - - '2018-12-03 23:31:50+00:00'
+                      - 0.33482813835144043
+                    - - '2018-12-03 23:00:39+00:00'
+                      - 0.25607776641845703
+                postgres:
+                  available: true
+                  pool_size: 10
+                  pool_free: 9
+                started_at: 2020-01-01T00:00:00.000Z
+                status: unavailable
+                system:
+                  language:
+                    name: python
+                    implementation: CPython
+                    version: 3.7.6
+                  os:
+                    name: Alpine Linux
+                    version: 3.11.6
+                uptime: PT6M9.053148S
+                version: '{{ settings["version"] }}'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1status/get/responses/200/content/application~1json/schema'
+              example:
+                $ref: '#/paths/~1status/get/responses/503/content/application~1json/example'
+tags:
+  - name: Configuration Systems
+    description: Endpoints used for the management of configuration systems
+  - name: Cookie Cutters
+    description: Endpoints used for the management of project creation cookie cutters
+  - name: Data Centers
+    description: |-
+      Endpoints used for the management of data centers
+
+      A data center is a large group of networked computer servers typically used
+      by organizations for the remote storage, processing, or distribution of
+      large amounts of data.
+  - name: Deployment Types
+    description: Endpoints used for the management different types of deployment systems.
+  - name: Environments
+    description: Endpoints used for the management different target environments for projects to run in.
+  - name: Groups
+    description: |
+      Endpoints used to manage the groups that Imbi users are able to be members of.
+  - name: Orchestration Systems
+    description: |-
+      Endpoints for managing the systems used for orchestration systems.
+
+      Orchestration systems provide automated configuration, coordination and
+      management of complex computing networks, systems and services.
+  - name: Project Fact Types
+    description: |-
+      Management of records that define types facts that may be collected for a project.
+
+      Project facts may be used to calculate a current project health score. For more
+      information on project health score, see the compliance documentation.
+  - name: Project Fact Type Options
+    description: |-
+      Management of records that define types facts that may be collected for a project.
+
+      Project facts options provide the possible values for project facts, and are
+      used to compute the score of that project fact. For more information on
+      project health score, see the compliance documentation.
+  - name: Project Link Types
+    description: Management of records that define types of links or URLs to associate with a project
+  - name: Project Types
+    description: 'Endpoints used for the management different types of projects managed in Imbi (APIs, Databases, etc)'
+  - name: Teams
+    description: Endpoints used for the management of organizational teams
+  - name: Projects
+    description: Endpoints used for the management of projects
+  - name: Settings
+    description: Endpoints used for retrieving settings for the Imbi UI
+  - name: Health Check
+    description: |-
+      The health check endpoint can be used by a load balancer to indicate
+      service health.
+x-tagGroups:
+  - name: Administration
+    tags:
+      - Configuration Systems
+      - Cookie Cutters
+      - Data Centers
+      - Deployment Types
+      - Environments
+      - Groups
+      - Orchestration Systems
+      - Project Fact Types
+      - Project Fact Type Options
+      - Project Link Types
+      - Project Types
+      - Teams
+  - name: Project Management
+    tags:
+      - Projects
+  - name: Settings
+    tags:
+      - Settings
+  - name: Other
+    tags:
+      - Health Check
