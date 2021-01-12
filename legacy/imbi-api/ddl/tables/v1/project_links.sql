@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS project_links (
   url           TEXT NOT NULL,
   created_at    TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   modified_at   TIMESTAMP WITH TIME ZONE,
-  PRIMARY KEY   (project_id, url),
+  PRIMARY KEY   (project_id, link_type),
   FOREIGN KEY   (project_id) REFERENCES projects (id) ON DELETE CASCADE ON UPDATE CASCADE,
   FOREIGN KEY   (link_type) REFERENCES project_link_types (link_type) ON DELETE RESTRICT ON UPDATE CASCADE
 );
