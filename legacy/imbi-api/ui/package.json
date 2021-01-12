@@ -1,6 +1,5 @@
 {
   "name": "imbi",
-  "version": "0.1.0",
   "description": "Imbi Service Management Platform UI",
   "main": "src/js/index.js",
   "scripts": {
