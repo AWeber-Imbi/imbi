@@ -26,10 +26,10 @@ class RequestHandler(base.CRUDRequestHandler):
 
     PATCH_SQL = """\
     UPDATE v1.project_links
-       SET link_type=%(link_type)s,
-           url=%(url)s,
+       SET url=%(url)s,
            modified_at=CURRENT_TIMESTAMP
-     WHERE project_id=%(project_id)s;"""
+     WHERE project_id=%(project_id)s
+       AND link_type=%(link_type)s;"""
 
     POST_SQL = """\
     INSERT INTO v1.project_links (project_id, link_type, url)
