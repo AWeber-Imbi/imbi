@@ -44,7 +44,7 @@ paths:
   /admin/orchestration_system/{name}: {$ref: 'admin/orchestration_system.yaml#/paths/manage'}
   /admin/project_fact_type: {$ref: 'admin/project_fact_type.yaml#/paths/create'}
   /admin/project_fact_type/{name}: {$ref: 'admin/project_fact_type.yaml#/paths/manage'}
-  /admin/project_fact_type_option: {$ref: 'admin/project_fact_type_option.yaml#/paths/create'}
+  /admin/project_fact_type_option/{fact_type_id}: {$ref: 'admin/project_fact_type_option.yaml#/paths/create'}
   /admin/project_fact_type_option/{fact_type_id}/{option_id}: {$ref: 'admin/project_fact_type_option.yaml#/paths/manage'}
   /admin/project_link_type: {$ref: 'admin/project_link_type.yaml#/paths/create'}
   /admin/project_link_type/{link_type}: {$ref: 'admin/project_link_type.yaml#/paths/manage'}
