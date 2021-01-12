@@ -239,7 +239,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
 
     NAME = 'default'
     DEFAULTS = {}
-    ID_KEY = 'id'
+    ID_KEY: typing.Union[str, list] = 'id'
     ITEM_SCHEMA = None
     FIELDS = None
     GET_NAME = None  # Used to create link headers for POST requests
@@ -250,49 +250,29 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     PATCH_SQL: typing.Optional[str] = None
     POST_SQL: typing.Optional[str] = None
 
-    def _ensure_keys_are_set(self, kwargs):
-        if isinstance(self.ID_KEY, list) \
-                and not all(k in kwargs for k in self.ID_KEY):
-            self.logger.critical(
-                '%s is misconfigured, kwargs dont match keys (%r != %r)',
-                self.NAME, kwargs.keys(), self.ID_KEY)
-            raise web.HTTPError(405)
-        elif isinstance(self.ID_KEY, str) and self.ID_KEY not in kwargs:
-            self.logger.critical(
-                '%s is misconfigured, kwargs dont match keys (%r != %r)',
-                self.NAME, kwargs.keys(), self.ID_KEY)
-            raise web.HTTPError(405)
-
     async def delete(self, *args, **kwargs):
         if self.DELETE_SQL is None:
             self.logger.debug('DELETE_SQL not defined')
             raise web.HTTPError(405)
-        self._ensure_keys_are_set(kwargs)
         await self._delete(kwargs)
 
     async def get(self, *args, **kwargs):
         if self.GET_SQL is None:
             self.logger.debug('GET_SQL not defined')
             raise web.HTTPError(405)
-        self._ensure_keys_are_set(kwargs)
         if self._respond_with_html:
             return self.render('index.html')
         await self._get(kwargs)
 
     async def patch(self, *args, **kwargs):
         if self.PATCH_SQL is None:
+            self.logger.debug('PATCH_SQL not defined')
             raise web.HTTPError(405)
-        self._ensure_keys_are_set(kwargs)
         await self._patch(kwargs)
 
     async def post(self, *args, **kwargs):
         if self.POST_SQL is None:
             self.logger.debug('POST_SQL not defined')
-            raise web.HTTPError(405)
-        if isinstance(self.ID_KEY, list) \
-                and all(k in kwargs for k in self.ID_KEY):
-            raise web.HTTPError(405)
-        elif isinstance(self.ID_KEY, str) and self.ID_KEY in kwargs:
             raise web.HTTPError(405)
         await self._post(kwargs)
 
@@ -325,7 +305,6 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         self.set_status(204, reason='Item Deleted')
 
     async def _get(self, kwargs):
-        self.logger.debug('In get with kwargs: %r', kwargs)
         result = await self.postgres_execute(
             self.GET_SQL, self._get_query_kwargs(kwargs),
             'get-{}'.format(self.NAME))
