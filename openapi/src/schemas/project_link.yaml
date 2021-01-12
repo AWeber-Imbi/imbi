@@ -2,6 +2,10 @@ title: Project Link
 description: Links related to the project
 type: object
 properties:
+  project_id:
+    description: The project the link is associated with
+    type: string
+    format: uuid
   link_type:
     description: The type of link (Repository, Documentation, Dashboard, etc)
     type: string
@@ -10,6 +14,7 @@ properties:
     type: string
     format: uri
 required:
+  - project_id
   - link_type
   - url
 additionalProperties: false

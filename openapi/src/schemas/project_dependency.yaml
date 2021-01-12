@@ -2,15 +2,10 @@ title: Project
 description: A record that indicates one project is dependent upon another
 type: object
 properties:
-  project_id:
-    description: The project that has the dependency
-    type: string
-    format: uuid
   dependency_id:
     description: The project that is dependend upon
     type: string
     format: uuid
 required:
-  - project_id
   - dependency_id
 additionalProperties: false
