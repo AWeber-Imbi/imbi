@@ -5,25 +5,18 @@ Core Application
 """
 import asyncio
 import datetime
-import json
 import logging
 import re
 import typing
 
 import aioredis
-import openapi_core
 import sprockets_postgres
-import tornado_openapi3
-import umsgpack
-import yaml
-from openapi_core.schema.specs import models
-from openapi_core.validation.request import datatypes
 from sprockets import http
 from sprockets.http import app
 from sprockets.mixins.mediatype import content
-from tornado import httputil, ioloop, template, web
+from tornado import httputil, ioloop, web
 
-from imbi import endpoints, permissions, stats, timestamp, transcoders
+from imbi import endpoints, openapi, permissions, stats, transcoders
 from imbi.endpoints import default
 
 LOGGER = logging.getLogger(__name__)
@@ -44,16 +37,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         self._request_logger = logging.getLogger('imbi')
         self.loop: typing.Optional[ioloop.IOLoop] = None
         self.on_start_callbacks.append(self.on_start)
-        self.openapi_validator = tornado_openapi3.RequestValidator(
-            self._get_openapi_spec(),
-            custom_formatters={
-                'iso8601-timestamp': timestamp.ISO8601Formatter
-            },
-            custom_media_type_deserializers={
-                'application/json; charset="utf-8"': json.loads,
-                'application/msgpack': umsgpack.unpackb,
-                'application/problem+json': json.loads,
-                'application/yaml': yaml.safe_load})
+        self.openapi_validator = openapi.request_validator(self.settings)
         self.session_redis: typing.Optional[aioredis.Redis] = None
         self.started_at = datetime.datetime.now(datetime.timezone.utc)
         self.started_at_str = self.started_at.isoformat()
@@ -150,32 +134,16 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         self.startup_complete.set()
         self._ready_to_serve = True
-        LOGGER.debug('Application startup complete')
+        LOGGER.info('Application startup complete, ready to serve requests')
 
-    def openapi_validate(self, request: httputil.HTTPServerRequest) \
-            -> datatypes.RequestValidationResult:
-        """Validate the inbound request"""
-        return self.openapi_validator.validate(request)
+    def validate_request(self, request: httputil.HTTPServerRequest) -> None:
+        """Validate the inbound request, raising any number of OpenAPI
+        exceptions on error.
+
+        """
+        self.openapi_validator.validate(request).raise_for_errors()
 
     @property
     def ready_to_serve(self) -> bool:
         """Indicates if the service is available to respond to HTTP requests"""
         return self._ready_to_serve
-
-    def _get_openapi_spec(self) -> models.Spec:
-        """Return the OpenAPI spec for the application
-
-        Renders a JSON or YAML based OpenAPI spec and returns the model
-        that is passed into the validator.
-
-        raises: RuntimeError
-
-        """
-        loader = template.Loader(str(self.settings['template_path']))
-        spec_str = loader.load('openapi.yaml').generate(**{
-            'settings': self.settings
-        })
-        spec = yaml.safe_load(spec_str)
-        if 'servers' in spec:
-            del spec['servers']
-        return openapi_core.create_spec(spec)

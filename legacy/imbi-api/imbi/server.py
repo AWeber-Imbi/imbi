@@ -67,7 +67,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     log_config = config.get('logging', DEFAULT_LOG_CONFIG)
 
     gitlab = config.get('gitlab', {})
-    http = config.get('http', {})
+    http_settings = config.get('http', {})
     ldap = config.get('ldap', {})
     postgres = config.get('postgres', {})
     session = config.get('session', {})
@@ -76,8 +76,8 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     module_path = pathlib.Path(sys.modules['imbi'].__file__).parent
 
     settings = {
-        'compress_response': http.get('compress_response', True),
-        'cookie_secret': http.get('cookie_secret', 'imbi'),
+        'compress_response': http_settings.get('compress_response', True),
+        'cookie_secret': http_settings.get('cookie_secret', 'imbi'),
         'debug': debug,
         'gitlab_application_id': gitlab.get('application_id'),
         'gitlab_secret': gitlab.get('secret'),
@@ -97,9 +97,9 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'users_dn': ldap.get(
                 'users_dn', 'cn=groups,cn=accounts,dc=imbi,dc=tld')
         },
-        'number_of_procs': http.get('processes', 2),
+        'number_of_procs': http_settings.get('processes', 2),
         'permissions': [],
-        'port': http.get('port', 8000),
+        'port': http_settings.get('port', 8000),
         'postgres_url': postgres.get('url'),
         'postgres_max_pool_size': postgres.get('max_pool_size'),
         'postgres_min_pool_size': postgres.get('min_pool_size'),
@@ -117,7 +117,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'redis_url', 'redis://localhost:6379/1'),
         'template_loader': pkgfiles.TemplateLoader(debug=debug),
         'template_path': module_path / 'templates',
-        'xheaders': http.get('xheaders', True),
+        'xheaders': http_settings.get('xheaders', True),
         'xsrf_cookies': False,
         'version': version
     }
