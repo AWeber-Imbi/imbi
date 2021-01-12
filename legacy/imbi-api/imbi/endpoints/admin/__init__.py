@@ -4,7 +4,7 @@ Admin endpoints for configuring Imbi metadata
 """
 from tornado import web
 
-from imbi import common
+from imbi import constants
 from . import (
     configuration_systems,
     cookie_cutters,
@@ -13,6 +13,7 @@ from . import (
     environments,
     groups,
     orchestration_systems,
+    project_fact_type_options,
     project_fact_types,
     project_link_types,
     project_types,
@@ -60,10 +61,19 @@ URLS = [
 
     web.url(r'/admin/project_fact_type',
             project_fact_types.CRUDRequestHandler),
-    web.url(r'/admin/project_fact_type/'
-            r'(?P<id>{})$'.format(common.UUID_PATTERN),
+    web.url(r'/admin/project_fact_type/(?P<id>{})$'.format(
+                constants.UUID_PATTERN),
             project_fact_types.CRUDRequestHandler,
             name='admin-project-fact-types'),
+
+    web.url(r'/admin/project_fact_type_option/(?P<fact_type_id>{})'.format(
+                constants.UUID_PATTERN),
+            project_fact_type_options.CRUDRequestHandler),
+    web.url(r'/admin/project_fact_type_option/'
+            r'(?P<fact_type_id>{})/(?P<option_id>{})$'.format(
+                constants.UUID_PATTERN, constants.UUID_PATTERN),
+            project_fact_type_options.CRUDRequestHandler,
+            name='admin-project-fact-type-options'),
 
     web.url(r'/admin/project_link_type',
             project_link_types.CRUDRequestHandler),

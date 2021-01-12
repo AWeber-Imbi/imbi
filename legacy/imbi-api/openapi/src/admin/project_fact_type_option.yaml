@@ -20,6 +20,14 @@ paths:
         "400": {$ref: '../components/responses.yaml#/RequestError'}
         "409": {$ref: '../components/responses.yaml#/Conflict'}
       security: [{apiKey: []}, {session: []}]
+    parameters:
+      - name: fact_type_id
+        in: path
+        description: Project Fact Type ID
+        required: true
+        schema:
+          type: string
+          format: uuid
 
   manage:
     get:

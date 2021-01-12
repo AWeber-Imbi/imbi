@@ -3,7 +3,7 @@ description: |
   Defines options that are available for a project fact type
 type: object
 properties:
-  project_type_id:
+  fact_type_id:
     type: string
     format: uuid
   option_id:
@@ -17,7 +17,7 @@ properties:
     type: number
     default: 0
 required:
-  - project_type_id
+  - fact_type_id
   - option_id
   - value
   - score
