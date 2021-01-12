@@ -3,24 +3,23 @@ import uuid
 
 import jsonpatch
 
-from imbi.endpoints.admin import teams
-from tests import common
+from imbi.endpoints.admin import data_centers
+from tests import base
 
 
-class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
+class AsyncHTTPTestCase(base.TestCaseWithReset):
 
-    ADMIN = True
+    ADMIN_ACCESS = True
 
-    def test_team_lifecycle(self):
+    def test_data_center_lifecycle(self):
         record = {
             'name': str(uuid.uuid4()),
-            'slug': str(uuid.uuid4().hex),
-            'icon_class': 'fas fa-blind',
-            'group': None
+            'description': str(uuid.uuid4()),
+            'icon_class': 'fas fa-blind'
         }
 
         # Create
-        result = self.fetch('/admin/team', method='POST',
+        result = self.fetch('/admin/data_center', method='POST',
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
         self.assertEqual(result.code, 200)
@@ -28,10 +27,10 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url('/admin/team/{}'.format(record['name']))))
+                self.get_url('/admin/data_center/{}'.format(record['name']))))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                teams.CRUDRequestHandler.TTL))
+                data_centers.CRUDRequestHandler.TTL))
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(new_value, record)
 
@@ -42,88 +41,77 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
         patch_value = patch.to_string().encode('utf-8')
 
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']), method='PATCH',
-            body=patch_value, headers=self.headers)
+            '/admin/data_center/{}'.format(record['name']),
+            method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(new_value, updated)
 
         # Patch no change
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']), method='PATCH',
-            body=patch_value, headers=self.headers)
+            '/admin/data_center/{}'.format(record['name']),
+            method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 304)
 
         # GET
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/data_center/{}'.format(record['name']),
             headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assertEqual(
             result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url('/admin/team/{}'.format(record['name']))))
+                self.get_url(
+                    '/admin/data_center/{}'.format(record['name']))))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                teams.CRUDRequestHandler.TTL))
+                data_centers.CRUDRequestHandler.TTL))
 
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(new_value, updated)
 
         # DELETE
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/data_center/{}'.format(record['name']),
             method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/data_center/{}'.format(record['name']),
             headers=self.headers)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/data_center/{}'.format(record['name']),
             method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
         record = {
             'name': str(uuid.uuid4()),
-            'slug': str(uuid.uuid4().hex)
+            'icon_class': 'fas fa-blind'
         }
-        result = self.fetch('/admin/team', method='POST',
+        result = self.fetch('/admin/data_center', method='POST',
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertEqual(new_value['name'], record['name'])
-        self.assertEqual(new_value['slug'], record['slug'])
+        self.assertIsNone(new_value['description'])
         self.assertIsNotNone(new_value['icon_class'])
-
-        # DELETE
-        result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
-            method='DELETE', headers=self.headers)
-        self.assertEqual(result.code, 204)
-
-        # GET record should not exist
-        result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
-            headers=self.headers)
-        self.assertEqual(result.code, 404)
 
     def test_method_not_implemented(self):
         for method in {'GET', 'DELETE', 'PATCH'}:
             result = self.fetch(
-                '/admin/team', method=method,
+                '/admin/data_center', method=method,
                 allow_nonstandard_methods=True,
                 headers=self.headers)
             self.assertEqual(result.code, 405)
 
-        url = '/admin/team/' + str(uuid.uuid4())
+        url = '/admin/data_center/' + str(uuid.uuid4())
         result = self.fetch(url, method='POST',
                             allow_nonstandard_methods=True,
                             headers=self.headers)

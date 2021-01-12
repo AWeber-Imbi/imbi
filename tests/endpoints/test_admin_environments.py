@@ -3,15 +3,15 @@ import uuid
 
 import jsonpatch
 
-from imbi.endpoints.admin import orchestration_systems
-from tests import common
+from imbi.endpoints.admin import environments
+from tests import base
 
 
-class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
+class AsyncHTTPTestCase(base.TestCaseWithReset):
 
-    ADMIN = True
+    ADMIN_ACCESS = True
 
-    def test_orchestration_system_lifecycle(self):
+    def test_environment_lifecycle(self):
         record = {
             'name': str(uuid.uuid4()),
             'description': str(uuid.uuid4()),
@@ -19,7 +19,7 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
         }
 
         # Create
-        result = self.fetch('/admin/orchestration_system', method='POST',
+        result = self.fetch('/admin/environment', method='POST',
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
         self.assertEqual(result.code, 200)
@@ -28,10 +28,10 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
         self.assertEqual(
             result.headers['Link'], '<{}>; rel="self"'.format(
                 self.get_url(
-                    '/admin/orchestration_system/{}'.format(record['name']))))
+                    '/admin/environment/{}'.format(record['name']))))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                orchestration_systems.CRUDRequestHandler.TTL))
+                environments.CRUDRequestHandler.TTL))
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(new_value, record)
 
@@ -42,7 +42,7 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
         patch_value = patch.to_string().encode('utf-8')
 
         result = self.fetch(
-            '/admin/orchestration_system/{}'.format(record['name']),
+            '/admin/environment/{}'.format(record['name']),
             method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
@@ -50,13 +50,13 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
 
         # Patch no change
         result = self.fetch(
-            '/admin/orchestration_system/{}'.format(record['name']),
+            '/admin/environment/{}'.format(record['name']),
             method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 304)
 
         # GET
         result = self.fetch(
-            '/admin/orchestration_system/{}'.format(record['name']),
+            '/admin/environment/{}'.format(record['name']),
             headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
@@ -64,37 +64,38 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
         self.assertEqual(
             result.headers['Link'], '<{}>; rel="self"'.format(
                 self.get_url(
-                    '/admin/orchestration_system/{}'.format(record['name']))))
+                    '/admin/environment/{}'.format(record['name']))))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                orchestration_systems.CRUDRequestHandler.TTL))
+                environments.CRUDRequestHandler.TTL))
 
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(new_value, updated)
 
         # DELETE
         result = self.fetch(
-            '/admin/orchestration_system/{}'.format(record['name']),
+            '/admin/environment/{}'.format(record['name']),
             method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
         result = self.fetch(
-            '/admin/orchestration_system/{}'.format(record['name']),
+            '/admin/environment/{}'.format(record['name']),
             headers=self.headers)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
         result = self.fetch(
-            '/admin/orchestration_system/{}'.format(record['name']),
+            '/admin/environment/{}'.format(record['name']),
             method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
         record = {
-            'name': str(uuid.uuid4())
+            'name': str(uuid.uuid4()),
+            'icon_class': 'fas fa-blind'
         }
-        result = self.fetch('/admin/orchestration_system', method='POST',
+        result = self.fetch('/admin/environment', method='POST',
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
         self.assertEqual(result.code, 200)
@@ -106,12 +107,12 @@ class AsyncHTTPTestCase(common.AsyncHTTPTestCase):
     def test_method_not_implemented(self):
         for method in {'GET', 'DELETE', 'PATCH'}:
             result = self.fetch(
-                '/admin/orchestration_system', method=method,
+                '/admin/environment', method=method,
                 allow_nonstandard_methods=True,
                 headers=self.headers)
             self.assertEqual(result.code, 405)
 
-        url = '/admin/orchestration_system/' + str(uuid.uuid4())
+        url = '/admin/environment/' + str(uuid.uuid4())
         result = self.fetch(url, method='POST',
                             allow_nonstandard_methods=True,
                             headers=self.headers)
