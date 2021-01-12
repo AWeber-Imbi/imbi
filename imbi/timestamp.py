@@ -11,21 +11,6 @@ import iso8601
 from dateutil import tz
 
 
-class ISO8601Formatter:
-
-    @staticmethod
-    def validate(value) -> bool:
-        try:
-            iso8601.parse_date(value)
-        except iso8601.ParseError:
-            return False
-        return True
-
-    @staticmethod
-    def unmarshal(value):
-        return iso8601.parse_date(value)
-
-
 def age(value: typing.Union[datetime.datetime, str]) -> datetime.timedelta:
     """Return the age of a timestamp as a datetime.timedelta"""
     if isinstance(value, str):
