@@ -106,7 +106,7 @@ class TestCase(testing.AsyncHTTPTestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.settings, logging_config = server.load_configuration(
-            'build/test.yaml', True)
+            'build/test.yaml', False)
         config.dictConfig(logging_config)
 
     def setUp(self) -> None:
