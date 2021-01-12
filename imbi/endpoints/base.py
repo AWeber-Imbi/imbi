@@ -2,6 +2,7 @@
 Base Request Handlers
 
 """
+import asyncio
 import datetime
 import logging
 import typing
@@ -11,11 +12,17 @@ from email import utils
 import jsonpatch
 import problemdetails
 import sprockets_postgres as postgres
+from openapi_core.deserializing.exceptions import DeserializeError
+from openapi_core.schema.media_types.exceptions import InvalidContentType
+from openapi_core.templating.paths.exceptions import \
+    OperationNotFound, PathNotFound
+from openapi_core.unmarshalling.schemas.exceptions import ValidateError
+from openapi_core.validation.exceptions import InvalidSecurity
 from sprockets.http import mixins
-from sprockets.mixins import correlation, mediatype
+from sprockets.mixins import mediatype
 from tornado import httputil, web
 
-from imbi import __version__, common, session, user
+from imbi import session, user, version
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,10 +49,9 @@ def require_permission(permission):
     return _require_permission
 
 
-class RequestHandler(mixins.ErrorLogger,
+class RequestHandler(postgres.RequestHandlerMixin,
+                     mixins.ErrorLogger,
                      problemdetails.ErrorWriter,
-                     postgres.RequestHandlerMixin,
-                     correlation.HandlerMixin,
                      mediatype.ContentMixin,
                      web.RequestHandler):
     """Base RequestHandler class used for recipients and subscribers."""
@@ -77,7 +83,9 @@ class RequestHandler(mixins.ErrorLogger,
         self.session = session.Session(self)
         await self.session.initialize()
         self._current_user = await self.get_current_user()
-        await super().prepare()
+        future = super().prepare()
+        if asyncio.isfuture(future):
+            await future
 
     def on_finish(self) -> None:
         """Invoked after a request has completed"""
@@ -96,7 +104,7 @@ class RequestHandler(mixins.ErrorLogger,
         return None
 
     async def get_current_user(self) -> typing.Optional[user.User]:
-        """Used by the system to manage authentication behaviors."""
+        """Used by the system to manage authentication behaviors"""
         if self.session and self.session.user:
             return self.session.user
         token = self.request.headers.get('Private-Token', None)
@@ -115,7 +123,7 @@ class RequestHandler(mixins.ErrorLogger,
 
         """
         namespace = super(RequestHandler, self).get_template_namespace()
-        namespace.update({'__version__': __version__})
+        namespace.update({'version': version})
         return namespace
 
     def send_response(self, value: typing.Union[dict, list]) -> None:
@@ -131,13 +139,10 @@ class RequestHandler(mixins.ErrorLogger,
     def set_default_headers(self) -> None:
         """Override the default headers, setting the Server response header"""
         super().set_default_headers()
-        self.set_header('Server', '{}/{}'.format(
-            self.settings['service'], __version__))
+        self.set_header('Server', self.settings['server_header'])
 
     def write_error(self, status_code, **kwargs):
-        LOGGER.debug('KWArgs: %r', kwargs)
         if self._respond_with_html:
-            print(kwargs['exc_info'][2])
             return self.render('error.html', status_code=status_code, **kwargs)
         super().write_error(status_code, **kwargs)
 
@@ -147,7 +152,7 @@ class RequestHandler(mixins.ErrorLogger,
 
         """
         if not value:
-            return self.logger.debug('Last-Modified received None value')
+            return
         self.set_header('Last-Modified', self._rfc822_date(value))
 
     def _add_link_header(self) -> None:
@@ -195,10 +200,41 @@ class AuthenticatedRequestHandler(RequestHandler):
             if self._respond_with_html:
                 return await self.render('index.html')
             self.set_status(401)
-            self.finish()
+            await self.finish()
 
 
-class CRUDRequestHandler(AuthenticatedRequestHandler):
+class ValidatingRequestHandler(AuthenticatedRequestHandler):
+    """Validates the request against the OpenAPI spec"""
+    async def prepare(self) -> None:
+        await super().prepare()
+        try:
+            self.application.validate_request(self.request)
+        except DeserializeError as err:
+            raise problemdetails.Problem(
+                status_code=400, title='Bad Request', detail=str(err))
+        except InvalidSecurity as err:
+            raise problemdetails.Problem(
+                status_code=401, title='Unauthorized',
+                detail=str(err))
+        except OperationNotFound as err:
+            raise problemdetails.Problem(
+                status_code=405, title='Method Not Allowed', detail=str(err))
+        except InvalidContentType as err:
+            raise problemdetails.Problem(
+                status_code=415, title='Unsupported Media Type',
+                detail=str(err))
+        except PathNotFound as err:
+            self.logger.debug(err)
+            raise problemdetails.Problem(
+                status_code=500, title='OpenAPI Spec Error', detail=str(err))
+        except ValidateError as err:
+            raise problemdetails.Problem(
+                status_code=400, title='Bad Request',
+                detail='The request did not validate',
+                errors=[str(e).split('\n')[0] for e in err.schema_errors])
+
+
+class CRUDRequestHandler(ValidatingRequestHandler):
     """CRUD request handler to reduce large amounts of duplicated code"""
 
     NAME = 'default'
@@ -214,15 +250,17 @@ class CRUDRequestHandler(AuthenticatedRequestHandler):
     PATCH_SQL: typing.Optional[str] = None
     POST_SQL: typing.Optional[str] = None
 
-    async def prepare(self):
-        await super().prepare()
-        self.logger.debug('Endpoint: %s', self.NAME)
-
     def _ensure_keys_are_set(self, kwargs):
         if isinstance(self.ID_KEY, list) \
                 and not all(k in kwargs for k in self.ID_KEY):
+            self.logger.critical(
+                '%s is misconfigured, kwargs dont match keys (%r != %r)',
+                self.NAME, kwargs.keys(), self.ID_KEY)
             raise web.HTTPError(405)
         elif isinstance(self.ID_KEY, str) and self.ID_KEY not in kwargs:
+            self.logger.critical(
+                '%s is misconfigured, kwargs dont match keys (%r != %r)',
+                self.NAME, kwargs.keys(), self.ID_KEY)
             raise web.HTTPError(405)
 
     async def delete(self, *args, **kwargs):
@@ -243,7 +281,6 @@ class CRUDRequestHandler(AuthenticatedRequestHandler):
 
     async def patch(self, *args, **kwargs):
         if self.PATCH_SQL is None:
-            self.logger.debug('PATCH_SQL not defined')
             raise web.HTTPError(405)
         self._ensure_keys_are_set(kwargs)
         await self._patch(kwargs)
@@ -288,10 +325,11 @@ class CRUDRequestHandler(AuthenticatedRequestHandler):
         self.set_status(204, reason='Item Deleted')
 
     async def _get(self, kwargs):
+        self.logger.debug('In get with kwargs: %r', kwargs)
         result = await self.postgres_execute(
             self.GET_SQL, self._get_query_kwargs(kwargs),
             'get-{}'.format(self.NAME))
-        if not result.row_count:
+        if not result.row_count or not result.row:
             raise web.HTTPError(404, reason='Item not found')
         for key, value in result.row.items():
             if isinstance(value, uuid.UUID):
@@ -305,13 +343,6 @@ class CRUDRequestHandler(AuthenticatedRequestHandler):
 
     async def _patch(self, kwargs):
         patch_value = self.get_request_body()
-
-        # Validate the JSONPatch format / payload
-        try:
-            common.jsonschema_validate('patch.yaml', patch_value, False)
-        except ValueError as error:
-            self.logger.debug('JSON Schema validation error: %s', error)
-            raise web.HTTPError(400, reason=str(error))
 
         result = await self.postgres_execute(
             self.GET_SQL, self._get_query_kwargs(kwargs),
@@ -337,13 +368,6 @@ class CRUDRequestHandler(AuthenticatedRequestHandler):
             self._add_self_link(self.request.path)
             self._add_link_header()
             return self.set_status(304)
-
-        # Validate the new version that will be saved
-        try:
-            common.jsonschema_validate(self.ITEM_SCHEMA, updated)
-        except ValueError as error:
-            self.logger.debug('JSON Schema validation error: %s', error)
-            raise web.HTTPError(400, reason=str(error))
 
         if isinstance(self.ID_KEY, list):
             for key in self.ID_KEY:
@@ -375,13 +399,7 @@ class CRUDRequestHandler(AuthenticatedRequestHandler):
             if name not in values:
                 values[name] = self.DEFAULTS.get(name, None)
 
-        # Validate the record that will be inserted against the schema
-        try:
-            common.jsonschema_validate(self.ITEM_SCHEMA, values)
-        except ValueError as error:
-            self.logger.debug('JSON Schema validation error: %s', error)
-            raise web.HTTPError(400, reason=str(error))
-
+        self.logger.debug('Executing POST query %s, %r', self.NAME, values)
         result = await self.postgres_execute(
             self.POST_SQL, values, 'post-{}'.format(self.NAME))
         if not result.row_count:
