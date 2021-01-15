@@ -31,7 +31,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
     def __init__(self, **settings):
         LOGGER.info('imbi v%s starting', settings['version'])
         settings['default_handler_class'] = default.RequestHandler
-        settings['permissions'] = permissions.find_permissions(endpoints.URLS)
+        settings['permissions'] = permissions.PERMISSIONS
         super(Application, self).__init__(endpoints.URLS, **settings)
         self._ready_to_serve = False
         self._request_logger = logging.getLogger('imbi')
@@ -105,6 +105,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
     async def on_start(self,
                        _app: http.app.Application,
                        _loop: ioloop.IOLoop) -> None:
+
         """Invoked on startup of the application"""
         self.startup_complete = asyncio.Event()
         self.loop = ioloop.IOLoop.current()
