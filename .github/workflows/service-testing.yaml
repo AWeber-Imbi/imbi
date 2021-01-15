@@ -23,7 +23,7 @@ jobs:
       - name: Bootstrap environment
         run: make .env
       - name: Run Tests
-        run: docker-compose run --rm -T test-python3.7
+        run: docker-compose run --rm -T test-python3.9
       - name: Upload Coverage
         uses: codecov/codecov-action@v1.0.2
         with:
