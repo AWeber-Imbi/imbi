@@ -1,4 +1,4 @@
-import {Link, NavLink} from "react-router-dom"
+import {Link, NavLink, useRouteMatch} from "react-router-dom"
 import {Menu} from "@headlessui/react"
 import React from "react"
 import PropTypes from "prop-types"
@@ -22,12 +22,17 @@ MenuItem.propTypes = {
 }
 
 function NavMenu({user}) {
+  const match = useRouteMatch({
+    path: "/ui/",
+    exact: true
+  });
   const {t} = useTranslation()
+
   return (
-    <Menu as="div" className="flex-grow ml-2 mt-2 space-x-2">
-      <Link className="nav-menu-link" to="/ui/">{t("headerNavItems.dashboard")}</Link>
-      <NavLink className="nav-menu-link" to="/ui/projects">{t("headerNavItems.projects")}</NavLink>
-      <NavLink className="nav-menu-link" to="/ui/changelog">{t("headerNavItems.changeLog")}</NavLink>
+    <Menu as="div" className={"flex-grow ml-2 mt-2 space-x-2"}>
+      <Link className={"nav-menu-link" + (match ? " active" : "")} to="/ui/">{t("dashboard.title")}</Link>
+      <NavLink className="nav-menu-link" to="/ui/projects">{t("projects.title")}</NavLink>
+      <NavLink className="nav-menu-link" to="/ui/operations-log">{t("operationsLog.title")}</NavLink>
       {user.permissions.includes("admin") && (
         <Tooltip value={t("headerNavItems.administration")}>
           <NavLink className="nav-menu-link" to="/ui/admin">
