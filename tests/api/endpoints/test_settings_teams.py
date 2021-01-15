@@ -7,6 +7,7 @@ from tests import base
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
+    TRUNCATE_TABLES = ['v1.teams']
 
     def test_teams(self):
         # Setup test values

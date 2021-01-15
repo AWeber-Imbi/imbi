@@ -10,6 +10,9 @@ from tests import base
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
+    TRUNCATE_TABLES = [
+        'v1.deployment_types'
+    ]
 
     def test_deployment_type_lifecycle(self):
         record = {

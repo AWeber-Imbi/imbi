@@ -10,6 +10,7 @@ from tests import base
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
+    TRUNCATE_TABLES = ['v1.teams']
 
     def test_team_lifecycle(self):
         record = {

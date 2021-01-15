@@ -10,6 +10,9 @@ from tests import base
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
+    TRUNCATE_TABLES = [
+        'v1.data_centers'
+    ]
 
     def test_data_center_lifecycle(self):
         record = {

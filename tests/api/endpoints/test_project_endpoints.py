@@ -11,6 +11,15 @@ from tests import base
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
+    TRUNCATE_TABLES = [
+        'v1.configuration_systems',
+        'v1.data_centers',
+        'v1.deployment_types',
+        'v1.orchestration_systems',
+        'v1.project_link_types',
+        'v1.project_types',
+        'v1.teams'
+    ]
 
     def setUp(self):
         super().setUp()
