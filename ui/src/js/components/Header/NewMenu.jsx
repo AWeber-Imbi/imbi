@@ -35,7 +35,7 @@ function NewMenu() {
       <Menu.Items aria-labelledby="user-menu"
                   aria-orientation="vertical"
                   className="origin-top-right absolute right-20 mt-1 w-48 rounded-md shadow-lg py-1 focus:outline-none bg-white ring-1 ring-gray-300 ring-opacity-5">
-        <NewMenuItem to="/ui/changelog#new" value={t("headerNavItems.newChangeLogEntry")}/>
+        <NewMenuItem to="/ui/changelog#new" value={t("headerNavItems.newOperationsLogEntry")}/>
         <NewMenuItem to="/ui/project#new" value={t("headerNavItems.newProject")}/>
       </Menu.Items>
     </Menu>

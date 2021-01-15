@@ -11,9 +11,7 @@ require("typeface-inter")
 
 import {
   FetchContext,
-  FetchSettingsContext,
   LogoutContext,
-  SettingsContext
 } from "./contexts"
 
 import {httpGet} from "./utils"
@@ -33,15 +31,6 @@ function App({logo, service, ldap, version}) {
   const [content, setContent] = useState(<Loading />)
   const [errorMessage, setErrorMessage] = useState(null)
   const history = useHistory()
-  const [settings, setSettings] = useState({
-      service_name: service,
-      ldap_enabled: ldap === 'true'
-  })
-  const [settingsState, setSettingsState] = useState({
-    fetch: false,
-    fetching: false,
-    initialized: false
-  })
   const [user, setUser] = useState(loggedOutUser)
   const [userState, setUserState] = useState({
     authenticated: false,
@@ -59,10 +48,6 @@ function App({logo, service, ldap, version}) {
     })
   }
 
-  const fetchSettings = () => {
-    setSettingsState({...settingsState, fetch: true})
-  }
-
   const logout = () => {
     fetch('/ui/logout').then(() => {
       resetState()
@@ -73,15 +58,6 @@ function App({logo, service, ldap, version}) {
   const resetState = () => {
     setContent(<Loading />)
     setErrorMessage(null)
-    setSettings({
-      service_name: service,
-      ldap_enabled: ldap === 'true'
-    })
-    setSettingsState({
-      fetch: false,
-      fetching: false,
-      initialized: false
-    })
     setUser({...loggedOutUser})
     setUserState({
       authenticated: false,
@@ -129,29 +105,11 @@ function App({logo, service, ldap, version}) {
     } else if (userState.initialized && !userState.authenticated) {
       // Display Login Form
       setContent(<Login onLoginCallback={setUserData}/>)
-    } else if (userState.authenticated
-               && !settingsState.initialized && !settingsState.fetching && !settingsState.fetch) {
-      // Set state to toggle settings fetch
-      setSettingsState({...settingsState, fetch: true})
-    } else if (settingsState.fetch && !settingsState.fetching) {
-      // Fetch settings
-      setSettingsState({fetch: false, fetching: true, initialized: false})
-      httpGet(
-        fetch,
-        "/ui/settings",
-        (result) => {
-          setSettingsState({fetch: false, fetching: false, initialized: true})
-          setSettings(result)
-        },
-        (error) => {
-          setSettingsState({fetch: false, fetching: false, initialized: true})
-          setErrorMessage(error)
-        })
-    } else if (settingsState.initialized && userState.authenticated) {
+    } else if (userState.authenticated) {
       // User is logged in, show main content
       setContent(<Main user={user} />)
     }
-  }, [settingsState, user, userState])
+  }, [user, userState])
 
   useEffect(() => {
     if (errorMessage !== null)
@@ -160,18 +118,14 @@ function App({logo, service, ldap, version}) {
 
   return (
     <FetchContext.Provider value={authenticatedFetch}>
-      <FetchSettingsContext.Provider value={fetchSettings}>
         <LogoutContext.Provider value={logout}>
-          <SettingsContext.Provider value={settings}>
-            <Header authenticated={settingsState.initialized && userState.authenticated}
-                    logo={logo}
-                    service={service}
-                    user={user}/>
-            {content}
-            <Footer service={service} version={version}/>
-          </SettingsContext.Provider>
+          <Header authenticated={userState.authenticated}
+                  logo={logo}
+                  service={service}
+                  user={user}/>
+          {content}
+          <Footer service={service} version={version}/>
         </LogoutContext.Provider>
-      </FetchSettingsContext.Provider>
     </FetchContext.Provider>
   )
 }
