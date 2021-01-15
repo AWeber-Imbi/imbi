@@ -1,8 +1,6 @@
 import datetime
 import json
 import logging
-import pathlib
-import tempfile
 
 import iso8601
 import openapi_spec_validator
@@ -65,7 +63,7 @@ def create_spec(spec_dict: dict) -> models.Spec:
 
 def request_validator(settings: dict) -> tornado_openapi3.RequestValidator:
     return tornado_openapi3.RequestValidator(
-        spec=_get_openapi_spec(settings),
+        spec=create_spec(_render_template(settings)),
         custom_formatters={
             'email': EMailFormatter,
             'iso8601-timestamp': ISO8601Formatter,
@@ -80,7 +78,7 @@ def request_validator(settings: dict) -> tornado_openapi3.RequestValidator:
 
 def response_validator(settings: dict) -> tornado_openapi3.ResponseValidator:
     return tornado_openapi3.ResponseValidator(
-        spec=_get_openapi_spec(settings),
+        spec=create_spec(_render_template(settings)),
         custom_formatters={
             'email': EMailFormatter,
             'iso8601-timestamp': ISO8601Formatter,
@@ -93,27 +91,12 @@ def response_validator(settings: dict) -> tornado_openapi3.ResponseValidator:
             'application/yaml': yaml.safe_load})
 
 
-def _get_openapi_spec(settings: dict) -> models.Spec:
-    """Return the OpenAPI spec for the application
-
-    Renders a JSON or YAML based OpenAPI spec and returns the model
-    that is passed into the validator.
-
-    raises: RuntimeError
-
-    """
-    rendered = pathlib.Path(tempfile.gettempdir()) / 'imbi-openapi.yaml'
-    if not rendered.exists() or settings.get('debug'):
-        LOGGER.debug('Rendering %s', rendered)
-        loader = template.Loader(str(settings['template_path']))
-        spec_str = loader.load('openapi.yaml').generate(**{
-            'settings': settings
-        })
-        spec = yaml.safe_load(spec_str)
-        if 'servers' in spec:
-            del spec['servers']
-        with rendered.open('w') as handle:
-            yaml.dump(spec, handle)
-    with rendered.open('r') as handle:
-        spec = yaml.safe_load(handle)
-    return create_spec(spec)
+def _render_template(settings: dict) -> dict:
+    """Load the template file and render it, replacing any template markup"""
+    spec = yaml.safe_load(
+        template.Loader(str(settings['template_path'])).load(
+            'openapi.yaml').generate(**{'settings': settings}))
+    # Remove servers for validation to prevent hostname validation errors
+    if 'servers' in spec:
+        del spec['servers']
+    return spec
