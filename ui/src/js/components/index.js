@@ -1,5 +1,6 @@
 export {Alert} from "./Alert/Alert"
 export {ConfirmationDialog} from "./ConfirmationDialog/ConfirmationDialog"
+export {ContentArea} from "./ContentArea/ContentArea"
 export {CRUD} from "./CRUD/CRUD"
 export {Error} from "./Error/Error"
 export {Footer} from "./Footer/Footer"
