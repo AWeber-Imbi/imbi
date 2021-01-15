@@ -10,6 +10,7 @@ from tests import base
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
+    TRUNCATE_TABLES = ['v1.project_types', 'v1.project_fact_types']
 
     def setUp(self) -> None:
         super().setUp()

@@ -51,15 +51,13 @@ class InternalTestCase(base.TestCase):
         values.setdefault('name', str(uuid.uuid4()))
         values.setdefault(
             'permissions', [str(uuid.uuid4()), str(uuid.uuid4())])
-        async with self.cursor() as cursor:
-            await cursor.execute(self.SQL_INSERT_GROUP, values)
+        await self.postgres_execute(self.SQL_INSERT_GROUP, values)
         return values
 
     async def setup_group_membership(self, username, group):
-        async with self.cursor() as cursor:
-            await cursor.execute(
-                self.SQL_INSERT_GROUP_MEMBERSHIP,
-                {'group': group, 'username': username})
+        await self.postgres_execute(
+            self.SQL_INSERT_GROUP_MEMBERSHIP,
+            {'group': group, 'username': username})
 
     async def setup_user(self, values=None):
         if not values:
@@ -71,8 +69,7 @@ class InternalTestCase(base.TestCase):
         values.setdefault('last_seen_at', timestamp.utcnow())
         password = values.get('password', str(uuid.uuid4()))
         values['password'] = self._app.encrypt_value('password', password)
-        async with self.cursor() as cursor:
-            await cursor.execute(self.SQL_INSERT_USER, values)
+        await self.postgres_execute(self.SQL_INSERT_USER, values)
         values['password'] = password
         return values
 
@@ -132,11 +129,9 @@ class InternalTestCase(base.TestCase):
         display_name = str(uuid.uuid4())
         self.assertNotEqual(display_name, user_value['display_name'])
 
-        async with self.cursor() as cursor:
-            await cursor.execute(
-                self.SQL_UPDATE_DISPLAY_NAME,
-                {'display_name': display_name,
-                 'username': user_value['username']})
+        await self.postgres_execute(
+            self.SQL_UPDATE_DISPLAY_NAME,
+            {'display_name': display_name, 'username': user_value['username']})
 
         await obj.refresh()
 

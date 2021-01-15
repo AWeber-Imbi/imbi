@@ -10,6 +10,10 @@ from tests import base
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
+    TRUNCATE_TABLES = [
+        'v1.cookie_cutters',
+        'v1.project_types'
+    ]
 
     def setUp(self):
         super().setUp()
