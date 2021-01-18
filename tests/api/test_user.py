@@ -90,15 +90,14 @@ class InternalTestCase(base.TestCase):
             self.assertIn(key, values)
             del values[key]
 
-        values['groups'] = [dict(g) for g in values['groups']]
-
         expectation = {
             'username': user_value['username'],
             'user_type': 'internal',
             'external_id': None,
             'display_name': user_value['display_name'],
             'email_address': user_value['email_address'],
-            'groups': [group_value]
+            'groups': [group_value['name']],
+            'permissions': list(set(group_value['permissions']))
         }
         self.assertDictEqual(values, expectation)
 
@@ -141,15 +140,14 @@ class InternalTestCase(base.TestCase):
             self.assertIn(key, values)
             del values[key]
 
-        values['groups'] = [dict(g) for g in values['groups']]
-
         expectation = {
             'username': user_value['username'],
             'user_type': 'internal',
             'external_id': None,
             'display_name': display_name,
             'email_address': user_value['email_address'],
-            'groups': [group_value]
+            'groups': [group_value['name']],
+            'permissions': list(set(group_value['permissions']))
         }
         self.assertDictEqual(values, expectation)
 
@@ -231,18 +229,15 @@ class LDAPTestCase(base.TestCase):
                 'created_at', 'last_refreshed_at', 'last_seen_at', 'password'}:
             self.assertIn(key, values)
             del values[key]
-        values['groups'] = sorted(
-            (dict(g) for g in values['groups']), key=lambda v: v['name'])
+
         expectation = {
             'username': 'test',
             'user_type': 'ldap',
             'external_id': 'cn=test,ou=users,dc=example,dc=org',
             'display_name': 'Its Imbi',
             'email_address': 'imbi@example.org',
-            'groups': [
-                {'name': 'admin', 'permissions': ['admin']},
-                {'name': 'imbi', 'permissions': ['reader']}
-            ]
+            'groups': ['admin', 'imbi'],
+            'permissions': ['admin', 'reader']
         }
         self.assertDictEqual(values, expectation)
         self.assertTrue(obj.has_permission('admin'))
