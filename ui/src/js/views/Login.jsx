@@ -3,14 +3,13 @@ import React, {useContext, useRef, useState} from "react"
 import {useTranslation} from "react-i18next"
 
 import {Alert} from "../components"
-import {FetchContext, SettingsContext} from "../contexts"
+import {FetchContext} from "../contexts"
 import {httpPost} from "../utils"
 
-function Login({onLoginCallback}) {
+function Login({onLoginCallback, useLDAP}) {
 
   const {t} = useTranslation()
   const fetch = useContext(FetchContext)
-  const settings = useContext(SettingsContext)
 
   const [credentials, setCredentials] = useState({
     username: null,
@@ -64,7 +63,7 @@ function Login({onLoginCallback}) {
                 <div className="mb-4">
                   <label htmlFor="username"
                          className="block text-sm font-medium text-gray-700 mb-1">
-                    {(settings.ldap_enabled ? "LDAP " : "") + t("login.username")}
+                    {(useLDAP ? "LDAP " : "") + t("login.username")}
                   </label>
                   <input id="username"
                          className={errorMessage !== null ? "form-input-error" : "form-input"}
@@ -106,7 +105,8 @@ function Login({onLoginCallback}) {
 }
 
 Login.propTypes = {
-  onLoginCallback: PropTypes.func
+  onLoginCallback: PropTypes.func,
+  useLDAP: PropTypes.bool
 }
 
 export {Login}
