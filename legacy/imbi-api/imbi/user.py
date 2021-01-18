@@ -5,6 +5,7 @@ User Model supporting both LDAP and PostgreSQL data sources
 import datetime
 import logging
 import typing
+from itertools import chain
 
 from tornado import web
 
@@ -101,21 +102,27 @@ class User:
         self._ldap = ldap.Client(application.settings['ldap'])
         self._ldap_conn = None
         self.username = username
-        self.created_at = None
-        self.last_seen_at = None
+        self.created_at: typing.Optional[str] = None
+        self.last_seen_at: typing.Optional[str] = None
         self.user_type = 'internal'
-        self.external_id = None
-        self.email_address = None
-        self.display_name = None
+        self.external_id: typing.Optional[str] = None
+        self.email_address: typing.Optional[str] = None
+        self.display_name: typing.Optional[str] = None
         self.password = password
         self.token = token
-        self.groups = []
+        self.groups: typing.List[Group] = []
+        self.permissions: typing.List[str] = []
+
+    def __repr__(self):
+        return '<User username={} user_type={} permissions={}>'.format(
+            self.username, self.user_type, self.permissions)
 
     def __setattr__(self, name: str, value: typing.Any) -> None:
         """Intercept the assignment of a signed password and decrypt it
         if it appears to be encrypted.
 
         """
+        LOGGER.debug('Setting %r to %r', name, value)
         if name == 'password' \
                 and self._application.is_encrypted_value(value):
             value = self._application.decrypt_value(
@@ -132,9 +139,10 @@ class User:
             'last_seen_at': timestamp.isoformat(self.last_seen_at),
             'email_address': self.email_address,
             'display_name': self.display_name,
-            'groups': [dict(g) for g in self.groups],
+            'groups': [g.name for g in self.groups],
             'password': self._application.encrypt_value(
                 'password', self.password),
+            'permissions': self.permissions,
             'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at)
         }
 
@@ -157,7 +165,7 @@ class User:
         :param value: The role to check for
 
         """
-        return any(value in group.permissions for group in self.groups)
+        return value in self.permissions
 
     @staticmethod
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
@@ -286,6 +294,8 @@ class User:
 
         # Update the groups attribute
         self.groups = await self._db_groups()
+        self.permissions = list(set(
+            chain.from_iterable([g.permissions for g in self.groups])))
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
     def _reset(self) -> None:
@@ -294,13 +304,14 @@ class User:
 
         """
         self._ldap_conn = None
-        self.created_at = None
-        self.last_seen_at = None
+        self.created_at: typing.Optional[str] = None
+        self.last_seen_at: typing.Optional[str] = None
         self.user_type = 'internal'
-        self.external_id = None
-        self.email_address = None
-        self.display_name = None
-        self.groups = []
+        self.external_id: typing.Optional[str] = None
+        self.email_address: typing.Optional[str] = None
+        self.display_name: typing.Optional[str] = None
+        self.groups: typing.List[Group] = []
+        self.permissions: typing.List[str] = []
 
     async def _token_auth(self) -> bool:
         """Validate via v1.authentication_tokens table"""
