@@ -36,4 +36,4 @@ paths:
                       url: https://github.com/aweber/grafana-consumer-cookiecutter.git
             application/msgpack:
               <<: *responseContent
-      security: [{apiKey: []}, {session: []}]
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}

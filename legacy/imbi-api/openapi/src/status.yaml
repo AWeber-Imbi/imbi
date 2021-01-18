@@ -1,6 +1,7 @@
 paths:
   status:
     get:
+      security: []
       description: |-
         Returns information about the running service, including runtime metrics
         including counters and durations.

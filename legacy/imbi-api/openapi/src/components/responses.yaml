@@ -75,3 +75,19 @@ RequestError:
             message: "HTTP 400 Request Error"
     application/msgpack:
       <<: *responsesRequestError
+
+Unauthorized:
+  description: The request could not be authorized using the session cookie or provided API token
+  content:
+    application/json: &responsesRequestError
+      schema:
+        $ref: './schemas.yaml#/problemDetail'
+      examples:
+        problemDetail:
+          description: An example of the response body
+          value:
+            type: HTTPError
+            traceback: []
+            message: "HTTP 401 Unauthorized"
+    application/msgpack:
+      <<: *responsesRequestError

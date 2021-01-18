@@ -16,16 +16,20 @@ info:
 
 components:
   securitySchemes:
-    apiKey:
-      type: apiKey
-      description: Uses an API key generated for a user to authenticate each API request
-      in: header
-      name: Private-Token
     session:
       type: apiKey
       description: Uses the session cookie of an authenticated user to authenticate each API request
       in: cookie
       name: session
+    token:
+      type: apiKey
+      description: Uses an API key generated for a user to authenticate each API request
+      in: header
+      name: Private-Token
+
+security:
+  - session: []
+  - token: []
 
 paths:
   /admin/configuration_system: {$ref: 'admin/configuration_system.yaml#/paths/create'}

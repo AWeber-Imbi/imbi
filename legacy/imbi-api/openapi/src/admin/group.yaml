@@ -18,8 +18,8 @@ paths:
       responses:
         "200": {$ref: '#/components/responses/Success'}
         "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "409": {$ref: '../components/responses.yaml#/Conflict'}
-      security: [{apiKey: []}, {session: []}]
 
   manage:
     get:
@@ -28,8 +28,8 @@ paths:
       tags: [Groups]
       responses:
         "200": {$ref: '#/components/responses/Success'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "404": {$ref: '../components/responses.yaml#/NotFound'}
-      security: [{apiKey: []}, {session: []}]
     patch:
       summary: Update Record
       description: >-
@@ -48,15 +48,16 @@ paths:
         "200": {$ref: '#/components/responses/Success'}
         "304": {$ref: '../components/responses.yaml#/NoChanges'}
         "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "404": {$ref: '../components/responses.yaml#/NotFound'}
         "409": {$ref: '../components/responses.yaml#/Conflict'}
-      security: [{apiKey: []}, {session: []}]
     delete:
       summary: Delete Record
       description: Remove a group record
       tags: [Groups]
       responses:
         "204": {$ref: '../components/responses.yaml#/RecordRemoved'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "404": {$ref: '../components/responses.yaml#/NotFound'}
       security: [{apiKey: []}, {session: []}]
     parameters:

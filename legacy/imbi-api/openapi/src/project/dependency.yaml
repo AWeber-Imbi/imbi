@@ -18,8 +18,8 @@ paths:
       responses:
         "200": {$ref: '#/components/responses/Success'}
         "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "409": {$ref: '../components/responses.yaml#/Conflict'}
-      security: [{apiKey: []}, {session: []}]
     parameters:
       - name: id
         in: path
@@ -36,16 +36,16 @@ paths:
       tags: [Projects]
       responses:
         "200": {$ref: '#/components/responses/Success'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "404": {$ref: '../components/responses.yaml#/NotFound'}
-      security: [{apiKey: []}, {session: []}]
     delete:
       summary: Delete Dependency
       description: Remove a project dependency record
       tags: [Projects]
       responses:
         "204": {$ref: '../components/responses.yaml#/RecordRemoved'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "404": {$ref: '../components/responses.yaml#/NotFound'}
-      security: [{apiKey: []}, {session: []}]
     parameters:
       - name: id
         in: path
