@@ -39,9 +39,13 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json-patch+json: &patchContent
+          application/json: &patchContent
             schema:
               $ref: '../components/schemas.yaml#/jsonPatch'
+          application/msgpack:
+            <<: *patchContent
+          application/json-patch+json:
+            <<: *patchContent
           application/json-patch+msgpack:
             <<: *patchContent
       responses:
