@@ -4,19 +4,14 @@ jsonPatch:
   description: A JSONPatch document as defined by RFC 6902
   type: array
   items:
-    type: object
-    title: Individual JSON patch operation
-    required:
-      - op
-      - path
-    properties:
-      path:
-        description: A JSON Pointer path to apply the operation to
-        type: string
-        pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
-    oneOf:
+    anyOf:
       - title: Add / Replace / Test
+        type: object
         properties:
+          path:
+            description: A JSON Pointer path to apply the operation to
+            type: string
+            pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
           op:
             description: The operation to perform
             type: string
@@ -30,9 +25,17 @@ jsonPatch:
               - type: object
               - type: string
             nullable: true
-        required: [value]
+        required:
+          - path
+          - op
+          - value
       - title: Copy / Move
+        type: object
         properties:
+          path:
+            description: A JSON Pointer path to apply the operation to
+            type: string
+            pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
           op:
             description: The operation to perform
             type: string
@@ -41,13 +44,24 @@ jsonPatch:
             description: A JSON Pointer path to the referenced value
             type: string
             pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
-        required: [from]
+        required:
+          - path
+          - op
+          - from
       - title: Remove
+        type: object
         properties:
+          path:
+            description: A JSON Pointer path to apply the operation to
+            type: string
+            pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
           op:
             description: The operation to perform
             type: string
             enum: [remove]
+        required:
+          - path
+          - op
   example:
     - op: replace
       path: icon_class

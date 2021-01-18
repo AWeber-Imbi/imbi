@@ -122,7 +122,6 @@ class User:
         if it appears to be encrypted.
 
         """
-        LOGGER.debug('Setting %r to %r', name, value)
         if name == 'password' \
                 and self._application.is_encrypted_value(value):
             value = self._application.decrypt_value(

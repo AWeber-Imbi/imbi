@@ -123,12 +123,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1configuration_system/post/responses/200'
@@ -275,12 +275,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1cookie_cutter/post/responses/200'
@@ -413,12 +413,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1data_center/post/responses/200'
@@ -548,12 +548,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1deployment_type/post/responses/200'
@@ -687,12 +687,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1environment/post/responses/200'
@@ -836,12 +836,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1group/post/responses/200'
@@ -976,12 +976,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1orchestration_system/post/responses/200'
@@ -1119,12 +1119,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1project_fact_type/post/responses/200'
@@ -1270,12 +1270,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/responses/200'
@@ -1406,12 +1406,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1project_link_type/post/responses/200'
@@ -1548,12 +1548,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1project_type/post/responses/200'
@@ -1687,12 +1687,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1admin~1team/post/responses/200'
@@ -2039,25 +2039,20 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
               title: JSON Patch
               description: A JSONPatch document as defined by RFC 6902
               type: array
               items:
-                type: object
-                title: Individual JSON patch operation
-                required:
-                  - op
-                  - path
-                properties:
-                  path:
-                    description: A JSON Pointer path to apply the operation to
-                    type: string
-                    pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
-                oneOf:
+                anyOf:
                   - title: Add / Replace / Test
+                    type: object
                     properties:
+                      path:
+                        description: A JSON Pointer path to apply the operation to
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
                       op:
                         description: The operation to perform
                         type: string
@@ -2075,9 +2070,16 @@ paths:
                           - type: string
                         nullable: true
                     required:
+                      - path
+                      - op
                       - value
                   - title: Copy / Move
+                    type: object
                     properties:
+                      path:
+                        description: A JSON Pointer path to apply the operation to
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
                       op:
                         description: The operation to perform
                         type: string
@@ -2089,21 +2091,31 @@ paths:
                         type: string
                         pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
                     required:
+                      - path
+                      - op
                       - from
                   - title: Remove
+                    type: object
                     properties:
+                      path:
+                        description: A JSON Pointer path to apply the operation to
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
                       op:
                         description: The operation to perform
                         type: string
                         enum:
                           - remove
+                    required:
+                      - path
+                      - op
               example:
                 - op: replace
                   path: icon_class
                   value: fas fa-microscope
-          application/msgpack:
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1project~1/post/responses/200'
@@ -2459,12 +2471,12 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json:
+          application/json-patch+json:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
+          application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json-patch%2Bjson/schema'
       responses:
         '200':
           $ref: '#/paths/~1project~1%7Bid%7D~1link/post/responses/200'

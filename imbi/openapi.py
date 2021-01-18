@@ -70,9 +70,11 @@ def request_validator(settings: dict) -> tornado_openapi3.RequestValidator:
             'uri': URIFormatter
         },
         custom_media_type_deserializers={
-            'application/json; charset="utf-8"': json.loads,
+            'application/json-patch+json': json.loads,
+            'application/json-patch+msgpack': umsgpack.unpackb,
             'application/msgpack': umsgpack.unpackb,
             'application/problem+json': json.loads,
+            'application/problem+msgpack': umsgpack.unpackb,
             'application/yaml': yaml.safe_load})
 
 
@@ -85,9 +87,11 @@ def response_validator(settings: dict) -> tornado_openapi3.ResponseValidator:
             'uri': URIFormatter
         },
         custom_media_type_deserializers={
-            'application/json; charset="utf-8"': json.loads,
+            'application/json-patch+json': json.loads,
+            'application/json-patch+msgpack': umsgpack.unpackb,
             'application/msgpack': umsgpack.unpackb,
             'application/problem+json': json.loads,
+            'application/problem+msgpack': umsgpack.unpackb,
             'application/yaml': yaml.safe_load})
 
 
