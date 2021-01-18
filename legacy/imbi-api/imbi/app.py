@@ -5,12 +5,14 @@ Core Application
 """
 import asyncio
 import datetime
+import json
 import logging
 import re
 import typing
 
 import aioredis
 import sprockets_postgres
+import umsgpack
 from sprockets import http
 from sprockets.http import app
 from sprockets.mixins.mediatype import content
@@ -47,6 +49,12 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         content.set_default_content_type(self, 'application/json')
         content.add_transcoder(self, transcoders.JSONTranscoder())
         content.add_transcoder(self, transcoders.MsgPackTranscoder())
+        content.add_text_content_type(
+            self, 'application/json-patch+json', 'utf-8',
+            json.dumps, json.loads)
+        content.add_binary_content_type(
+            self, 'application/json-patch+msgpack',
+            umsgpack.packb, umsgpack.unpackb)
 
     def decrypt_value(self, key: str, value: str) -> bytes:
         """Decrypt a value that is encrypted using Tornado's secure cookie

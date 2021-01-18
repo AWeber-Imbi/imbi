@@ -47,10 +47,10 @@ paths:
       requestBody:
         description: JSON Patch Payload
         content:
-          application/json: &patchContent
+          application/json-patch+json: &patchContent
             schema:
               $ref: '../components/schemas.yaml#/jsonPatch'
-          application/msgpack:
+          application/json-patch+msgpack:
             <<: *patchContent
       responses:
         "200": {$ref: '#/components/responses/Success'}
