@@ -18,7 +18,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         record = {
             'name': str(uuid.uuid4()),
             'description': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind'
+            'icon_class': 'fas fa-blind',
+            'text_class': 'alert-info'
         }
 
         # Create
@@ -105,6 +106,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertEqual(new_value['name'], record['name'])
         self.assertIsNone(new_value['description'])
+        self.assertIsNone(new_value['text_class'])
         self.assertIsNotNone(new_value['icon_class'])
 
     def test_method_not_implemented(self):
