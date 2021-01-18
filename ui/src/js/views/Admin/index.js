@@ -1,10 +1,9 @@
 import PropTypes from "prop-types"
-import React, {useContext} from 'react'
+import React from 'react'
 import {Route} from "react-router-dom"
 import {useTranslation} from 'react-i18next'
 
 import {Error} from "../"
-import {SettingsContext} from '../../contexts'
 import {setDocumentTitle} from "../../utils"
 import {Sidebar} from '../../components'
 import {User} from "../../schema"
@@ -21,8 +20,7 @@ import {ProjectTypes} from "./ProjectTypes"
 
 function Admin({user}) {
   const {t} = useTranslation()
-  const settings = useContext(SettingsContext)
-  setDocumentTitle(settings, t("admin.title"))
+  setDocumentTitle(t("admin.title"))
   if (user.permissions.includes("admin") !== true)
     return (<Error>{t("common.accessDenied")}</Error>)
   return (
