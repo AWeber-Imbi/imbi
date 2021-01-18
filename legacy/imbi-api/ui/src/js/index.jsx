@@ -68,16 +68,7 @@ function App({logo, service, ldap, version}) {
 
   const setUserData = (data) => {
     delete data.password
-    setUser({
-      ...data,
-      permissions: data.groups.reduce((accumulator, group) => {
-        const permissions = new Set(accumulator)
-        group.permissions.map((permission) => {
-          permissions.add(permission)
-        })
-        return Array.from(permissions)
-      }, [])
-    })
+    setUser(data)
     setUserState({
       authenticated: true,
       fetching: false,
@@ -104,7 +95,7 @@ function App({logo, service, ldap, version}) {
         })
     } else if (userState.initialized && !userState.authenticated) {
       // Display Login Form
-      setContent(<Login onLoginCallback={setUserData}/>)
+      setContent(<Login onLoginCallback={setUserData} useLDAP={ldap === "true"}/>)
     } else if (userState.authenticated) {
       // User is logged in, show main content
       setContent(<Main user={user} />)
