@@ -2,8 +2,6 @@
 API Endpoint for returning UI Settings
 
 """
-from itertools import chain
-
 from imbi.endpoints import base
 
 
