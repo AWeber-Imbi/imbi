@@ -107,10 +107,10 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'postgres_connection_ttl': postgres.get('connection_ttl'),
         'postgres_query_timeout': postgres.get('query_timeout'),
         'server_header': 'imbi/{}'.format(version),
+        'session_duration': int(session.get('duration', '7')),
         'session_pool_size': session.get('pool_size', 10),
         'session_redis_url': session.get(
             'redis_url', 'redis://localhost:6379/0'),
-        'session_ttl': int(session.get('ttl', '3600')),
         'static_path': module_path / 'static',
         'stats_pool_size': stats.get('pool_size', 10),
         'stats_redis_url': stats.get(

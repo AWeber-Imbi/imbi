@@ -4,7 +4,11 @@ Authenticated User Session
 """
 import json
 import logging
+import typing
 import uuid
+
+import aioredis
+from tornado import web
 
 from imbi import timestamp, user
 
@@ -16,9 +20,7 @@ DEFAULT_POOL_SIZE = 5
 class Session:
     """Session object manages session state and the user object."""
 
-    TTL = 3600
-
-    def __init__(self, handler):
+    def __init__(self, handler: web.RequestHandler) -> None:
         self._handler = handler
         self.authenticated = False
         self.id = self._get_id_from_cookie() or str(uuid.uuid4())
@@ -26,11 +28,11 @@ class Session:
         self.start = timestamp.isoformat()
         self.user = None
 
-    async def authenticate(self, username, password):
+    async def authenticate(self, username: str, password: str) -> bool:
         """Authenticate the user and attach it to the session
 
-        :param str username: The username to authenticate with
-        :param str password: The password to use when authenticating
+        :param username: The username to authenticate with
+        :param password: The password to use when authenticating
 
         """
         self.user = user.User(
@@ -42,7 +44,7 @@ class Session:
             return False
         return True
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Used to initialize the data, loading the data if it is set"""
         self.user = await self._load_data()
         if not self.user:
@@ -58,7 +60,7 @@ class Session:
             await self.user.refresh()
             await self.save()
 
-    async def clear(self):
+    async def clear(self) -> None:
         """Clear out the currently loaded session by clearing the cookie
         and removing the data from redis.
 
@@ -71,7 +73,7 @@ class Session:
         self.start = timestamp.isoformat()
         self.user = None
 
-    async def save(self):
+    async def save(self) -> None:
         """Save session data to redis"""
         LOGGER.debug('Saving session %s', self.id)
         user_data = {} if not self.user else self.user.as_dict()
@@ -81,21 +83,26 @@ class Session:
                 'user': user_data,
                 'last_save': timestamp.isoformat(),
                 'start': self.start}),
-            expire=self.TTL)
-        self._handler.set_secure_cookie('session', self.id)
+            expire=self._settings['session_duration'] * 86400)
+        self._handler.set_secure_cookie(
+            'session', self.id,
+            expires_days=self._settings['session_duration'])
 
-    def _get_id_from_cookie(self):
+    @property
+    def _application(self) -> 'imbi.app.Application':
+        """Return the application  instance"""
+        return self._handler.application
+
+    def _get_id_from_cookie(self) -> typing.Optional[str]:
         """Get the Session ID from the secure cookie, decoding it from
         UTF-8, if set.
-
-        :rtype: str or None
 
         """
         value = self._handler.get_secure_cookie('session')
         if value:
             return value.decode('utf-8')
 
-    async def _load_data(self):
+    async def _load_data(self) -> typing.Optional[user.User]:
         """Load the data from Redis, creating the user object and returning it
         if there was a previously saved user,
 
@@ -104,8 +111,8 @@ class Session:
         LOGGER.debug('Loading session %s', self.id)
         result = await self._redis.get(self._redis_key)
         if not result:
-            LOGGER.debug('Session not found')
-            return False
+            LOGGER.info('Session %r not found', self.id)
+            return
         data = json.loads(result.decode('utf-8'))
         self.last_save = data['last_save']
         self.start = data['start']
@@ -113,7 +120,7 @@ class Session:
             return
 
         if 'password' in data['user']:
-            data['user']['password'] = self._handler.application.decrypt_value(
+            data['user']['password'] = self._application.decrypt_value(
                 'password', data['user']['password']).decode('utf-8')
 
         user_obj = user.User(self._handler.application)
@@ -122,19 +129,16 @@ class Session:
         return user_obj
 
     @property
-    def _redis(self):
-        """Return the handle to the Redis client
-
-        :rtype: aioredis.Redis
-
-        """
-        return self._handler.application.session_redis
+    def _redis(self) -> aioredis.Redis:
+        """Return the handle to the Redis client"""
+        return self._application.session_redis
 
     @property
-    def _redis_key(self):
-        """Return the properly formatted session key.
-
-        :rtype: str
-
-        """
+    def _redis_key(self) -> str:
+        """Return the properly formatted session key."""
         return 'session:{}'.format(self.id)
+
+    @property
+    def _settings(self) -> dict:
+        """Return the application settings dict"""
+        return self._application.settings
