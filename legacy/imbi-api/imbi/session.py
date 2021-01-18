@@ -8,6 +8,7 @@ import typing
 import uuid
 
 import aioredis
+from sprockets.http import app
 from tornado import web
 
 from imbi import timestamp, user
@@ -89,7 +90,7 @@ class Session:
             expires_days=self._settings['session_duration'])
 
     @property
-    def _application(self) -> 'imbi.app.Application':
+    def _application(self) -> app.Application:
         """Return the application  instance"""
         return self._handler.application
 
