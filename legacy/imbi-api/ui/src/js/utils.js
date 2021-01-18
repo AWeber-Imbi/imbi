@@ -63,6 +63,6 @@ export async function httpRequest(fetchMethod, path, options = requestOptions) {
   return {success: false, data: getErrorMessage(response, data)}
 }
 
-export function setDocumentTitle(settings, value) {
-  document.title = settings.service_name + " - " + value
+export function setDocumentTitle(value) {
+  document.title = "Imbi - " + value
 }

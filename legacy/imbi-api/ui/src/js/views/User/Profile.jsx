@@ -1,9 +1,8 @@
 import {Link} from "react-router-dom"
 import PropTypes from "prop-types";
-import React, {Fragment, useContext} from "react"
+import React, {Fragment} from "react"
 import {useTranslation} from "react-i18next"
 
-import {SettingsContext} from "../../contexts"
 import {setDocumentTitle} from "../../utils"
 import {User} from "../../schema"
 
@@ -43,8 +42,7 @@ Item.propTypes = {
 
 function Profile({user}) {
   const {t} = useTranslation()
-  const settings = useContext(SettingsContext)
-  setDocumentTitle(settings, t("user.profile.title", {displayName: user.display_name}))
+  setDocumentTitle(t("user.profile.title", {displayName: user.display_name}))
   return (
     <div className="container mx-auto my-auto max-w-4xl pb-0 bg-white shadow overflow-hidden sm:rounded-lg">
       <div className="px-4 py-5 sm:px-6">
