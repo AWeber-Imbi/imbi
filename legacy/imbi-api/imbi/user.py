@@ -241,6 +241,8 @@ class User:
                 'user-refresh')
             self._assign_values(result.row)
         self.groups = await self._db_groups()
+        self.permissions = list(set(
+            chain.from_iterable([g.permissions for g in self.groups])))
         self.last_refreshed_at = max(
             timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
 
