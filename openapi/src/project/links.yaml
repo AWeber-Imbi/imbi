@@ -35,4 +35,4 @@ paths:
                       url: https://gitlab.com/AWeber/Imbi
             application/msgpack:
               <<: *responseContent
-      security: [{apiKey: []}, {session: []}]
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}

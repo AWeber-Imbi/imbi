@@ -13,16 +13,19 @@ info:
     url: /static/images/logo.png
 components:
   securitySchemes:
-    apiKey:
-      type: apiKey
-      description: Uses an API key generated for a user to authenticate each API request
-      in: header
-      name: Private-Token
     session:
       type: apiKey
       description: Uses the session cookie of an authenticated user to authenticate each API request
       in: cookie
       name: session
+    token:
+      type: apiKey
+      description: Uses an API key generated for a user to authenticate each API request
+      in: header
+      name: Private-Token
+security:
+  - session: []
+  - token: []
 paths:
   /admin/configuration_system:
     post:
@@ -95,11 +98,10 @@ paths:
                   $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/configuration_system/{name}':
     get:
       summary: Get Record
@@ -109,11 +111,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1configuration_system/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update a configuration system, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -135,13 +136,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove a configuration system record
@@ -150,11 +150,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: name
         in: path
@@ -249,11 +248,10 @@ paths:
                   $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/cookie_cutter/{name}':
     get:
       summary: Get Record
@@ -263,11 +261,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1cookie_cutter/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: |-
@@ -291,13 +288,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove a cookie cutter record
@@ -306,11 +302,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: name
         in: path
@@ -393,11 +388,10 @@ paths:
                   $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/data_center/{name}':
     get:
       summary: Get Record
@@ -407,11 +401,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1data_center/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update a data center, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -433,13 +426,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove a data center record
@@ -448,11 +440,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: name
         in: path
@@ -532,11 +523,10 @@ paths:
                   $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/deployment_type/{name}':
     get:
       summary: Get Record
@@ -546,11 +536,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1deployment_type/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update a deployment type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -572,13 +561,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove a deployment type record
@@ -587,11 +575,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: name
         in: path
@@ -675,11 +662,10 @@ paths:
                   $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/environment/{name}':
     get:
       summary: Get Record
@@ -689,11 +675,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1environment/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update an environment, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -715,13 +700,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove an environment record
@@ -730,11 +714,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: name
         in: path
@@ -828,11 +811,10 @@ paths:
                   $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/group/{name}':
     get:
       summary: Get Record
@@ -842,11 +824,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1group/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update a group, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -868,13 +849,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove a group record
@@ -883,6 +863,8 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
       security:
@@ -969,11 +951,10 @@ paths:
                   $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/orchestration_system/{name}':
     get:
       summary: Get Record
@@ -983,11 +964,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1orchestration_system/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update an orchestration system, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1009,13 +989,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove an orchestration system record
@@ -1024,11 +1003,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: name
         in: path
@@ -1116,11 +1094,10 @@ paths:
                   $ref: '#/paths/~1admin~1project_fact_type/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/project_fact_type/{name}':
     get:
       summary: Get Record
@@ -1130,11 +1107,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1project_fact_type/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update a project fact type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1156,13 +1132,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove a project fact type record
@@ -1171,11 +1146,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: name
         in: path
@@ -1263,11 +1237,10 @@ paths:
                   $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: fact_type_id
         in: path
@@ -1285,11 +1258,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update a project fact type option, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1311,13 +1283,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove a project fact type option record
@@ -1326,11 +1297,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: fact_type_id
         in: path
@@ -1411,11 +1381,10 @@ paths:
                   $ref: '#/paths/~1admin~1project_link_type/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/project_link_type/{link_type}':
     get:
       summary: Get Record
@@ -1425,11 +1394,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1project_link_type/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update an link type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1451,13 +1419,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove an link type record
@@ -1466,11 +1433,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: link_type
         in: path
@@ -1557,11 +1523,10 @@ paths:
                   $ref: '#/paths/~1admin~1project_type/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/project_type/{name}':
     get:
       summary: Get Record
@@ -1571,11 +1536,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1project_type/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update a project type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1597,13 +1561,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove a project type record
@@ -1612,11 +1575,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: name
         in: path
@@ -1700,11 +1662,10 @@ paths:
                   $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
   '/admin/team/{name}':
     get:
       summary: Get Record
@@ -1714,11 +1675,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1admin~1team/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Record
       description: 'Update a team, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1740,13 +1700,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Record
       description: Remove a team record
@@ -1755,11 +1714,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: name
         in: path
@@ -1821,9 +1779,55 @@ paths:
                       configuration_system: SSM Parameter Store
                       deployment_type: ecs-pipeline-deploy
                       orchestration_system: ECS
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          description: The request could not be authorized using the session cookie or provided API token
+          content:
+            application/json:
+              schema:
+                title: Problem Detail
+                description: A problem detail document as defined by RFC 7807
+                externalDocs:
+                  url: 'https://tools.ietf.org/html/rfc7807'
+                type: object
+                properties:
+                  type:
+                    description: Machine-readable error type
+                    type: string
+                    format: url
+                  title:
+                    description: 'A short, human-readable summary of the problem type.'
+                    type: string
+                  status:
+                    description: |-
+                      The HTTP status code generated by the origin server for this
+                      occurrence of the problem.
+                    type: integer
+                  detail:
+                    description: |-
+                      A human-readable explanation specific to this occurrence of the
+                      problem.
+                  instance:
+                    description: URI that identifies this specific problem occurrence
+                    type: string
+                    format: url
+                additionalProperties: false
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 401 Unauthorized
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 401 Unauthorized
   /project/:
     post:
       summary: Create Project
@@ -1950,33 +1954,7 @@ paths:
           content:
             application/json:
               schema:
-                title: Problem Detail
-                description: A problem detail document as defined by RFC 7807
-                externalDocs:
-                  url: 'https://tools.ietf.org/html/rfc7807'
-                type: object
-                properties:
-                  type:
-                    description: Machine-readable error type
-                    type: string
-                    format: url
-                  title:
-                    description: 'A short, human-readable summary of the problem type.'
-                    type: string
-                  status:
-                    description: |-
-                      The HTTP status code generated by the origin server for this
-                      occurrence of the problem.
-                    type: integer
-                  detail:
-                    description: |-
-                      A human-readable explanation specific to this occurrence of the
-                      problem.
-                  instance:
-                    description: URI that identifies this specific problem occurrence
-                    type: string
-                    format: url
-                additionalProperties: false
+                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -1986,7 +1964,7 @@ paths:
                     message: HTTP 400 Request Error
             application/msgpack:
               schema:
-                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -1994,12 +1972,14 @@ paths:
                     type: HTTPError
                     traceback: []
                     message: HTTP 400 Request Error
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           description: The request could not be completed due to a race condition
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -2009,7 +1989,7 @@ paths:
                     message: 'HTTP 409: Conflict'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -2017,9 +1997,6 @@ paths:
                     type: HTTPError
                     traceback: []
                     message: 'HTTP 409: Conflict'
-      security:
-        - apiKey: []
-        - session: []
   '/project/{id}':
     get:
       summary: Get Project
@@ -2029,12 +2006,14 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1project~1/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           description: The requested resource was not found
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -2044,7 +2023,7 @@ paths:
                     message: 'HTTP 404: Resource not found'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1project~1/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -2052,9 +2031,6 @@ paths:
                     type: HTTPError
                     traceback: []
                     message: 'HTTP 404: Resource not found'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Project
       description: 'Update a project, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -2135,13 +2111,12 @@ paths:
           description: No changes were found in the requested update
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Project
       description: Remove a project record
@@ -2150,11 +2125,10 @@ paths:
       responses:
         '204':
           description: The record was removed as requested
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: id
         in: path
@@ -2210,9 +2184,8 @@ paths:
                       dependency_id: adce0e08-99d5-47e7-9f6b-931214e20724
                     - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
                       dependency_id: 2ab8d72b-eacf-4521-8780-559008d075ae
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   '/project/{id}/dependency':
     post:
       summary: Create Dependency
@@ -2275,11 +2248,10 @@ paths:
                   $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: id
         in: path
@@ -2297,11 +2269,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1project~1%7Bid%7D~1dependency/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Dependency
       description: Remove a project dependency record
@@ -2310,11 +2281,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: id
         in: path
@@ -2381,9 +2351,8 @@ paths:
                     - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
                       link_type: Repository
                       url: 'https://gitlab.com/AWeber/Imbi'
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   '/project/{id}/link':
     post:
       summary: Create Link
@@ -2457,11 +2426,10 @@ paths:
                   $ref: '#/paths/~1project~1%7Bid%7D~1link/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: id
         in: path
@@ -2479,11 +2447,10 @@ paths:
       responses:
         '200':
           $ref: '#/paths/~1project~1%7Bid%7D~1link/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     patch:
       summary: Update Link
       description: 'Update a project link, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -2505,13 +2472,12 @@ paths:
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-      security:
-        - apiKey: []
-        - session: []
     delete:
       summary: Delete Link
       description: Remove a project link record
@@ -2520,11 +2486,10 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-      security:
-        - apiKey: []
-        - session: []
     parameters:
       - name: id
         in: path
@@ -2583,9 +2548,8 @@ paths:
                     - name: Consul
                       description: Feature rich key/value store to easily configure projects
                       icon_class: fas fa-blind
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/cookie_cutters:
     get:
       description: Retrieve the collection of cookie cutters
@@ -2647,9 +2611,8 @@ paths:
                       type: dashboard
                       description: A Grafana dashboard for a rejected consumer application
                       url: 'https://github.com/aweber/grafana-consumer-cookiecutter.git'
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/data_centers:
     get:
       description: Retrieve the collection of data centers
@@ -2693,9 +2656,8 @@ paths:
                     - name: us-east-2
                       description: US East (Ohio)
                       icon_class: fab fa-aws
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/deployment_types:
     get:
       description: Retrieve the collection of deployment types
@@ -2739,9 +2701,8 @@ paths:
                     - name: Artifcatory
                       description: Package artifact uploaded to artifactory
                       icon_class: fab fa-aws
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/environments:
     get:
       description: Retrieve the collection of environments
@@ -2793,9 +2754,8 @@ paths:
                         The staging environment reflects tagged project releases that are
                         intended to be to deployed to production
                       icon_class: fab fa-aws
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/groups:
     get:
       description: Retrieve the collection of groups
@@ -2849,9 +2809,8 @@ paths:
                       external_id: 'cn=qa,ou=users,dc=example,dc=org'
                       permissions:
                         - user
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/orchestration_systems:
     get:
       description: Retrieve the collection of orchestration systems
@@ -2895,9 +2854,8 @@ paths:
                     - orchestration_system: Nomad
                       description: HashiCorp Nomad
                       icon_class: fas fa-blind
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/permissions:
     get:
       description: Retrieve the collection of available permissions
@@ -2933,9 +2891,8 @@ paths:
                   value:
                     - admin
                     - user
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/project_fact_type_options:
     get:
       description: Retrieve the collection of project fact type options
@@ -3007,9 +2964,8 @@ paths:
                       option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
                       value: Python 2.7
                       score: 0
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/project_fact_types:
     get:
       description: Retrieve the collection of project fact types
@@ -3089,9 +3045,8 @@ paths:
                       project_type: Consumer
                       name: Has working CI pipeline
                       weight: 10
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/project_link_types:
     get:
       description: Retrieve the collection of project link types
@@ -3131,9 +3086,8 @@ paths:
                       icon_class: fab fa-bool
                     - project_link_type: grafana
                       icon_class: fab fa-graph
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/project_types:
     get:
       description: Retrieve the collection of project types
@@ -3181,9 +3135,8 @@ paths:
                       description: A PostgreSQL database
                       icon_class: imbi postgres
                       slug: postgres
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/teams:
     get:
       description: Retrieve the collection of teams
@@ -3227,11 +3180,11 @@ paths:
                     - team_name: Quality Assurance
                       slug: QA
                       icon_class: fas fa-microscope
-      security:
-        - apiKey: []
-        - session: []
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /status:
     get:
+      security: []
       description: |-
         Returns information about the running service, including runtime metrics
         including counters and durations.

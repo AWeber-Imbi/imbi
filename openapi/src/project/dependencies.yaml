@@ -33,4 +33,4 @@ paths:
                       dependency_id: 2ab8d72b-eacf-4521-8780-559008d075ae
             application/msgpack:
               <<: *responseContent
-      security: [{apiKey: []}, {session: []}]
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}

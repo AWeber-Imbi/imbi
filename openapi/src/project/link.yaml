@@ -18,8 +18,8 @@ paths:
       responses:
         "200": {$ref: '#/components/responses/Success'}
         "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "409": {$ref: '../components/responses.yaml#/Conflict'}
-      security: [{apiKey: []}, {session: []}]
     parameters:
       - name: id
         in: path
@@ -36,8 +36,8 @@ paths:
       tags: [Projects]
       responses:
         "200": {$ref: '#/components/responses/Success'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "404": {$ref: '../components/responses.yaml#/NotFound'}
-      security: [{apiKey: []}, {session: []}]
     patch:
       summary: Update Link
       description: >-
@@ -56,17 +56,17 @@ paths:
         "200": {$ref: '#/components/responses/Success'}
         "304": {$ref: '../components/responses.yaml#/NoChanges'}
         "400": {$ref: '../components/responses.yaml#/RequestError'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "404": {$ref: '../components/responses.yaml#/NotFound'}
         "409": {$ref: '../components/responses.yaml#/Conflict'}
-      security: [{apiKey: []}, {session: []}]
     delete:
       summary: Delete Link
       description: Remove a project link record
       tags: [Projects]
       responses:
         "204": {$ref: '../components/responses.yaml#/RecordRemoved'}
+        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
         "404": {$ref: '../components/responses.yaml#/NotFound'}
-      security: [{apiKey: []}, {session: []}]
     parameters:
       - name: id
         in: path
