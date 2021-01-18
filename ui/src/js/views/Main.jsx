@@ -9,9 +9,10 @@ function Main({user}) {
   return (
     <main className="flex flex-row flex-grow overflow-y-auto">
       <Switch>
+        {user.permissions.includes('admin') && (
         <Route path="/ui/admin">
           <Admin user={user}/>
-        </Route>
+        </Route>)}
         <Route path="/ui/operations-log">
           <OperationsLog user={user}/>
         </Route>
