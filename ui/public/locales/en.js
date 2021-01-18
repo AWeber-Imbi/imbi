@@ -13,6 +13,7 @@ export default {
         cancel: "Cancel",
         save: "Save",
         saving: "Saving ...",
+        textClass: "Text Class",
         welcome: "Welcome"
       },
       error: {
