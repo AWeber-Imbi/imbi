@@ -214,7 +214,7 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
                 status_code=400, title='Bad Request', detail=str(err))
         except InvalidSecurity as err:
             raise problemdetails.Problem(
-                status_code=401, title='Unauthorized',
+                status_code=500, title='OpenAPI security error',
                 detail=str(err))
         except OperationNotFound as err:
             raise problemdetails.Problem(
