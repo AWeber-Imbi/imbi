@@ -12,16 +12,16 @@ function Groups({groups}) {
     <Fragment>{groups.map((group) => {
       return (
         <Link className="inline-flex items-center px-2.5 py-0.5 mr-2 rounded-full text-xs font-medium bg-blue-700 text-white"
-              key={group.name}
-              to={"/ui/admin/groups#" + group.name}>
-          {group.name}
+              key={group}
+              to={"/ui/admin/groups#" + group}>
+          {group}
         </Link>
       )
     })}
   </Fragment>)
 }
 Groups.propTypes = {
-  groups: PropTypes.array
+  groups: PropTypes.arrayOf[PropTypes.string]
 }
 
 const Item = ({label, value, children}) => {

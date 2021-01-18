@@ -58,6 +58,4 @@ class UserRequestHandler(base.AuthenticatedRequestHandler):
     def get(self, *args, **kwargs):
         user = self.current_user.as_dict()
         del user['password']
-        user['permissions'] = list(set(
-            chain.from_iterable([g['permissions'] for g in user['groups']])))
         self.send_response(user)
