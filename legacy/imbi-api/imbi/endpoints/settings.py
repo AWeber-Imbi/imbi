@@ -2,6 +2,8 @@
 Request Handlers for the Configuration System Endpoints
 
 """
+import re
+
 from tornado import web
 
 from . import base
@@ -16,66 +18,66 @@ class SettingsRequestHandler(base.ItemsRequestHandler):
 class ConfigurationSystems(SettingsRequestHandler):
 
     ENDPOINT = 'settings-configuration-systems'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT "name", created_at, modified_at, description, icon_class
       FROM v1.configuration_systems
-     ORDER BY "name" ASC;"""
+     ORDER BY "name" ASC;""")
 
 
 class CookieCutters(SettingsRequestHandler):
 
     ENDPOINT = 'settings-cookie-cutters'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT "name", created_at, modified_at, "type", project_type,
            description, url
       FROM v1.cookie_cutters
-     ORDER BY "name" ASC;"""
+     ORDER BY "name" ASC;""")
 
 
 class DataCenters(SettingsRequestHandler):
 
     ENDPOINT = 'settings-data-centers'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT "name", created_at, modified_at, description, icon_class
       FROM v1.data_centers
-     ORDER BY "name" ASC;"""
+     ORDER BY "name" ASC;""")
 
 
 class DeploymentTypes(SettingsRequestHandler):
 
     ENDPOINT = 'settings-deployment-types'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT "name", created_at, modified_at, description, icon_class
       FROM v1.deployment_types
-     ORDER BY "name" ASC;"""
+     ORDER BY "name" ASC;""")
 
 
 class Environments(SettingsRequestHandler):
 
     ENDPOINT = 'settings-environments'
-    GET_SQL = """\
-    SELECT "name", created_at, modified_at, description, icon_class
+    GET_SQL = re.sub(r'\s+', ' ', """\
+    SELECT "name", created_at, modified_at, description, icon_class, text_class
       FROM v1.environments
-     ORDER BY "name" ASC;"""
+     ORDER BY "name" ASC;""")
 
 
 class Groups(SettingsRequestHandler):
 
     ENDPOINT = 'settings-groups'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT "name", created_at, modified_at, group_type,
            external_id, permissions
       FROM v1.groups
-     ORDER BY "name" ASC;"""
+     ORDER BY "name" ASC;""")
 
 
 class OrchestrationSystems(SettingsRequestHandler):
 
     ENDPOINT = 'settings-orchestration-systems'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT "name", created_at, modified_at, description, icon_class
       FROM v1.orchestration_systems
-     ORDER BY "name" ASC;"""
+     ORDER BY "name" ASC;""")
 
 
 class Permissions(base.AuthenticatedRequestHandler):
@@ -90,36 +92,36 @@ class Permissions(base.AuthenticatedRequestHandler):
 class ProjectLinkTypes(SettingsRequestHandler):
 
     ENDPOINT = 'settings-project-link-types'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT link_type, created_at, modified_at, icon_class
       FROM v1.project_link_types
-     ORDER BY link_type ASC;"""
+     ORDER BY link_type ASC;""")
 
 
 class ProjectFactTypes(SettingsRequestHandler):
 
     ENDPOINT = 'settings-project-fact-types'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT id, "name", created_at, modified_at, project_type, weight
       FROM v1.project_fact_types
-     ORDER BY "name" ASC;"""
+     ORDER BY "name" ASC;""")
 
 
 class ProjectTypes(SettingsRequestHandler):
 
     ENDPOINT = 'settings-project-types'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT "name", created_at, modified_at, description, slug, icon_class
       FROM v1.project_types
-     ORDER BY "name" ASC;"""
+     ORDER BY "name" ASC;""")
 
 
 class Teams(SettingsRequestHandler):
 
     ENDPOINT = 'settings-teams'
-    GET_SQL = """\
+    GET_SQL = re.sub(r'\s+', ' ', """\
     SELECT created_at, modified_at, "name", slug, icon_class, "group"
-      FROM v1.teams ORDER BY "name" ASC;"""
+      FROM v1.teams ORDER BY "name" ASC;""")
 
 
 URLS = [

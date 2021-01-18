@@ -26,7 +26,17 @@ export function Environments() {
               name: "description",
               type: "textarea",
               tableOptions: {
-                hide: true
+                className: "max-w-lg truncate"
+              }
+            },
+            {
+              title: t("common.textClass"),
+              name: "text_class",
+              type: "text",
+              placeholder: "",
+              default: "",
+              tableOptions: {
+                className: "w-min"
               }
             },
             {
