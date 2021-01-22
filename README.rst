@@ -3,6 +3,8 @@ Imbi
 Imbi is a DevOps Service Management Platform designed to provide an efficient
 way to manage a large environment that contains many services and applications.
 
+|Version| |Status| |Coverage| |License|
+
 Planned Features
 ----------------
 
@@ -22,49 +24,29 @@ Planned Features
     - Site-wide and team specific reporting for service standards and compliance
     - Integration with Consul, Sensu, and PagerDuty for service status and availability history
 
-Environment Variables
----------------------
-Imbi runtime configuration is configured by way of environment variables. The following
+Configuration
+-------------
+imbi uses a YAML based configuration file. See the `example <example.yaml>`_
+file for available configuration options.
 
-- ``LDAP_ENABLED``: Use LDAP in addition to internal user management
-- ``LDAP_HOST``: The hostname of the server to connect to (Default: ``localhost``)
-- ``LDAP_PORT``: The port to connect on (Default: ``389``)
-- ``LDAP_SSL``: Indicates whether SSL is enabled for connecting (Default: ``False``)
-- ``LDAP_GROUP_OT``: The object type to use for groups (Default: ``groupOfNames``)
-- ``LDAP_GROUPS_DN``: The base DN to use for group searching
-- ``LDAP_USER_OT``: The object type to use for users (Default: ``inetOrgPerson``)
-- ``LDAP_USERS_DN``: The base DN to use for user searching
-- ``LDAP_USERNAME``: The username attribute used in user searching (Default: ``uid``)
-- ``LDAP_POOL_SIZE``: The size to allocate for the ThreadPoolExecutor for the LDAP interface (Default: ``5``)
-- ``POSTGRES_URL``: The Postgres server to (Default: ``postgres://imbi@localhost:5432/imbi``)
-- ``SESSION_POOL_SIZE``: The maximum number of redis connections to use for the session pool (Default: ``10``)
-- ``SESSION_REDIS_URL``: The Redis server to use for session storage (Default: ``redis://localhost:6379/0``)
-- ``STATS_POOL_SIZE``: The maximum number of redis connections to use for the stats pool (Default: ``10``)
-- ``STATS_REDIS_URL``: The Redis server to use for Stats storage (Default: ``redis://localhost:6379/1``)
-
-Building Static Assets
-----------------------
-Imbi uses webpack to build the static assets for the site.
-
-.. code-block:: sh
-
-    make ui
-
-Running in Development
-----------------------
-Perform the following steps to run Imbi in the foreground in your development
-environment.
-
-.. code-block:: sh
-
-    make setup
-    source env/bin/activate
-    source build/test-environment
-    imbi
-
-Once complete, imbi should be running at `http://localhost:8000`. The test admin
-user is `test` and the password is `password`.
+Contributing
+------------
+For information on contributing, including development environment setup, see
+`CONTRIBUTING.md <CONTRIBUTING.md>`_.
 
 Etymology
 ---------
 Imbi is Old High German for "Swarm of Bees"
+
+.. |Version| image:: https://img.shields.io/pypi/v/aiorabbit.svg?
+   :target: https://pypi.python.org/pypi/aiorabbit
+
+.. |Status| image:: https://github.com/aweber/imbi/workflows/Testing/badge.svg?
+   :target: https://github.com/aweber/imbi/actions?workflow=Testing
+   :alt: Build Status
+
+.. |Coverage| image:: https://img.shields.io/codecov/c/github/aweber/imbi.svg?
+   :target: https://codecov.io/github/aweber/imbi?branch=master
+
+.. |License| image:: https://img.shields.io/pypi/l/aiorabbit.svg?
+   :target: https://aiorabbit.readthedocs.org
