@@ -26,13 +26,24 @@ Planned Features
 
 Configuration
 -------------
-imbi uses a YAML based configuration file. See the `example <example.yaml>`_
+imbi uses a YAML based configuration file. See the `example <https://github.com/aweber/imbi/blob/main/example.yaml>`_
 file for available configuration options.
+
+Docker Image
+------------
+A `Docker image <https://hub.docker.com/r/aweber/imbi>`_ is available as
+`aweber/imbi:latest`. Mount your custom config file in as `/etc/imbi/imbi.yaml`.
+If you want to put it in a different path, make sure to set the command to run
+when running the docker container.
+
+The `docker-compose.yml <https://github.com/aweber/imbi/blob/main/docker-compose.yml>`_
+configuration in the repository includes an optional imbi container that you can use for
+testing in a containerized environment.
 
 Contributing
 ------------
 For information on contributing, including development environment setup, see
-`CONTRIBUTING.md <CONTRIBUTING.md>`_.
+`CONTRIBUTING.md <https://github.com/aweber/imbi/blob/main/CONTRIBUTING.md>`_.
 
 Etymology
 ---------

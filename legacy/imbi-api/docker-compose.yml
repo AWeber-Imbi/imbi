@@ -41,3 +41,14 @@ services:
       - ./build:/tmp/test/build:rw
       - ./:/source:ro
     command: /source/ci/test.sh
+
+  imbi:
+    image: aweber/imbi:latest
+    links:
+      - ldap
+      - postgres
+      - redis
+    ports:
+      - 8000
+    volumes:
+      - ./docker-config.yaml:/etc/imbi/imbi.yaml
