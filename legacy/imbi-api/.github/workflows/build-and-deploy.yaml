@@ -10,7 +10,8 @@ jobs:
     steps:
       - name: Get the version
         id: get_version
-        uses: battila7/get-version-action@v2
+        run: echo "::set-output name=version::$(tr -d '\n' < VERSION)
+        shell: bash
       - name: Check out the repo
         uses: actions/checkout@v2
       - name: Setup Environment
