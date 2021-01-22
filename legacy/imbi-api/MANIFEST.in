@@ -1,6 +1,5 @@
 include README.rst
 include LICENSE
-include ddl.sql
-graft   imbi/schema/
+include VERSION
 graft   imbi/static/
 graft   imbi/templates/
