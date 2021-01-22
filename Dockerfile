@@ -1,10 +1,11 @@
-FROM python:3.8-alpine3.12
+FROM python:3.9-alpine3.12
 
-ARG VERSION=0.1.0
+ARG VERSION=0.0.0
 
 ENV PORT=8000
 
 COPY dist/imbi-${VERSION}.tar.gz /tmp/
+COPY docker-config.yaml /etc/imbi/imbi.yaml
 
 RUN apk add --no-cache --virtual install-deps curl-dev gcc libffi-dev libressl-dev linux-headers musl-dev postgresql-dev \
  && apk add --no-cache libcurl libpq \
@@ -14,4 +15,4 @@ RUN apk add --no-cache --virtual install-deps curl-dev gcc libffi-dev libressl-d
 
 EXPOSE 8000
 
-CMD imbi
+CMD /usr/local/bin/imbi /etc/imbi/imbi.yaml

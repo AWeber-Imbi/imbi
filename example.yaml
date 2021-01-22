@@ -43,8 +43,7 @@ logging:  # Uses Python dictConfig format for logging config
   version: 1
   formatters:
     verbose:
-      format: "%(levelname) -10s %(asctime)s %(process)-6d %(name) -20s %(funcName) -25s: %(message)s"
-      datefmt: "%Y-%m-%d %H:%M:%S"
+      format: "%(levelname) -10s %(asctime)s %(name) -15s %(funcName) -15s: %(message)s"
   handlers:
     console:
       class: logging.StreamHandler
