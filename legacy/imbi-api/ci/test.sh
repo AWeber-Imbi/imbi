@@ -12,6 +12,11 @@ cp /source/VERSION /tmp/test/
 cp /source/Makefile /tmp/test/
 cd /tmp/test
 ln -s /usr/local /tmp/test/env
+
+cat > .env <<EOF
+export DEBUG=1
+EOF
+
 cat > build/test.yaml <<EOF
 ---
 ldap:
