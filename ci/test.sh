@@ -12,7 +12,6 @@ cp /source/VERSION /tmp/test/
 cp /source/Makefile /tmp/test/
 cd /tmp/test
 ln -s /usr/local /tmp/test/env
-mkdir build
 cat > build/test.yaml <<EOF
 ---
 ldap:
