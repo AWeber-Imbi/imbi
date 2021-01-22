@@ -71,7 +71,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     ldap = config.get('ldap', {})
     postgres = config.get('postgres', {})
     session = config.get('session', {})
-    stats = config.get('session', {})
+    stats = config.get('stats', {})
 
     module_path = pathlib.Path(sys.modules['imbi'].__file__).parent
 
@@ -90,12 +90,10 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'pool_size': ldap.get('pool_size', 5),
             'group_member_attr': ldap.get('group_member_dn', 'member'),
             'group_object_type': ldap.get('group_object_type', 'groupOfNames'),
-            'groups_dn': ldap.get(
-                'groups_dn', 'cn=groups,cn=accounts,dc=imbi,dc=tld'),
+            'groups_dn': ldap.get('groups_dn'),
             'user_object_type': ldap.get('user_object_type', 'inetOrgPerson'),
             'username': ldap.get('username', 'uid'),
-            'users_dn': ldap.get(
-                'users_dn', 'cn=groups,cn=accounts,dc=imbi,dc=tld')
+            'users_dn': ldap.get('users_dn')
         },
         'number_of_procs': http_settings.get('processes', 2),
         'permissions': [],
