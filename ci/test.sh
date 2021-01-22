@@ -6,9 +6,9 @@ cp -R /source/imbi /tmp/test/
 cp -R /source/scaffolding /tmp/test/
 cp -R /source/tests /tmp/test/
 cp /source/setup.* /tmp/test/
-cp LICENSE /tmp/test/
-cp MANIFEST.in /tmp/test/
-cp VERSION /tmp/test/
+cp /source/LICENSE /tmp/test/
+cp /source/MANIFEST.in /tmp/test/
+cp /source/VERSION /tmp/test/
 cp /source/Makefile /tmp/test/
 cd /tmp/test
 ln -s /usr/local /tmp/test/env
