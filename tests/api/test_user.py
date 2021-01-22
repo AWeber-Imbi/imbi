@@ -14,7 +14,7 @@ class GroupTestCase(unittest.TestCase):
         permissions = [str(uuid.uuid4()), str(uuid.uuid4())]
         self.assertDictEqual(
             dict(user.Group(name, permissions)),
-            {'name': name, 'permissions': permissions})
+            {'name': name, 'permissions': sorted(permissions)})
 
     def test_repr(self):
         name = str(uuid.uuid4())
@@ -50,7 +50,7 @@ class InternalTestCase(base.TestCase):
             values = {}
         values.setdefault('name', str(uuid.uuid4()))
         values.setdefault(
-            'permissions', [str(uuid.uuid4()), str(uuid.uuid4())])
+            'permissions', sorted([str(uuid.uuid4()), str(uuid.uuid4())]))
         await self.postgres_execute(self.SQL_INSERT_GROUP, values)
         return values
 
@@ -97,7 +97,7 @@ class InternalTestCase(base.TestCase):
             'display_name': user_value['display_name'],
             'email_address': user_value['email_address'],
             'groups': [group_value['name']],
-            'permissions': list(set(group_value['permissions']))
+            'permissions': sorted(set(group_value['permissions']))
         }
         self.assertDictEqual(values, expectation)
 
@@ -147,7 +147,7 @@ class InternalTestCase(base.TestCase):
             'display_name': display_name,
             'email_address': user_value['email_address'],
             'groups': [group_value['name']],
-            'permissions': list(set(group_value['permissions']))
+            'permissions': sorted(set(group_value['permissions']))
         }
         self.assertDictEqual(values, expectation)
 
