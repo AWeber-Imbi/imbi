@@ -1,8 +1,8 @@
 """
-Imbi Service Management System
-==============================
+Imbi
+====
 
-Imbi is Old High German for "Swarm of Bees"
+Imbi is an operational management platform for medium to large environments.
 
 """
 import warnings
