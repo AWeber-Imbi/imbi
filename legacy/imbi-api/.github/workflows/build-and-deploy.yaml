@@ -16,17 +16,18 @@ jobs:
         shell: bash
       - name: Setup Environment
         run: |-
-          echo "Setting up environment to build imbi v${{ steps.get_version.outputs.version }}"
-          sudo apt-get install -y python3 python3-pip python3-setuptools
+          sudo apt-get install -y python3 curl
+          sudo curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+          sudo pip3 install --upgrade setuptools twine
+        shell: bash
       - name: Build
         run: make dist
       - name: Upload to PyPI
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        run: |-
-          pip3 install twine
-          twine upload dist/imbi-${{ steps.get_version.outputs.version }}.tar.gz
+        run: twine upload dist/imbi-${{ steps.get_version.outputs.version }}.tar.gz
+        shell: bash
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
