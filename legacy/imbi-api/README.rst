@@ -3,7 +3,7 @@ Imbi
 Imbi is a DevOps Service Management Platform designed to provide an efficient
 way to manage a large environment that contains many services and applications.
 
-|Version| |Status| |Coverage| |License|
+|Version| |Coverage| |License|
 
 Planned Features
 ----------------
@@ -38,15 +38,11 @@ Etymology
 ---------
 Imbi is Old High German for "Swarm of Bees"
 
-.. |Version| image:: https://img.shields.io/pypi/v/aiorabbit.svg?
-   :target: https://pypi.python.org/pypi/aiorabbit
+.. |Version| image:: https://img.shields.io/pypi/v/imbi.svg
+   :target: https://pypi.python.org/pypi/imbi
 
-.. |Status| image:: https://github.com/aweber/imbi/workflows/Testing/badge.svg?
-   :target: https://github.com/aweber/imbi/actions?workflow=Testing
-   :alt: Build Status
-
-.. |Coverage| image:: https://img.shields.io/codecov/c/github/aweber/imbi.svg?
+.. |Coverage| image:: https://img.shields.io/codecov/c/github/aweber/imbi.svg
    :target: https://codecov.io/github/aweber/imbi?branch=master
 
-.. |License| image:: https://img.shields.io/pypi/l/aiorabbit.svg?
-   :target: https://aiorabbit.readthedocs.org
+.. |License| image:: https://img.shields.io/pypi/l/imbi.svg?
+   :target: https://imbi.readthedocs.org
