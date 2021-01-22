@@ -20,7 +20,7 @@ class Group:
 
     def __init__(self, name: str, permissions: typing.List[str]):
         self.name = name
-        self.permissions = permissions or []
+        self.permissions = sorted(permissions) or []
 
     def __iter__(self):
         return iter([('name', self.name), ('permissions', self.permissions)])
@@ -102,8 +102,9 @@ class User:
         self._ldap = ldap.Client(application.settings['ldap'])
         self._ldap_conn = None
         self.username = username
-        self.created_at: typing.Optional[str] = None
-        self.last_seen_at: typing.Optional[str] = None
+        self.created_at: typing.Optional[datetime.datetime] = None
+        self.last_refreshed_at: typing.Optional[datetime.datetime] = None
+        self.last_seen_at: typing.Optional[datetime.datetime] = None
         self.user_type = 'internal'
         self.external_id: typing.Optional[str] = None
         self.email_address: typing.Optional[str] = None
@@ -241,7 +242,7 @@ class User:
                 'user-refresh')
             self._assign_values(result.row)
         self.groups = await self._db_groups()
-        self.permissions = list(set(
+        self.permissions = sorted(set(
             chain.from_iterable([g.permissions for g in self.groups])))
         self.last_refreshed_at = max(
             timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
@@ -295,7 +296,7 @@ class User:
 
         # Update the groups attribute
         self.groups = await self._db_groups()
-        self.permissions = list(set(
+        self.permissions = sorted(set(
             chain.from_iterable([g.permissions for g in self.groups])))
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
@@ -305,14 +306,15 @@ class User:
 
         """
         self._ldap_conn = None
-        self.created_at: typing.Optional[str] = None
-        self.last_seen_at: typing.Optional[str] = None
+        self.created_at: typing.Optional[datetime.datetime] = None
+        self.last_seen_at: typing.Optional[datetime.datetime] = None
         self.user_type = 'internal'
         self.external_id: typing.Optional[str] = None
         self.email_address: typing.Optional[str] = None
         self.display_name: typing.Optional[str] = None
         self.groups: typing.List[Group] = []
         self.permissions: typing.List[str] = []
+        self.last_refreshed_at: typing.Optional[datetime.datetime] = None
 
     async def _token_auth(self) -> bool:
         """Validate via v1.authentication_tokens table"""

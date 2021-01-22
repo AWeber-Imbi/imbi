@@ -22,7 +22,7 @@ class GroupTestCase(unittest.TestCase):
         group = user.Group(name, permissions)
         self.assertEqual(
             repr(group),
-            '<Group name={} permissions={}>'.format(name, permissions))
+            '<Group name={} permissions={}>'.format(name, sorted(permissions)))
 
 
 class InternalTestCase(base.TestCase):
