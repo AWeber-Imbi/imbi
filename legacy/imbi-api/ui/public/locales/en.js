@@ -2,155 +2,166 @@ export default {
   en: {
     translation: {
       common: {
-        loading: "Initializing",
-        name: "Name",
-        description: "Description",
-        slug: "Slug",
-        iconClass: "Icon Class",
-        "id": "ID",
-        edit: "Edit",
-        delete: "Delete",
-        cancel: "Cancel",
-        save: "Save",
-        saving: "Saving ...",
-        textClass: "Text Class",
-        welcome: "Welcome"
+        loading: 'Initializing',
+        name: 'Name',
+        description: 'Description',
+        slug: 'Slug',
+        iconClass: 'Icon Class',
+        id: 'ID',
+        edit: 'Edit',
+        delete: 'Delete',
+        cancel: 'Cancel',
+        save: 'Save',
+        saving: 'Saving ...',
+        textClass: 'Text Class',
+        welcome: 'Welcome'
       },
       error: {
-        title: "ERROR",
-        accessDenied: "Access Denied",
-        notFound: "Not Found"
+        title: 'ERROR',
+        accessDenied: 'Access Denied',
+        notFound: 'Not Found'
       },
       headerNavItems: {
-        administration: "Administration",
-        dashboard: "Dashboard",
-        newOperationsLogEntry: "Add Ops Log Entry",
-        newProject: "Create a New Project",
-        openNewMenu: "Open New Menu",
-        openUserMenu: "Open User Menu",
-        profile: "Profile",
-        settings: "Settings",
-        signOut: "Sign Out",
-        userMenu: "User Menu"
+        administration: 'Administration',
+        dashboard: 'Dashboard',
+        newOperationsLogEntry: 'Add Ops Log Entry',
+        newProject: 'Create a New Project',
+        openNewMenu: 'Open New Menu',
+        openUserMenu: 'Open User Menu',
+        profile: 'Profile',
+        settings: 'Settings',
+        signOut: 'Sign Out',
+        userMenu: 'User Menu'
       },
       footer: {
-        apiDocumentation: "API Documentation"
+        apiDocumentation: 'API Documentation'
       },
       admin: {
-        title: "Administration",
+        title: 'Administration',
         crud: {
           deleteConfirmation: {
-            title: "Delete {{itemName}}?",
-            text: "Are you sure you would like to delete \"{{value}}\" from the available {{collectionName}}?",
-            button: "Delete"
+            title: 'Delete {{itemName}}?',
+            text:
+              'Are you sure you would like to delete "{{value}}" from the available {{collectionName}}?',
+            button: 'Delete'
           },
-          itemAdded: "\"{{value}}\" was successfully added to the available {{collectionName}}",
-          itemDeleted: "\"{{value}}\" was successfully deleted from the available {{collectionName}}",
-          itemUpdated: "\"{{value}}\" was successfully updated in the available {{collectionName}}",
-          newTitle: "New {{itemName}}",
-          savingTitle: "Saving {{itemName}}",
-          updateTitle: "Edit {{itemName}}"
+          itemAdded:
+            '"{{value}}" was successfully added to the available {{collectionName}}',
+          itemDeleted:
+            '"{{value}}" was successfully deleted from the available {{collectionName}}',
+          itemUpdated:
+            '"{{value}}" was successfully updated in the available {{collectionName}}',
+          newTitle: 'New {{itemName}}',
+          savingTitle: 'Saving {{itemName}}',
+          updateTitle: 'Edit {{itemName}}'
         },
         sidebar: {
-          settings: "Settings",
-          userManagement: "User Management"
+          settings: 'Settings',
+          userManagement: 'User Management'
         },
         configurationSystems: {
-          collectionName: "Configuration Systems",
-          itemName: "Configuration System",
+          collectionName: 'Configuration Systems',
+          itemName: 'Configuration System',
           errors: {
-            uniqueViolation: "A configuration system with the same name already exists"
+            uniqueViolation:
+              'A configuration system with the same name already exists'
           }
         },
         cookieCutters: {
-          collectionName: "Cookie Cutters",
-          itemName: "Cookie Cutter",
-          type: "Type",
-          url: "Git URL",
-          urlDescription: "The Git URL to the cookie cutter",
+          collectionName: 'Cookie Cutters',
+          itemName: 'Cookie Cutter',
+          type: 'Type',
+          url: 'Git URL',
+          urlDescription: 'The Git URL to the cookie cutter',
           errors: {
-            uniqueViolation: "A cookie cutter with the same name already exists"
+            uniqueViolation: 'A cookie cutter with the same name already exists'
           }
         },
         dataCenters: {
-          collectionName: "Data Centers",
-          itemName: "Data Center",
+          collectionName: 'Data Centers',
+          itemName: 'Data Center',
           errors: {
-            uniqueViolation: "A data center with the same name already exists"
+            uniqueViolation: 'A data center with the same name already exists'
           }
         },
         deploymentTypes: {
-          collectionName: "Deployment Types",
-          itemName: "Deployment Type",
+          collectionName: 'Deployment Types',
+          itemName: 'Deployment Type',
           errors: {
-            uniqueViolation: "A deployment type with the same name already exists"
+            uniqueViolation:
+              'A deployment type with the same name already exists'
           }
         },
         environments: {
-          collectionName: "Environments",
-          itemName: "Environment",
+          collectionName: 'Environments',
+          itemName: 'Environment',
           errors: {
-            uniqueViolation: "An environment with the same name already exists"
+            uniqueViolation: 'An environment with the same name already exists'
           }
         },
         orchestrationSystems: {
-          collectionName: "Orchestration Systems",
-          itemName: "Orchestration System",
+          collectionName: 'Orchestration Systems',
+          itemName: 'Orchestration System',
           errors: {
-            uniqueViolation: "An orchestration system with the same name already exists"
+            uniqueViolation:
+              'An orchestration system with the same name already exists'
           }
         },
         projectFactTypes: {
-          collectionName: "Project Fact Types",
-          itemName: "Project Fact Type",
-          description: "The weight from 0 to 100 of the total score for a project. Total weight should across all types for a project type should not exceed 100.",
-          weight: "Weight",
+          collectionName: 'Project Fact Types',
+          itemName: 'Project Fact Type',
+          description:
+            'The weight from 0 to 100 of the total score for a project. Total weight should across all types for a project type should not exceed 100.',
+          weight: 'Weight',
           errors: {
-            uniqueViolation: "A project fact type with the same name already exists"
+            uniqueViolation:
+              'A project fact type with the same name already exists'
           }
         },
         projectLinkTypes: {
-          linkType: "Link Type",
-          collectionName: "Project Link Types",
-          itemName: "Project Link Type",
+          linkType: 'Link Type',
+          collectionName: 'Project Link Types',
+          itemName: 'Project Link Type',
           errors: {
-            uniqueViolation: "A project link type with the same name already exists"
+            uniqueViolation:
+              'A project link type with the same name already exists'
           }
         },
         projectTypes: {
-          collectionName: "Project Types",
-          itemName: "Project Type",
-          slugDescription: "A slug is the part of a URL which identifies a particular page on a website in an easy to read form.",
+          collectionName: 'Project Types',
+          itemName: 'Project Type',
+          slugDescription:
+            'A slug is the part of a URL which identifies a particular page on a website in an easy to read form.',
           errors: {
-            uniqueViolation: "A project type with the same name already exists"
+            uniqueViolation: 'A project type with the same name already exists'
           }
         }
       },
       login: {
-        username: "User Name",
-        password: "Password",
-        signIn: "Sign in"
+        username: 'User Name',
+        password: 'Password',
+        signIn: 'Sign in'
       },
       dashboard: {
-        title: "Dashboard"
+        title: 'Dashboard'
       },
       operationsLog: {
-        addEntry: "Add Entry",
-        title: "Operations Log"
+        addEntry: 'Add Entry',
+        title: 'Operations Log'
       },
       projects: {
-        newProject: "New Project",
-        title: "Projects"
+        newProject: 'New Project',
+        title: 'Projects'
       },
       user: {
         profile: {
           title: "{{displayName}}'s Profile",
-          displayName: "Display Name",
-          userName: "User Name",
-          userType: "User Type",
-          externalId: "External ID",
-          emailAddress: "Email Address",
-          groups: "Groups"
+          displayName: 'Display Name',
+          userName: 'User Name',
+          userType: 'User Type',
+          externalId: 'External ID',
+          emailAddress: 'Email Address',
+          groups: 'Groups'
         }
       }
     }
