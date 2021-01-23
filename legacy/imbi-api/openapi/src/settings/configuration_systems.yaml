@@ -5,10 +5,10 @@ paths:
       summary: Get Configuration Systems
       tags: [Settings]
       responses:
-        "200":
+        '200':
           description: Success
           headers:
-            Cache-Control: {$ref: '../components/headers.yaml#/Cache-Control'}
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
           content:
             application/json: &responseContent
               schema:
@@ -27,4 +27,4 @@ paths:
                       icon_class: fas fa-blind
             application/msgpack:
               <<: *responseContent
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }

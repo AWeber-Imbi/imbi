@@ -5,7 +5,7 @@ paths:
       summary: Get Projects
       tags: [Projects]
       responses:
-        "200":
+        '200':
           description: Success
           headers:
             Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
@@ -32,4 +32,4 @@ paths:
                       orchestration_system: ECS
             application/msgpack:
               <<: *responseContent
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }

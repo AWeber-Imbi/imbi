@@ -13,10 +13,10 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Success
           headers:
-            Cache-Control: {$ref: '../components/headers.yaml#/Cache-Control'}
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
           content:
             application/json: &responseContent
               schema:
@@ -33,4 +33,4 @@ paths:
                       dependency_id: 2ab8d72b-eacf-4521-8780-559008d075ae
             application/msgpack:
               <<: *responseContent
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }

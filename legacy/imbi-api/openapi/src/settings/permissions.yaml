@@ -5,7 +5,7 @@ paths:
       summary: Get Permissions
       tags: [Settings]
       responses:
-        "200":
+        '200':
           description: Success
           headers:
             Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
@@ -23,4 +23,4 @@ paths:
                     - user
             application/msgpack:
               <<: *responseContent
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }

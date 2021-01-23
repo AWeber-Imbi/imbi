@@ -13,10 +13,10 @@ paths:
             type: string
             format: uuid
       responses:
-        "200":
+        '200':
           description: Success
           headers:
-            Cache-Control: {$ref: '../components/headers.yaml#/Cache-Control'}
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
           content:
             application/json: &responseContent
               schema:
@@ -35,4 +35,4 @@ paths:
                       url: https://gitlab.com/AWeber/Imbi
             application/msgpack:
               <<: *responseContent
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
