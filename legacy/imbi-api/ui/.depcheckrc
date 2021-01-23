@@ -1,2 +1,2 @@
-ignores: ["@babel/core", "@testing-library/dom", "autoprefixer", "eslint", "jest", "postcss", "postcss-import", "prettier", "webpack", "webpack-cli"]
+ignores: ["@babel/core", "@testing-library/dom", "autoprefixer", "depcheck", "eslint", "husky", "jest", "lint-staged", "postcss", "postcss-import", "prettier", "typescript", "webpack", "webpack-cli"]
 specials: ["babel", "eslint", "jest", "prettier", "webpack"]

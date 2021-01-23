@@ -92,6 +92,11 @@ coverage: .env env
 	@ env/bin/coverage xml
 	@ env/bin/coverage report
 
+.PHONY: depcheck
+depcheck: ui/node_modules
+	@ printf "\nRunning depcheck\n\n"
+	@ cd ui && yarn run depcheck
+
 .PHONY: eslint
 eslint: ui/node_modules
 	@ printf "\nRunning eslint\n\n"
@@ -111,6 +116,11 @@ jest: ui/node_modules
 openapi-validate:
 	@ printf "\nRunning swagger-cli-validate\n\n"
 	@ cd openapi && yarn run validate
+
+.PHONY: jest
+prettier-check: ui/node_modules
+	@ printf "\nRunning prettier\n\n"
+	@ cd ui && yarn run prettier-check
 
 # Testing Groups
 
@@ -133,4 +143,4 @@ ddl-tests: postgres-ready
 python-tests: bandit flake8 coverage
 
 .PHONY: ui-tests
-ui-tests: ui/node_modules eslint jest
+ui-tests: ui/node_modules depcheck prettier-check eslint jest
