@@ -1,11 +1,11 @@
 import React, {Fragment, useContext, useEffect, useState} from "react"
 import {useTranslation} from "react-i18next"
-import {v4 as uuidv4} from "uuid";
 
 import {CRUD, Error} from "../../components"
 import {FetchContext} from "../../contexts"
 import {fetchProjectTypes} from "../../settings"
 import {jsonSchema} from "../../schema/ProjectFactType"
+import {ulidAsUUID} from "../../ulid"
 
 export function ProjectFactTypes() {
   const fetch = useContext(FetchContext)
@@ -64,7 +64,7 @@ export function ProjectFactTypes() {
                 {
                   title: t("common.id"),
                   name: "id",
-                  default: uuidv4,
+                  default: ulidAsUUID(),
                   type: "text",
                   format: "uuid",
                   tableOptions: {
