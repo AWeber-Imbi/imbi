@@ -11,7 +11,7 @@ jsonPatch:
           path:
             description: A JSON Pointer path to apply the operation to
             type: string
-            pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
+            pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
           op:
             description: The operation to perform
             type: string
@@ -35,7 +35,7 @@ jsonPatch:
           path:
             description: A JSON Pointer path to apply the operation to
             type: string
-            pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
+            pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
           op:
             description: The operation to perform
             type: string
@@ -43,7 +43,7 @@ jsonPatch:
           from:
             description: A JSON Pointer path to the referenced value
             type: string
-            pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
+            pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
         required:
           - path
           - op
@@ -54,7 +54,7 @@ jsonPatch:
           path:
             description: A JSON Pointer path to apply the operation to
             type: string
-            pattern: "^(/[^/~]*(~[01][^/~]*)*)*$"
+            pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
           op:
             description: The operation to perform
             type: string

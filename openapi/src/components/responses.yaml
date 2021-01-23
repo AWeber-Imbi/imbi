@@ -11,7 +11,7 @@ Conflict:
           value:
             type: HTTPError
             traceback: []
-            message: "HTTP 409: Conflict"
+            message: 'HTTP 409: Conflict'
     application/msgpack:
       <<: *responsesConflict
 
@@ -30,7 +30,7 @@ NotFound:
           value:
             type: HTTPError
             traceback: []
-            message: "HTTP 404: Resource not found"
+            message: 'HTTP 404: Resource not found'
     application/msgpack:
       <<: *responsesNotFound
 
@@ -53,7 +53,7 @@ RateLimited:
           value:
             type: HTTPError
             traceback: []
-            message: "HTTP 429 Too Many Requests"
+            message: 'HTTP 429 Too Many Requests'
     application/msgpack:
       <<: *responsesRateLimited
 
@@ -72,7 +72,7 @@ RequestError:
           value:
             type: HTTPError
             traceback: []
-            message: "HTTP 400 Request Error"
+            message: 'HTTP 400 Request Error'
     application/msgpack:
       <<: *responsesRequestError
 
@@ -88,6 +88,6 @@ Unauthorized:
           value:
             type: HTTPError
             traceback: []
-            message: "HTTP 401 Unauthorized"
+            message: 'HTTP 401 Unauthorized'
     application/msgpack:
       <<: *responsesRequestError

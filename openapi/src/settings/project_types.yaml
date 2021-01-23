@@ -5,7 +5,7 @@ paths:
       summary: Get Project Types
       tags: [Settings]
       responses:
-        "200":
+        '200':
           description: Success
           headers:
             Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
@@ -29,4 +29,4 @@ paths:
                       slug: postgres
             application/msgpack:
               <<: *responseContent
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }

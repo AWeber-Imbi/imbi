@@ -16,10 +16,10 @@ paths:
             <<: *postContent
       tags: [Orchestration Systems]
       responses:
-        "200": {$ref: '#/components/responses/Success'}
-        "400": {$ref: '../components/responses.yaml#/RequestError'}
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
-        "409": {$ref: '../components/responses.yaml#/Conflict'}
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '../components/responses.yaml#/RequestError' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '409': { $ref: '../components/responses.yaml#/Conflict' }
 
   manage:
     get:
@@ -27,9 +27,9 @@ paths:
       description: Retrieve an orchestration system record
       tags: [Orchestration Systems]
       responses:
-        "200": {$ref: '#/components/responses/Success'}
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
-        "404": {$ref: '../components/responses.yaml#/NotFound'}
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
     patch:
       summary: Update Record
       description: >-
@@ -49,20 +49,20 @@ paths:
           application/json-patch+msgpack:
             <<: *patchContent
       responses:
-        "200": {$ref: '#/components/responses/Success'}
-        "304": {$ref: '../components/responses.yaml#/NoChanges'}
-        "400": {$ref: '../components/responses.yaml#/RequestError'}
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
-        "404": {$ref: '../components/responses.yaml#/NotFound'}
-        "409": {$ref: '../components/responses.yaml#/Conflict'}
+        '200': { $ref: '#/components/responses/Success' }
+        '304': { $ref: '../components/responses.yaml#/NoChanges' }
+        '400': { $ref: '../components/responses.yaml#/RequestError' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
+        '409': { $ref: '../components/responses.yaml#/Conflict' }
     delete:
       summary: Delete Record
       description: Remove an orchestration system record
       tags: [Orchestration Systems]
       responses:
-        "204": {$ref: '../components/responses.yaml#/RecordRemoved'}
-        "401": {$ref: '../components/responses.yaml#/Unauthorized'}
-        "404": {$ref: '../components/responses.yaml#/NotFound'}
+        '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
       - name: name
         in: path
@@ -85,9 +85,9 @@ components:
     Success:
       description: The request to create, update, or retrieve the orchestration system was successful
       headers:
-        Cache-Control: {$ref: '../components/headers.yaml#/Cache-Control'}
-        Last-Modified: {$ref: '../components/headers.yaml#/Last-Modified'}
-        Link: {$ref: '../components/headers.yaml#/Link'}
+        Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+        Last-Modified: { $ref: '../components/headers.yaml#/Last-Modified' }
+        Link: { $ref: '../components/headers.yaml#/Link' }
       content:
         application/json: &responsesSuccess
           schema:

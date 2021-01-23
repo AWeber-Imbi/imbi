@@ -13,14 +13,14 @@ paths:
           description: Flush the stats / metrics database of recorded values
           schema:
             type: string
-            default: "false"
+            default: 'false'
             enum:
-              - "true"
-              - "false"
+              - 'true'
+              - 'false'
       tags:
         - Health Check
       responses:
-        "200":
+        '200':
           description: Service Available
           content:
             application/json: &statusAvailable
@@ -30,7 +30,7 @@ paths:
                 $ref: '#/components/examples/statusOk/value'
             application/msgpack:
               <<: *statusAvailable
-        "503":
+        '503':
           description: Service Unavailable
           content:
             application/json: &statusUnavailable
@@ -47,12 +47,12 @@ components:
       summary: Example when the service is available and processing requests
       value: &exampleStatus
         counters:
-          "response.Base.GET.200": 10
+          'response.Base.GET.200': 10
         durations:
-          "request.Base.GET.200":
-            - ["2018-12-03 23:46:54+00:00", 0.2566049098968506]
-            - ["2018-12-03 23:31:50+00:00", 0.33482813835144043]
-            - ["2018-12-03 23:00:39+00:00", 0.25607776641845703]
+          'request.Base.GET.200':
+            - ['2018-12-03 23:46:54+00:00', 0.2566049098968506]
+            - ['2018-12-03 23:31:50+00:00', 0.33482813835144043]
+            - ['2018-12-03 23:00:39+00:00', 0.25607776641845703]
         postgres:
           available: true
           pool_size: 10
