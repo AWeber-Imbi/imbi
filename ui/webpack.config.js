@@ -1,4 +1,7 @@
 const path = require('path')
+const process = require('process')
+
+const dev = process.env.NODE_ENV !== 'production'
 
 module.exports = {
   entry: ['babel-polyfill', __dirname + '/src/js/index.jsx'],
@@ -7,6 +10,7 @@ module.exports = {
     publicPath: '/static/',
     filename: 'imbi.js'
   },
+  devtool: dev ? 'eval-cheap-module-source-map' : 'source-map',
   performance: { hints: false },
   resolve: {
     extensions: ['.js', '.jsx']
