@@ -12,6 +12,7 @@ imbi/static/
 imbi/static/fonts/
 imbi/static/*.js
 openapi/node_modules/
+ui/.eslintcache
 ui/coverage/
 ui/node_modules/
 ui/yarn-error.log
