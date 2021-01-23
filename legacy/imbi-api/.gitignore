@@ -11,6 +11,7 @@ ddl.sql
 imbi/static/
 imbi/static/fonts/
 imbi/static/*.js
+imbi/static/*.js.map
 openapi/node_modules/
 ui/.eslintcache
 ui/coverage/
