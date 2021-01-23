@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "openapi-types": ">=7",
+    "redoc": "^2.0.0-rc.45",
     "swagger-cli": "^4.0.4"
   }
 }

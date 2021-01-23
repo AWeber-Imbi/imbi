@@ -1,5 +1,4 @@
 const path = require("path");
-const CopyWebpackPlugin = require("copy-webpack-plugin")
 
 module.exports = {
   entry: ["babel-polyfill", __dirname + "/src/js/index.jsx"],
@@ -33,18 +32,7 @@ module.exports = {
       }
     ]
   },
-  plugins: [
-    new CopyWebpackPlugin(
-      {
-        patterns: [
-          {
-            from: "node_modules/redoc/bundles/redoc.standalone.js",
-            to: path.resolve(__dirname, "../imbi/static/"),
-            flatten: true
-          }
-        ]
-      }, {})
-  ],
+  plugins: [],
   watchOptions: {
     aggregateTimeout: 1000,
     ignored: "node_modules/**",
