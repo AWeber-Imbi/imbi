@@ -1,24 +1,32 @@
-import PropTypes from "prop-types";
-import React from "react"
+import PropTypes from 'prop-types'
+import React from 'react'
 
-import {Icon} from ".."
+import { Icon } from '..'
 
 const icons = {
-  info: "fas info-circle",
-  warning: "fas exclamation-triangle",
-  error: "fas exclamation-circle",
-  success: "fas check-circle"
+  info: 'fas info-circle',
+  warning: 'fas exclamation-triangle',
+  error: 'fas exclamation-circle',
+  success: 'fas check-circle'
 }
 
-function Alert({level, children, className, ...props}) {
+function Alert({ level, children, className, ...props }) {
   return (
-    <div className={(className !== undefined ? className + " " : "") + "alert-" + level} {...props}>
+    <div
+      className={
+        (className !== undefined ? className + ' ' : '') + 'alert-' + level
+      }
+      {...props}>
       <div className="flex">
         <div className="flex-shrink-0">
-          <Icon icon={icons[level]}/>
+          <Icon icon={icons[level]} />
         </div>
         <div className="ml-3">
-          {typeof children == "string" ? (<h3 className="font-medium">{children}</h3>) : children}
+          {typeof children == 'string' ? (
+            <h3 className="font-medium">{children}</h3>
+          ) : (
+            children
+          )}
         </div>
       </div>
     </div>
@@ -28,7 +36,7 @@ function Alert({level, children, className, ...props}) {
 Alert.propTypes = {
   className: PropTypes.string,
   children: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
-  level: PropTypes.oneOf(["info", "warning", "error", "success"]).isRequired
+  level: PropTypes.oneOf(['info', 'warning', 'error', 'success']).isRequired
 }
 
-export {Alert}
+export { Alert }

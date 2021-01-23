@@ -1,29 +1,32 @@
-import {Link} from "react-router-dom"
-import PropTypes from "prop-types";
-import React, {Fragment} from "react"
-import {useTranslation} from "react-i18next"
+import { Link } from 'react-router-dom'
+import PropTypes from 'prop-types'
+import React, { Fragment } from 'react'
+import { useTranslation } from 'react-i18next'
 
-import {setDocumentTitle} from "../../utils"
-import {User} from "../../schema"
+import { setDocumentTitle } from '../../utils'
+import { User } from '../../schema'
 
-function Groups({groups}) {
+function Groups({ groups }) {
   return (
-    <Fragment>{groups.map((group) => {
-      return (
-        <Link className="inline-flex items-center px-2.5 py-0.5 mr-2 rounded-full text-xs font-medium bg-blue-700 text-white"
-              key={group}
-              to={"/ui/admin/groups#" + group}>
-          {group}
-        </Link>
-      )
-    })}
-  </Fragment>)
+    <Fragment>
+      {groups.map((group) => {
+        return (
+          <Link
+            className="inline-flex items-center px-2.5 py-0.5 mr-2 rounded-full text-xs font-medium bg-blue-700 text-white"
+            key={group}
+            to={'/ui/admin/groups#' + group}>
+            {group}
+          </Link>
+        )
+      })}
+    </Fragment>
+  )
 }
 Groups.propTypes = {
   groups: PropTypes.arrayOf[PropTypes.string]
 }
 
-const Item = ({label, value, children}) => {
+const Item = ({ label, value, children }) => {
   return (
     <div className="px-4 py-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
       <dt className="text-sm font-medium text-gray-500">{label}</dt>
@@ -40,9 +43,9 @@ Item.propTypes = {
   children: PropTypes.node
 }
 
-function Profile({user}) {
-  const {t} = useTranslation()
-  setDocumentTitle(t("user.profile.title", {displayName: user.display_name}))
+function Profile({ user }) {
+  const { t } = useTranslation()
+  setDocumentTitle(t('user.profile.title', { displayName: user.display_name }))
   return (
     <div className="container mx-auto my-auto max-w-4xl pb-0 bg-white shadow overflow-hidden sm:rounded-lg">
       <div className="px-4 py-5 sm:px-6">
@@ -52,14 +55,23 @@ function Profile({user}) {
       </div>
       <div className="bg-gray-50 border-t border-gray-200 py-5">
         <dl>
-          <Item label={t("user.profile.displayName")} value={user.display_name} />
-          <Item label={t("user.profile.userName")} value={user.username} />
-          <Item label={t("user.profile.userType")} value={user.user_type} />
-          {user.user_type !== "internal" && (
-            <Item label={t("user.profile.externalId")} value={user.external_id} />
+          <Item
+            label={t('user.profile.displayName')}
+            value={user.display_name}
+          />
+          <Item label={t('user.profile.userName')} value={user.username} />
+          <Item label={t('user.profile.userType')} value={user.user_type} />
+          {user.user_type !== 'internal' && (
+            <Item
+              label={t('user.profile.externalId')}
+              value={user.external_id}
+            />
           )}
-          <Item label={t("user.profile.emailAddress")} value={user.email_address} />
-          <Item label={t("user.profile.groups")}>
+          <Item
+            label={t('user.profile.emailAddress')}
+            value={user.email_address}
+          />
+          <Item label={t('user.profile.groups')}>
             <Groups groups={user.groups} />
           </Item>
         </dl>
@@ -72,4 +84,4 @@ Profile.propTypes = {
   user: PropTypes.exact(User)
 }
 
-export {Profile}
+export { Profile }

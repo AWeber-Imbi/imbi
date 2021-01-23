@@ -1,17 +1,21 @@
-import PropTypes from "prop-types"
+import PropTypes from 'prop-types'
 import React from 'react'
 
-import {Column as ColumnPropTypes} from "../../schema"
-import {Icon} from ".."
+import { Column as ColumnPropTypes } from '../../schema'
+import { Icon } from '..'
 
-function Column({definition, children}) {
-  let clsName = (definition !== undefined
-    && definition.tableOptions !== undefined
-    && definition.tableOptions.className !== undefined)
-    ? definition.tableOptions.className : ""
+function Column({ definition, children }) {
+  let clsName =
+    definition !== undefined &&
+    definition.tableOptions !== undefined &&
+    definition.tableOptions.className !== undefined
+      ? definition.tableOptions.className
+      : ''
   return (
-    <td className={"px-5 py-1.5 whitespace-nowrap " + clsName}>
-      {definition !== undefined && definition.type === "icon" && (<Icon className="mr-2" icon={children} />)}
+    <td className={'px-5 py-1.5 whitespace-nowrap ' + clsName}>
+      {definition !== undefined && definition.type === 'icon' && (
+        <Icon className="mr-2" icon={children} />
+      )}
       {children}
     </td>
   )
@@ -26,4 +30,4 @@ Column.propTypes = {
   ])
 }
 
-export {Column}
+export { Column }

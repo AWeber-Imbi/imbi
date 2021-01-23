@@ -1,39 +1,31 @@
-import PropTypes from "prop-types"
+import PropTypes from 'prop-types'
 
 export const jsonSchema = {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  type: "object",
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  type: 'object',
   properties: {
     name: {
-      type: "string",
+      type: 'string',
       minLength: 3
     },
     slug: {
-      type: "string",
+      type: 'string',
       minLength: 3
     },
     description: {
-      oneOf: [
-        {type: "string"},
-        {type: "null"}
-      ]
+      oneOf: [{ type: 'string' }, { type: 'null' }]
     },
     icon_class: {
-      oneOf: [
-        {type: "string"},
-        {type: "null"}
-      ]
+      oneOf: [{ type: 'string' }, { type: 'null' }]
     }
   },
   additionalProperties: false,
-  required: [
-    "name"
-  ]
+  required: ['name']
 }
 
 export const propTypes = {
   name: PropTypes.string.isRequired,
   slug: PropTypes.string.isRequired,
   description: PropTypes.string,
-  icon_class: PropTypes.string,
+  icon_class: PropTypes.string
 }

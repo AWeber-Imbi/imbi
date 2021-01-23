@@ -1,19 +1,18 @@
-import PropTypes from "prop-types"
-import React, {useContext, useRef, useState} from "react"
-import {useTranslation} from "react-i18next"
+import PropTypes from 'prop-types'
+import React, { useContext, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
-import {Alert} from "../components"
-import {FetchContext} from "../contexts"
-import {httpPost} from "../utils"
+import { Alert } from '../components'
+import { FetchContext } from '../contexts'
+import { httpPost } from '../utils'
 
-function Login({onLoginCallback, useLDAP}) {
-
-  const {t} = useTranslation()
+function Login({ onLoginCallback, useLDAP }) {
+  const { t } = useTranslation()
   const fetch = useContext(FetchContext)
 
   const [credentials, setCredentials] = useState({
     username: null,
-    password: null,
+    password: null
   })
   const [errorMessage, setErrorMessage] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -21,8 +20,8 @@ function Login({onLoginCallback, useLDAP}) {
   const usernameRef = useRef()
 
   function onChange(e) {
-    const {name, value} = e.target
-    setCredentials({...credentials, [name]: value})
+    const { name, value } = e.target
+    setCredentials({ ...credentials, [name]: value })
   }
 
   async function onSubmit(e) {
@@ -31,17 +30,17 @@ function Login({onLoginCallback, useLDAP}) {
     setErrorMessage(null)
     const response = await httpPost(
       fetch,
-      "/ui/login",
+      '/ui/login',
       {
         username: credentials.username,
-        password: credentials.password,
+        password: credentials.password
       },
-      {credentials: "include"}
+      { credentials: 'include' }
     )
     if (response.success === true) {
       onLoginCallback(response.data)
     } else {
-      setCredentials({...credentials, password: null})
+      setCredentials({ ...credentials, password: null })
       setErrorMessage(response.data)
       setSubmitting(false)
       usernameRef.current.focus()
@@ -61,38 +60,58 @@ function Login({onLoginCallback, useLDAP}) {
                   </div>
                 )}
                 <div className="mb-4">
-                  <label htmlFor="username"
-                         className="block text-sm font-medium text-gray-700 mb-1">
-                    {(useLDAP ? "LDAP " : "") + t("login.username")}
+                  <label
+                    htmlFor="username"
+                    className="block text-sm font-medium text-gray-700 mb-1">
+                    {(useLDAP ? 'LDAP ' : '') + t('login.username')}
                   </label>
-                  <input id="username"
-                         className={errorMessage !== null ? "form-input-error" : "form-input"}
-                         autoFocus
-                         name="username"
-                         onChange={onChange}
-                         ref={usernameRef}
-                         required
-                         type="text"
-                         value={credentials.username !== null ? credentials.username : ""}/>
+                  <input
+                    id="username"
+                    className={
+                      errorMessage !== null ? 'form-input-error' : 'form-input'
+                    }
+                    autoFocus
+                    name="username"
+                    onChange={onChange}
+                    ref={usernameRef}
+                    required
+                    type="text"
+                    value={
+                      credentials.username !== null ? credentials.username : ''
+                    }
+                  />
                 </div>
                 <div className="mb-4">
-                  <label htmlFor="password"
-                         className="block text-sm font-medium text-gray-700 mb-1">
-                    {t("login.password")}</label>
-                  <input id="password"
-                         autoComplete="current-password"
-                         className={errorMessage !== null ? "form-input-error" : "form-input"}
-                         name="password"
-                         onChange={onChange}
-                         required
-                         type="password"
-                         value={credentials.password !== null ? credentials.password : ""}/>
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('login.password')}
+                  </label>
+                  <input
+                    id="password"
+                    autoComplete="current-password"
+                    className={
+                      errorMessage !== null ? 'form-input-error' : 'form-input'
+                    }
+                    name="password"
+                    onChange={onChange}
+                    required
+                    type="password"
+                    value={
+                      credentials.password !== null ? credentials.password : ''
+                    }
+                  />
                 </div>
                 <div className="pt-4">
-                  <button type="submit"
-                          className="btn-blue w-full"
-                          disabled={submitting || credentials.username === null || credentials.password === null}>
-                    {t("login.signIn")}
+                  <button
+                    type="submit"
+                    className="btn-blue w-full"
+                    disabled={
+                      submitting ||
+                      credentials.username === null ||
+                      credentials.password === null
+                    }>
+                    {t('login.signIn')}
                   </button>
                 </div>
               </div>
@@ -109,4 +128,4 @@ Login.propTypes = {
   useLDAP: PropTypes.bool
 }
 
-export {Login}
+export { Login }

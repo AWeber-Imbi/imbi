@@ -1,24 +1,27 @@
-import PropTypes from "prop-types"
+import PropTypes from 'prop-types'
 import React from 'react'
-import {useTranslation} from "react-i18next";
+import { useTranslation } from 'react-i18next'
 
-import {Columns} from "../../schema"
+import { Columns } from '../../schema'
 
-import {HeadColumn} from "./HeadColumn"
+import { HeadColumn } from './HeadColumn'
 
-function Head({columns, includeEdit}) {
-  const {t} = useTranslation()
+function Head({ columns, includeEdit }) {
+  const { t } = useTranslation()
   return (
     <thead className="bg-gray-50">
       <tr>
         {columns.map((column) => {
-          if (column.tableOptions === undefined || column.tableOptions.hide !== true)
-            return (
-              <HeadColumn column={column} key={"column-" + column.name} />
-            )
+          if (
+            column.tableOptions === undefined ||
+            column.tableOptions.hide !== true
+          )
+            return <HeadColumn column={column} key={'column-' + column.name} />
         })}
         {includeEdit === true && (
-          <HeadColumn key="column-edit" className="w-24" srOnly={true}>{t("common.edit")}</HeadColumn>
+          <HeadColumn key="column-edit" className="w-24" srOnly={true}>
+            {t('common.edit')}
+          </HeadColumn>
         )}
       </tr>
     </thead>
@@ -33,4 +36,4 @@ Head.propTypes = {
   includeEdit: PropTypes.bool
 }
 
-export {Head}
+export { Head }

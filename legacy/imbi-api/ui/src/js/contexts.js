@@ -1,4 +1,4 @@
-import React from "react"
+import React from 'react'
 
 // Wraps the fetch function to handle authenticated requests
 export const FetchContext = React.createContext(() => {})

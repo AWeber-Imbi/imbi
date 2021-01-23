@@ -1,11 +1,9 @@
-import React from "react"
-import {useTranslation} from "react-i18next"
+import React from 'react'
+import { useTranslation } from 'react-i18next'
 
-import {Error} from "."
+import { Error } from '.'
 
 export function NotFound() {
-  const {t} = useTranslation()
-  return (
-    <Error>{t("error.notFound")}</Error>
-  )
+  const { t } = useTranslation()
+  return <Error>{t('error.notFound')}</Error>
 }

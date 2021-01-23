@@ -1,50 +1,57 @@
-import {Link, NavLink, useRouteMatch} from "react-router-dom"
-import {Menu} from "@headlessui/react"
-import React from "react"
-import PropTypes from "prop-types"
-import {useTranslation} from "react-i18next"
+import { Link, NavLink, useRouteMatch } from 'react-router-dom'
+import { Menu } from '@headlessui/react'
+import React from 'react'
+import PropTypes from 'prop-types'
+import { useTranslation } from 'react-i18next'
 
-import {Icon, Tooltip} from "../"
-import {User} from "../../schema"
+import { Icon, Tooltip } from '../'
+import { User } from '../../schema'
 
-function MenuItem({children, to}) {
+function MenuItem({ children, to }) {
   return (
-    <NavLink className="nav-menu-link"
-             to={to}>
+    <NavLink className="nav-menu-link" to={to}>
       {children}
     </NavLink>
   )
 }
 
 MenuItem.propTypes = {
-  children: PropTypes.oneOfType([PropTypes.string, PropTypes.object]).isRequired,
+  children: PropTypes.oneOfType([PropTypes.string, PropTypes.object])
+    .isRequired,
   to: PropTypes.string.isRequired
 }
 
-function NavMenu({user}) {
+function NavMenu({ user }) {
   const match = useRouteMatch({
-    path: "/ui/",
+    path: '/ui/',
     exact: true
-  });
-  const {t} = useTranslation()
+  })
+  const { t } = useTranslation()
 
   return (
-    <Menu as="div" className={"flex-grow ml-2 mt-2 space-x-2"}>
-      <Link className={"nav-menu-link" + (match ? " active" : "")} to="/ui/">{t("dashboard.title")}</Link>
-      <NavLink className="nav-menu-link" to="/ui/projects">{t("projects.title")}</NavLink>
-      <NavLink className="nav-menu-link" to="/ui/operations-log">{t("operationsLog.title")}</NavLink>
-      {user.permissions.includes("admin") && (
-        <Tooltip value={t("headerNavItems.administration")}>
+    <Menu as="div" className={'flex-grow ml-2 mt-2 space-x-2'}>
+      <Link className={'nav-menu-link' + (match ? ' active' : '')} to="/ui/">
+        {t('dashboard.title')}
+      </Link>
+      <NavLink className="nav-menu-link" to="/ui/projects">
+        {t('projects.title')}
+      </NavLink>
+      <NavLink className="nav-menu-link" to="/ui/operations-log">
+        {t('operationsLog.title')}
+      </NavLink>
+      {user.permissions.includes('admin') && (
+        <Tooltip value={t('headerNavItems.administration')}>
           <NavLink className="nav-menu-link" to="/ui/admin">
-            <Icon icon="fas wrench" className="p-0 m-0"/>
+            <Icon icon="fas wrench" className="p-0 m-0" />
           </NavLink>
         </Tooltip>
       )}
-    </Menu>)
+    </Menu>
+  )
 }
 
 NavMenu.propTypes = {
   user: PropTypes.shape(User)
 }
 
-export {NavMenu}
+export { NavMenu }

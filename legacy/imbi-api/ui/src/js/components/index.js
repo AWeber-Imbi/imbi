@@ -1,11 +1,11 @@
-export {Alert} from "./Alert/Alert"
-export {ConfirmationDialog} from "./ConfirmationDialog/ConfirmationDialog"
-export {ContentArea} from "./ContentArea/ContentArea"
-export {CRUD} from "./CRUD/CRUD"
-export {Error} from "./Error/Error"
-export {Footer} from "./Footer/Footer"
-export {Header} from "./Header/Header"
-export {Icon} from "./Icon/Icon"
-export {Sidebar} from "./Sidebar/Sidebar"
-export {Table} from "./Table/Table"
-export {Tooltip} from "./Tooltip/Tooltip"
+export { Alert } from './Alert/Alert'
+export { ConfirmationDialog } from './ConfirmationDialog/ConfirmationDialog'
+export { ContentArea } from './ContentArea/ContentArea'
+export { CRUD } from './CRUD/CRUD'
+export { Error } from './Error/Error'
+export { Footer } from './Footer/Footer'
+export { Header } from './Header/Header'
+export { Icon } from './Icon/Icon'
+export { Sidebar } from './Sidebar/Sidebar'
+export { Table } from './Table/Table'
+export { Tooltip } from './Tooltip/Tooltip'

@@ -1,14 +1,16 @@
-import PropTypes from "prop-types"
+import PropTypes from 'prop-types'
 
 export const Column = {
   default: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
   description: PropTypes.string,
   format: PropTypes.string,
   name: PropTypes.string.isRequired,
-  options: PropTypes.arrayOf(PropTypes.exact({
-    label: PropTypes.string.isRequired,
-    value: PropTypes.string.isRequired
-  })),
+  options: PropTypes.arrayOf(
+    PropTypes.exact({
+      label: PropTypes.string.isRequired,
+      value: PropTypes.string.isRequired
+    })
+  ),
   placeholder: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),
   readOnly: PropTypes.bool,
   tableOptions: PropTypes.exact({
@@ -18,7 +20,8 @@ export const Column = {
     sortable: PropTypes.bool
   }),
   title: PropTypes.string.isRequired,
-  type: PropTypes.oneOf(["icon", "number", "select", "text", "textarea"]).isRequired
+  type: PropTypes.oneOf(['icon', 'number', 'select', 'text', 'textarea'])
+    .isRequired
 }
 
 export const Columns = PropTypes.arrayOf(PropTypes.exact(Column))
