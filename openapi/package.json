@@ -10,14 +10,23 @@
   "scripts": {
     "build": "swagger-cli bundle src/main.yaml  --outfile ../imbi/templates/openapi.yaml --type yaml",
     "prettier": "prettier -w src",
+    "redoc": "copy redoc/bundles/redoc.standalone.* ../imbi/static/",
     "validate": "swagger-cli validate src/main.yaml"
   },
   "devDependencies": {
+    "ajv": "4.11.8 - 6",
+    "copy": "^0.3.2",
+    "core-js": "^3.1.4",
     "husky": ">=4",
     "lint-staged": ">=10",
+    "mobx": "^5.15.4 || ^4.15.4",
     "openapi-types": ">=7",
     "prettier": "^2.2.1",
-    "redoc": "^2.0.0-rc.45",
+    "react": "^16.8.4",
+    "react-dom": "^16.8.4",
+    "react-is": ">= 16.8.0",
+    "redoc": "^2.0.0-rc.48",
+    "styled-components": "^4.1.1",
     "swagger-cli": "^4.0.4"
   },
   "husky": {

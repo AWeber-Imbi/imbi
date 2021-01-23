@@ -10,7 +10,7 @@ all: setup scaffolding/postgres/ddl.sql build-openapi all-tests build-ui
 
 .PHONY: build-openapi
 build-openapi:
-	@ cd openapi && yarn run build
+	@ cd openapi && yarn run build && yarn run redoc
 
 .PHONY: build-ui
 build-ui:
