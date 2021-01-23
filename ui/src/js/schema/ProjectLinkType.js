@@ -1,22 +1,19 @@
-import PropTypes from "prop-types"
+import PropTypes from 'prop-types'
 
 export const jsonSchema = {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  type: "object",
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  type: 'object',
   properties: {
     link_type: {
-      type: "string",
+      type: 'string',
       minLength: 3
     },
     icon_class: {
-      type: "string"
+      type: 'string'
     }
   },
   additionalProperties: false,
-  required: [
-    "link_type",
-    "icon_class"
-  ]
+  required: ['link_type', 'icon_class']
 }
 
 export const propTypes = {

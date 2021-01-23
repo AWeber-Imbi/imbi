@@ -1,15 +1,13 @@
-import PropTypes from "prop-types"
-import React, {Fragment, useState} from "react"
+import PropTypes from 'prop-types'
+import React, { Fragment, useState } from 'react'
 
-import {Icon} from "../"
-import {icons} from "../../icons"
+import { Icon } from '../'
+import { icons } from '../../icons'
 
-function IconSelect({className, defaultValue, value, onChange, ...props}) {
+function IconSelect({ className, defaultValue, value, onChange, ...props }) {
   let initialValue = undefined
-  if (value !== undefined)
-    initialValue = value
-  else if (defaultValue !== undefined)
-    initialValue = defaultValue
+  if (value !== undefined) initialValue = value
+  else if (defaultValue !== undefined) initialValue = defaultValue
   const [icon, setIcon] = useState(initialValue)
 
   function onValueChange(e) {
@@ -21,15 +19,16 @@ function IconSelect({className, defaultValue, value, onChange, ...props}) {
   return (
     <Fragment>
       <Icon className="absolute z-50 ml-3 mt-3" icon={icon} />
-      <select className={className + " pl-10"}
-              {...props}
-              defaultValue={initialValue}
-              onChange={onValueChange}>
+      <select
+        className={className + ' pl-10'}
+        {...props}
+        defaultValue={initialValue}
+        onChange={onValueChange}>
         <option value="" />
         {icons.map((icon) => {
           return (
-            <option key={"icon-select-" + icon}
-                    value={icon}>{icon}
+            <option key={'icon-select-' + icon} value={icon}>
+              {icon}
             </option>
           )
         })}

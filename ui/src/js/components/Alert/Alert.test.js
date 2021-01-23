@@ -1,44 +1,40 @@
-import React from "react"
-import {render, screen} from "@testing-library/react"
-import "@testing-library/jest-dom/extend-expect"
+import React from 'react'
+import { render, screen } from '@testing-library/react'
+import '@testing-library/jest-dom/extend-expect'
 
-import "../../icons"
-import {Alert} from "./Alert"
+import '../../icons'
+import { Alert } from './Alert'
 
-describe("Alert", () => {
-  it("should render an alert with info attributes", () => {
+describe('Alert', () => {
+  it('should render an alert with info attributes', () => {
     render(
       <div data-testid="alert">
-        <Alert level="info">
-          Alert Info Content
-        </Alert>
+        <Alert level="info">Alert Info Content</Alert>
       </div>
     )
-    const alert = screen.getByTestId("alert").children[0]
-    expect(alert).toHaveClass("alert-info")
-    const svg = alert.getElementsByTagName("svg")[0]
-    expect(svg.dataset.prefix).toBe("fas")
-    expect(svg.dataset.icon).toBe("info-circle")
-    const h3 = alert.getElementsByTagName("h3")[0]
-    expect(h3).toHaveTextContent("Alert Info Content")
+    const alert = screen.getByTestId('alert').children[0]
+    expect(alert).toHaveClass('alert-info')
+    const svg = alert.getElementsByTagName('svg')[0]
+    expect(svg.dataset.prefix).toBe('fas')
+    expect(svg.dataset.icon).toBe('info-circle')
+    const h3 = alert.getElementsByTagName('h3')[0]
+    expect(h3).toHaveTextContent('Alert Info Content')
   })
-  it("should render an alert with warning attributes", () => {
+  it('should render an alert with warning attributes', () => {
     render(
       <div data-testid="alert">
-        <Alert level="warning">
-          Alert Warning Content
-        </Alert>
+        <Alert level="warning">Alert Warning Content</Alert>
       </div>
     )
-    const alert = screen.getByTestId("alert").children[0]
-    expect(alert).toHaveClass("alert-warning")
-    const svg = alert.getElementsByTagName("svg")[0]
-    expect(svg.dataset.prefix).toBe("fas")
-    expect(svg.dataset.icon).toBe("exclamation-triangle")
-    const h3 = alert.getElementsByTagName("h3")[0]
-    expect(h3).toHaveTextContent("Alert Warning Content")
+    const alert = screen.getByTestId('alert').children[0]
+    expect(alert).toHaveClass('alert-warning')
+    const svg = alert.getElementsByTagName('svg')[0]
+    expect(svg.dataset.prefix).toBe('fas')
+    expect(svg.dataset.icon).toBe('exclamation-triangle')
+    const h3 = alert.getElementsByTagName('h3')[0]
+    expect(h3).toHaveTextContent('Alert Warning Content')
   })
-  it("should render children even if they are element", () => {
+  it('should render children even if they are element', () => {
     render(
       <div data-testid="alert">
         <Alert level="success">
@@ -46,12 +42,12 @@ describe("Alert", () => {
         </Alert>
       </div>
     )
-    const alert = screen.getByTestId("alert").children[0]
-    expect(alert).toHaveClass("alert-success")
-    const svg = alert.getElementsByTagName("svg")[0]
-    expect(svg.dataset.prefix).toBe("fas")
-    expect(svg.dataset.icon).toBe("check-circle")
-    const child = alert.getElementsByTagName("h1")[0]
-    expect(child).toHaveTextContent("Foo Bar")
+    const alert = screen.getByTestId('alert').children[0]
+    expect(alert).toHaveClass('alert-success')
+    const svg = alert.getElementsByTagName('svg')[0]
+    expect(svg.dataset.prefix).toBe('fas')
+    expect(svg.dataset.icon).toBe('check-circle')
+    const child = alert.getElementsByTagName('h1')[0]
+    expect(child).toHaveTextContent('Foo Bar')
   })
 })

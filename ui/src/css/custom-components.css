@@ -1,5 +1,4 @@
 @layer components {
-
   .alert {
     @apply bg-gray-50 py-4 px-6 text-sm rounded-lg border;
   }
@@ -16,18 +15,18 @@
     @apply alert bg-green-50 text-green-800 border-green-100;
   }
 
-  .bottom-full{
-    bottom: 100%
+  .bottom-full {
+    bottom: 100%;
   }
-  .top-full{
-    top: 100%
+  .top-full {
+    top: 100%;
   }
 
   .btn {
     @apply py-2 px-4 font-semibold rounded-md shadow focus:outline-none border;
   }
   .btn-blue {
-    @apply btn bg-blue-700 hover:bg-blue-600 border-blue-700 text-white ;
+    @apply btn bg-blue-700 hover:bg-blue-600 border-blue-700 text-white;
   }
   .btn-disabled {
     @apply btn bg-gray-600 hover:bg-gray-600 border-gray-600 text-white cursor-not-allowed;
@@ -36,7 +35,7 @@
     @apply btn bg-green-600 hover:bg-green-500 border-green-600 text-white;
   }
   .btn-red {
-    @apply btn bg-red-700 hover:bg-red-600 border-red-800 text-white ;
+    @apply btn bg-red-700 hover:bg-red-600 border-red-800 text-white;
   }
   .btn-white {
     @apply btn bg-white hover:bg-gray-200 border-gray-300 text-gray-500;
@@ -80,5 +79,4 @@
   .user-menu-link.active {
     @apply font-bold;
   }
-
 }

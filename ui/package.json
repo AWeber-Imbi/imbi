@@ -6,7 +6,7 @@
     "build": "webpack --progress --mode=production --config webpack.config.js",
     "dev-build": "webpack --progress --mode=development --config webpack.config.js",
     "eslint": "eslint src/js/**",
-    "prettier": "prettier",
+    "prettier": "prettier -w src",
     "test": "jest",
     "test-coverage": "jest --coverage",
     "watch": "webpack --progress --mode=development --config webpack.config.js --watch"

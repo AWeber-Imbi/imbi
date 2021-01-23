@@ -1,9 +1,9 @@
-import {FontAwesomeIcon} from "@fortawesome/react-fontawesome"
-import PropTypes from "prop-types"
-import React from "react"
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import PropTypes from 'prop-types'
+import React from 'react'
 
-function Icon({icon, ...props}) {
-  return (<FontAwesomeIcon icon={icon.split(" ")} {...props}/>)
+function Icon({ icon, ...props }) {
+  return <FontAwesomeIcon icon={icon.split(' ')} {...props} />
 }
 
 Icon.propTypes = {
@@ -11,5 +11,4 @@ Icon.propTypes = {
   props: PropTypes.object
 }
 
-export {Icon}
-
+export { Icon }

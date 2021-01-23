@@ -1,4 +1,4 @@
-import PropTypes from "prop-types"
+import PropTypes from 'prop-types'
 
 export const Project = {
   name: PropTypes.string.isRequired,
@@ -13,7 +13,7 @@ export const Project = {
   links: PropTypes.arrayOf(
     PropTypes.shape({
       link_type: PropTypes.string,
-      url: PropTypes.string,
+      url: PropTypes.string
     })
-  ),
+  )
 }

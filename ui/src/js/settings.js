@@ -1,8 +1,9 @@
-import {httpGet} from "./utils"
+import { httpGet } from './utils'
 
 function fetchSettings(fetch, path, asOptions, onSuccess, onError) {
   httpGet(
-    fetch, path,
+    fetch,
+    path,
     (data) => {
       if (asOptions) {
         const options = []
@@ -16,14 +17,11 @@ function fetchSettings(fetch, path, asOptions, onSuccess, onError) {
       } else {
         onSuccess(data)
       }
-    }, onError)
-
+    },
+    onError
+  )
 }
 
 export function fetchProjectTypes(fetch, asOptions, onSuccess, onError) {
   fetchSettings(fetch, '/settings/project_types', asOptions, onSuccess, onError)
 }
-
-
-
-

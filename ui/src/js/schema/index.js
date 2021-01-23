@@ -1,2 +1,2 @@
-export {Column, Columns} from "./Columns"
-export {User} from "./User"
+export { Column, Columns } from './Columns'
+export { User } from './User'

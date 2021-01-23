@@ -1,16 +1,25 @@
-import PropTypes from "prop-types"
-import React from "react"
+import PropTypes from 'prop-types'
+import React from 'react'
 
-import {PageHeader} from "./PageHeader"
+import { PageHeader } from './PageHeader'
 
-function ContentArea({buttonClass, buttonIcon, buttonTitle, children, pageIcon, pageTitle}) {
-  return(
+function ContentArea({
+  buttonClass,
+  buttonIcon,
+  buttonTitle,
+  children,
+  pageIcon,
+  pageTitle
+}) {
+  return (
     <div className="flex-auto p-4">
-      <PageHeader buttonClass={buttonClass}
-                  buttonIcon={buttonIcon}
-                  buttonTitle={buttonTitle}
-                  pageIcon={pageIcon}
-                  pageTitle={pageTitle} />
+      <PageHeader
+        buttonClass={buttonClass}
+        buttonIcon={buttonIcon}
+        buttonTitle={buttonTitle}
+        pageIcon={pageIcon}
+        pageTitle={pageTitle}
+      />
       {children}
     </div>
   )
@@ -29,4 +38,4 @@ ContentArea.propTypes = {
   buttonTitle: PropTypes.string
 }
 
-export {ContentArea}
+export { ContentArea }
