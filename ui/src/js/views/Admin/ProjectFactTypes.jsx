@@ -60,6 +60,8 @@ export function ProjectFactTypes() {
               title: t('admin.projectFactTypes.weight'),
               name: 'weight',
               type: 'number',
+              minimum: 0,
+              maximum: 100,
               description: t('admin.projectFactTypes.description'),
               tableOptions: {
                 className: 'min-w-sm text-right',
