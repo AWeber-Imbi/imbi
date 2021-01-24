@@ -10,12 +10,11 @@
   "scripts": {
     "build": "swagger-cli bundle src/main.yaml  --outfile ../imbi/templates/openapi.yaml --type yaml",
     "prettier": "prettier -w src",
-    "redoc": "copy redoc/bundles/redoc.standalone.* ../imbi/static/",
+    "redoc": "cp node_modules/redoc/bundles/redoc.standalone.js ../imbi/static",
     "validate": "swagger-cli validate src/main.yaml"
   },
   "devDependencies": {
     "ajv": "4.11.8 - 6",
-    "copy": "^0.3.2",
     "core-js": "^3.1.4",
     "dompurify": "^2.0.17",
     "husky": ">=4",
