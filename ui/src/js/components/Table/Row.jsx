@@ -15,12 +15,12 @@ function Row({ columns, data, index, itemKey, onDeleteClick, onEditClick }) {
     })
     .filter((column) => column !== undefined)
 
-  function deleteOnCick(e) {
+  function deleteOnClick(e) {
     e.preventDefault()
     onDeleteClick(data[itemKey])
   }
 
-  function editOnCick(e) {
+  function editOnClick(e) {
     e.preventDefault()
     onEditClick(data[itemKey])
   }
@@ -39,13 +39,19 @@ function Row({ columns, data, index, itemKey, onDeleteClick, onEditClick }) {
         )
       })}
       {(onEditClick !== undefined || onDeleteClick !== undefined) && (
-        <Column>
+        <Column
+          definition={{
+            name: 'edit-delete',
+            title: 'Edit / Delete',
+            tableOptions: { className: 'text-center' },
+            type: 'internal'
+          }}>
           <Fragment>
             {onEditClick !== undefined && (
               <button
                 type="button"
                 className="text-center text-gray-400 hover:text-blue-700 focus:outline-none"
-                onClick={editOnCick}>
+                onClick={editOnClick}>
                 {t('common.edit')}
               </button>
             )}
@@ -56,7 +62,7 @@ function Row({ columns, data, index, itemKey, onDeleteClick, onEditClick }) {
               <button
                 type="button"
                 className="text-center text-gray-400 hover:text-red-700 focus:outline-none"
-                onClick={deleteOnCick}>
+                onClick={deleteOnClick}>
                 {t('common.delete')}
               </button>
             )}
