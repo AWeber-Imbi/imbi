@@ -17,8 +17,8 @@ export const jsonSchema = {
     },
     weight: {
       type: 'number',
-      minValue: 0,
-      maxValue: 100
+      minimum: 0,
+      maximum: 100
     }
   },
   additionalProperties: false,
