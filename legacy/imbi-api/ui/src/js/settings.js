@@ -1,6 +1,6 @@
 import { httpGet } from './utils'
 
-function fetchSettings(fetch, path, asOptions, onSuccess, onError) {
+export function fetchSettings(fetch, path, asOptions, onSuccess, onError) {
   httpGet(
     fetch,
     path,
@@ -24,4 +24,8 @@ function fetchSettings(fetch, path, asOptions, onSuccess, onError) {
 
 export function fetchProjectTypes(fetch, asOptions, onSuccess, onError) {
   fetchSettings(fetch, '/settings/project_types', asOptions, onSuccess, onError)
+}
+
+export function fetchGroups(fetch, asOptions, onSuccess, onError) {
+  fetchSettings(fetch, '/settings/groups', asOptions, onSuccess, onError)
 }
