@@ -7,6 +7,7 @@ function TextArea({
   name,
   onChange,
   placeholder,
+  required,
   rows,
   value
 }) {
@@ -41,6 +42,7 @@ function TextArea({
       }}
       placeholder={placeholder}
       ref={ref}
+      required={required}
       rows={rows}
     />
   )
@@ -49,6 +51,7 @@ function TextArea({
 TextArea.defaultProps = {
   autoFocus: false,
   hasError: false,
+  required: false,
   rows: 3
 }
 
@@ -58,6 +61,7 @@ TextArea.propTypes = {
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
   placeholder: PropTypes.string,
+  required: PropTypes.bool,
   rows: PropTypes.number,
   value: PropTypes.string
 }

@@ -9,6 +9,7 @@ function Select({
   onChange,
   options,
   placeholder,
+  required,
   value
 }) {
   const [hasFocus, setHasFocus] = useState(false)
@@ -41,8 +42,11 @@ function Select({
         setHasFocus(true)
       }}
       placeholder={placeholder}
-      ref={ref}>
-      <option value="" />
+      ref={ref}
+      required={required}>
+      {multiple !== true && (
+        <option value="">{placeholder !== undefined ? placeholder : ''}</option>
+      )}
       {options.map((option) => {
         return (
           <option key={name + '-' + option.value} value={option.value}>
@@ -57,7 +61,8 @@ function Select({
 Select.defaultProps = {
   autoFocus: false,
   hasError: false,
-  multiple: false
+  multiple: false,
+  required: false
 }
 
 Select.propTypes = {
@@ -73,6 +78,7 @@ Select.propTypes = {
     })
   ),
   placeholder: PropTypes.string,
+  required: PropTypes.bool,
   value: PropTypes.string
 }
 
