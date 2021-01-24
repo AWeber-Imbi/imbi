@@ -19,7 +19,6 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     data[key] = options
     if (Object.values(data).includes(null) === false && erred === false) {
       data.ready = true
-      console.log('Returining data')
       onSuccess(data)
     }
   }
