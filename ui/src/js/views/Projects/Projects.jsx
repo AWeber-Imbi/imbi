@@ -29,6 +29,7 @@ function Projects() {
 
   return (
     <ContentArea
+      buttonDestination="/ui/projects/new"
       buttonTitle={t('projects.newProject')}
       pageIcon="fas folder"
       pageTitle={t('projects.title')}>
