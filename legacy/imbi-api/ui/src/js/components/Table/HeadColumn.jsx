@@ -13,7 +13,7 @@ function HeadColumn({ column, children, className, srOnly }) {
   if (className !== undefined) clsName += ' ' + className
   if (srOnly === true) {
     return (
-      <th scope="col" className={'relative px-6 py-3 ' + clsName}>
+      <th scope="col" className={'relative px-6 py-2 ' + clsName}>
         <span className="sr-only">
           {children !== undefined && children}
           {column !== undefined && column.title}
@@ -25,7 +25,7 @@ function HeadColumn({ column, children, className, srOnly }) {
     <th
       scope="col"
       className={
-        'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ' +
+        'px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ' +
         clsName
       }>
       {children !== undefined && children}

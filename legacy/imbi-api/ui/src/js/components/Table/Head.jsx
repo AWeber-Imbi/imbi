@@ -19,7 +19,7 @@ function Head({ columns, includeEdit }) {
             return <HeadColumn column={column} key={'column-' + column.name} />
         })}
         {includeEdit === true && (
-          <HeadColumn key="column-edit" className="w-24" srOnly={true}>
+          <HeadColumn key="column-edit" className="w-2/12" srOnly={true}>
             {t('common.edit')}
           </HeadColumn>
         )}
