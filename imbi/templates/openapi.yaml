@@ -1937,6 +1937,13 @@ paths:
                 project_type:
                   description: 'The project type (API, Consumer, Database, etc)'
                   type: string
+                environments:
+                  description: The operational environments the project is available in
+                  type: array
+                  items:
+                    type: string
+                  minLength: 1
+                  nullable: true
                 data_center:
                   description: The data center the project runs in
                   type: string
@@ -1958,7 +1965,6 @@ paths:
                 - name
                 - slug
                 - owned_by
-                - data_center
                 - project_type
               additionalProperties: false
             examples:

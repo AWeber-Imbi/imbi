@@ -8,10 +8,9 @@ from imbi.endpoints import base
 class RequestHandler(base.CRUDRequestHandler):
 
     NAME = 'project'
-    ITEM_SCHEMA = 'project/project.yaml'
     FIELDS = ['id', 'name', 'slug', 'description', 'owned_by', 'data_center',
               'project_type', 'configuration_system', 'deployment_type',
-              'orchestration_system']
+              'orchestration_system', 'environments']
     TTL = 300
 
     DELETE_SQL = 'DELETE FROM v1.projects WHERE id=%(id)s'
@@ -19,7 +18,7 @@ class RequestHandler(base.CRUDRequestHandler):
     GET_SQL = """\
     SELECT id, created_at, modified_at, "name", slug, description, owned_by,
            data_center, project_type, configuration_system, deployment_type,
-           orchestration_system
+           orchestration_system, environments
       FROM v1.projects
      WHERE id = %(id)s"""
 
@@ -34,14 +33,17 @@ class RequestHandler(base.CRUDRequestHandler):
            project_type=%(project_type)s,
            configuration_system=%(configuration_system)s,
            deployment_type=%(deployment_type)s,
-           orchestration_system=%(orchestration_system)s
+           orchestration_system=%(orchestration_system)s,
+           environments=%(environments)s
      WHERE id=%(id)s;"""
 
     POST_SQL = """\
     INSERT INTO v1.projects (id, "name", slug, description, owned_by,
                              data_center, project_type, configuration_system,
-                             deployment_type, orchestration_system)
+                             deployment_type, orchestration_system, 
+                             environments)
          VALUES (%(id)s, %(name)s, %(slug)s, %(description)s, %(owned_by)s,
                  %(data_center)s, %(project_type)s, %(configuration_system)s,
-                 %(deployment_type)s, %(orchestration_system)s)
+                 %(deployment_type)s, %(orchestration_system)s, 
+                 %(environments)s)
       RETURNING id;"""

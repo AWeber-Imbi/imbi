@@ -23,7 +23,7 @@ properties:
     description: The project type (API, Consumer, Database, etc)
     type: string
   environments:
-    description: An array of the environments the project runs in
+    description: The operational environments the project is available in
     type: array
     items:
       type: string

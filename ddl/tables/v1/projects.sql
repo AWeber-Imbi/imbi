@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS projects (
   configuration_system TEXT,
   deployment_type      TEXT,
   orchestration_system TEXT,
+  environments         TEXT[],
   FOREIGN KEY (owned_by) REFERENCES teams ("name") ON UPDATE CASCADE ON DELETE RESTRICT,
   FOREIGN KEY (data_center) REFERENCES data_centers ("name") ON UPDATE CASCADE ON DELETE RESTRICT,
   FOREIGN KEY (project_type) REFERENCES project_types ("name") ON UPDATE CASCADE ON DELETE RESTRICT,
@@ -36,6 +37,7 @@ COMMENT ON COLUMN projects.project_type IS 'The type of project (API, Consumer, 
 COMMENT ON COLUMN projects.configuration_system IS 'The system used to configure the project (Ansible, Consul, etc)';
 COMMENT ON COLUMN projects.deployment_type IS 'How the project is deployed (Jenkins, GitLab-CI, etc)';
 COMMENT ON COLUMN projects.orchestration_system IS 'The system used to manage the runtime state of the project (Kubernetes, Nomad, etc)';
+COMMENT ON COLUMN projects.environments IS 'The operational environments the project is available in';
 
 GRANT SELECT ON projects TO reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON projects TO writer;
