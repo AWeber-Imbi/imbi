@@ -17,14 +17,20 @@ export function ProjectLinkTypes() {
         {
           title: t('admin.projectLinkTypes.linkType'),
           name: 'link_type',
-          type: 'text'
+          type: 'text',
+          tableOptions: {
+            headerClassName: 'w-5/12'
+          }
         },
         {
           title: t('common.iconClass'),
           name: 'icon_class',
           type: 'icon',
           placeholder: 'fas external-link-alt',
-          default: 'fas external-link-alt'
+          default: 'fas external-link-alt',
+          tableOptions: {
+            headerClassName: 'w-5/12'
+          }
         }
       ]}
       errorStrings={{

@@ -5,6 +5,7 @@ import { PageHeader } from './PageHeader'
 
 function ContentArea({
   buttonClass,
+  buttonDestination,
   buttonIcon,
   buttonOnClick,
   buttonTitle,
@@ -13,9 +14,10 @@ function ContentArea({
   pageTitle
 }) {
   return (
-    <div className="flex-auto p-4">
+    <div className="flex-auto px-6 py-4">
       <PageHeader
         buttonClass={buttonClass}
+        buttonDestination={buttonDestination}
         buttonIcon={buttonIcon}
         buttonOnClick={buttonOnClick}
         buttonTitle={buttonTitle}
@@ -36,6 +38,7 @@ ContentArea.propTypes = {
   pageIcon: PropTypes.string.isRequired,
   pageTitle: PropTypes.string.isRequired,
   buttonClass: PropTypes.string,
+  buttonDestination: PropTypes.string,
   buttonIcon: PropTypes.string,
   buttonOnClick: PropTypes.func,
   buttonTitle: PropTypes.string

@@ -19,7 +19,7 @@ export function DataCenters() {
           name: 'name',
           type: 'text',
           tableOptions: {
-            className: 'min-w-sm'
+            headerClassName: 'w-2/12'
           }
         },
         {
@@ -27,7 +27,8 @@ export function DataCenters() {
           name: 'description',
           type: 'textarea',
           tableOptions: {
-            hide: true
+            className: 'truncate',
+            headerClassName: 'w-6/12'
           }
         },
         {
@@ -37,7 +38,7 @@ export function DataCenters() {
           placeholder: 'fas building',
           default: 'fas building',
           tableOptions: {
-            className: 'w-min'
+            headerClassName: 'w-2/12'
           }
         }
       ]}
