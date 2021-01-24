@@ -1,11 +1,12 @@
 import PropTypes from 'prop-types'
-import React from 'react'
+import React, { Fragment } from 'react'
 
-import { Icon } from '../'
+import { Button, Icon } from '../'
 
 function PageHeader({
   buttonClass,
   buttonIcon,
+  buttonOnClick,
   buttonTitle,
   pageIcon,
   pageTitle
@@ -18,10 +19,12 @@ function PageHeader({
       </h1>
       {buttonTitle && (
         <div className="text-right">
-          <button className={buttonClass}>
-            <Icon className="mr-3" icon={buttonIcon} />
-            {buttonTitle}
-          </button>
+          <Button className={buttonClass} onClick={buttonOnClick}>
+            <Fragment>
+              <Icon className="mr-3" icon={buttonIcon} />
+              {buttonTitle}
+            </Fragment>
+          </Button>
         </div>
       )}
     </div>
@@ -36,6 +39,7 @@ PageHeader.defaultProps = {
 PageHeader.propTypes = {
   buttonClass: PropTypes.string,
   buttonIcon: PropTypes.string,
+  buttonOnClick: PropTypes.func,
   buttonTitle: PropTypes.string,
   pageIcon: PropTypes.string.isRequired,
   pageTitle: PropTypes.string.isRequired
