@@ -110,14 +110,14 @@ flake8: env
 .PHONY: jest
 jest: ui/node_modules
 	@ printf "\nRunning jest\n\n"
-	@ cd ui && yarn run test-coverage
+	@ cd ui && yarn jest --coverage
 
 .PHONY: openapi-validate
 openapi-validate:
 	@ printf "\nRunning swagger-cli-validate\n\n"
 	@ cd openapi && yarn run validate
 
-.PHONY: jest
+.PHONY: prettier-check
 prettier-check: ui/node_modules
 	@ printf "\nRunning prettier\n\n"
 	@ cd ui && yarn run prettier-check

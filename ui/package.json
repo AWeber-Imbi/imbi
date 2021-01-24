@@ -9,8 +9,6 @@
     "eslint": "eslint src/js/**",
     "prettier": "prettier -w src public",
     "prettier-check": "prettier -c src public",
-    "test": "jest",
-    "test-coverage": "jest --coverage",
     "watch": "webpack --progress --mode=development --config webpack.config.js --watch"
   },
   "repository": {
