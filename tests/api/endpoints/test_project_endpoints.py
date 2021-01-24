@@ -15,6 +15,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         'v1.configuration_systems',
         'v1.data_centers',
         'v1.deployment_types',
+        'v1.environments',
         'v1.orchestration_systems',
         'v1.project_link_types',
         'v1.project_types',
@@ -26,6 +27,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self._configuration_system = self.create_configuration_system()
         self._data_center = self.create_data_center()
         self._deployment_type = self.create_deployment_type()
+        self._environments = self.create_environments()
         self._orchestration_system = self.create_orchestration_system()
         self._project_link_type = self.create_project_link_type()
         self._project_type = self.create_project_type()
@@ -66,6 +68,22 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                             headers=self.headers)
         self.assertEqual(result.code, 200)
         return record['name']
+
+    def create_environments(self):
+        environments = []
+        for iteration in range(0, 2):
+            record = {
+                'name': str(uuid.uuid4()),
+                'description': str(uuid.uuid4()),
+                'icon_class': 'fas fa-blind',
+                'text_class': 'alert-info'
+            }
+            result = self.fetch('/admin/environment', method='POST',
+                                body=json.dumps(record).encode('utf-8'),
+                                headers=self.headers)
+            self.assertEqual(result.code, 200)
+            environments.append(record['name'])
+        return environments
 
     def create_orchestration_system(self):
         record = {
@@ -127,7 +145,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type': self._project_type,
             'configuration_system': self._configuration_system,
             'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system
+            'orchestration_system': self._orchestration_system,
+            'environments': self._environments
         }
 
         # Create
@@ -209,7 +228,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type': self._project_type,
             'configuration_system': self._configuration_system,
             'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system
+            'orchestration_system': self._orchestration_system,
+            'environments': self._environments
         }
 
         # Create
@@ -238,7 +258,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type': self._project_type,
             'configuration_system': self._configuration_system,
             'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system
+            'orchestration_system': self._orchestration_system,
+            'environments': self._environments
         }
         result = self.fetch('/project/', method='POST',
                             body=json.dumps(svc1).encode('utf-8'),
@@ -257,7 +278,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type': self._project_type,
             'configuration_system': self._configuration_system,
             'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system
+            'orchestration_system': self._orchestration_system,
+            'environments': self._environments
         }
         result = self.fetch('/project/', method='POST',
                             body=json.dumps(svc2).encode('utf-8'),
@@ -315,7 +337,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type': self._project_type,
             'configuration_system': self._configuration_system,
             'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system
+            'orchestration_system': self._orchestration_system,
+            'environments': self._environments
         }
         result = self.fetch('/project/', method='POST',
                             body=json.dumps(svc).encode('utf-8'),

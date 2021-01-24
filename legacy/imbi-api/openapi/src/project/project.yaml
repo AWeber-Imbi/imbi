@@ -88,6 +88,10 @@ components:
         configuration_system: SSM Parameter Store
         deployment_type: ecs-pipeline-deploy
         orchestration_system: ECS
+        environments:
+          - Testing
+          - Staging
+          - Production
 
   responses:
     Success:
