@@ -23,8 +23,14 @@ export const Column = {
     sortable: PropTypes.bool
   }),
   title: PropTypes.string.isRequired,
-  type: PropTypes.oneOf(['icon', 'number', 'select', 'text', 'textarea'])
-    .isRequired
+  type: PropTypes.oneOf([
+    'icon',
+    'internal',
+    'number',
+    'select',
+    'text',
+    'textarea'
+  ]).isRequired
 }
 
 export const Columns = PropTypes.arrayOf(PropTypes.exact(Column))
