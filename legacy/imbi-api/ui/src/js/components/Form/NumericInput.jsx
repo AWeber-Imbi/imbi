@@ -1,61 +1,61 @@
 import PropTypes from 'prop-types'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 function NumericInput({
   autoFocus,
   hasError,
+  maximum,
+  minimum,
   name,
   onChange,
   placeholder,
   value
 }) {
-  const numbers = '0123456789'
-  const [currentValue, setCurrentValue] = useState(value)
   const [hasFocus, setHasFocus] = useState(false)
-
+  const ref = useRef(null)
   useEffect(() => {
-    if (currentValue !== null && currentValue !== '') {
-      const newValue = parseInt(currentValue)
-      if (isNaN(newValue) === true) {
-        setCurrentValue(null)
-      } else {
-        if (onChange !== undefined && newValue !== value)
-          onChange(name, newValue)
-      }
-    } else {
-      if (onChange !== undefined && value !== null) onChange(name, null)
+    if (autoFocus === true) {
+      ref.current.focus()
     }
-  }, [currentValue])
-
+  }, [])
   return (
     <input
       autoComplete={name}
-      autoFocus={autoFocus}
       className={
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
-      defaultValue={value !== null ? value.toString() : value}
+      defaultValue={
+        value !== undefined && value !== null ? value.toString() : value
+      }
       id={'field-' + name}
+      max={maximum}
+      min={minimum}
       name={name}
       onBlur={(event) => {
         event.preventDefault()
-        setCurrentValue(event.target.value)
+        if (onChange !== undefined)
+          onChange(
+            name,
+            event.target.value === '' ? null : parseInt(event.target.value)
+          )
         setHasFocus(false)
       }}
       onChange={(event) => {
         event.preventDefault()
-        setCurrentValue(event.target.value)
+        if (onChange !== undefined)
+          onChange(
+            name,
+            event.target.value === '' ? null : parseInt(event.target.value)
+          )
       }}
       onFocus={(event) => {
         event.preventDefault()
         setHasFocus(true)
       }}
-      onKeyPress={(event) => {
-        if (!numbers.includes(event.key)) event.preventDefault()
-      }}
       placeholder={placeholder}
-      type="text"
+      ref={ref}
+      type="number"
     />
   )
 }
@@ -68,6 +68,8 @@ NumericInput.defaultProps = {
 NumericInput.propTypes = {
   autoFocus: PropTypes.bool,
   hasError: PropTypes.bool,
+  maximum: PropTypes.number,
+  minimum: PropTypes.number,
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
   placeholder: PropTypes.string,

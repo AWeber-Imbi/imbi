@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types'
-import React, { Fragment, useState } from 'react'
+import React, { Fragment, useEffect, useRef, useState } from 'react'
 
 import { Icon } from '../'
 import { icons } from '../../icons'
@@ -14,11 +14,16 @@ function IconSelect({
 }) {
   const [hasFocus, setHasFocus] = useState(false)
   const [icon, setIcon] = useState(value)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (autoFocus === true) {
+      ref.current.focus()
+    }
+  }, [])
   return (
     <Fragment>
       <Icon className="absolute z-50 ml-3 mt-3" icon={icon} />
       <select
-        autoFocus={autoFocus}
         className={
           'form-input pl-10' +
           (hasFocus === false && hasError === true ? ' border-red-700' : '')
@@ -38,7 +43,8 @@ function IconSelect({
           event.preventDefault()
           setHasFocus(true)
         }}
-        placeholder={placeholder}>
+        placeholder={placeholder}
+        ref={ref}>
         <option value="" />
         {icons.map((icon) => {
           return (
@@ -63,7 +69,7 @@ IconSelect.propTypes = {
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
   placeholder: PropTypes.string,
-  value: PropTypes.string
+  value: PropTypes.string.isRequired
 }
 
 export { IconSelect }

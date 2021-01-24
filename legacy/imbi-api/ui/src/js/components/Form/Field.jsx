@@ -11,6 +11,9 @@ function Field({
   autoFocus,
   description,
   errorMessage,
+  maximum,
+  minimum,
+  multiple,
   name,
   onChange,
   options,
@@ -41,6 +44,8 @@ function Field({
           <NumericInput
             autoFocus={autoFocus}
             hasError={errorMessage !== null}
+            maximum={maximum}
+            minumum={minimum}
             name={name}
             onChange={onChange}
             placeholder={placeholder}
@@ -51,6 +56,7 @@ function Field({
           <Select
             autoFocus={autoFocus}
             hasError={errorMessage !== null}
+            multiple={multiple}
             name={name}
             onChange={onChange}
             options={options}
@@ -91,13 +97,17 @@ function Field({
 
 Field.defaultProps = {
   autoFocus: false,
-  errorMessage: null
+  errorMessage: null,
+  multiple: false
 }
 
 Field.propTypes = {
   autoFocus: PropTypes.bool,
   description: PropTypes.string,
   errorMessage: PropTypes.string,
+  maximum: PropTypes.number,
+  minimum: PropTypes.number,
+  multiple: PropTypes.bool,
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
   options: PropTypes.arrayOf(

@@ -1,9 +1,10 @@
 import PropTypes from 'prop-types'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 function Select({
   autoFocus,
   hasError,
+  multiple,
   name,
   onChange,
   options,
@@ -11,15 +12,21 @@ function Select({
   value
 }) {
   const [hasFocus, setHasFocus] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (autoFocus === true) {
+      ref.current.focus()
+    }
+  }, [])
   return (
     <select
-      autoFocus={autoFocus}
       className={
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
       defaultValue={value}
       id={'field-' + name}
+      multiple={multiple}
       name={name}
       onBlur={(event) => {
         event.preventDefault()
@@ -33,7 +40,8 @@ function Select({
         event.preventDefault()
         setHasFocus(true)
       }}
-      placeholder={placeholder}>
+      placeholder={placeholder}
+      ref={ref}>
       <option value="" />
       {options.map((option) => {
         return (
@@ -48,12 +56,14 @@ function Select({
 
 Select.defaultProps = {
   autoFocus: false,
-  hasError: false
+  hasError: false,
+  multiple: false
 }
 
 Select.propTypes = {
   autoFocus: PropTypes.bool,
   hasError: PropTypes.bool,
+  multiple: PropTypes.bool,
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
   options: PropTypes.arrayOf(

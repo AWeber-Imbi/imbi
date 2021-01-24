@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 function TextArea({
   autoFocus,
@@ -11,9 +11,14 @@ function TextArea({
   value
 }) {
   const [hasFocus, setHasFocus] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (autoFocus === true) {
+      ref.current.focus()
+    }
+  }, [])
   return (
     <textarea
-      autoFocus={autoFocus}
       className={
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
@@ -35,6 +40,7 @@ function TextArea({
         setHasFocus(true)
       }}
       placeholder={placeholder}
+      ref={ref}
       rows={rows}
     />
   )

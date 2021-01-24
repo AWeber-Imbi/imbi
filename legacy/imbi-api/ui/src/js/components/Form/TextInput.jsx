@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 function TextInput({
   autoFocus,
@@ -10,10 +10,15 @@ function TextInput({
   value
 }) {
   const [hasFocus, setHasFocus] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (autoFocus === true) {
+      ref.current.focus()
+    }
+  }, [])
   return (
     <input
       autoComplete={name}
-      autoFocus={autoFocus}
       className={
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
@@ -35,6 +40,7 @@ function TextInput({
         setHasFocus(true)
       }}
       placeholder={placeholder}
+      ref={ref}
       type="text"
     />
   )
