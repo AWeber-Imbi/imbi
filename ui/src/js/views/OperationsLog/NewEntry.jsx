@@ -5,20 +5,18 @@ import { useTranslation } from 'react-i18next'
 import { ContentArea } from '../../components'
 import { User } from '../../schema'
 
-function OperationsLog() {
+function NewEntry() {
   const { t } = useTranslation()
   return (
     <ContentArea
-      buttonDestination="/ui/operations-log/new"
-      buttonTitle={t('operationsLog.addEntry')}
-      pageIcon="fas clipboard"
-      pageTitle={t('operationsLog.title')}
+      pageIcon="fas calendar-plus"
+      pageTitle={t('operationsLogNewEntry.title')}
     />
   )
 }
 
-OperationsLog.propTypes = {
+NewEntry.propTypes = {
   user: PropTypes.exact(User)
 }
 
-export { OperationsLog }
+export { NewEntry }
