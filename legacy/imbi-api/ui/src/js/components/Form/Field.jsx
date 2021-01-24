@@ -126,7 +126,7 @@ Field.propTypes = {
   ),
   placeholder: PropTypes.string,
   required: PropTypes.bool,
-  title: PropTypes.string.isRequired,
+  title: PropTypes.oneOfType([PropTypes.string, PropTypes.element]).isRequired,
   type: PropTypes.oneOf(['icon', 'number', 'select', 'text', 'textarea'])
     .isRequired,
   value: PropTypes.oneOfType([PropTypes.number, PropTypes.string])
