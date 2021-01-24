@@ -23,52 +23,37 @@ export const jsonSchema = {
       type: 'string'
     },
     data_center: {
-      type: 'string',
-      nullable: true
+      oneOf: [{type: 'string'}, {type: 'null'}]
     },
     environments: {
-      type: 'array',
-      items: 'string',
-      nullable: true
+      oneOf: [{
+        type: 'array',
+        items: {
+          type: 'string'
+        }
+      }, {type: 'null'}]
+
     },
     configuration_system: {
-      type: 'string',
-      nullable: true
+      oneOf: [{type: 'string'}, {type: 'null'}]
     },
     deployment_type: {
-      type: 'string',
-      nullable: true
+      oneOf: [{type: 'string'}, {type: 'null'}]
     },
     orchestration_system: {
-      type: 'string',
-      nullable: true
+      oneOf: [{type: 'string'}, {type: 'null'}]
     },
     automations: {
       type: 'object'
     },
     dependencies: {
-      type: 'array',
-      items: {
-        type: 'string',
-        format: 'uuid'
-      }
-    },
-    links: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          link_type: {
-            type: 'string'
-          },
-          url: {
-            type: 'string',
-            format: 'uri'
-          }
-        },
-        additionalProperties: false,
-        required: ['link_type', 'url']
-      }
+      oneOf: [{
+        type: 'array',
+        items: {
+          type: 'string',
+          format: 'uuid'
+        }
+      }, {type: 'null'}]
     }
   },
   additionalProperties: false,
@@ -87,11 +72,5 @@ export const propTypes = {
   deployment_type: PropTypes.string,
   orchestration_system: PropTypes.string,
   automations: PropTypes.arrayOf(PropTypes.object),
-  dependencies: PropTypes.arrayOf(PropTypes.string),
-  links: PropTypes.arrayOf(
-    PropTypes.shape({
-      link_type: PropTypes.string.isRequired,
-      url: PropTypes.string / isRequired
-    })
-  )
+  dependencies: PropTypes.arrayOf(PropTypes.string)
 }

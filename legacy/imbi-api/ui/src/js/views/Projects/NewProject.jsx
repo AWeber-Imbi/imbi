@@ -1,19 +1,34 @@
 import PropTypes from 'prop-types'
 import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { validate } from 'jsonschema'
+import { default as slugify} from "slugify";
 
 import { Alert, Button, Field, Icon } from '../../components'
 import { FetchContext } from '../../contexts'
 import { fetchMetadata } from './metadata'
+import { jsonSchema } from '../../schema/Project'
+import {ulidAsUUID} from "../../ulid"
 import { User } from '../../schema'
+import {httpPost} from "../../utils";
 
 function NewProject() {
   const { t } = useTranslation()
-
-  const [errors, setErrors] = useState({})
+  const emptyErrors = {
+    name: null,
+    slug: null,
+    owned_by: null,
+    project_type: null,
+    data_center: null,
+    environments: null,
+    configuration_system: null,
+    deployment_type: null,
+    orchestration_system: null
+  }
+  const [errors, setErrors] = useState(emptyErrors)
   const [errorMessage, setErrorMessage] = useState(null)
-  const [formReady, setFormReady] = useState(false)
   const fetchMethod = useContext(FetchContext)
+  const [formReady, setFormReady] = useState(false)
   const [metadata, setMetadata] = useState({
     configurationSystems: null,
     cookieCutters: null,
@@ -27,6 +42,60 @@ function NewProject() {
     teams: null
   })
   const [saving, setSaving] = useState(false)
+  const [formValues, setFormValues] = useState({
+    id: ulidAsUUID(),
+    name: null,
+    slug: null,
+    owned_by: null,
+    project_type: null,
+    data_center: null,
+    environments: null,
+    configuration_system: null,
+    deployment_type: null,
+    orchestration_system: null
+  })
+
+  async function handleSubmit(event) {
+    event.preventDefault()
+    setSaving(true)
+    let result = await httpPost(fetchMethod, '/project/', formValues)
+    if (result.success === true) {
+      console.log('Project Saved')
+    } else {
+      setErrorMessage(result.data)
+    }
+  }
+
+  function onValueChange(key, value) {
+    const values = {...formValues, [key]: value}
+    if (key === 'name')
+      values.slug = slugify(value).toLowerCase()
+    setFormValues(values)
+  }
+
+  useEffect(() => {
+    console.log('Errors', errors)
+  }, [errors])
+
+  useEffect(() => {
+    const result = validate(formValues, jsonSchema)
+    console.log('Errors', result.errors)
+    if (result.errors.length > 0) {
+      const errors = { ...emptyErrors }
+      result.errors.map((err) => {
+        err.path.map((field) => {
+          if (formValues[field] !== null) {
+            errors[field] = err.message
+          }
+        })
+      })
+      setErrors(errors)
+      setFormReady(false)
+    } else {
+      setErrors({ ...emptyErrors })
+      setFormReady(true)
+    }
+  }, [formValues])
 
   useEffect(() => {
     if (metadata.ready !== true)
@@ -44,13 +113,6 @@ function NewProject() {
           <li className="mb-2">
             <a className="text-gray-600 hover:text-blue-600" href="#attributes">
               Attributes
-            </a>
-          </li>
-          <li className="mb-2">
-            <a
-              className="text-gray-600 hover:text-blue-600"
-              href="#automations">
-              Automations
             </a>
           </li>
           <li className="mb-2">
@@ -73,7 +135,7 @@ function NewProject() {
             {errorMessage}
           </Alert>
         )}
-        <form>
+        <form onSubmit={handleSubmit}>
           <div className="pb-5">
             <h3 className="text-lg leading-6 font-medium">
               <a name="attributes">Project Attributes</a>
@@ -85,13 +147,27 @@ function NewProject() {
               name="name"
               type="text"
               autoFocus={true}
+              errorMessage={errors.name}
+              onChange={onValueChange}
               required={true}
+            />
+            <Field
+              title={t('common.slug')}
+              name="slug"
+              type="text"
+              description={t('common.slugDescription')}
+              errorMessage={errors.slug}
+              onChange={onValueChange}
+              required={true}
+              value={formValues.slug}
             />
             <Field
               title={t('project.team')}
               name="owned_by"
               type="select"
               options={metadata.teams !== null ? metadata.teams : []}
+              onChange={onValueChange}
+              errorMessage={errors.owned_by}
               required={true}
             />
             <Field
@@ -101,6 +177,8 @@ function NewProject() {
               options={
                 metadata.projectTypes !== null ? metadata.projectTypes : []
               }
+              onChange={onValueChange}
+              errorMessage={errors.project_type}
               required={true}
             />
             <Field
@@ -110,6 +188,8 @@ function NewProject() {
               options={
                 metadata.dataCenters !== null ? metadata.dataCenters : []
               }
+              onChange={onValueChange}
+              errorMessage={errors.data_center}
             />
             <Field
               title={t('project.environments')}
@@ -119,6 +199,8 @@ function NewProject() {
               options={
                 metadata.environments !== null ? metadata.environments : []
               }
+              onChange={onValueChange}
+              errorMessage={errors.environments}
             />
             <Field
               title={t('project.configurationSystem')}
@@ -129,6 +211,8 @@ function NewProject() {
                   ? metadata.configurationSystems
                   : []
               }
+              onChange={onValueChange}
+              errorMessage={errors.configuration_system}
             />
             <Field
               title={t('project.deploymentType')}
@@ -139,6 +223,8 @@ function NewProject() {
                   ? metadata.deploymentTypes
                   : []
               }
+              onChange={onValueChange}
+              errorMessage={errors.deployment_type}
             />
             <Field
               title={t('project.orchestrationSystem')}
@@ -149,15 +235,10 @@ function NewProject() {
                   ? metadata.orchestrationSystems
                   : []
               }
+              onChange={onValueChange}
+              errorMessage={errors.orchestration_system}
             />
           </div>
-
-          <div className="pt-10 pb-5">
-            <h3 className="text-lg leading-6 font-medium text-gray-700">
-              <a name="automations">Automations</a>
-            </h3>
-          </div>
-          <div className="border-t border-gray-300 w-full pl-5"></div>
 
           <div className="pt-10 pb-5">
             <h3 className="text-lg leading-6 font-medium text-gray-700">
@@ -178,26 +259,12 @@ function NewProject() {
               })}
           </div>
 
-          <div className="pt-10 pb-5">
-            <h3 className="text-lg leading-6 font-medium text-gray-700">
-              <a name="dependencies">Project Dependencies</a>
-            </h3>
-          </div>
-          <div className="border-t border-gray-300 w-full pl-5"></div>
-
           <div className="flex flex-row border-t border-gray-300 mt-5 pt-5">
             <div className="flex-shrink text-xs pl-2">
               <sup className="mr-2">*</sup> {t('common.required')}
             </div>
             <div className="flex-grow text-right space-x-3">
-              <Button
-                className="btn-white"
-                onClick={() => {
-                  console.log('Close')
-                }}>
-                {t('common.cancel')}
-              </Button>
-              <Button className="btn-green" disabled={true} type="submit">
+              <Button className="btn-green" disabled={formReady !== true} type="submit">
                 {saving ? t('common.saving') : t('common.save')}
               </Button>
             </div>
