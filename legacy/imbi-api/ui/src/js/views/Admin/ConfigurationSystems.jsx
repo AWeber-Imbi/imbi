@@ -19,7 +19,7 @@ export function ConfigurationSystems() {
           name: 'name',
           type: 'text',
           tableOptions: {
-            className: 'min-w-sm'
+            headerClassName: 'w-2/12'
           }
         },
         {
@@ -27,7 +27,8 @@ export function ConfigurationSystems() {
           name: 'description',
           type: 'textarea',
           tableOptions: {
-            className: 'max-w-lg truncate'
+            className: 'truncate',
+            headerClassName: 'w-6/12'
           }
         },
         {
@@ -37,7 +38,7 @@ export function ConfigurationSystems() {
           placeholder: 'fas sliders-h',
           default: 'fas sliders-h',
           tableOptions: {
-            className: 'w-min'
+            headerClassName: 'w-2/12'
           }
         }
       ]}

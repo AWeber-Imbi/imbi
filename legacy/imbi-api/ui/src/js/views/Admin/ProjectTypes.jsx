@@ -19,16 +19,17 @@ export function ProjectTypes() {
           name: 'name',
           type: 'text',
           tableOptions: {
-            className: 'min-w-sm'
+            headerClassName: 'w-2/12'
           }
         },
         {
           title: t('common.slug'),
           name: 'slug',
           type: 'text',
-          description: t('admin.projectTypes.slugDescription'),
+          description: t('common.slugDescription'),
           tableOptions: {
-            className: 'max-w-lg truncate'
+            className: 'font-mono font-gray-500',
+            headerClassName: 'w-2/12'
           }
         },
         {
@@ -36,7 +37,8 @@ export function ProjectTypes() {
           name: 'description',
           type: 'textarea',
           tableOptions: {
-            className: 'max-w-lg truncate'
+            className: 'truncate',
+            headerClassName: 'w-4/12'
           }
         },
         {
@@ -46,7 +48,7 @@ export function ProjectTypes() {
           placeholder: 'fas cubes',
           default: 'fas cubes',
           tableOptions: {
-            className: 'w-min'
+            headerClassName: 'w-2/12'
           }
         }
       ]}

@@ -43,7 +43,7 @@ export function CookieCutters() {
               name: 'name',
               type: 'text',
               tableOptions: {
-                className: 'min-w-sm'
+                headerClassName: 'w-2/12'
               }
             },
             {
@@ -55,7 +55,7 @@ export function CookieCutters() {
                 { label: 'Project', value: 'project' }
               ],
               tableOptions: {
-                className: 'min-w-sm'
+                headerClassName: 'w-1/12'
               }
             },
             {
@@ -64,7 +64,7 @@ export function CookieCutters() {
               type: 'select',
               options: projectTypes,
               tableOptions: {
-                className: 'min-w-sm'
+                headerClassName: 'w-2/12'
               }
             },
             {
@@ -72,7 +72,8 @@ export function CookieCutters() {
               name: 'description',
               type: 'textarea',
               tableOptions: {
-                className: 'max-w-lg truncate'
+                className: 'truncate',
+                headerClassName: 'w-3/12'
               }
             },
             {
@@ -81,7 +82,8 @@ export function CookieCutters() {
               description: t('admin.cookieCutters.urlDescription'),
               type: 'text',
               tableOptions: {
-                className: 'w-min'
+                className: 'truncate',
+                headerClassName: 'w-2/12'
               }
             }
           ]}

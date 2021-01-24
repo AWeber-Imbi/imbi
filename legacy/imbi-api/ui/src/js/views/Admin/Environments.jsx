@@ -19,7 +19,7 @@ export function Environments() {
           name: 'name',
           type: 'text',
           tableOptions: {
-            className: 'min-w-sm'
+            headerClassName: 'w-2/12'
           }
         },
         {
@@ -27,7 +27,8 @@ export function Environments() {
           name: 'description',
           type: 'textarea',
           tableOptions: {
-            className: 'max-w-lg truncate'
+            className: 'truncate',
+            headerClassName: 'w-4/12'
           }
         },
         {
@@ -37,7 +38,7 @@ export function Environments() {
           placeholder: '',
           default: '',
           tableOptions: {
-            className: 'w-min'
+            headerClassName: 'w-2/12'
           }
         },
         {
@@ -47,7 +48,7 @@ export function Environments() {
           placeholder: 'fas tree',
           default: 'fas tree',
           tableOptions: {
-            className: 'w-min'
+            headerClassName: 'w-2/12'
           }
         }
       ]}

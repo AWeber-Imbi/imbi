@@ -45,7 +45,7 @@ export function ProjectFactTypes() {
               type: 'select',
               options: projectTypes,
               tableOptions: {
-                className: 'min-w-sm'
+                headerClassName: 'w-4/12'
               }
             },
             {
@@ -53,7 +53,7 @@ export function ProjectFactTypes() {
               name: 'name',
               type: 'text',
               tableOptions: {
-                className: 'min-w-sm'
+                headerClassName: 'w-4/12'
               }
             },
             {
@@ -64,8 +64,8 @@ export function ProjectFactTypes() {
               maximum: 100,
               description: t('admin.projectFactTypes.description'),
               tableOptions: {
-                className: 'min-w-sm text-right',
-                headerClassName: 'text-center'
+                className: 'text-center',
+                headerClassName: 'w-2/12 text-center'
               }
             },
             {
@@ -75,7 +75,7 @@ export function ProjectFactTypes() {
               type: 'text',
               format: 'uuid',
               tableOptions: {
-                className: 'min-w-sm text-gray-400 text-sm'
+                hide: true
               }
             }
           ]}

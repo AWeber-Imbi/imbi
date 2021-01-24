@@ -141,9 +141,9 @@ function CRUD({
 
   return (
     <Fragment>
-      <div className="grid grid-cols-2 mb-3">
-        <h1 className="inline-block text-xl pt-2">
-          <Icon icon={collectionIcon} className="mr-2" />
+      <div className="grid grid-cols-2 mt-1 mb-3">
+        <h1 className="inline-block text-xl text-gray-600 pt-2">
+          <Icon icon={collectionIcon} className="ml-2 mr-2" />
           {collectionName}
         </h1>
         <div className="text-right">
