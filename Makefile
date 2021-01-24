@@ -39,7 +39,7 @@ env:
 .PHONY: postgres-ready
 postgres-ready: .env
 ifeq ($(docker-compose ps postgres |grep -c healthy), 1)
-	@ $(error Docker image for PostgreSQL is not running, perhaps you forget to run "make bootstrap" or you should "make clean" and try again)
+	@ $(error Docker image for PostgreSQL is not running, perhaps you forget to run "make .env" or you should "make clean" and try again)
 endif
 
 scaffolding/postgres/ddl.sql:
