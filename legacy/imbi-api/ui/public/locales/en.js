@@ -13,8 +13,12 @@ export default {
         cancel: 'Cancel',
         save: 'Save',
         saving: 'Saving ...',
+        slugDescription:
+          'A slug is the part of a URL which identifies a particular page on a website in an easy to read form.',
         textClass: 'Text Class',
-        welcome: 'Welcome'
+        welcome: 'Welcome',
+        required: 'Required Field',
+        group: 'Group'
       },
       error: {
         title: 'ERROR',
@@ -130,10 +134,15 @@ export default {
         projectTypes: {
           collectionName: 'Project Types',
           itemName: 'Project Type',
-          slugDescription:
-            'A slug is the part of a URL which identifies a particular page on a website in an easy to read form.',
           errors: {
             uniqueViolation: 'A project type with the same name already exists'
+          }
+        },
+        teams: {
+          collectionName: 'Teams',
+          itemName: 'Team',
+          errors: {
+            uniqueViolation: 'A team with the same name already exists'
           }
         }
       },
@@ -148,6 +157,21 @@ export default {
       operationsLog: {
         addEntry: 'Add Entry',
         title: 'Operations Log'
+      },
+      operationsLogNewEntry: {
+        title: 'Add Operations Log Entry'
+      },
+      project: {
+        name: 'Project Name',
+        team: 'Owning Team',
+        loadingTeams: 'Loading Teams',
+        selectTeam: 'Select a Team',
+        projectType: 'Project Type',
+        dataCenter: 'Data Center',
+        environments: 'Environments',
+        configurationSystem: 'Configuration System',
+        deploymentType: 'Deployment Type',
+        orchestrationSystem: 'Orchestration System'
       },
       projects: {
         newProject: 'New Project',
