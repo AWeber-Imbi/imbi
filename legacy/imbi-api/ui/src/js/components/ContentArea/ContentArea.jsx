@@ -6,6 +6,7 @@ import { PageHeader } from './PageHeader'
 function ContentArea({
   buttonClass,
   buttonIcon,
+  buttonOnClick,
   buttonTitle,
   children,
   pageIcon,
@@ -16,6 +17,7 @@ function ContentArea({
       <PageHeader
         buttonClass={buttonClass}
         buttonIcon={buttonIcon}
+        buttonOnClick={buttonOnClick}
         buttonTitle={buttonTitle}
         pageIcon={pageIcon}
         pageTitle={pageTitle}
@@ -35,6 +37,7 @@ ContentArea.propTypes = {
   pageTitle: PropTypes.string.isRequired,
   buttonClass: PropTypes.string,
   buttonIcon: PropTypes.string,
+  buttonOnClick: PropTypes.func,
   buttonTitle: PropTypes.string
 }
 
