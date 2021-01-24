@@ -18,6 +18,7 @@ function Field({
   onChange,
   options,
   placeholder,
+  required,
   title,
   type,
   value
@@ -28,6 +29,7 @@ function Field({
         htmlFor={'field-' + name}
         className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
         {title}
+        {required === true && <sup>*</sup>}
       </label>
       <div className="mt-1 sm:mt-0 sm:col-span-2">
         {type === 'icon' && (
@@ -37,6 +39,7 @@ function Field({
             name={name}
             onChange={onChange}
             placeholder={placeholder}
+            required={required}
             value={value}
           />
         )}
@@ -49,6 +52,7 @@ function Field({
             name={name}
             onChange={onChange}
             placeholder={placeholder}
+            required={required}
             value={value}
           />
         )}
@@ -61,6 +65,7 @@ function Field({
             onChange={onChange}
             options={options}
             placeholder={placeholder}
+            required={required}
             value={value}
           />
         )}
@@ -71,6 +76,7 @@ function Field({
             name={name}
             onChange={onChange}
             placeholder={placeholder}
+            required={required}
             value={value}
           />
         )}
@@ -81,6 +87,7 @@ function Field({
             name={name}
             onChange={onChange}
             placeholder={placeholder}
+            required={required}
             value={value}
           />
         )}
@@ -98,7 +105,8 @@ function Field({
 Field.defaultProps = {
   autoFocus: false,
   errorMessage: null,
-  multiple: false
+  multiple: false,
+  required: false
 }
 
 Field.propTypes = {
@@ -117,6 +125,7 @@ Field.propTypes = {
     })
   ),
   placeholder: PropTypes.string,
+  required: PropTypes.bool,
   title: PropTypes.string.isRequired,
   type: PropTypes.oneOf(['icon', 'number', 'select', 'text', 'textarea'])
     .isRequired,

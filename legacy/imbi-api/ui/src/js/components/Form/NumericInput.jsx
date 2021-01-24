@@ -9,6 +9,7 @@ function NumericInput({
   name,
   onChange,
   placeholder,
+  required,
   value
 }) {
   const [hasFocus, setHasFocus] = useState(false)
@@ -55,6 +56,7 @@ function NumericInput({
       }}
       placeholder={placeholder}
       ref={ref}
+      required={required}
       type="number"
     />
   )
@@ -62,7 +64,8 @@ function NumericInput({
 
 NumericInput.defaultProps = {
   autoFocus: false,
-  hasError: false
+  hasError: false,
+  required: false
 }
 
 NumericInput.propTypes = {
@@ -73,6 +76,7 @@ NumericInput.propTypes = {
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
   placeholder: PropTypes.string,
+  required: PropTypes.bool,
   value: PropTypes.number
 }
 

@@ -7,6 +7,7 @@ function TextInput({
   name,
   onChange,
   placeholder,
+  required,
   value
 }) {
   const [hasFocus, setHasFocus] = useState(false)
@@ -41,6 +42,7 @@ function TextInput({
       }}
       placeholder={placeholder}
       ref={ref}
+      required={required}
       type="text"
     />
   )
@@ -48,7 +50,8 @@ function TextInput({
 
 TextInput.defaultProps = {
   autoFocus: false,
-  hasError: false
+  hasError: false,
+  required: false
 }
 
 TextInput.propTypes = {
@@ -57,6 +60,7 @@ TextInput.propTypes = {
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
   placeholder: PropTypes.string,
+  required: PropTypes.bool,
   value: PropTypes.string
 }
 

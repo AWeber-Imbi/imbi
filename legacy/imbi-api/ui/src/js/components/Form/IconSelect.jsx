@@ -10,6 +10,7 @@ function IconSelect({
   name,
   onChange,
   placeholder,
+  required,
   value
 }) {
   const [hasFocus, setHasFocus] = useState(false)
@@ -44,7 +45,8 @@ function IconSelect({
           setHasFocus(true)
         }}
         placeholder={placeholder}
-        ref={ref}>
+        ref={ref}
+        required={required}>
         <option value="" />
         {icons.map((icon) => {
           return (
@@ -60,7 +62,8 @@ function IconSelect({
 
 IconSelect.defaultProps = {
   autoFocus: false,
-  hasError: false
+  hasError: false,
+  required: false
 }
 
 IconSelect.propTypes = {
@@ -69,6 +72,7 @@ IconSelect.propTypes = {
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
   placeholder: PropTypes.string,
+  required: PropTypes.bool,
   value: PropTypes.string.isRequired
 }
 
