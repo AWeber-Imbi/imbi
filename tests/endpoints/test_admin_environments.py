@@ -18,8 +18,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         record = {
             'name': str(uuid.uuid4()),
             'description': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind',
-            'text_class': 'alert-info'
+            'icon_class': 'fas fa-blind'
         }
 
         # Create
@@ -37,6 +36,10 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 environments.CRUDRequestHandler.TTL))
         new_value = json.loads(result.body.decode('utf-8'))
+        self.assertEqual(
+            new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+        for field in ['created_by', 'last_modified_by']:
+            del new_value[field]
         self.assertDictEqual(new_value, record)
 
         # PATCH
@@ -50,6 +53,10 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
+        for field in ['created_by', 'last_modified_by']:
+            self.assertEqual(
+                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
+            del new_value[field]
         self.assertDictEqual(new_value, updated)
 
         # Patch no change
@@ -74,6 +81,10 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 environments.CRUDRequestHandler.TTL))
 
         new_value = json.loads(result.body.decode('utf-8'))
+        for field in ['created_by', 'last_modified_by']:
+            self.assertEqual(
+                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
+            del new_value[field]
         self.assertDictEqual(new_value, updated)
 
         # DELETE
@@ -106,7 +117,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertEqual(new_value['name'], record['name'])
         self.assertIsNone(new_value['description'])
-        self.assertIsNone(new_value['text_class'])
         self.assertIsNotNone(new_value['icon_class'])
 
     def test_method_not_implemented(self):

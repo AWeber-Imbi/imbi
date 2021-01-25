@@ -240,7 +240,6 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     NAME = 'default'
     DEFAULTS = {}
     ID_KEY: typing.Union[str, list] = 'id'
-    ITEM_SCHEMA = None
     FIELDS = None
     GET_NAME = None  # Used to create link headers for POST requests
     TTL = 300
@@ -279,8 +278,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     def send_response(self, value: dict) -> None:
         """Send the response to the client"""
         self._add_last_modified_header(
-            value.get('modified_at', value['created_at']))
-        for key in {'created_at', 'modified_at'}:
+            value.get('last_modified_at', value['created_at']))
+        for key in {'created_at', 'last_modified_at'}:
             if key in value:
                 del value[key]
 
@@ -330,7 +329,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             raise web.HTTPError(404, reason='Item not found')
 
         original = dict(result.row)
-        for key in {'created_at', 'modified_at'}:
+        for key in {'created_at', 'created_by',
+                    'last_modified_at', 'last_modified_by'}:
             del original[key]
 
         for key, value in original.items():
@@ -353,6 +353,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
                 updated['current_{}'.format(key)] = kwargs[key]
         else:
             updated['current_{}'.format(self.ID_KEY)] = kwargs[self.ID_KEY]
+        updated['username'] = self._current_user.username
 
         LOGGER.debug('Patching %s: %r', self.PATCH_SQL, updated)
         result = await self.postgres_execute(
@@ -377,7 +378,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         for name in self.FIELDS:
             if name not in values:
                 values[name] = self.DEFAULTS.get(name, None)
-
+        values['username'] = self._current_user.username
         self.logger.debug('Executing POST query %s, %r', self.NAME, values)
         result = await self.postgres_execute(
             self.POST_SQL, values, 'post-{}'.format(self.NAME))

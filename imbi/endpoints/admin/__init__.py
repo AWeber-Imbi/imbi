@@ -12,12 +12,12 @@ from . import (
     deployment_types,
     environments,
     groups,
+    namespaces,
     orchestration_systems,
     project_fact_type_options,
     project_fact_types,
     project_link_types,
-    project_types,
-    teams)
+    project_types)
 
 
 URLS = [
@@ -53,6 +53,11 @@ URLS = [
             groups.CRUDRequestHandler,
             name='admin-groups'),
 
+    web.url(r'/admin/namespace', namespaces.CRUDRequestHandler),
+    web.url(r'/admin/namespace/(?P<name>[\w_\-%\+]+)',
+            namespaces.CRUDRequestHandler,
+            name='admin-namespaces'),
+
     web.url(r'/admin/orchestration_system',
             orchestration_systems.CRUDRequestHandler),
     web.url(r'/admin/orchestration_system/(?P<name>[\w_\-%\+]+)',
@@ -61,17 +66,15 @@ URLS = [
 
     web.url(r'/admin/project_fact_type',
             project_fact_types.CRUDRequestHandler),
-    web.url(r'/admin/project_fact_type/(?P<id>{})$'.format(
-                constants.UUID_PATTERN),
+    web.url(r'/admin/project_fact_type/(?P<project_type>[\w_\-%\+]+)'
+            r'/(?P<fact_type>[\w_\-%\+]+)',
             project_fact_types.CRUDRequestHandler,
             name='admin-project-fact-types'),
 
-    web.url(r'/admin/project_fact_type_option/(?P<fact_type_id>{})'.format(
-                constants.UUID_PATTERN),
+    web.url(r'/admin/project_fact_type_option',
             project_fact_type_options.CRUDRequestHandler),
-    web.url(r'/admin/project_fact_type_option/'
-            r'(?P<fact_type_id>{})/(?P<option_id>{})$'.format(
-                constants.UUID_PATTERN, constants.UUID_PATTERN),
+    web.url(r'/admin/project_fact_type_option/(?P<project_type>[\w_\-%\+]+)/'
+            r'(?P<fact_type>[\w_\-%\+]+)/(?P<value>[\w_\-%\+]+)',
             project_fact_type_options.CRUDRequestHandler,
             name='admin-project-fact-type-options'),
 
@@ -84,10 +87,5 @@ URLS = [
     web.url(r'/admin/project_type', project_types.CRUDRequestHandler),
     web.url(r'/admin/project_type/(?P<name>[\w_\-%\+]+)',
             project_types.CRUDRequestHandler,
-            name='admin-project-types'),
-
-    web.url(r'/admin/team', teams.CRUDRequestHandler),
-    web.url(r'/admin/team/(?P<name>[\w_\-%\+]+)',
-            teams.CRUDRequestHandler,
-            name='admin-teams'),
+            name='admin-project-types')
 ]

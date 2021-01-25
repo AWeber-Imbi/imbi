@@ -631,10 +631,6 @@ paths:
                   description: A description of the environment
                   type: string
                   nullable: true
-                text_class:
-                  description: CSS class to apply to the text when displaying the value
-                  type: string
-                  nullable: true
                 icon_class:
                   description: Font Awesome UI icon class
                   type: string
@@ -918,6 +914,159 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
+  /admin/namespace:
+    post:
+      summary: Create Record
+      description: Create a new namespace record
+      requestBody:
+        description: The namespace record to create
+        content:
+          application/json:
+            schema:
+              title: Namespace
+              description: Used to create namespaces for project organization
+              type: object
+              properties:
+                name:
+                  description: The namespace name
+                  type: string
+                slug:
+                  description: Team path slug / abbreviation
+                  type: string
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+                maintained_by:
+                  description: Association of the namespace to one or more internal or external Imbi groups
+                  type: array
+                  items:
+                    type: string
+                  nullable: true
+              required:
+                - name
+                - slug
+                - icon_class
+              additionalProperties: false
+            examples:
+              record:
+                summary: A full namespace record
+                value:
+                  name: Platform Support Engineering
+                  slug: PSE
+                  icon_class: fas fa-blind
+                  maintainted_by:
+                    - Developers
+                    - Operations
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1admin~1namespace/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A full namespace record
+                value:
+                  name: Platform Support Engineering
+                  slug: PSE
+                  icon_class: fas fa-blind
+                  maintainted_by:
+                    - Developers
+                    - Operations
+      tags:
+        - Namespaces
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the namespace was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1admin~1namespace/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1namespace/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1admin~1namespace/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1admin~1namespace/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+  '/admin/namespace/{namespace}':
+    get:
+      summary: Get Record
+      description: Retrieve a namespace record
+      tags:
+        - Namespaces
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1namespace/post/responses/200'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+    patch:
+      summary: Update Record
+      description: 'Update a namespace, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - Namespaces
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/json-patch+json:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+          application/json-patch+msgpack:
+            schema:
+              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1admin~1namespace/post/responses/200'
+        '304':
+          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1project~1/post/responses/400'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1project~1/post/responses/409'
+    delete:
+      summary: Delete Record
+      description: Remove a namespace record
+      tags:
+        - Namespaces
+      responses:
+        '204':
+          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
+        '404':
+          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
+    parameters:
+      - name: namespace
+        in: path
+        description: Namespace
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
   /admin/orchestration_system:
     post:
       summary: Create Record
@@ -1075,32 +1224,27 @@ paths:
                 Defines types of facts that can be recorded about a project
               type: object
               properties:
-                id:
-                  type: string
-                  format: uuid
                 project_type:
                   description: The type of project the fact is associated with
                   type: string
-                name:
-                  description: The display name of the fact type
+                fact_type:
+                  description: The project fact type name
                   type: string
                 weight:
                   description: The weight of the fact type when computing a project score
                   type: number
                   default: 0
               required:
-                - id
                 - project_type
-                - name
+                - fact_type
                 - weight
               additionalProperties: false
             examples:
               record:
                 summary: A full project fact type record
                 value:
-                  id: d2560576-b339-4f2c-9ec5-268969634c7b
                   project_type: API
-                  name: Programming Language
+                  fact_type: Programming Language
                   weight: 25
           application/msgpack:
             schema:
@@ -1109,9 +1253,8 @@ paths:
               record:
                 summary: A full project fact type record
                 value:
-                  id: d2560576-b339-4f2c-9ec5-268969634c7b
                   project_type: API
-                  name: Programming Language
+                  fact_type: Programming Language
                   weight: 25
       tags:
         - Project Fact Types
@@ -1144,7 +1287,7 @@ paths:
           $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-  '/admin/project_fact_type/{name}':
+  '/admin/project_fact_type/{project_type}/{fact_type}':
     get:
       summary: Get Record
       description: Retrieve a project fact type record
@@ -1203,14 +1346,21 @@ paths:
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
     parameters:
-      - name: name
+      - name: project_type
         in: path
-        description: Project Fact Type Name
+        description: Project Type
         required: true
         schema:
           type: string
           pattern: '[\w_]+'
-  '/admin/project_fact_type_option/{fact_type_id}':
+      - name: fact_type
+        in: path
+        description: Fact Type
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+  /admin/project_fact_type_option:
     post:
       summary: Create Record
       description: Create a new project fact type option record
@@ -1224,12 +1374,12 @@ paths:
                 Defines options that are available for a project fact type
               type: object
               properties:
-                fact_type_id:
+                project_type:
+                  description: The project type the fact type option is for
                   type: string
-                  format: uuid
-                option_id:
+                fact_type:
+                  description: The fact type the option is for
                   type: string
-                  format: uuid
                 value:
                   description: The option value
                   type: string
@@ -1238,8 +1388,8 @@ paths:
                   type: number
                   default: 0
               required:
-                - fact_type_id
-                - option_id
+                - project_type
+                - fact_type
                 - value
                 - score
               additionalProperties: false
@@ -1247,19 +1397,19 @@ paths:
               record:
                 summary: A full project fact type option record
                 value:
-                  fact_type_id: d2560576-b339-4f2c-9ec5-268969634c7b
-                  option_id: 98a112b5-4568-4e91-973a-49b0c5481407
+                  project_type: HTTP API
+                  fact_type: Programming Language
                   value: Python 3.5
                   weight: 50
           application/msgpack:
             schema:
-              $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1admin~1project_fact_type_option/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full project fact type option record
                 value:
-                  fact_type_id: d2560576-b339-4f2c-9ec5-268969634c7b
-                  option_id: 98a112b5-4568-4e91-973a-49b0c5481407
+                  project_type: HTTP API
+                  fact_type: Programming Language
                   value: Python 3.5
                   weight: 50
       tags:
@@ -1277,31 +1427,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1admin~1project_fact_type_option/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1admin~1project_fact_type_option/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1admin~1project_fact_type_option/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1admin~1project_fact_type_option/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1project~1/post/responses/400'
         '401':
           $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1project~1/post/responses/409'
-    parameters:
-      - name: fact_type_id
-        in: path
-        description: Project Fact Type ID
-        required: true
-        schema:
-          type: string
-          format: uuid
-  '/admin/project_fact_type_option/{fact_type_id}/{option_id}':
+  '/admin/project_fact_type_option/{project_type}/{fact_type}/{value}':
     get:
       summary: Get Record
       description: Retrieve a project fact type option record
@@ -1309,7 +1451,7 @@ paths:
         - Project Fact Type Options
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/responses/200'
+          $ref: '#/paths/~1admin~1project_fact_type_option/post/responses/200'
         '401':
           $ref: '#/paths/~1projects/get/responses/401'
         '404':
@@ -1336,7 +1478,7 @@ paths:
               $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/responses/200'
+          $ref: '#/paths/~1admin~1project_fact_type_option/post/responses/200'
         '304':
           $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
         '400':
@@ -1360,20 +1502,24 @@ paths:
         '404':
           $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
     parameters:
-      - name: fact_type_id
+      - name: project_type
         in: path
-        description: Project Fact Type ID
+        description: Project Type
         required: true
         schema:
           type: string
-          format: uuid
-      - name: option_id
+      - name: fact_type
         in: path
-        description: Option ID ID
+        description: Fact Type
         required: true
         schema:
           type: string
-          format: uuid
+      - name: value
+        in: path
+        description: The Fact Value
+        required: true
+        schema:
+          type: string
   /admin/project_link_type:
     post:
       summary: Create Record
@@ -1657,151 +1803,6 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /admin/team:
-    post:
-      summary: Create Record
-      description: Create a new team record
-      requestBody:
-        description: The team record to create
-        content:
-          application/json:
-            schema:
-              title: Team
-              description: Used to describe the types of project deployment systems
-              type: object
-              properties:
-                name:
-                  description: The display name for a team
-                  type: string
-                slug:
-                  description: Team path slug / abbreviation
-                  type: string
-                group:
-                  description: Association of the team to an internal or external Imbi group
-                  type: string
-                  nullable: true
-                icon_class:
-                  description: Font Awesome UI icon class
-                  type: string
-              required:
-                - name
-                - slug
-                - icon_class
-              additionalProperties: false
-            examples:
-              record:
-                summary: A full team record
-                value:
-                  team_name: Platform Support Engineering
-                  slug: PSE
-                  icon_class: fas fa-blind
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
-            examples:
-              record:
-                summary: A full team record
-                value:
-                  team_name: Platform Support Engineering
-                  slug: PSE
-                  icon_class: fas fa-blind
-      tags:
-        - Teams
-      responses:
-        '200':
-          description: 'The request to create, update, or retrieve the team was successful'
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-            Last-Modified:
-              $ref: '#/paths/~1project~1/post/responses/200/headers/Last-Modified'
-            Link:
-              $ref: '#/paths/~1project~1/post/responses/200/headers/Link'
-          content:
-            application/json:
-              schema:
-                $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/examples/record'
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/examples/record'
-        '400':
-          $ref: '#/paths/~1project~1/post/responses/400'
-        '401':
-          $ref: '#/paths/~1projects/get/responses/401'
-        '409':
-          $ref: '#/paths/~1project~1/post/responses/409'
-  '/admin/team/{name}':
-    get:
-      summary: Get Record
-      description: Retrieve a team record
-      tags:
-        - Teams
-      responses:
-        '200':
-          $ref: '#/paths/~1admin~1team/post/responses/200'
-        '401':
-          $ref: '#/paths/~1projects/get/responses/401'
-        '404':
-          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-    patch:
-      summary: Update Record
-      description: 'Update a team, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
-      tags:
-        - Teams
-      requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1project~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
-      responses:
-        '200':
-          $ref: '#/paths/~1admin~1team/post/responses/200'
-        '304':
-          $ref: '#/paths/~1project~1%7Bid%7D/patch/responses/304'
-        '400':
-          $ref: '#/paths/~1project~1/post/responses/400'
-        '401':
-          $ref: '#/paths/~1projects/get/responses/401'
-        '404':
-          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-        '409':
-          $ref: '#/paths/~1project~1/post/responses/409'
-    delete:
-      summary: Delete Record
-      description: Remove a team record
-      tags:
-        - Teams
-      responses:
-        '204':
-          $ref: '#/paths/~1project~1%7Bid%7D/delete/responses/204'
-        '401':
-          $ref: '#/paths/~1projects/get/responses/401'
-        '404':
-          $ref: '#/paths/~1project~1%7Bid%7D/get/responses/404'
-    parameters:
-      - name: name
-        in: path
-        description: Team Name
-        required: true
-        schema:
-          type: string
-          pattern: '[\w_]+'
   /projects:
     get:
       description: Retrieve the collection of projects
@@ -1836,6 +1837,10 @@ paths:
                       configuration_system: SSM Parameter Store
                       deployment_type: ecs-pipeline-deploy
                       orchestration_system: ECS
+                      environments:
+                        - Testing
+                        - Staging
+                        - Production
             application/msgpack:
               schema:
                 type: array
@@ -1855,6 +1860,10 @@ paths:
                       configuration_system: SSM Parameter Store
                       deployment_type: ecs-pipeline-deploy
                       orchestration_system: ECS
+                      environments:
+                        - Testing
+                        - Staging
+                        - Production
         '401':
           description: The request could not be authorized using the session cookie or provided API token
           content:
@@ -1981,6 +1990,10 @@ paths:
                   configuration_system: SSM Parameter Store
                   deployment_type: ecs-pipeline-deploy
                   orchestration_system: ECS
+                  environments:
+                    - Testing
+                    - Staging
+                    - Production
           application/msgpack:
             schema:
               $ref: '#/paths/~1project~1/post/requestBody/content/application~1json/schema'
@@ -1998,6 +2011,10 @@ paths:
                   configuration_system: SSM Parameter Store
                   deployment_type: ecs-pipeline-deploy
                   orchestration_system: ECS
+                  environments:
+                    - Testing
+                    - Staging
+                    - Production
       tags:
         - Projects
       responses:
@@ -2917,6 +2934,63 @@ paths:
                         - user
         '401':
           $ref: '#/paths/~1projects/get/responses/401'
+  /settings/namespaces:
+    get:
+      description: Retrieve the collection of namespaces
+      summary: Get Namespaces
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1namespace/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple namespace records
+                  value:
+                    - namespace_name: Platform Support Engineering
+                      slug: PSE
+                      icon_class: fas fa-blind
+                      maintained_by:
+                        - Developers
+                        - Operations
+                    - namespace_name: Quality Assurance
+                      slug: QA
+                      icon_class: fas fa-microscope
+                      maintained_by:
+                        - Developers
+                        - QA
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1admin~1namespace/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple namespace records
+                  value:
+                    - namespace_name: Platform Support Engineering
+                      slug: PSE
+                      icon_class: fas fa-blind
+                      maintained_by:
+                        - Developers
+                        - Operations
+                    - namespace_name: Quality Assurance
+                      slug: QA
+                      icon_class: fas fa-microscope
+                      maintained_by:
+                        - Developers
+                        - QA
+        '401':
+          $ref: '#/paths/~1projects/get/responses/401'
   /settings/orchestration_systems:
     get:
       description: Retrieve the collection of orchestration systems
@@ -3016,58 +3090,58 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1admin~1project_fact_type_option/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple project fact type option records
                   value:
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.9
                       score: 100
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.7
                       score: 75
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.6
                       score: 50
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.5
                       score: 50
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 2.7
                       score: 0
             application/msgpack:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1project_fact_type_option~1%7Bfact_type_id%7D/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1admin~1project_fact_type_option/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple project fact type option records
                   value:
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.9
                       score: 100
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.7
                       score: 75
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.6
                       score: 50
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.5
                       score: 50
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 2.7
                       score: 0
         '401':
@@ -3094,29 +3168,23 @@ paths:
                 records:
                   summary: Multiple project fact type records
                   value:
-                    - id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      project_type: Consumer
-                      name: Programming Language
+                    - project_type: Consumer
+                      fact_type: Programming Language
                       weight: 25
-                    - id: 1f04d510-6a24-4be8-9536-27b61df7f1b7
-                      project_type: Consumer
-                      name: Test Coverage
+                    - project_type: Consumer
+                      fact_type: Test Coverage
                       weight: 25
-                    - id: cb4396b0-07c4-40df-a5ab-6a79cdafce0f
-                      project_type: Consumer
-                      name: Deployed to all Environments
+                    - project_type: Consumer
+                      fact_type: Deployed to all Environments
                       weight: 20
-                    - id: 5f818763-7181-40d6-aeef-1e561d7a9f13
-                      project_type: Consumer
-                      name: Has Acceptance Tests
+                    - project_type: Consumer
+                      fact_type: Has Acceptance Tests
                       weight: 10
-                    - id: bb3a7869-16d8-4475-977a-33efceb4be26
-                      project_type: Consumer
-                      name: Meets Current Standards
+                    - project_type: Consumer
+                      fact_type: Meets Current Standards
                       weight: 10
-                    - id: fb7bfb6a-9b9b-4c52-849a-b6fab8e49950
-                      project_type: Consumer
-                      name: Has working CI pipeline
+                    - project_type: Consumer
+                      fact_type: Has working CI pipeline
                       weight: 10
             application/msgpack:
               schema:
@@ -3127,29 +3195,23 @@ paths:
                 records:
                   summary: Multiple project fact type records
                   value:
-                    - id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      project_type: Consumer
-                      name: Programming Language
+                    - project_type: Consumer
+                      fact_type: Programming Language
                       weight: 25
-                    - id: 1f04d510-6a24-4be8-9536-27b61df7f1b7
-                      project_type: Consumer
-                      name: Test Coverage
+                    - project_type: Consumer
+                      fact_type: Test Coverage
                       weight: 25
-                    - id: cb4396b0-07c4-40df-a5ab-6a79cdafce0f
-                      project_type: Consumer
-                      name: Deployed to all Environments
+                    - project_type: Consumer
+                      fact_type: Deployed to all Environments
                       weight: 20
-                    - id: 5f818763-7181-40d6-aeef-1e561d7a9f13
-                      project_type: Consumer
-                      name: Has Acceptance Tests
+                    - project_type: Consumer
+                      fact_type: Has Acceptance Tests
                       weight: 10
-                    - id: bb3a7869-16d8-4475-977a-33efceb4be26
-                      project_type: Consumer
-                      name: Meets Current Standards
+                    - project_type: Consumer
+                      fact_type: Meets Current Standards
                       weight: 10
-                    - id: fb7bfb6a-9b9b-4c52-849a-b6fab8e49950
-                      project_type: Consumer
-                      name: Has working CI pipeline
+                    - project_type: Consumer
+                      fact_type: Has working CI pipeline
                       weight: 10
         '401':
           $ref: '#/paths/~1projects/get/responses/401'
@@ -3241,51 +3303,6 @@ paths:
                       description: A PostgreSQL database
                       icon_class: imbi postgres
                       slug: postgres
-        '401':
-          $ref: '#/paths/~1projects/get/responses/401'
-  /settings/teams:
-    get:
-      description: Retrieve the collection of teams
-      summary: Get Teams
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple team records
-                  value:
-                    - team_name: Platform Support Engineering
-                      slug: PSE
-                      icon_class: fas fa-blind
-                    - team_name: Quality Assurance
-                      slug: QA
-                      icon_class: fas fa-microscope
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1admin~1team/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple team records
-                  value:
-                    - team_name: Platform Support Engineering
-                      slug: PSE
-                      icon_class: fas fa-blind
-                    - team_name: Quality Assurance
-                      slug: QA
-                      icon_class: fas fa-microscope
         '401':
           $ref: '#/paths/~1projects/get/responses/401'
   /status:
@@ -3455,6 +3472,8 @@ tags:
   - name: Groups
     description: |
       Endpoints used to manage the groups that Imbi users are able to be members of.
+  - name: Namespaces
+    description: Endpoints used for the management of organizational namespaces
   - name: Orchestration Systems
     description: |-
       Endpoints for managing the systems used for orchestration systems.
@@ -3478,8 +3497,6 @@ tags:
     description: Management of records that define types of links or URLs to associate with a project
   - name: Project Types
     description: 'Endpoints used for the management different types of projects managed in Imbi (APIs, Databases, etc)'
-  - name: Teams
-    description: Endpoints used for the management of organizational teams
   - name: Projects
     description: Endpoints used for the management of projects
   - name: Settings
