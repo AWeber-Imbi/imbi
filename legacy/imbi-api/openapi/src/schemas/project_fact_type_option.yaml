@@ -3,12 +3,12 @@ description: |
   Defines options that are available for a project fact type
 type: object
 properties:
-  fact_type_id:
+  project_type:
+    description: The project type the fact type option is for
     type: string
-    format: uuid
-  option_id:
+  fact_type:
+    description: The fact type the option is for
     type: string
-    format: uuid
   value:
     description: The option value
     type: string
@@ -17,8 +17,8 @@ properties:
     type: number
     default: 0
 required:
-  - fact_type_id
-  - option_id
+  - project_type
+  - fact_type
   - value
   - score
 additionalProperties: false

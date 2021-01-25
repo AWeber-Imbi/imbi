@@ -19,29 +19,23 @@ paths:
                 records:
                   summary: Multiple project fact type records
                   value:
-                    - id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      project_type: Consumer
-                      name: Programming Language
+                    - project_type: Consumer
+                      fact_type: Programming Language
                       weight: 25
-                    - id: 1f04d510-6a24-4be8-9536-27b61df7f1b7
-                      project_type: Consumer
-                      name: Test Coverage
+                    - project_type: Consumer
+                      fact_type: Test Coverage
                       weight: 25
-                    - id: cb4396b0-07c4-40df-a5ab-6a79cdafce0f
-                      project_type: Consumer
-                      name: Deployed to all Environments
+                    - project_type: Consumer
+                      fact_type: Deployed to all Environments
                       weight: 20
-                    - id: 5f818763-7181-40d6-aeef-1e561d7a9f13
-                      project_type: Consumer
-                      name: Has Acceptance Tests
+                    - project_type: Consumer
+                      fact_type: Has Acceptance Tests
                       weight: 10
-                    - id: bb3a7869-16d8-4475-977a-33efceb4be26
-                      project_type: Consumer
-                      name: Meets Current Standards
+                    - project_type: Consumer
+                      fact_type: Meets Current Standards
                       weight: 10
-                    - id: fb7bfb6a-9b9b-4c52-849a-b6fab8e49950
-                      project_type: Consumer
-                      name: Has working CI pipeline
+                    - project_type: Consumer
+                      fact_type: Has working CI pipeline
                       weight: 10
             application/msgpack:
               <<: *responseContent

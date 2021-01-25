@@ -3,37 +3,42 @@ import uuid
 
 import jsonpatch
 
-from imbi.endpoints.admin import teams
+from imbi.endpoints.admin import namespaces
 from tests import base
 
 
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
-    TRUNCATE_TABLES = ['v1.teams']
+    TRUNCATE_TABLES = ['v1.namespaces']
 
-    def test_team_lifecycle(self):
+    def test_namespace_lifecycle(self):
         record = {
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'icon_class': 'fas fa-blind',
-            'group': None
+            'maintained_by': []
         }
 
         # Create
-        result = self.fetch('/admin/team', method='POST',
+        result = self.fetch('/admin/namespace', method='POST',
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
+        print(result.body)
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url('/admin/team/{}'.format(record['name']))))
+                self.get_url('/admin/namespace/{}'.format(record['name']))))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                teams.CRUDRequestHandler.TTL))
+                namespaces.CRUDRequestHandler.TTL))
         new_value = json.loads(result.body.decode('utf-8'))
+        self.assertEqual(
+            new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+        for field in ['created_by', 'last_modified_by']:
+            del new_value[field]
         self.assertDictEqual(new_value, record)
 
         # PATCH
@@ -43,50 +48,58 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         patch_value = patch.to_string().encode('utf-8')
 
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']), method='PATCH',
+            '/admin/namespace/{}'.format(record['name']), method='PATCH',
             body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
+        for field in ['created_by', 'last_modified_by']:
+            self.assertEqual(
+                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
+            del new_value[field]
         self.assertDictEqual(new_value, updated)
 
         # Patch no change
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']), method='PATCH',
+            '/admin/namespace/{}'.format(record['name']), method='PATCH',
             body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 304)
 
         # GET
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/namespace/{}'.format(record['name']),
             headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assertEqual(
             result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url('/admin/team/{}'.format(record['name']))))
+                self.get_url('/admin/namespace/{}'.format(record['name']))))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                teams.CRUDRequestHandler.TTL))
+                namespaces.CRUDRequestHandler.TTL))
 
         new_value = json.loads(result.body.decode('utf-8'))
+        self.assertEqual(
+            new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+        for field in ['created_by', 'last_modified_by']:
+            del new_value[field]
         self.assertDictEqual(new_value, updated)
 
         # DELETE
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/namespace/{}'.format(record['name']),
             method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/namespace/{}'.format(record['name']),
             headers=self.headers)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/namespace/{}'.format(record['name']),
             method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 404)
 
@@ -96,7 +109,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'slug': str(uuid.uuid4().hex),
             'icon_class': 'fas fa-blind'
         }
-        result = self.fetch('/admin/team', method='POST',
+        result = self.fetch('/admin/namespace', method='POST',
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
         self.assertEqual(result.code, 200)
@@ -107,25 +120,25 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         # DELETE
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/namespace/{}'.format(record['name']),
             method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
         result = self.fetch(
-            '/admin/team/{}'.format(record['name']),
+            '/admin/namespace/{}'.format(record['name']),
             headers=self.headers)
         self.assertEqual(result.code, 404)
 
     def test_method_not_implemented(self):
         for method in {'GET', 'DELETE', 'PATCH'}:
             result = self.fetch(
-                '/admin/team', method=method,
+                '/admin/namespace', method=method,
                 allow_nonstandard_methods=True,
                 headers=self.headers)
             self.assertEqual(result.code, 405)
 
-        url = '/admin/team/' + str(uuid.uuid4())
+        url = '/admin/namespace/' + str(uuid.uuid4())
         result = self.fetch(url, method='POST',
                             allow_nonstandard_methods=True,
                             headers=self.headers)

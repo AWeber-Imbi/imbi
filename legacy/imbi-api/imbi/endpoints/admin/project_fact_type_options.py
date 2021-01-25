@@ -1,36 +1,43 @@
+import re
+
 from imbi.endpoints.admin import base
 
 
 class CRUDRequestHandler(base.CRUDRequestHandler):
 
     NAME = 'admin-project-fact-type-options'
-    ID_KEY = ['fact_type_id', 'option_id']
-    ITEM_SCHEMA = 'admin/project_fact_type_option.yaml'
-    FIELDS = ['fact_type_id', 'option_id', 'value', 'score']
+    ID_KEY = ['project_type', 'fact_type', 'value']
+    FIELDS = ['project_type', 'fact_type', 'value', 'score']
 
-    DELETE_SQL = """\
+    DELETE_SQL = re.sub(r'\s+', ' ', """\
     DELETE FROM v1.project_fact_type_options
-     WHERE fact_type_id=%(fact_type_id)s
-       AND option_id=%(option_id)s"""
+     WHERE project_type=%(project_type)s
+       AND fact_type=%(fact_type)s
+       AND value=%(value)s""")
 
-    GET_SQL = """\
-    SELECT fact_type_id, option_id, created_at, modified_at, value, score
+    GET_SQL = re.sub(r'\s+', ' ', """\
+    SELECT project_type, fact_type, value, created_at, created_by, 
+           last_modified_at, last_modified_by, score
       FROM v1.project_fact_type_options
-     WHERE fact_type_id=%(fact_type_id)s
-       AND option_id=%(option_id)s;"""
+     WHERE project_type=%(project_type)s
+       AND fact_type=%(fact_type)s
+       AND value=%(value)s""")
 
-    PATCH_SQL = """\
+    PATCH_SQL = re.sub(r'\s+', ' ', """\
     UPDATE v1.project_fact_type_options
-       SET fact_type_id=%(fact_type_id)s,
-           option_id=%(option_id)s,
-           modified_at=CURRENT_TIMESTAMP,
+       SET project_type=%(project_type)s,
+           fact_type=%(fact_type)s,
            value=%(value)s,
+           last_modified_at=CURRENT_TIMESTAMP,
+           last_modified_by=%(username)s,
            score=%(score)s
-     WHERE fact_type_id=%(fact_type_id)s
-       AND option_id=%(option_id)s;"""
+     WHERE project_type=%(current_project_type)s
+       AND fact_type=%(current_fact_type)s
+       AND value=%(current_value)s""")
 
-    POST_SQL = """\
+    POST_SQL = re.sub(r'\s+', ' ', """\
     INSERT INTO v1.project_fact_type_options
-                (fact_type_id, option_id, value, score)
-         VALUES (%(fact_type_id)s, %(option_id)s, %(value)s, %(score)s)
-      RETURNING fact_type_id, option_id;"""
+                (project_type, fact_type, value, created_by, score)
+         VALUES (%(project_type)s, %(fact_type)s, %(value)s, %(username)s, 
+                 %(score)s)
+      RETURNING project_type, fact_type, value;""")

@@ -20,14 +20,6 @@ paths:
         '400': { $ref: '../components/responses.yaml#/RequestError' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '409': { $ref: '../components/responses.yaml#/Conflict' }
-    parameters:
-      - name: fact_type_id
-        in: path
-        description: Project Fact Type ID
-        required: true
-        schema:
-          type: string
-          format: uuid
 
   manage:
     get:
@@ -72,28 +64,32 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: fact_type_id
+      - name: project_type
         in: path
-        description: Project Fact Type ID
+        description: Project Type
         required: true
         schema:
           type: string
-          format: uuid
-      - name: option_id
+      - name: fact_type
         in: path
-        description: Option ID ID
+        description: Fact Type
         required: true
         schema:
           type: string
-          format: uuid
+      - name: value
+        in: path
+        description: The Fact Value
+        required: true
+        schema:
+          type: string
 
 components:
   examples:
     record:
       summary: A full project fact type option record
       value:
-        fact_type_id: d2560576-b339-4f2c-9ec5-268969634c7b
-        option_id: 98a112b5-4568-4e91-973a-49b0c5481407
+        project_type: HTTP API
+        fact_type: Programming Language
         value: Python 3.5
         weight: 50
 

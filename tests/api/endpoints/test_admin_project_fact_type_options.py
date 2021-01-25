@@ -36,9 +36,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def create_project_fact_type(self):
         record = {
-            'id': str(uuid.uuid4()),
             'project_type': self.project_type,
-            'name': str(uuid.uuid4()),
+            'fact_type': str(uuid.uuid4()),
             'weight': 100
         }
 
@@ -47,34 +46,38 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
         self.assertEqual(result.code, 200)
-        return record['id']
+        return record['fact_type']
 
     def test_project_fact_type_option_lifecycle(self):
         record = {
-            'fact_type_id': self.fact_type,
-            'option_id': str(uuid.uuid4()),
+            'project_type': self.project_type,
+            'fact_type': self.fact_type,
             'value': str(uuid.uuid4()),
             'score': 50
         }
 
         # Create
         result = self.fetch(
-            '/admin/project_fact_type_option/{}'.format(self.fact_type),
+            '/admin/project_fact_type_option',
             method='POST', body=json.dumps(record).encode('utf-8'),
             headers=self.headers)
+
+        url = self.get_url('/admin/project_fact_type_option/{}/{}/{}'.format(
+            self.project_type, self.fact_type, record['value']))
 
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
-            result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url(
-                    '/admin/project_fact_type_option/{}/{}'.format(
-                        record['fact_type_id'], record['option_id']))))
+            result.headers['Link'], '<{}>; rel="self"'.format(url))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 project_types.CRUDRequestHandler.TTL))
         new_value = json.loads(result.body.decode('utf-8'))
+        self.assertEqual(
+            new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+        for field in ['created_by', 'last_modified_by']:
+            del new_value[field]
         self.assertDictEqual(new_value, record)
 
         # PATCH
@@ -84,57 +87,46 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         patch_value = patch.to_string().encode('utf-8')
 
         result = self.fetch(
-            '/admin/project_fact_type_option/{}/{}'.format(
-                record['fact_type_id'], record['option_id']),
-            method='PATCH', body=patch_value, headers=self.headers)
+            url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
+        for field in ['created_by', 'last_modified_by']:
+            self.assertEqual(
+                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
+            del new_value[field]
         self.assertDictEqual(new_value, updated)
 
         # Patch no change
         result = self.fetch(
-            '/admin/project_fact_type_option/{}/{}'.format(
-                record['fact_type_id'], record['option_id']),
-            method='PATCH', body=patch_value, headers=self.headers)
+            url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 304)
 
         # GET
-        result = self.fetch(
-            '/admin/project_fact_type_option/{}/{}'.format(
-                record['fact_type_id'], record['option_id']),
-            headers=self.headers)
+        result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assertEqual(
-            result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url(
-                    '/admin/project_fact_type_option/{}/{}'.format(
-                        record['fact_type_id'], record['option_id']))))
+            result.headers['Link'], '<{}>; rel="self"'.format(url))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 project_types.CRUDRequestHandler.TTL))
 
         new_value = json.loads(result.body.decode('utf-8'))
+        for field in ['created_by', 'last_modified_by']:
+            self.assertEqual(
+                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
+            del new_value[field]
         self.assertDictEqual(new_value, updated)
 
         # DELETE
-        result = self.fetch(
-            '/admin/project_fact_type_option/{}/{}'.format(
-                record['fact_type_id'], record['option_id']),
-            method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(
-            '/admin/project_fact_type_option/{}/{}'.format(
-                record['fact_type_id'], record['option_id']),
-            headers=self.headers)
+        result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
-        result = self.fetch(
-            '/admin/project_fact_type_option/{}/{}'.format(
-                record['fact_type_id'], record['option_id']),
-            method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 404)

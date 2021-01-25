@@ -64,9 +64,16 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: name
+      - name: project_type
         in: path
-        description: Project Fact Type Name
+        description: Project Type
+        required: true
+        schema:
+          type: string
+          pattern: '[\w_]+'
+      - name: fact_type
+        in: path
+        description: Fact Type
         required: true
         schema:
           type: string
@@ -77,9 +84,8 @@ components:
     record:
       summary: A full project fact type record
       value:
-        id: d2560576-b339-4f2c-9ec5-268969634c7b
         project_type: API
-        name: Programming Language
+        fact_type: Programming Language
         weight: 25
 
   responses:

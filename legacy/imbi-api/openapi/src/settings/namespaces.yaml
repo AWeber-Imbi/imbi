@@ -1,8 +1,8 @@
 paths:
   collection:
     get:
-      description: Retrieve the collection of teams
-      summary: Get Teams
+      description: Retrieve the collection of namespaces
+      summary: Get Namespaces
       tags: [Settings]
       responses:
         '200':
@@ -14,17 +14,23 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/team.yaml'
+                  $ref: '../schemas/namespace.yaml'
               examples:
                 records:
-                  summary: Multiple team records
+                  summary: Multiple namespace records
                   value:
-                    - team_name: Platform Support Engineering
+                    - namespace_name: Platform Support Engineering
                       slug: PSE
                       icon_class: fas fa-blind
-                    - team_name: Quality Assurance
+                      maintained_by:
+                        - Developers
+                        - Operations
+                    - namespace_name: Quality Assurance
                       slug: QA
                       icon_class: fas fa-microscope
+                      maintained_by:
+                        - Developers
+                        - QA
             application/msgpack:
               <<: *responseContent
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }

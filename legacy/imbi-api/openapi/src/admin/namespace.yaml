@@ -2,19 +2,19 @@ paths:
   create:
     post:
       summary: Create Record
-      description: Create a new team record
+      description: Create a new namespace record
       requestBody:
-        description: The team record to create
+        description: The namespace record to create
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/team.yaml'
+              $ref: '../schemas/namespace.yaml'
             examples:
               record:
                 $ref: '#/components/examples/record'
           application/msgpack:
             <<: *postContent
-      tags: [Teams]
+      tags: [Namespaces]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '../components/responses.yaml#/RequestError' }
@@ -24,8 +24,8 @@ paths:
   manage:
     get:
       summary: Get Record
-      description: Retrieve a team record
-      tags: [Teams]
+      description: Retrieve a namespace record
+      tags: [Namespaces]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
@@ -33,9 +33,9 @@ paths:
     patch:
       summary: Update Record
       description: >-
-        Update a team, providing a JSON Patch (RFC-6209) payload of update
+        Update a namespace, providing a JSON Patch (RFC-6209) payload of update
         operations to apply.
-      tags: [Teams]
+      tags: [Namespaces]
       requestBody:
         description: JSON Patch Payload
         content:
@@ -57,16 +57,16 @@ paths:
         '409': { $ref: '../components/responses.yaml#/Conflict' }
     delete:
       summary: Delete Record
-      description: Remove a team record
-      tags: [Teams]
+      description: Remove a namespace record
+      tags: [Namespaces]
       responses:
         '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: name
+      - name: namespace
         in: path
-        description: Team Name
+        description: Namespace
         required: true
         schema:
           type: string
@@ -75,15 +75,18 @@ paths:
 components:
   examples:
     record:
-      summary: A full team record
+      summary: A full namespace record
       value:
-        team_name: Platform Support Engineering
+        name: Platform Support Engineering
         slug: PSE
         icon_class: fas fa-blind
+        maintainted_by:
+          - Developers
+          - Operations
 
   responses:
     Success:
-      description: The request to create, update, or retrieve the team was successful
+      description: The request to create, update, or retrieve the namespace was successful
       headers:
         Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
         Last-Modified: { $ref: '../components/headers.yaml#/Last-Modified' }
@@ -91,7 +94,7 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/team.yaml'
+            $ref: '../schemas/namespace.yaml'
           examples:
             record:
               $ref: '#/components/examples/record'
@@ -99,5 +102,5 @@ components:
           <<: *responsesSuccess
 
 tag:
-  name: Teams
-  description: Endpoints used for the management of organizational teams
+  name: Namespaces
+  description: Endpoints used for the management of organizational namespaces

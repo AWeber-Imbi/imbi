@@ -19,24 +19,24 @@ paths:
                 records:
                   summary: Multiple project fact type option records
                   value:
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.9
                       score: 100
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.7
                       score: 75
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.6
                       score: 50
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 3.5
                       score: 50
-                    - fact_type_id: 55ceba72-1db5-4b9e-a45d-86443a0554b4
-                      option_id: 64d8335e-d1f8-406c-9a23-35be6034f765
+                    - project_type: HTTP API
+                      fact_type: Programming Language
                       value: Python 2.7
                       score: 0
             application/msgpack:
