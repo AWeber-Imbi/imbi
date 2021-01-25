@@ -9,6 +9,7 @@ SELECT has_table('v1'::NAME, 'deployment_types'::NAME);
 SELECT has_table('v1'::NAME, 'environments'::NAME);
 SELECT has_table('v1'::NAME, 'group_members'::NAME);
 SELECT has_table('v1'::NAME, 'groups'::NAME);
+SELECT has_table('v1'::NAME, 'namespaces'::NAME);
 SELECT has_table('v1'::NAME, 'orchestration_systems'::NAME);
 SELECT has_table('v1'::NAME, 'project_dependencies'::NAME);
 SELECT has_table('v1'::NAME, 'project_fact_history'::NAME);
@@ -19,7 +20,6 @@ SELECT has_table('v1'::NAME, 'project_link_types'::NAME);
 SELECT has_table('v1'::NAME, 'project_links'::NAME);
 SELECT has_table('v1'::NAME, 'project_types'::NAME);
 SELECT has_table('v1'::NAME, 'projects'::NAME);
-SELECT has_table('v1'::NAME, 'teams'::NAME);
 SELECT has_table('v1'::NAME, 'users'::NAME);
 
 SELECT * FROM finish();

@@ -19,21 +19,21 @@ tables/v1/configuration_systems.sql
 tables/v1/data_centers.sql
 tables/v1/deployment_types.sql
 tables/v1/environments.sql
-tables/v1/groups.sql
+tables/v1/namespaces.sql
 tables/v1/orchestration_systems.sql
-tables/v1/teams.sql
 tables/v1/project_link_types.sql
 tables/v1/project_types.sql
+tables/v1/project_fact_types.sql
+tables/v1/project_fact_type_options.sql
+tables/v1/cookie_cutters.sql
 tables/v1/projects.sql
 tables/v1/project_dependencies.sql
 tables/v1/project_fact_history.sql
-tables/v1/project_fact_types.sql
-tables/v1/project_fact_type_options.sql
 tables/v1/project_facts.sql
 tables/v1/project_links.sql
 tables/v1/users.sql
 tables/v1/authentication_tokens.sql
-tables/v1/cookie_cutters.sql
+tables/v1/groups.sql
 tables/v1/group_members.sql
 
 -- Functions
