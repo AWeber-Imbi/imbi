@@ -1,49 +1,74 @@
-"""
-Request Handler for an individual project
+import re
 
-"""
 from imbi.endpoints import base
 
 
-class RequestHandler(base.CRUDRequestHandler):
+class _ProjectRequestMixin:
 
-    NAME = 'project'
-    FIELDS = ['id', 'name', 'slug', 'description', 'owned_by', 'data_center',
-              'project_type', 'configuration_system', 'deployment_type',
-              'orchestration_system', 'environments']
+    ITEM_NAME = 'project'
+    ID_KEY = ['namespace', 'name']
+    FIELDS = ['namespace', 'name', 'slug', 'description', 'data_center',
+              'environments', 'project_type', 'configuration_system',
+              'deployment_type', 'orchestration_system']
     TTL = 300
 
-    DELETE_SQL = 'DELETE FROM v1.projects WHERE id=%(id)s'
-
-    GET_SQL = """\
-    SELECT id, created_at, modified_at, "name", slug, description, owned_by,
-           data_center, project_type, configuration_system, deployment_type,
-           orchestration_system, environments
+    GET_SQL = re.sub(r'\s+', ' ', """\
+    SELECT namespace, "name", created_at, created_by, last_modified_at,
+           last_modified_by, slug, description, data_center, environments,
+           project_type, configuration_system, deployment_type,
+           orchestration_system
       FROM v1.projects
-     WHERE id = %(id)s"""
+     WHERE namespace=%(namespace)s
+       AND "name"=%(name)s;""")
 
-    PATCH_SQL = """\
+
+class CollectionRequestHandler(_ProjectRequestMixin,
+                               base.CollectionRequestHandler):
+    NAME = 'projects'
+
+    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+      SELECT namespace, "name", created_at, created_by, last_modified_at,
+             last_modified_by, slug, description, data_center, environments,
+             project_type, configuration_system, deployment_type,
+             orchestration_system
+        FROM v1.projects
+    ORDER BY namespace, "name" ASC;""")
+
+    POST_SQL = re.sub(r'\s+', ' ', """\
+    INSERT INTO v1.projects (namespace, "name", created_by, slug, description,
+                             data_center, environments, project_type,
+                             configuration_system, deployment_type,
+                             orchestration_system)
+         VALUES (%(namespace)s, %(name)s, %(username)s, %(slug)s,
+                 %(description)s, %(data_center)s, %(environments)s,
+                 %(project_type)s, %(configuration_system)s,
+                 %(deployment_type)s, %(orchestration_system)s)
+      RETURNING namespace, "name"
+      """)
+
+
+class RecordRequestHandler(_ProjectRequestMixin, base.CRUDRequestHandler):
+
+    NAME = 'project'
+
+    DELETE_SQL = re.sub(r'\s+', ' ', """\
+    DELETE FROM v1.projects
+          WHERE namespace=%(namespace)s
+            AND "name"=%(name)s;""")
+
+    PATCH_SQL = re.sub(r'\s+', ' ', """\
     UPDATE v1.projects
-       SET "name"=%(name)s,
-           modified_at=CURRENT_TIMESTAMP,
+       SET namespace=%(namespace)s,
+           "name"=%(name)s,
+           last_modified_at=CURRENT_TIMESTAMP,
+           last_modified_by=%(username)s,
            slug=%(slug)s,
            description=%(description)s,
-           owned_by=%(owned_by)s,
            data_center=%(data_center)s,
            project_type=%(project_type)s,
            configuration_system=%(configuration_system)s,
            deployment_type=%(deployment_type)s,
            orchestration_system=%(orchestration_system)s,
            environments=%(environments)s
-     WHERE id=%(id)s;"""
-
-    POST_SQL = """\
-    INSERT INTO v1.projects (id, "name", slug, description, owned_by,
-                             data_center, project_type, configuration_system,
-                             deployment_type, orchestration_system, 
-                             environments)
-         VALUES (%(id)s, %(name)s, %(slug)s, %(description)s, %(owned_by)s,
-                 %(data_center)s, %(project_type)s, %(configuration_system)s,
-                 %(deployment_type)s, %(orchestration_system)s, 
-                 %(environments)s)
-      RETURNING id;"""
+     WHERE namespace=%(current_namespace)s
+       AND "name"=%(current_name)s;""")

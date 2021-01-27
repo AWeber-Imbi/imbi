@@ -70,16 +70,15 @@ paths:
   /admin/project_type/{name}: { $ref: 'admin/project_type.yaml#/paths/manage' }
 
   /projects: { '$ref': 'project/projects.yaml#/paths/collection' }
-  /project/: { '$ref': 'project/project.yaml#/paths/create' }
-  /project/{id}: { '$ref': 'project/project.yaml#/paths/manage' }
-  /project/{id}/dependencies:
+  /projects/{namespace}/{name}: { '$ref': 'project/project.yaml#/paths/manage' }
+  /projects/{namespace}/{name}/links:
+    { '$ref': 'project/links.yaml#/paths/collection' }
+  /projects/{namespace}/{name}/links/{link_type}:
+    { '$ref': 'project/link.yaml#/paths/manage' }
+  /projects/{namespace}/{name}/dependencies:
     { '$ref': 'project/dependencies.yaml#/paths/collection' }
-  /project/{id}/dependency: { '$ref': 'project/dependency.yaml#/paths/create' }
-  /project/{id}/dependency/{dependency_id}:
-    { '$ref': 'project/dependency.yaml#/paths/manage' }
-  /project/{id}/links: { '$ref': 'project/links.yaml#/paths/collection' }
-  /project/{id}/link: { '$ref': 'project/link.yaml#/paths/create' }
-  /project/{id}/link/{link_id}: { '$ref': 'project/link.yaml#/paths/manage' }
+  ? /projects/{namespace}/{name}/dependencies/{dependency_namespace}/{dependency_name}
+  : { '$ref': 'project/dependency.yaml#/paths/manage' }
 
   /settings/configuration_systems:
     { $ref: 'settings/configuration_systems.yaml#/paths/collection' }

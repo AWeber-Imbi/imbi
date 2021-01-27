@@ -1,30 +1,53 @@
-"""
-Request Handler for an individual project
+import re
 
-"""
 from imbi.endpoints import base
 
 
-class RequestHandler(base.CRUDRequestHandler):
+class _DependencyRequestMixin:
 
-    NAME = 'project-dependency'
-    ITEM_SCHEMA = 'project/dependency.yaml'
-    ID_KEY = ['project_id', 'dependency_id']
-    FIELDS = ['project_id', 'dependency_id']
+    ID_KEY = ['name', 'namespace', 'dependency_name', 'dependency_namespace']
+    ITEM_NAME = 'project-dependency'
+    FIELDS = ['name', 'namespace', 'dependency_name', 'dependency_namespace']
     TTL = 300
 
-    DELETE_SQL = """\
-    DELETE FROM v1.project_dependencies
-          WHERE project_id=%(project_id)s
-            AND dependency_id=%(dependency_id)s"""
-
-    GET_SQL = """\
-    SELECT project_id, created_at, dependency_id
+    GET_SQL = re.sub(r'\s+', ' ', """\
+    SELECT namespace, name, dependency_namespace, dependency_name,
+           created_at, created_by
       FROM v1.project_dependencies
-     WHERE project_id=%(project_id)s
-       AND dependency_id=%(dependency_id)s"""
+     WHERE namespace=%(namespace)s
+       AND name=%(name)s
+       AND dependency_namespace=%(dependency_namespace)s
+       AND dependency_name=%(dependency_name)s""")
 
-    POST_SQL = """\
-    INSERT INTO v1.project_dependencies (project_id, dependency_id)
-         VALUES (%(project_id)s, %(dependency_id)s)
-      RETURNING project_id, dependency_id;"""
+
+class CollectionRequestHandler(_DependencyRequestMixin,
+                               base.CollectionRequestHandler):
+
+    NAME = 'project-dependencies'
+
+    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+      SELECT dependency_namespace, dependency_name
+        FROM v1.project_dependencies
+       WHERE namespace=%(namespace)s
+         AND name=%(name)s
+    ORDER BY namespace, name, dependency_namespace, dependency_name""")
+
+    POST_SQL = re.sub(r'\s+', ' ', """\
+    INSERT INTO v1.project_dependencies
+                (namespace, name, dependency_namespace, dependency_name,
+                 created_by)
+         VALUES (%(namespace)s, %(name)s, %(dependency_namespace)s,
+                 %(dependency_name)s, %(username)s)
+      RETURNING namespace, name, dependency_namespace, dependency_name;""")
+
+
+class RecordRequestHandler(_DependencyRequestMixin, base.CRUDRequestHandler):
+
+    NAME = 'project-dependency'
+
+    DELETE_SQL = re.sub(r'\s+', ' ', """\
+    DELETE FROM v1.project_dependencies
+     WHERE namespace=%(namespace)s
+       AND name=%(name)s
+       AND dependency_namespace=%(dependency_namespace)s
+       AND dependency_name=%(dependency_name)s""")

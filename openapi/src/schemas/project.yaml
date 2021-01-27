@@ -2,10 +2,9 @@ title: Project
 description: Describes a project managed by Imbi
 type: object
 properties:
-  id:
-    description: A unique ID for the project
+  namespace:
+    description: The project namespace
     type: string
-    format: uuid
   name:
     description: The project name
     type: string
@@ -16,9 +15,6 @@ properties:
     description: Long for description of the project
     type: string
     nullable: true
-  owned_by:
-    description: The team that owns/is responsible for the project
-    type: string
   project_type:
     description: The project type (API, Consumer, Database, etc)
     type: string
@@ -46,9 +42,8 @@ properties:
     type: string
     nullable: true
 required:
-  - id
+  - namespace
   - name
   - slug
-  - owned_by
   - project_type
 additionalProperties: false
