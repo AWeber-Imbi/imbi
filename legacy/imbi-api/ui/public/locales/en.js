@@ -128,7 +128,7 @@ export default {
           factType: 'Fact Type',
           weight: 'Weight',
           weightDescription:
-            'The weight from 0 to 100 of the total score for a project. Total weight should across all types for a project type should not exceed 100.',
+            'The weight from 0 to 100 against the total score for a project. Total weight should across all types for a project type should not exceed 100.',
           errors: {
             uniqueViolation:
               'A project fact type with the same name already exists'
