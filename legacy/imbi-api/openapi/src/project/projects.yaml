@@ -19,12 +19,11 @@ paths:
                 records:
                   summary: Multiple project records
                   value:
-                    - id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+                    - namespace: Applications
                       name: User Service
                       slug: user
                       description: |-
                         The user service is used to manage user specific data, including profiles and content.
-                      owned_by: User Experience
                       project_type: HTTP API
                       data_center: us-east-1
                       configuration_system: SSM Parameter Store
@@ -37,3 +36,24 @@ paths:
             application/msgpack:
               <<: *responseContent
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+
+    post:
+      summary: Create Project
+      description: Create a new project record
+      requestBody:
+        description: The project record to create
+        content:
+          application/json: &postContent
+            schema:
+              $ref: '../schemas/project.yaml'
+            examples:
+              record:
+                $ref: './project.yaml#/components/examples/record'
+          application/msgpack:
+            <<: *postContent
+      tags: [Projects]
+      responses:
+        '200': { $ref: './project.yaml#/components/responses/Success' }
+        '400': { $ref: '../components/responses.yaml#/RequestError' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '409': { $ref: '../components/responses.yaml#/Conflict' }

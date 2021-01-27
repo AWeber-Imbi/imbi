@@ -1,26 +1,4 @@
 paths:
-  create:
-    post:
-      summary: Create Project
-      description: Create a new project record
-      requestBody:
-        description: The project record to create
-        content:
-          application/json: &postContent
-            schema:
-              $ref: '../schemas/project.yaml'
-            examples:
-              record:
-                $ref: '#/components/examples/record'
-          application/msgpack:
-            <<: *postContent
-      tags: [Projects]
-      responses:
-        '200': { $ref: '#/components/responses/Success' }
-        '400': { $ref: '../components/responses.yaml#/RequestError' }
-        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
-        '409': { $ref: '../components/responses.yaml#/Conflict' }
-
   manage:
     get:
       summary: Get Project
@@ -64,25 +42,29 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: id
+      - name: namespace
         in: path
-        description: Project ID
+        description: Project Namespace
         required: true
         schema:
           type: string
-          format: uuid
+      - name: name
+        in: path
+        description: Project Name
+        required: true
+        schema:
+          type: string
 
 components:
   examples:
     record:
       summary: An example of a project record
       value:
-        id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
+        namespace: User Experience
         name: User Service
         slug: user
         description: |-
           The user service is used to manage user specific data, including profiles and content.
-        owned_by: User Experience
         project_type: HTTP API
         data_center: us-east-1
         configuration_system: SSM Parameter Store

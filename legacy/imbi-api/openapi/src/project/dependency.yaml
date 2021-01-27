@@ -1,34 +1,4 @@
 paths:
-  create:
-    post:
-      summary: Create Dependency
-      description: Create a new project dependency record
-      requestBody:
-        description: The project dependency record to create
-        content:
-          application/json: &postContent
-            schema:
-              $ref: '../schemas/project_dependency.yaml'
-            examples:
-              record:
-                $ref: '#/components/examples/record'
-          application/msgpack:
-            <<: *postContent
-      tags: [Projects]
-      responses:
-        '200': { $ref: '#/components/responses/Success' }
-        '400': { $ref: '../components/responses.yaml#/RequestError' }
-        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
-        '409': { $ref: '../components/responses.yaml#/Conflict' }
-    parameters:
-      - name: id
-        in: path
-        description: The Project ID to add the dependency to
-        required: true
-        schema:
-          type: string
-          format: uuid
-
   manage:
     get:
       summary: Get Dependency
@@ -47,28 +17,40 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: id
+      - name: namespace
         in: path
-        description: Project ID
+        description: Project Namespace
         required: true
         schema:
           type: string
-          format: uuid
-      - name: dependency_id
+      - name: name
         in: path
-        description: The ID of the project that this project is dependent upon
+        description: Project Name
         required: true
         schema:
           type: string
-          format: uuid
+      - name: dependency_namespace
+        in: path
+        description: The namespace of the project that is dependend upon
+        required: true
+        schema:
+          type: string
+      - name: dependency_name
+        in: path
+        description: The name of the project that is dependend upon
+        required: true
+        schema:
+          type: string
 
 components:
   examples:
     record:
       summary: A project dependency record
       value:
-        project_id: 3e3a6e61-142b-4c47-96e2-3adb9723195e
-        dependency_id: cc64115b-ffe5-49c1-be14-4ff8bb322daf
+        namespace: Example
+        name: Project A
+        dependency_namespace: Example
+        dependency_name: Project B
 
   responses:
     Success:

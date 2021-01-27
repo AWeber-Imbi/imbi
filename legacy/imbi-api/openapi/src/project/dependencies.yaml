@@ -4,14 +4,6 @@ paths:
       description: Retrieve the collection of dependencies for a project
       summary: Get Dependencies
       tags: [Projects]
-      parameters:
-        - name: id
-          in: path
-          description: Project ID
-          required: true
-          schema:
-            type: string
-            format: uuid
       responses:
         '200':
           description: Success
@@ -27,10 +19,43 @@ paths:
                 records:
                   summary: Multiple records
                   value:
-                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
-                      dependency_id: adce0e08-99d5-47e7-9f6b-931214e20724
-                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
-                      dependency_id: 2ab8d72b-eacf-4521-8780-559008d075ae
+                    - dependency_namespace: Example
+                      dependency_name: Project A
+                    - dependency_namespace: Example
+                      dependency_name: Project B
             application/msgpack:
               <<: *responseContent
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+    post:
+      summary: Create Dependency
+      description: Create a new project dependency record
+      requestBody:
+        description: The project dependency record to create
+        content:
+          application/json: &postContent
+            schema:
+              $ref: '../schemas/project_dependency.yaml'
+            examples:
+              record:
+                $ref: './dependency.yaml#/components/examples/record'
+          application/msgpack:
+            <<: *postContent
+      tags: [Projects]
+      responses:
+        '200': { $ref: './dependency.yaml#/components/responses/Success' }
+        '400': { $ref: '../components/responses.yaml#/RequestError' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '409': { $ref: '../components/responses.yaml#/Conflict' }
+    parameters:
+      - name: namespace
+        in: path
+        description: Project Namespace
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        description: Project Name
+        required: true
+        schema:
+          type: string

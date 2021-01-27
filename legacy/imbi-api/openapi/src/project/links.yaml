@@ -4,14 +4,6 @@ paths:
       description: Retrieve the collection of links for a project
       summary: Get Links
       tags: [Projects]
-      parameters:
-        - name: id
-          in: path
-          description: Project ID
-          required: true
-          schema:
-            type: string
-            format: uuid
       responses:
         '200':
           description: Success
@@ -27,12 +19,47 @@ paths:
                 records:
                   summary: Multiple group records
                   value:
-                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                    - namespace: Testing
+                      name: Test Project
                       link_type: Documentation
                       url: https://imbi.readthedocs.io
-                    - project_id: 96f457cd-3d56-4f29-a672-889bed15f4a9
+                    - namespace: Testing
+                      name: Test Project
                       link_type: Repository
                       url: https://gitlab.com/AWeber/Imbi
             application/msgpack:
               <<: *responseContent
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+    post:
+      summary: Create Link
+      description: Create a new project link record
+      requestBody:
+        description: The project link record to create
+        content:
+          application/json: &postContent
+            schema:
+              $ref: '../schemas/project_link.yaml'
+            examples:
+              record:
+                $ref: './link.yaml#/components/examples/record'
+          application/msgpack:
+            <<: *postContent
+      tags: [Projects]
+      responses:
+        '200': { $ref: './link.yaml#/components/responses/Success' }
+        '400': { $ref: '../components/responses.yaml#/RequestError' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '409': { $ref: '../components/responses.yaml#/Conflict' }
+    parameters:
+      - name: namespace
+        in: path
+        description: Project namespace
+        required: true
+        schema:
+          type: string
+      - name: name
+        in: path
+        description: Project name
+        required: true
+        schema:
+          type: string
