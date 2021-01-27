@@ -16,7 +16,7 @@ class CRUDRequestHandler(base.CRUDRequestHandler):
        AND value=%(value)s""")
 
     GET_SQL = re.sub(r'\s+', ' ', """\
-    SELECT project_type, fact_type, value, created_at, created_by, 
+    SELECT project_type, fact_type, value, created_at, created_by,
            last_modified_at, last_modified_by, score
       FROM v1.project_fact_type_options
      WHERE project_type=%(project_type)s
@@ -38,6 +38,6 @@ class CRUDRequestHandler(base.CRUDRequestHandler):
     POST_SQL = re.sub(r'\s+', ' ', """\
     INSERT INTO v1.project_fact_type_options
                 (project_type, fact_type, value, created_by, score)
-         VALUES (%(project_type)s, %(fact_type)s, %(value)s, %(username)s, 
+         VALUES (%(project_type)s, %(fact_type)s, %(value)s, %(username)s,
                  %(score)s)
       RETURNING project_type, fact_type, value;""")

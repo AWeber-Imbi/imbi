@@ -4,7 +4,6 @@ Admin endpoints for configuring Imbi metadata
 """
 from tornado import web
 
-from imbi import constants
 from . import (
     configuration_systems,
     cookie_cutters,
