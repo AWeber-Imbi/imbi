@@ -1,5 +1,5 @@
 import React from 'react'
-import { createEvent, fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom/extend-expect'
 
 import { NumericInput } from './NumericInput'
