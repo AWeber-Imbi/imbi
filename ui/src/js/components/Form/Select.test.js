@@ -82,11 +82,7 @@ describe('Select', () => {
     const mockCallback = jest.fn()
     render(
       <div data-testid="select">
-        <Select
-          name="test"
-          options={options}
-          onChange={mockCallback}
-        />
+        <Select name="test" options={options} onChange={mockCallback} />
       </div>
     )
     const select = screen.getByTestId('select').children[0]
