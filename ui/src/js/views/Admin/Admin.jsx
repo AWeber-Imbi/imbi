@@ -13,11 +13,11 @@ import { CookieCutters } from './CookieCutters'
 import { DataCenters } from './DataCenters'
 import { DeploymentTypes } from './DeploymentTypes'
 import { Environments } from './Environments'
+import { Namespaces } from './Namespaces'
 import { OrchestrationSystems } from './OrchestrationSystems'
 import { ProjectFactTypes } from './ProjectFactTypes'
 import { ProjectLinkTypes } from './ProjectLinkTypes'
 import { ProjectTypes } from './ProjectTypes'
-import { Teams } from './Teams'
 
 function Admin({ user }) {
   const { t } = useTranslation()
@@ -31,7 +31,7 @@ function Admin({ user }) {
           <Sidebar.MenuItem
             value={t('admin.configurationSystems.collectionName')}
             to="/ui/admin/configuration-systems"
-            icon="fas box"
+            icon="fas tools"
           />
           <Sidebar.MenuItem
             value={t('admin.cookieCutters.collectionName')}
@@ -54,6 +54,11 @@ function Admin({ user }) {
             icon="fas tree"
           />
           <Sidebar.MenuItem
+            value={t('admin.namespaces.collectionName')}
+            to="/ui/admin/namespaces"
+            icon="fas boxes"
+          />
+          <Sidebar.MenuItem
             value={t('admin.orchestrationSystems.collectionName')}
             to="/ui/admin/orchestration-systems"
             icon="fas cogs"
@@ -72,11 +77,6 @@ function Admin({ user }) {
             value={t('admin.projectTypes.collectionName')}
             to="/ui/admin/project-types"
             icon="fas cubes"
-          />
-          <Sidebar.MenuItem
-            value={t('admin.teams.collectionName')}
-            to="/ui/admin/teams"
-            icon="fas users"
           />
         </Sidebar.Section>
         <Sidebar.Section name={t('admin.sidebar.userManagement')}>
@@ -101,6 +101,7 @@ function Admin({ user }) {
         <Route path="/ui/admin/data-centers" component={DataCenters} />
         <Route path="/ui/admin/deployment-types" component={DeploymentTypes} />
         <Route path="/ui/admin/environments" component={Environments} />
+        <Route path="/ui/admin/namespaces" component={Namespaces} />
         <Route
           path="/ui/admin/orchestration-systems"
           component={OrchestrationSystems}
@@ -114,7 +115,6 @@ function Admin({ user }) {
           component={ProjectLinkTypes}
         />
         <Route path="/ui/admin/project-types" component={ProjectTypes} />
-        <Route path="/ui/admin/teams" component={Teams} />
       </div>
     </Fragment>
   )

@@ -66,7 +66,6 @@ function Field({
             options={options}
             placeholder={placeholder}
             required={required}
-            value={value}
           />
         )}
         {type === 'text' && (
@@ -92,10 +91,14 @@ function Field({
           />
         )}
         {errorMessage !== null && (
-          <p className="mt-2 text-sm text-red-700 col-span-2">{errorMessage}</p>
+          <p className="ml-2 mt-2 text-sm text-red-700 col-span-2">
+            {errorMessage}
+          </p>
         )}
         {errorMessage === null && description !== undefined && (
-          <p className="mt-2 text-sm text-gray-500 col-span-2">{description}</p>
+          <p className="ml-2 mt-2 text-sm text-gray-500 col-span-2">
+            {description}
+          </p>
         )}
       </div>
     </div>
@@ -129,7 +132,11 @@ Field.propTypes = {
   title: PropTypes.oneOfType([PropTypes.string, PropTypes.element]).isRequired,
   type: PropTypes.oneOf(['icon', 'number', 'select', 'text', 'textarea'])
     .isRequired,
-  value: PropTypes.oneOfType([PropTypes.number, PropTypes.string])
+  value: PropTypes.oneOfType([
+    PropTypes.number,
+    PropTypes.string,
+    PropTypes.arrayOf(PropTypes.string)
+  ])
 }
 
 export { Field }

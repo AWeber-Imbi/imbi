@@ -11,9 +11,6 @@ export const jsonSchema = {
     description: {
       oneOf: [{ type: 'string' }, { type: 'null' }]
     },
-    text_class: {
-      type: 'string'
-    },
     icon_class: {
       type: 'string'
     }
@@ -25,6 +22,5 @@ export const jsonSchema = {
 export const propTypes = {
   name: PropTypes.string.isRequired,
   description: PropTypes.string,
-  text_class: PropTypes.string,
   icon_class: PropTypes.string
 }

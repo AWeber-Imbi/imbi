@@ -39,7 +39,6 @@ describe('Field', () => {
           title="Select Test"
           options={[{ label: 'Foo', value: 'foo' }]}
           type="select"
-          value="foo"
         />
       </div>
     )
@@ -48,7 +47,6 @@ describe('Field', () => {
     const field = screen.getByTestId('field').children[0].children[1]
       .children[0]
     expect(field).toBeInstanceOf(HTMLSelectElement)
-    expect(field).toHaveValue('foo')
   })
 
   it('should render a TextArea', () => {

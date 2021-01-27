@@ -15,17 +15,17 @@ export const jsonSchema = {
     icon_class: {
       oneOf: [{ type: 'string' }, { type: 'null' }]
     },
-    group: {
-      oneOf: [{ type: 'string' }, { type: 'null' }]
+    maintained_by: {
+      oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }]
     }
   },
   additionalProperties: false,
   required: ['name', 'slug']
 }
 
-export const Team = {
+export const Namespace = {
   name: PropTypes.string.isRequired,
   slug: PropTypes.string.isRequired,
   icon_class: PropTypes.string,
-  group: PropTypes.string
+  maintained_by: PropTypes.string
 }

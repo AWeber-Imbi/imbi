@@ -2,22 +2,22 @@ import PropTypes from 'prop-types'
 import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { validate } from 'jsonschema'
-import { default as slugify} from "slugify";
+import { default as slugify } from 'slugify'
 
 import { Alert, Button, Field, Icon } from '../../components'
 import { FetchContext } from '../../contexts'
 import { fetchMetadata } from './metadata'
 import { jsonSchema } from '../../schema/Project'
-import {ulidAsUUID} from "../../ulid"
 import { User } from '../../schema'
-import {httpPost} from "../../utils";
+import { httpPost } from '../../utils'
 
 function NewProject() {
   const { t } = useTranslation()
   const emptyErrors = {
+    namespace: null,
     name: null,
-    slug: null,
     owned_by: null,
+    description: null,
     project_type: null,
     data_center: null,
     environments: null,
@@ -35,18 +35,19 @@ function NewProject() {
     dataCenters: null,
     deploymentTypes: null,
     environments: null,
+    namespaces: null,
     orchestrationSystems: null,
     projectLinkTypes: null,
     projectTypes: null,
-    ready: false,
-    teams: null
+    ready: false
   })
   const [saving, setSaving] = useState(false)
   const [formValues, setFormValues] = useState({
-    id: ulidAsUUID(),
+    namespace: null,
     name: null,
     slug: null,
     owned_by: null,
+    description: null,
     project_type: null,
     data_center: null,
     environments: null,
@@ -67,19 +68,13 @@ function NewProject() {
   }
 
   function onValueChange(key, value) {
-    const values = {...formValues, [key]: value}
-    if (key === 'name')
-      values.slug = slugify(value).toLowerCase()
+    const values = { ...formValues, [key]: value }
+    if (key === 'name') values.slug = slugify(value).toLowerCase()
     setFormValues(values)
   }
 
   useEffect(() => {
-    console.log('Errors', errors)
-  }, [errors])
-
-  useEffect(() => {
     const result = validate(formValues, jsonSchema)
-    console.log('Errors', result.errors)
     if (result.errors.length > 0) {
       const errors = { ...emptyErrors }
       result.errors.map((err) => {
@@ -103,7 +98,7 @@ function NewProject() {
   }, [metadata])
 
   return (
-    <div className="flex-auto flex flex-row flex-grow max-h-full px-6 py-4 w-full">
+    <div className="flex-grow flex flex-row px-6 py-4 w-full">
       <div className="flex-shrink pr-20 text-gray-600">
         <h1 className="inline-block text-xl mb-3">
           <Icon icon="fas folder-plus" className="mr-2" />
@@ -120,16 +115,9 @@ function NewProject() {
               Links
             </a>
           </li>
-          <li className="mb-2">
-            <a
-              className="text-gray-600 hover:text-blue-600"
-              href="#dependencies">
-              Dependencies
-            </a>
-          </li>
         </ol>
       </div>
-      <div className="flex-auto bg-white p-5 overflow-y-scroll rounded-lg text-gray-700">
+      <div className="flex-auto bg-white max-w-screen-lg p-5 rounded-lg text-gray-700">
         {errorMessage !== null && (
           <Alert className="mb-3" level="error">
             {errorMessage}
@@ -143,10 +131,19 @@ function NewProject() {
           </div>
           <div className="border-t border-gray-300 w-full pl-5">
             <Field
+              title={t('project.namespace')}
+              name="namespace"
+              type="select"
+              autoFocus={true}
+              options={metadata.namespaces !== null ? metadata.namespaces : []}
+              onChange={onValueChange}
+              errorMessage={errors.namespace}
+              required={true}
+            />
+            <Field
               title={t('project.name')}
               name="name"
               type="text"
-              autoFocus={true}
               errorMessage={errors.name}
               onChange={onValueChange}
               required={true}
@@ -162,15 +159,6 @@ function NewProject() {
               value={formValues.slug}
             />
             <Field
-              title={t('project.team')}
-              name="owned_by"
-              type="select"
-              options={metadata.teams !== null ? metadata.teams : []}
-              onChange={onValueChange}
-              errorMessage={errors.owned_by}
-              required={true}
-            />
-            <Field
               title={t('project.projectType')}
               name="project_type"
               type="select"
@@ -180,6 +168,16 @@ function NewProject() {
               onChange={onValueChange}
               errorMessage={errors.project_type}
               required={true}
+            />
+            <Field
+              title={t('common.description')}
+              name="description"
+              description={t(
+                'Provide a high-level purpose and context for the project'
+              )}
+              type="textarea"
+              onChange={onValueChange}
+              errorMessage={errors.description}
             />
             <Field
               title={t('project.dataCenter')}
@@ -264,7 +262,10 @@ function NewProject() {
               <sup className="mr-2">*</sup> {t('common.required')}
             </div>
             <div className="flex-grow text-right space-x-3">
-              <Button className="btn-green" disabled={formReady !== true} type="submit">
+              <Button
+                className="btn-green"
+                disabled={formReady !== true}
+                type="submit">
                 {saving ? t('common.saving') : t('common.save')}
               </Button>
             </div>

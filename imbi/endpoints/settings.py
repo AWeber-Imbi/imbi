@@ -63,6 +63,14 @@ class Groups(base.CollectionRequestHandler):
      ORDER BY "name" ASC;""")
 
 
+class Namespaces(base.CollectionRequestHandler):
+
+    NAME = 'settings-namespaces'
+    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    SELECT "name", slug, icon_class, maintained_by
+      FROM v1.namespaces ORDER BY "name" ASC;""")
+
+
 class OrchestrationSystems(base.CollectionRequestHandler):
 
     NAME = 'settings-orchestration-systems'
@@ -85,7 +93,7 @@ class ProjectLinkTypes(base.CollectionRequestHandler):
 
     NAME = 'settings-project-link-types'
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
-    SELECT link_type icon_class
+    SELECT link_type, icon_class
       FROM v1.project_link_types
      ORDER BY link_type ASC;""")
 
@@ -94,9 +102,9 @@ class ProjectFactTypes(base.CollectionRequestHandler):
 
     NAME = 'settings-project-fact-types'
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
-    SELECT id, "name" project_type, weight
+    SELECT project_type, fact_type, weight
       FROM v1.project_fact_types
-     ORDER BY "name" ASC;""")
+     ORDER BY project_type, fact_type""")
 
 
 class ProjectTypes(base.CollectionRequestHandler):
@@ -106,14 +114,6 @@ class ProjectTypes(base.CollectionRequestHandler):
     SELECT "name", description, slug, icon_class
       FROM v1.project_types
      ORDER BY "name" ASC;""")
-
-
-class Namespaces(base.CollectionRequestHandler):
-
-    NAME = 'settings-namespaces'
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
-    SELECT "name", slug, icon_class, maintained_by
-      FROM v1.namespaces ORDER BY "name" ASC;""")
 
 
 URLS = [
