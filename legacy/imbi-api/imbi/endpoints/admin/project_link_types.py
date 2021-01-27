@@ -14,7 +14,7 @@ class CRUDRequestHandler(base.CRUDRequestHandler):
     DELETE FROM v1.project_link_types WHERE link_type=%(link_type)s;""")
 
     GET_SQL = re.sub(r'\s+', ' ', """\
-    SELECT link_type, created_at, created_by, last_modified_at, 
+    SELECT link_type, created_at, created_by, last_modified_at,
            last_modified_by, icon_class
       FROM v1.project_link_types
      WHERE link_type=%(link_type)s;""")

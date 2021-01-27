@@ -29,8 +29,8 @@ class CRUDRequestHandler(base.CRUDRequestHandler):
      WHERE "name"=%(name)s;""")
 
     POST_SQL = re.sub(r'\s+', ' ', """\
-    INSERT INTO v1.project_types 
+    INSERT INTO v1.project_types
                 ("name", created_by, description, slug, icon_class)
-         VALUES (%(name)s, %(username)s, %(description)s, %(slug)s, 
+         VALUES (%(name)s, %(username)s, %(description)s, %(slug)s,
                  %(icon_class)s)
       RETURNING "name";""")
