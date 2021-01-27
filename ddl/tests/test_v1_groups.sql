@@ -16,7 +16,7 @@ SELECT results_eq(
   'SELECT created_at is not null for test1');
 
 SELECT results_eq(
-  $$SELECT modified_at IS NULL FROM v1.groups WHERE name = 'test1'$$,
+  $$SELECT last_modified_at IS NULL FROM v1.groups WHERE name = 'test1'$$,
   $$VALUES (TRUE)$$,
   'SELECT modified_at is null for test1');
 
