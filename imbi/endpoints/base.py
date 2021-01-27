@@ -59,6 +59,7 @@ class RequestHandler(postgres.RequestHandlerMixin,
     APPLICATION_JSON = 'application/json'
     TEXT_HTML = 'text/html'
     NAME = 'Base'
+    ITEM_NAME = ''
 
     def __init__(self,
                  application,
@@ -210,9 +211,11 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
         try:
             self.application.validate_request(self.request)
         except DeserializeError as err:
+            self.logger.debug('Request failed to deserialize: %s', err)
             raise problemdetails.Problem(
                 status_code=400, title='Bad Request', detail=str(err))
         except InvalidSecurity as err:
+            self.logger.debug('Invalid OpenAPI spec security: %s', err)
             raise problemdetails.Problem(
                 status_code=500, title='OpenAPI security error',
                 detail=str(err))
@@ -224,10 +227,11 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
                 status_code=415, title='Unsupported Media Type',
                 detail=str(err))
         except PathNotFound as err:
-            self.logger.debug(err)
+            self.logger.error('OpenAPI Spec Error: %s', err)
             raise problemdetails.Problem(
                 status_code=500, title='OpenAPI Spec Error', detail=str(err))
         except ValidateError as err:
+            self.logger.debug('Request failed to validate: %s', err)
             raise problemdetails.Problem(
                 status_code=400, title='Bad Request',
                 detail='The request did not validate',
@@ -275,8 +279,11 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             raise web.HTTPError(405)
         await self._post(kwargs)
 
-    def send_response(self, value: dict) -> None:
+    def send_response(self, value: typing.Union[dict, list]) -> None:
         """Send the response to the client"""
+        if isinstance(value, list):
+            return super().send_response(value)
+
         self._add_last_modified_header(
             value.get('last_modified_at', value['created_at']))
         for key in {'created_at', 'last_modified_at'}:
@@ -287,9 +294,11 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             args = [str(value[k]) for k in self.ID_KEY]
         else:
             args = [str(value[self.ID_KEY])]
+
         try:
-            self._add_self_link(self.reverse_url(self.NAME, *args))
-        except KeyError:
+            self._add_self_link(
+                self.reverse_url(self.ITEM_NAME or self.NAME, *args))
+        except (AssertionError, KeyError):
             self.logger.debug('Failed to reverse URL for %s %r',
                               self.NAME, args)
         self._add_link_header()
@@ -355,7 +364,6 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             updated['current_{}'.format(self.ID_KEY)] = kwargs[self.ID_KEY]
         updated['username'] = self._current_user.username
 
-        LOGGER.debug('Patching %s: %r', self.PATCH_SQL, updated)
         result = await self.postgres_execute(
             self.PATCH_SQL, updated,
             'patch-{}'.format(self.NAME))
@@ -373,13 +381,15 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             for key in self.ID_KEY:
                 if key not in values and key in kwargs:
                     values[key] = kwargs[key]
+        elif self.ID_KEY not in values and self.ID_KEY in kwargs:
+            values[self.ID_KEY] = kwargs[self.ID_KEY]
 
         # Set defaults of None for all fields in insert
         for name in self.FIELDS:
             if name not in values:
-                values[name] = self.DEFAULTS.get(name, None)
+                values[name] = self.DEFAULTS.get(name)
+
         values['username'] = self._current_user.username
-        self.logger.debug('Executing POST query %s, %r', self.NAME, values)
         result = await self.postgres_execute(
             self.POST_SQL, values, 'post-{}'.format(self.NAME))
         if not result.row_count:
@@ -390,14 +400,17 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         await self._get(self._get_query_kwargs(result.row))
 
 
-class ItemsRequestHandler(AuthenticatedRequestHandler):
+class CollectionRequestHandler(CRUDRequestHandler):
 
-    GET_SQL = """SELECT * FROM pg_tables WHERE schemaname = 'v1';"""
+    DEFAULTS = {}
+    ID_KEY: typing.Union[str, list] = 'id'
+    FIELDS = None
+    GET_NAME = None  # Used to create link headers for POST requests
+    COLLECTION_SQL = """SELECT * FROM pg_tables WHERE schemaname = 'v1';"""
     TTL = 300
 
     async def get(self, *args, **kwargs):
-        if self._respond_with_html:
-            return self.render('index.html')
         result = await self.postgres_execute(
-            self.GET_SQL, metric_name='get-{}'.format(self.NAME))
+            self.COLLECTION_SQL, kwargs,
+            metric_name='get-{}'.format(self.NAME))
         self.send_response(result.rows)
