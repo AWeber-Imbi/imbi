@@ -5,7 +5,6 @@ import { CRUD, Error } from '../../components'
 import { FetchContext } from '../../contexts'
 import { fetchProjectTypes } from '../../settings'
 import { jsonSchema } from '../../schema/ProjectFactType'
-import { ulidAsUUID } from '../../ulid'
 
 export function ProjectFactTypes() {
   const fetch = useContext(FetchContext)
@@ -40,7 +39,7 @@ export function ProjectFactTypes() {
           collectionPath="/settings/project_fact_types"
           columns={[
             {
-              title: t('admin.projectTypes.itemName'),
+              title: t('admin.projectFactTypes.projectType'),
               name: 'project_type',
               type: 'select',
               options: projectTypes,
@@ -49,8 +48,8 @@ export function ProjectFactTypes() {
               }
             },
             {
-              title: t('common.name'),
-              name: 'name',
+              title: t('admin.projectFactTypes.factType'),
+              name: 'fact_type',
               type: 'text',
               tableOptions: {
                 headerClassName: 'w-4/12'
@@ -62,20 +61,10 @@ export function ProjectFactTypes() {
               type: 'number',
               minimum: 0,
               maximum: 100,
-              description: t('admin.projectFactTypes.description'),
+              description: t('admin.projectFactTypes.weightDescription'),
               tableOptions: {
                 className: 'text-center',
                 headerClassName: 'w-2/12 text-center'
-              }
-            },
-            {
-              title: t('common.id'),
-              name: 'id',
-              default: ulidAsUUID(),
-              type: 'text',
-              format: 'uuid',
-              tableOptions: {
-                hide: true
               }
             }
           ]}

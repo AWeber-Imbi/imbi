@@ -4,16 +4,12 @@ export const jsonSchema = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   type: 'object',
   properties: {
-    id: {
-      type: 'string',
-      format: 'uuid'
-    },
-    name: {
-      type: 'string',
-      minLength: 3
-    },
     project_type: {
       type: 'string'
+    },
+    fact_type: {
+      type: 'string',
+      minLength: 3
     },
     weight: {
       type: 'number',
@@ -22,12 +18,11 @@ export const jsonSchema = {
     }
   },
   additionalProperties: false,
-  required: ['id', 'name', 'project_type', 'weight']
+  required: ['project_type', 'fact_type', 'weight']
 }
 
 export const propTypes = {
-  id: PropTypes.string.isRequired,
-  name: PropTypes.string.isRequired,
   project_type: PropTypes.string.isRequired,
+  fact_type: PropTypes.string.isRequired,
   weight: PropTypes.number.isRequired
 }

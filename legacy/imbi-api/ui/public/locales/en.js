@@ -103,6 +103,16 @@ export default {
             uniqueViolation: 'An environment with the same name already exists'
           }
         },
+        namespaces: {
+          collectionName: 'Namespaces',
+          itemName: 'Namespace',
+          maintainedBy: 'Managed By',
+          maintainedByDescription:
+            'Groups that have access to manage projects in this namespace',
+          errors: {
+            uniqueViolation: 'A namespace with the same name already exists'
+          }
+        },
         orchestrationSystems: {
           collectionName: 'Orchestration Systems',
           itemName: 'Orchestration System',
@@ -114,9 +124,11 @@ export default {
         projectFactTypes: {
           collectionName: 'Project Fact Types',
           itemName: 'Project Fact Type',
-          description:
-            'The weight from 0 to 100 of the total score for a project. Total weight should across all types for a project type should not exceed 100.',
+          projectType: 'Project Type',
+          factType: 'Fact Type',
           weight: 'Weight',
+          weightDescription:
+            'The weight from 0 to 100 of the total score for a project. Total weight should across all types for a project type should not exceed 100.',
           errors: {
             uniqueViolation:
               'A project fact type with the same name already exists'
@@ -137,13 +149,6 @@ export default {
           errors: {
             uniqueViolation: 'A project type with the same name already exists'
           }
-        },
-        teams: {
-          collectionName: 'Teams',
-          itemName: 'Team',
-          errors: {
-            uniqueViolation: 'A team with the same name already exists'
-          }
         }
       },
       login: {
@@ -162,10 +167,9 @@ export default {
         title: 'Add Operations Log Entry'
       },
       project: {
-        name: 'Project Name',
-        team: 'Owning Team',
-        loadingTeams: 'Loading Teams',
-        selectTeam: 'Select a Team',
+        name: 'Name',
+        namespace: 'Namespace',
+        selectNamespace: 'Select a Namespace',
         projectType: 'Project Type',
         dataCenter: 'Data Center',
         environments: 'Environments',

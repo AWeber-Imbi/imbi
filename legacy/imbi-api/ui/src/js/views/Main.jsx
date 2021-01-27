@@ -9,7 +9,7 @@ import { User as UserSchema } from '../schema'
 
 function Main({ user }) {
   return (
-    <main className="flex flex-row flex-grow max-h-screen max-w-full">
+    <main className="flex flex-row flex-grow max-w-full">
       <Switch>
         {user.permissions.includes('admin') && (
           <Route path="/ui/admin">

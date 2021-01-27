@@ -19,7 +19,7 @@ export function Environments() {
           name: 'name',
           type: 'text',
           tableOptions: {
-            headerClassName: 'w-2/12'
+            headerClassName: 'w-3/12'
           }
         },
         {
@@ -32,23 +32,13 @@ export function Environments() {
           }
         },
         {
-          title: t('common.textClass'),
-          name: 'text_class',
-          type: 'text',
-          placeholder: '',
-          default: '',
-          tableOptions: {
-            headerClassName: 'w-2/12'
-          }
-        },
-        {
           title: t('common.iconClass'),
           name: 'icon_class',
           type: 'icon',
           placeholder: 'fas tree',
           default: 'fas tree',
           tableOptions: {
-            headerClassName: 'w-2/12'
+            headerClassName: 'w-3/12'
           }
         }
       ]}

@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next'
 
 import { CRUD, Error } from '../../components'
 import { fetchGroups } from '../../settings'
-import { jsonSchema } from '../../schema/Team'
+import { jsonSchema } from '../../schema/Namespace'
 
-export function Teams() {
+export function Namespaces() {
   const { t } = useTranslation()
   const [errorMessage, setErrorMessage] = useState(null)
   const [groups, setGroups] = useState(null)
@@ -29,17 +29,17 @@ export function Teams() {
     <Fragment>
       {errorMessage && <Error>{{ errorMessage }}</Error>}
       <CRUD
-        addPath="/admin/team"
-        collectionIcon="fas users"
-        collectionName={t('admin.teams.collectionName')}
-        collectionPath="/settings/teams"
+        addPath="/admin/namespace"
+        collectionIcon="fas boxes"
+        collectionName={t('admin.namespaces.collectionName')}
+        collectionPath="/settings/namespaces"
         columns={[
           {
             title: t('common.name'),
             name: 'name',
             type: 'text',
             tableOptions: {
-              headerClassName: 'w-3/12'
+              headerClassName: 'w-4/12'
             }
           },
           {
@@ -56,28 +56,30 @@ export function Teams() {
             title: t('common.iconClass'),
             name: 'icon_class',
             type: 'icon',
-            placeholder: 'fas users',
-            default: 'fas users',
+            placeholder: 'fas boxes',
+            default: 'fas boxes',
             tableOptions: {
-              headerClassName: 'w-2/12'
+              headerClassName: 'w-3/12'
             }
           },
           {
-            title: t('common.group'),
-            name: 'group',
+            title: t('admin.namespaces.maintainedBy'),
+            name: 'maintained_by',
+            description: t('admin.namespaces.maintainedByDescription'),
+            multiple: true,
             options: groups,
             type: 'select',
             tableOptions: {
-              headerClassName: 'w-2/12'
+              hide: true
             }
           }
         ]}
         errorStrings={{
-          'Unique Violation': t('admin.teams.errors.uniqueViolation')
+          'Unique Violation': t('admin.namespaces.errors.uniqueViolation')
         }}
         itemKey="name"
-        itemName={t('admin.teams.itemName')}
-        itemPath="/admin/team/{{value}}"
+        itemName={t('admin.namespaces.itemName')}
+        itemPath="/admin/namespace/{{value}}"
         jsonSchema={jsonSchema}
       />
     </Fragment>

@@ -31,7 +31,7 @@ describe('Select', () => {
     expect(select).toHaveValue('baz')
   })
 
-  it('should render successfully values passed in', () => {
+  it('should render successfully with values passed in', () => {
     render(
       <div data-testid="select">
         <Select
@@ -39,7 +39,6 @@ describe('Select', () => {
           name="test"
           options={options}
           placeholder="Select"
-          value="bar"
         />
       </div>
     )
@@ -48,7 +47,6 @@ describe('Select', () => {
     expect(select).toHaveClass('form-input')
     expect(select).not.toHaveClass('border-red-700')
     expect(select).toHaveAttribute('placeholder', 'Select')
-    expect(select).toHaveValue('bar')
   })
 
   it('should show the error state', () => {
@@ -88,12 +86,10 @@ describe('Select', () => {
           name="test"
           options={options}
           onChange={mockCallback}
-          value="foo"
         />
       </div>
     )
     const select = screen.getByTestId('select').children[0]
-    expect(select).toHaveValue('foo')
     fireEvent.change(select, { target: { value: 'bar' } })
     expect(select).toHaveValue('bar')
     expect(mockCallback.mock.calls.length).toBe(1)

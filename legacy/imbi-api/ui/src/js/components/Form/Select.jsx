@@ -37,8 +37,10 @@ function Select({
         event.preventDefault()
         let value = event.target.value
         if (multiple === true)
-          value = Array.from(event.target.selectedOptions, option => option.value);
-        console.log(name, value)
+          value = Array.from(
+            event.target.selectedOptions,
+            (option) => option.value
+          )
         if (onChange !== undefined) onChange(name, value)
       }}
       onFocus={(event) => {

@@ -10,7 +10,7 @@ export function ConfigurationSystems() {
   return (
     <CRUD
       addPath="/admin/configuration_system"
-      collectionIcon="fas box"
+      collectionIcon="fas tools"
       collectionName={t('admin.configurationSystems.collectionName')}
       collectionPath="/settings/configuration_systems"
       columns={[

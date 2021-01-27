@@ -19,41 +19,49 @@ export const jsonSchema = {
     owned_by: {
       type: 'string'
     },
+    description: {
+      type: 'string'
+    },
     project_type: {
       type: 'string'
     },
     data_center: {
-      oneOf: [{type: 'string'}, {type: 'null'}]
+      oneOf: [{ type: 'string' }, { type: 'null' }]
     },
     environments: {
-      oneOf: [{
-        type: 'array',
-        items: {
-          type: 'string'
-        }
-      }, {type: 'null'}]
-
+      oneOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'string'
+          }
+        },
+        { type: 'null' }
+      ]
     },
     configuration_system: {
-      oneOf: [{type: 'string'}, {type: 'null'}]
+      oneOf: [{ type: 'string' }, { type: 'null' }]
     },
     deployment_type: {
-      oneOf: [{type: 'string'}, {type: 'null'}]
+      oneOf: [{ type: 'string' }, { type: 'null' }]
     },
     orchestration_system: {
-      oneOf: [{type: 'string'}, {type: 'null'}]
+      oneOf: [{ type: 'string' }, { type: 'null' }]
     },
     automations: {
       type: 'object'
     },
     dependencies: {
-      oneOf: [{
-        type: 'array',
-        items: {
-          type: 'string',
-          format: 'uuid'
-        }
-      }, {type: 'null'}]
+      oneOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'uuid'
+          }
+        },
+        { type: 'null' }
+      ]
     }
   },
   additionalProperties: false,

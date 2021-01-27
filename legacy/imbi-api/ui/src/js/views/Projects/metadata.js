@@ -7,11 +7,11 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     dataCenters: null,
     deploymentTypes: null,
     environments: null,
+    namespaces: null,
     orchestrationSystems: null,
     projectLinkTypes: null,
     projectTypes: null,
-    ready: false,
-    teams: null
+    ready: false
   }
   let erred = false
 
@@ -75,6 +75,15 @@ export function fetchMetadata(fetch, onSuccess, onError) {
   )
   fetchSettings(
     fetch,
+    '/settings/namespaces',
+    true,
+    (data) => {
+      onData('namespaces', data)
+    },
+    onErr
+  )
+  fetchSettings(
+    fetch,
     '/settings/orchestration_systems',
     true,
     (data) => {
@@ -97,15 +106,6 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     true,
     (data) => {
       onData('projectTypes', data)
-    },
-    onErr
-  )
-  fetchSettings(
-    fetch,
-    '/settings/teams',
-    true,
-    (data) => {
-      onData('teams', data)
     },
     onErr
   )
