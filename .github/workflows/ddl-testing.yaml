@@ -1,10 +1,12 @@
 name: DDL Testing
 on:
   push:
+    branches: ["*"]
     paths:
       - "ddl/**"
     tags-ignore: ["*"]
   pull_request:
+    branches: ["*"]
     paths:
       - "ddl/**"
   workflow_dispatch: {}
