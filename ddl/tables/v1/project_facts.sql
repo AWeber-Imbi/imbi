@@ -1,8 +1,8 @@
 SET search_path=v1;
 
 CREATE TABLE IF NOT EXISTS project_facts (
-  project_id        INT4                      NOT NULL,
-  fact_type_id      INT4                      NOT NULL,
+  project_id        INTEGER                   NOT NULL,
+  fact_type_id      INTEGER                   NOT NULL,
   created_at        TIMESTAMP WITH TIME ZONE  NOT NULL  DEFAULT CURRENT_TIMESTAMP,
   created_by        TEXT                      NOT NULL,
   last_modified_at  TIMESTAMP WITH TIME ZONE,
