@@ -24,22 +24,21 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         result = self.fetch('/admin/namespace', method='POST',
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
-        print(result.body)
         self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        url = self.get_url('/admin/namespace/{}'.format(response['id']))
+        record['id'] = response['id']
+        self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
-            result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url('/admin/namespace/{}'.format(record['name']))))
-        self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 namespaces.CRUDRequestHandler.TTL))
-        new_value = json.loads(result.body.decode('utf-8'))
         self.assertEqual(
-            new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+            response['created_by'], self.USERNAME[self.ADMIN_ACCESS])
         for field in ['created_by', 'last_modified_by']:
-            del new_value[field]
-        self.assertDictEqual(new_value, record)
+            del response[field]
+        self.assertDictEqual(response, record)
 
         # PATCH
         updated = dict(record)
@@ -48,59 +47,48 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         patch_value = patch.to_string().encode('utf-8')
 
         result = self.fetch(
-            '/admin/namespace/{}'.format(record['name']), method='PATCH',
-            body=patch_value, headers=self.headers)
+            url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
-        new_value = json.loads(result.body.decode('utf-8'))
+        self.assert_link_header_equals(result, url)
+        response = json.loads(result.body.decode('utf-8'))
         for field in ['created_by', 'last_modified_by']:
             self.assertEqual(
-                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
-            del new_value[field]
-        self.assertDictEqual(new_value, updated)
+                response[field], self.USERNAME[self.ADMIN_ACCESS])
+            del response[field]
+        self.assertDictEqual(response, updated)
 
         # Patch no change
         result = self.fetch(
-            '/admin/namespace/{}'.format(record['name']), method='PATCH',
-            body=patch_value, headers=self.headers)
+            url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 304)
 
         # GET
-        result = self.fetch(
-            '/admin/namespace/{}'.format(record['name']),
-            headers=self.headers)
+        result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 200)
+        self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
-        self.assertEqual(
-            result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url('/admin/namespace/{}'.format(record['name']))))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 namespaces.CRUDRequestHandler.TTL))
 
-        new_value = json.loads(result.body.decode('utf-8'))
+        response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(
-            new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+            response['created_by'], self.USERNAME[self.ADMIN_ACCESS])
         for field in ['created_by', 'last_modified_by']:
-            del new_value[field]
-        self.assertDictEqual(new_value, updated)
+            del response[field]
+        self.assertDictEqual(response, updated)
 
         # DELETE
-        result = self.fetch(
-            '/admin/namespace/{}'.format(record['name']),
-            method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(
-            '/admin/namespace/{}'.format(record['name']),
-            headers=self.headers)
+        result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
-        result = self.fetch(
-            '/admin/namespace/{}'.format(record['name']),
-            method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
@@ -113,21 +101,19 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
         self.assertEqual(result.code, 200)
-        new_value = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(new_value['name'], record['name'])
-        self.assertEqual(new_value['slug'], record['slug'])
-        self.assertIsNotNone(new_value['icon_class'])
+        response = json.loads(result.body.decode('utf-8'))
+        url = self.get_url('/admin/namespace/{}'.format(response['id']))
+        self.assert_link_header_equals(result, url)
+        self.assertEqual(response['name'], record['name'])
+        self.assertEqual(response['slug'], record['slug'])
+        self.assertIsNotNone(response['icon_class'])
 
         # DELETE
-        result = self.fetch(
-            '/admin/namespace/{}'.format(record['name']),
-            method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(
-            '/admin/namespace/{}'.format(record['name']),
-            headers=self.headers)
+        result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 404)
 
     def test_method_not_implemented(self):
