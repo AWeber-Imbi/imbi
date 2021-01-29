@@ -14,6 +14,11 @@ schemata/v1.sql
 types/v1/cookie_cutter_type.sql
 types/v1/entity_type.sql
 
+-- Functions
+functions/v1/group_name_from_ldap_dn.sql
+functions/v1/insert_project_fact_history.sql
+functions/v1/maintain_group_membership_from_ldap_groups.sql
+
 -- Tables
 tables/v1/configuration_systems.sql
 tables/v1/data_centers.sql
@@ -35,7 +40,3 @@ tables/v1/users.sql
 tables/v1/authentication_tokens.sql
 tables/v1/groups.sql
 tables/v1/group_members.sql
-
--- Functions
-functions/v1/group_name_from_ldap_dn.sql
-functions/v1/maintain_group_membership_from_ldap_groups.sql

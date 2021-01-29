@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS project_facts (
   FOREIGN KEY (namespace, "name") REFERENCES projects (namespace, "name") ON UPDATE CASCADE ON DELETE CASCADE
 );
 
+CREATE TRIGGER project_facts_ins_project_history AFTER INSERT OR UPDATE ON project_facts
+    FOR EACH ROW EXECUTE PROCEDURE insert_project_fact_history();
+
 COMMENT ON TABLE project_facts IS 'Stores the current facts for a project';
 COMMENT ON COLUMN project_facts.namespace IS 'The project namespace';
 COMMENT ON COLUMN project_facts.name IS 'The project name';
