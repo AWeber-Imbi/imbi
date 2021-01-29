@@ -64,12 +64,6 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: project_type_id
-        in: path
-        description: Project Type ID
-        required: true
-        schema:
-          type: number
       - name: fact_type_id
         in: path
         description: Fact Type ID
