@@ -33,7 +33,7 @@ write:
   properties:
     fact_type_id:
       description: The ID of the fact type the option is for
-      type: string
+      type: number
     value:
       description: The option value
       type: string

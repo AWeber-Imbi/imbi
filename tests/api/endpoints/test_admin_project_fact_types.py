@@ -16,19 +16,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         super().setUp()
         self.project_type = self.create_project_type()
 
-    def create_project_type(self) -> str:
-        record = {
-            'name': str(uuid.uuid4()),
-            'slug': str(uuid.uuid4()),
-            'description': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind'
-        }
-        result = self.fetch(
-            '/admin/project_type', method='POST',
-            body=json.dumps(record).encode('utf-8'), headers=self.headers)
-        self.assertEqual(result.code, 200)
-        return json.loads(result.body.decode('utf-8'))['id']
-
     def test_project_fact_type_lifecycle(self):
         record = {
             'project_type_id': self.project_type,

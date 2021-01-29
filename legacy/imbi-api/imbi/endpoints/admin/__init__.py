@@ -65,8 +65,7 @@ URLS = [
 
     web.url(r'/admin/project_fact_type',
             project_fact_types.CRUDRequestHandler),
-    web.url(r'/admin/project_fact_type/(?P<id>\d+)'
-            r'/(?P<fact_type>[\w_\-%\+]+)',
+    web.url(r'/admin/project_fact_type/(?P<id>\d+)',
             project_fact_types.CRUDRequestHandler,
             name='admin-project-fact-types'),
 
