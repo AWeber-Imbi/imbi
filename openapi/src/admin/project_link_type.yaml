@@ -8,10 +8,10 @@ paths:
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/project_link_type.yaml'
+              $ref: '../schemas/project_link_type.yaml#/write'
             examples:
               record:
-                $ref: '#/components/examples/record'
+                $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
       tags: [Project Link Types]
@@ -64,17 +64,24 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: link_type
+      - name: id
         in: path
-        description: Link Type Name
+        description: Link Type Surrogate ID
         required: true
         schema:
-          type: string
-          pattern: '[\w_]+'
+          type: number
 
 components:
   examples:
-    record:
+    read:
+      summary: The record when returned from the API
+      value:
+        id: 1
+        created_by: test
+        last_modified_by: ~
+        link_type: documentation
+        icon_class: fab fa-bool
+    write:
       summary: A full link type record
       value:
         link_type: documentation
@@ -90,10 +97,10 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/project_link_type.yaml'
+            $ref: '../schemas/project_link_type.yaml#/read'
           examples:
             record:
-              $ref: '#/components/examples/record'
+              $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess
 

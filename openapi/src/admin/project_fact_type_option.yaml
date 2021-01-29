@@ -8,10 +8,10 @@ paths:
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/project_fact_type_option.yaml'
+              $ref: '../schemas/project_fact_type_option.yaml#/write'
             examples:
               record:
-                $ref: '#/components/examples/record'
+                $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
       tags: [Project Fact Type Options]
@@ -64,32 +64,28 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: project_type
+      - name: id
         in: path
-        description: Project Type
+        description: Fact Type Option ID
         required: true
         schema:
-          type: string
-      - name: fact_type
-        in: path
-        description: Fact Type
-        required: true
-        schema:
-          type: string
-      - name: value
-        in: path
-        description: The Fact Value
-        required: true
-        schema:
-          type: string
+          type: number
 
 components:
   examples:
-    record:
+    read:
       summary: A full project fact type option record
       value:
-        project_type: HTTP API
-        fact_type: Programming Language
+        id: 1
+        fact_type_id: 1
+        created_by: test
+        last_modified_by: ~
+        value: Python 3.5
+        weight: 50
+    write:
+      summary: A full project fact type option record
+      value:
+        fact_type_id: 1
         value: Python 3.5
         weight: 50
 
@@ -103,10 +99,10 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/project_fact_type_option.yaml'
+            $ref: '../schemas/project_fact_type_option.yaml#/read'
           examples:
             record:
-              $ref: '#/components/examples/record'
+              $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess
 

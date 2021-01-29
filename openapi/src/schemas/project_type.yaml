@@ -1,23 +1,54 @@
-title: Project Type
-description: |
-  Used to describe the types of operational project_types for projects
-type: object
-properties:
-  name:
-    description: The display name for a project type
-    type: string
-  description:
-    description: A description of the project type
-    type: string
-    nullable: true
-  slug:
-    description: The slug for project types, used in filtering
-    type: string
-  icon_class:
-    description: Font Awesome UI icon class
-    type: string
-required:
-  - name
-  - slug
-  - icon_class
-additionalProperties: false
+read:
+  title: Project Type
+  description: |
+    Used to describe the types of operational project_types for projects
+  type: object
+  properties:
+    id:
+      description: The surrogate key for URLs and table linking
+      type: number
+    created_by:
+      description: The user that created the record
+      type: string
+    last_modified_by:
+      description: The user that last modified the record
+      type: string
+    name:
+      description: The display name for a project type
+      type: string
+    description:
+      description: A description of the project type
+      type: string
+      nullable: true
+    slug:
+      description: The slug for project types, used in filtering
+      type: string
+    icon_class:
+      description: Font Awesome UI icon class
+      type: string
+  additionalProperties: false
+
+write:
+  title: Project Type
+  description: |
+    Used to describe the types of operational project_types for projects
+  type: object
+  properties:
+    name:
+      description: The display name for a project type
+      type: string
+    description:
+      description: A description of the project type
+      type: string
+      nullable: true
+    slug:
+      description: The slug for project types, used in filtering
+      type: string
+    icon_class:
+      description: Font Awesome UI icon class
+      type: string
+  required:
+    - name
+    - slug
+    - icon_class
+  additionalProperties: false

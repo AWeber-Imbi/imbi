@@ -49,36 +49,35 @@ paths:
   /admin/group: { $ref: 'admin/group.yaml#/paths/create' }
   /admin/group/{name}: { $ref: 'admin/group.yaml#/paths/manage' }
   /admin/namespace: { $ref: 'admin/namespace.yaml#/paths/create' }
-  /admin/namespace/{namespace}: { $ref: 'admin/namespace.yaml#/paths/manage' }
+  /admin/namespace/{id}: { $ref: 'admin/namespace.yaml#/paths/manage' }
   /admin/orchestration_system:
     { $ref: 'admin/orchestration_system.yaml#/paths/create' }
   /admin/orchestration_system/{name}:
     { $ref: 'admin/orchestration_system.yaml#/paths/manage' }
   /admin/project_fact_type:
     { $ref: 'admin/project_fact_type.yaml#/paths/create' }
-  /admin/project_fact_type/{project_type}/{fact_type}:
+  /admin/project_fact_type/{project_type_id}/{fact_type_id}:
     { $ref: 'admin/project_fact_type.yaml#/paths/manage' }
   /admin/project_fact_type_option:
     { $ref: 'admin/project_fact_type_option.yaml#/paths/create' }
-  /admin/project_fact_type_option/{project_type}/{fact_type}/{value}:
+  /admin/project_fact_type_option/{id}:
     { $ref: 'admin/project_fact_type_option.yaml#/paths/manage' }
   /admin/project_link_type:
     { $ref: 'admin/project_link_type.yaml#/paths/create' }
-  /admin/project_link_type/{link_type}:
+  /admin/project_link_type/{id}:
     { $ref: 'admin/project_link_type.yaml#/paths/manage' }
   /admin/project_type: { $ref: 'admin/project_type.yaml#/paths/create' }
-  /admin/project_type/{name}: { $ref: 'admin/project_type.yaml#/paths/manage' }
+  /admin/project_type/{id}: { $ref: 'admin/project_type.yaml#/paths/manage' }
 
   /projects: { '$ref': 'project/projects.yaml#/paths/collection' }
-  /projects/{namespace}/{name}: { '$ref': 'project/project.yaml#/paths/manage' }
-  /projects/{namespace}/{name}/links:
-    { '$ref': 'project/links.yaml#/paths/collection' }
-  /projects/{namespace}/{name}/links/{link_type}:
+  /projects/{id}: { '$ref': 'project/project.yaml#/paths/manage' }
+  /projects/{id}/links: { '$ref': 'project/links.yaml#/paths/collection' }
+  /projects/{id}/links/{link_type_id}:
     { '$ref': 'project/link.yaml#/paths/manage' }
-  /projects/{namespace}/{name}/dependencies:
+  /projects/{id}/dependencies:
     { '$ref': 'project/dependencies.yaml#/paths/collection' }
-  ? /projects/{namespace}/{name}/dependencies/{dependency_namespace}/{dependency_name}
-  : { '$ref': 'project/dependency.yaml#/paths/manage' }
+  /projects/{id}/dependencies/{dependency_id}:
+    { '$ref': 'project/dependency.yaml#/paths/manage' }
 
   /settings/configuration_systems:
     { $ref: 'settings/configuration_systems.yaml#/paths/collection' }

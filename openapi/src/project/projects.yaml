@@ -14,17 +14,22 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/project.yaml'
+                  $ref: '../schemas/project.yaml#/read'
               examples:
                 records:
                   summary: Multiple project records
                   value:
-                    - namespace: Applications
+                    - id: 1
+                      created_by: test_user
+                      last_modified_by: ~
+                      namespace_id: 1
+                      namespace: Applications
+                      project_type_id: 1
+                      project_type: HTTP API
                       name: User Service
                       slug: user
                       description: |-
                         The user service is used to manage user specific data, including profiles and content.
-                      project_type: HTTP API
                       data_center: us-east-1
                       configuration_system: SSM Parameter Store
                       deployment_type: ecs-pipeline-deploy
@@ -45,10 +50,10 @@ paths:
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/project.yaml'
+              $ref: '../schemas/project.yaml#/write'
             examples:
               record:
-                $ref: './project.yaml#/components/examples/record'
+                $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
       tags: [Projects]
@@ -57,3 +62,23 @@ paths:
         '400': { $ref: '../components/responses.yaml#/RequestError' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '409': { $ref: '../components/responses.yaml#/Conflict' }
+
+components:
+  examples:
+    write:
+      summary: An example of the payload for creating a record
+      value:
+        namespace_id: 1
+        name: User Service
+        slug: user
+        description: |-
+          The user service is used to manage user specific data, including profiles and content.
+        project_type_id: 1
+        data_center: us-east-1
+        configuration_system: SSM Parameter Store
+        deployment_type: ecs-pipeline-deploy
+        orchestration_system: ECS
+        environments:
+          - Testing
+          - Staging
+          - Production

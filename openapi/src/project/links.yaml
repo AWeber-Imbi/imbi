@@ -14,18 +14,24 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/project_link.yaml'
+                  $ref: '../schemas/project_link.yaml#/read'
               examples:
                 records:
                   summary: Multiple group records
                   value:
-                    - namespace: Testing
-                      name: Test Project
+                    - project_id: 1
+                      link_type_id: 1
+                      created_by: test_user
+                      last_modified_by: ~
                       link_type: Documentation
+                      icon_class: fas book
                       url: https://imbi.readthedocs.io
-                    - namespace: Testing
-                      name: Test Project
+                    - project_id: 1
+                      link_type_id: 2
+                      created_by: test_user
+                      last_modified_by: ~
                       link_type: Repository
+                      icon_class: fab gitlab
                       url: https://gitlab.com/AWeber/Imbi
             application/msgpack:
               <<: *responseContent
@@ -38,10 +44,10 @@ paths:
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/project_link.yaml'
+              $ref: '../schemas/project_link.yaml#/write'
             examples:
               record:
-                $ref: './link.yaml#/components/examples/record'
+                $ref: '#/components/examples/record'
           application/msgpack:
             <<: *postContent
       tags: [Projects]
@@ -51,15 +57,18 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '409': { $ref: '../components/responses.yaml#/Conflict' }
     parameters:
-      - name: namespace
+      - name: id
         in: path
-        description: Project namespace
+        description: The Project ID
         required: true
         schema:
-          type: string
-      - name: name
-        in: path
-        description: Project name
-        required: true
-        schema:
-          type: string
+          type: number
+
+components:
+  examples:
+    record:
+      summary: A project link record
+      value:
+        project_id: 1
+        link_type_id: 1
+        url: https://imbi.readthedocs.io
