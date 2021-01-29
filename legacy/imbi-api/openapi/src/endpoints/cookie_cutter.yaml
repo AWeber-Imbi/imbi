@@ -79,7 +79,7 @@ components:
       value:
         name: k8s-rejected-consumer
         type: project
-        project_type: Consumer
+        project_type_id: 1
         description: A rejected consumer that runs in Kubernetes
         url: https://gitlab.com/aweber/cookiecutters/k8s-rejected-consumer.git
 

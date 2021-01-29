@@ -117,7 +117,7 @@ class TestCaseWithReset(TestCase):
 
     def create_project_fact_type(self) -> int:
         result = self.fetch(
-            '/admin/project_fact_type', method='POST', headers=self.headers,
+            '/project_fact_types', method='POST', headers=self.headers,
             body=json.dumps({
                 'project_type_id': self.project_type,
                 'fact_type': str(uuid.uuid4()),
@@ -128,7 +128,7 @@ class TestCaseWithReset(TestCase):
 
     def create_project_type(self) -> int:
         result = self.fetch(
-            '/admin/project_type', method='POST', headers=self.headers,
+            '/project_types', method='POST', headers=self.headers,
             body=json.dumps({
                 'name': str(uuid.uuid4()),
                 'slug': str(uuid.uuid4()),
@@ -137,4 +137,3 @@ class TestCaseWithReset(TestCase):
             }).encode('utf-8'))
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))['id']
-

@@ -12,9 +12,9 @@ properties:
     enum:
       - project
       - dashboard
-  project_type:
+  project_type_id:
     description: The project type associated with the cookie cutter
-    type: string
+    type: number
   description:
     description: A description of the cookie cutter
     type: string
@@ -25,6 +25,6 @@ properties:
 required:
   - name
   - type
-  - project_type
+  - project_type_id
   - url
 additionalProperties: false
