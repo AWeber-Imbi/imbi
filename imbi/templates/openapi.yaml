@@ -1278,7 +1278,7 @@ paths:
           $ref: '#/paths/~1projects/get/responses/401'
         '409':
           $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/project_fact_type/{project_type_id}/{fact_type_id}':
+  '/admin/project_fact_type/{fact_type_id}':
     get:
       summary: Get Record
       description: Retrieve a project fact type record
@@ -1337,12 +1337,6 @@ paths:
         '404':
           $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
     parameters:
-      - name: project_type_id
-        in: path
-        description: Project Type ID
-        required: true
-        schema:
-          type: number
       - name: fact_type_id
         in: path
         description: Fact Type ID
