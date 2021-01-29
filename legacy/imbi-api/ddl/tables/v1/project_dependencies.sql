@@ -1,8 +1,8 @@
 SET search_path=v1, public, pg_catalog;
 
 CREATE TABLE IF NOT EXISTS project_dependencies (
-  project_id            INT4                      NOT NULL,
-  dependency_id         INT4                      NOT NULL,
+  project_id            INTEGER                   NOT NULL,
+  dependency_id         INTEGER                   NOT NULL,
   created_at            TIMESTAMP WITH TIME ZONE  NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_by            TEXT                      NOT NULL,
   PRIMARY KEY (project_id, dependency_id),

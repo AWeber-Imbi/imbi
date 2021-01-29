@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS project_fact_types (
   created_by         TEXT                      NOT NULL,
   last_modified_at   TIMESTAMP WITH TIME ZONE,
   last_modified_by   TEXT,
-  project_type_id    INT4                      NOT NULL,
+  project_type_id    INTEGER                   NOT NULL,
   fact_type          TEXT                      NOT NULL,
   weight             INTEGER                   CONSTRAINT valid_weight CHECK (weight IS NOT NULL AND weight BETWEEN 0 AND 100)  DEFAULT 0,
   UNIQUE (project_type_id, fact_type),
