@@ -32,42 +32,41 @@ security:
   - token: []
 
 paths:
-  /admin/configuration_system:
-    { $ref: 'admin/configuration_system.yaml#/paths/create' }
-  /admin/configuration_system/{name}:
-    { $ref: 'admin/configuration_system.yaml#/paths/manage' }
-  /admin/cookie_cutter: { $ref: 'admin/cookie_cutter.yaml#/paths/create' }
-  /admin/cookie_cutter/{name}:
-    { $ref: 'admin/cookie_cutter.yaml#/paths/manage' }
-  /admin/data_center: { $ref: 'admin/data_center.yaml#/paths/create' }
-  /admin/data_center/{name}: { $ref: 'admin/data_center.yaml#/paths/manage' }
-  /admin/deployment_type: { $ref: 'admin/deployment_type.yaml#/paths/create' }
-  /admin/deployment_type/{name}:
-    { $ref: 'admin/deployment_type.yaml#/paths/manage' }
-  /admin/environment: { $ref: 'admin/environment.yaml#/paths/create' }
-  /admin/environment/{name}: { $ref: 'admin/environment.yaml#/paths/manage' }
-  /admin/group: { $ref: 'admin/group.yaml#/paths/create' }
-  /admin/group/{name}: { $ref: 'admin/group.yaml#/paths/manage' }
-  /admin/namespace: { $ref: 'admin/namespace.yaml#/paths/create' }
-  /admin/namespace/{id}: { $ref: 'admin/namespace.yaml#/paths/manage' }
-  /admin/orchestration_system:
-    { $ref: 'admin/orchestration_system.yaml#/paths/create' }
-  /admin/orchestration_system/{name}:
-    { $ref: 'admin/orchestration_system.yaml#/paths/manage' }
-  /admin/project_fact_type:
-    { $ref: 'admin/project_fact_type.yaml#/paths/create' }
-  /admin/project_fact_type/{fact_type_id}:
-    { $ref: 'admin/project_fact_type.yaml#/paths/manage' }
-  /admin/project_fact_type_option:
-    { $ref: 'admin/project_fact_type_option.yaml#/paths/create' }
-  /admin/project_fact_type_option/{id}:
-    { $ref: 'admin/project_fact_type_option.yaml#/paths/manage' }
-  /admin/project_link_type:
-    { $ref: 'admin/project_link_type.yaml#/paths/create' }
-  /admin/project_link_type/{id}:
-    { $ref: 'admin/project_link_type.yaml#/paths/manage' }
-  /admin/project_type: { $ref: 'admin/project_type.yaml#/paths/create' }
-  /admin/project_type/{id}: { $ref: 'admin/project_type.yaml#/paths/manage' }
+  /configuration_systems:
+    { $ref: 'endpoints/configuration_system.yaml#/paths/create' }
+  /configuration_systems/{name}:
+    { $ref: 'endpoints/configuration_system.yaml#/paths/manage' }
+  /cookie_cutters: { $ref: 'endpoints/cookie_cutter.yaml#/paths/create' }
+  /cookie_cutters/{name}: { $ref: 'endpoints/cookie_cutter.yaml#/paths/manage' }
+  /data_centers: { $ref: 'endpoints/data_center.yaml#/paths/create' }
+  /data_centers/{name}: { $ref: 'endpoints/data_center.yaml#/paths/manage' }
+  /deployment_types: { $ref: 'endpoints/deployment_type.yaml#/paths/create' }
+  /deployment_types/{name}:
+    { $ref: 'endpoints/deployment_type.yaml#/paths/manage' }
+  /environments: { $ref: 'endpoints/environment.yaml#/paths/create' }
+  /environments/{name}: { $ref: 'endpoints/environment.yaml#/paths/manage' }
+  /groups: { $ref: 'endpoints/group.yaml#/paths/create' }
+  /groups/{name}: { $ref: 'endpoints/group.yaml#/paths/manage' }
+  /namespaces: { $ref: 'endpoints/namespace.yaml#/paths/create' }
+  /namespaces/{id}: { $ref: 'endpoints/namespace.yaml#/paths/manage' }
+  /orchestration_systems:
+    { $ref: 'endpoints/orchestration_system.yaml#/paths/create' }
+  /orchestration_systems/{name}:
+    { $ref: 'endpoints/orchestration_system.yaml#/paths/manage' }
+  /project_fact_types:
+    { $ref: 'endpoints/project_fact_type.yaml#/paths/create' }
+  /project_fact_types/{fact_type_id}:
+    { $ref: 'endpoints/project_fact_type.yaml#/paths/manage' }
+  /project_fact_type_options:
+    { $ref: 'endpoints/project_fact_type_option.yaml#/paths/create' }
+  /project_fact_type_options/{id}:
+    { $ref: 'endpoints/project_fact_type_option.yaml#/paths/manage' }
+  /project_link_types:
+    { $ref: 'endpoints/project_link_type.yaml#/paths/create' }
+  /project_link_types/{id}:
+    { $ref: 'endpoints/project_link_type.yaml#/paths/manage' }
+  /project_types: { $ref: 'endpoints/project_type.yaml#/paths/create' }
+  /project_types/{id}: { $ref: 'endpoints/project_type.yaml#/paths/manage' }
 
   /projects: { '$ref': 'project/projects.yaml#/paths/collection' }
   /projects/{id}: { '$ref': 'project/project.yaml#/paths/manage' }
@@ -106,18 +105,18 @@ paths:
   /status: { $ref: 'status.yaml#/paths/status' }
 
 tags:
-  - { '$ref': 'admin/configuration_system.yaml#/tag' }
-  - { '$ref': 'admin/cookie_cutter.yaml#/tag' }
-  - { '$ref': 'admin/data_center.yaml#/tag' }
-  - { '$ref': 'admin/deployment_type.yaml#/tag' }
-  - { '$ref': 'admin/environment.yaml#/tag' }
-  - { '$ref': 'admin/group.yaml#/tag' }
-  - { '$ref': 'admin/namespace.yaml#/tag' }
-  - { '$ref': 'admin/orchestration_system.yaml#/tag' }
-  - { '$ref': 'admin/project_fact_type.yaml#/tag' }
-  - { '$ref': 'admin/project_fact_type_option.yaml#/tag' }
-  - { '$ref': 'admin/project_link_type.yaml#/tag' }
-  - { '$ref': 'admin/project_type.yaml#/tag' }
+  - { '$ref': 'endpoints/configuration_system.yaml#/tag' }
+  - { '$ref': 'endpoints/cookie_cutter.yaml#/tag' }
+  - { '$ref': 'endpoints/data_center.yaml#/tag' }
+  - { '$ref': 'endpoints/deployment_type.yaml#/tag' }
+  - { '$ref': 'endpoints/environment.yaml#/tag' }
+  - { '$ref': 'endpoints/group.yaml#/tag' }
+  - { '$ref': 'endpoints/namespace.yaml#/tag' }
+  - { '$ref': 'endpoints/orchestration_system.yaml#/tag' }
+  - { '$ref': 'endpoints/project_fact_type.yaml#/tag' }
+  - { '$ref': 'endpoints/project_fact_type_option.yaml#/tag' }
+  - { '$ref': 'endpoints/project_link_type.yaml#/tag' }
+  - { '$ref': 'endpoints/project_type.yaml#/tag' }
   - name: Projects
     description: Endpoints used for the management of projects
   - name: Settings

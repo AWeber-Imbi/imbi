@@ -1,9 +1,9 @@
 import re
 
-from imbi.endpoints.admin import base
+from imbi.endpoints import base
 
 
-class CRUDRequestHandler(base.CRUDRequestHandler):
+class AdminCRUDRequestHandler(base.CRUDRequestHandler):
 
     NAME = 'admin-project-fact-types'
     ID_KEY = ['id']

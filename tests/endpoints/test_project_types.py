@@ -3,36 +3,37 @@ import uuid
 
 import jsonpatch
 
-from imbi.endpoints.admin import groups
+from imbi.endpoints import project_types
 from tests import base
 
 
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
+    TRUNCATE_TABLES = ['v1.project_types']
 
-    def test_group_lifecycle(self):
+    def test_project_type_lifecycle(self):
         record = {
             'name': str(uuid.uuid4()),
-            'group_type': 'internal',
-            'external_id': None,
-            'permissions': ['admin']
+            'slug': str(uuid.uuid4()),
+            'description': str(uuid.uuid4()),
+            'icon_class': 'fas fa-blind'
         }
 
         # Create
-        result = self.fetch('/admin/group', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/project_types', method='POST', headers=self.headers,
+            body=json.dumps(record).encode('utf-8'))
         self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        url = self.get_url('/project_types/{}'.format(response['id']))
+        record['id'] = response['id']
+        self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
-            result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url(
-                    '/admin/group/{}'.format(record['name']))))
-        self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                groups.CRUDRequestHandler.TTL))
+                project_types.AdminCRUDRequestHandler.TTL))
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertEqual(
             new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
@@ -42,15 +43,14 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         # PATCH
         updated = dict(record)
-        updated['group_type'] = 'ldap'
-        updated['external_id'] = str(uuid.uuid4())
+        updated['icon_class'] = str(uuid.uuid4())
         patch = jsonpatch.make_patch(record, updated)
         patch_value = patch.to_string().encode('utf-8')
 
         result = self.fetch(
-            '/admin/group/{}'.format(record['name']),
-            method='PATCH', body=patch_value, headers=self.headers)
+            url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
+        self.assert_link_header_equals(result, url)
         new_value = json.loads(result.body.decode('utf-8'))
         for field in ['created_by', 'last_modified_by']:
             self.assertEqual(
@@ -60,24 +60,18 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         # Patch no change
         result = self.fetch(
-            '/admin/group/{}'.format(record['name']),
-            method='PATCH', body=patch_value, headers=self.headers)
+            url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 304)
 
         # GET
-        result = self.fetch(
-            '/admin/group/{}'.format(record['name']),
-            headers=self.headers)
+        result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
-        self.assertEqual(
-            result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url(
-                    '/admin/group/{}'.format(record['name']))))
+        self.assert_link_header_equals(result, url)
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                groups.CRUDRequestHandler.TTL))
+                project_types.AdminCRUDRequestHandler.TTL))
 
         new_value = json.loads(result.body.decode('utf-8'))
         for field in ['created_by', 'last_modified_by']:
@@ -87,48 +81,36 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(new_value, updated)
 
         # DELETE
-        result = self.fetch(
-            '/admin/group/{}'.format(record['name']),
-            method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(
-            '/admin/group/{}'.format(record['name']),
-            headers=self.headers)
+        result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
-        result = self.fetch(
-            '/admin/group/{}'.format(record['name']),
-            method='DELETE', headers=self.headers)
+        result = self.fetch(url,  method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
-        record = {
-            'name': str(uuid.uuid4()),
-            'group_type': 'internal'
-        }
-        result = self.fetch('/admin/group', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
-        self.assertEqual(result.code, 200)
-        new_value = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(new_value['name'], record['name'])
-        self.assertEqual(new_value['group_type'], 'internal')
-        self.assertIsNone(new_value['external_id'])
-        self.assertListEqual(new_value['permissions'], [])
+        result = self.fetch(
+            '/project_types', method='POST', headers=self.headers,
+            body=json.dumps({
+                'name': str(uuid.uuid4()),
+                'slug': str(uuid.uuid4())
+            }).encode('utf-8'))
+        self.assertEqual(result.code, 400)
 
     def test_method_not_implemented(self):
         for method in {'GET', 'DELETE', 'PATCH'}:
             result = self.fetch(
-                '/admin/group', method=method,
+                '/project_types', method=method,
                 allow_nonstandard_methods=True,
                 headers=self.headers)
             self.assertEqual(result.code, 405)
 
-        url = '/admin/group/' + str(uuid.uuid4())
-        result = self.fetch(url, method='POST',
-                            allow_nonstandard_methods=True,
-                            headers=self.headers)
+        url = '/project_types/' + str(uuid.uuid4())
+        result = self.fetch(
+            url, method='POST', headers=self.headers,
+            allow_nonstandard_methods=True)
         self.assertEqual(result.code, 405)

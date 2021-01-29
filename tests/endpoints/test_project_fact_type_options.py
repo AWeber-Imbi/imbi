@@ -3,7 +3,7 @@ import uuid
 
 import jsonpatch
 
-from imbi.endpoints.admin import project_types
+from imbi.endpoints import project_types
 from tests import base
 
 
@@ -30,20 +30,20 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         # Create
         result = self.fetch(
-            '/admin/project_fact_type_option',
+            '/project_fact_type_options',
             method='POST', body=json.dumps(record).encode('utf-8'),
             headers=self.headers)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         record['id'] = response['id']
         url = self.get_url(
-            '/admin/project_fact_type_option/{}'.format(response['id']))
+            '/project_fact_type_options/{}'.format(response['id']))
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                project_types.CRUDRequestHandler.TTL))
+                project_types.AdminCRUDRequestHandler.TTL))
         self.assertEqual(
             response['created_by'], self.USERNAME[self.ADMIN_ACCESS])
         for field in ['created_by', 'last_modified_by']:
@@ -80,7 +80,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                project_types.CRUDRequestHandler.TTL))
+                project_types.AdminCRUDRequestHandler.TTL))
 
         new_value = json.loads(result.body.decode('utf-8'))
         for field in ['created_by', 'last_modified_by']:

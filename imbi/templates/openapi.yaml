@@ -27,7 +27,7 @@ security:
   - session: []
   - token: []
 paths:
-  /admin/configuration_system:
+  /configuration_systems:
     post:
       summary: Create Record
       description: Create a new configuration system record
@@ -63,7 +63,7 @@ paths:
                   icon_class: fas fa-blind
           application/msgpack:
             schema:
-              $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full configuration system record
@@ -80,29 +80,29 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/examples/record'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/configuration_system/{name}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/configuration_systems/{name}':
     get:
       summary: Get Record
       description: Retrieve a configuration system record
@@ -110,11 +110,11 @@ paths:
         - Configuration Systems
       responses:
         '200':
-          $ref: '#/paths/~1admin~1configuration_system/post/responses/200'
+          $ref: '#/paths/~1configuration_systems/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update a configuration system, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -125,29 +125,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1configuration_system/post/responses/200'
+          $ref: '#/paths/~1configuration_systems/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove a configuration system record
@@ -155,11 +155,11 @@ paths:
         - Configuration Systems
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: name
         in: path
@@ -168,7 +168,7 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /admin/cookie_cutter:
+  /cookie_cutters:
     post:
       summary: Create Record
       description: Create a new cookie cutter record
@@ -190,9 +190,9 @@ paths:
                   enum:
                     - project
                     - dashboard
-                project_type:
+                project_type_id:
                   description: The project type associated with the cookie cutter
-                  type: string
+                  type: number
                 description:
                   description: A description of the cookie cutter
                   type: string
@@ -203,7 +203,7 @@ paths:
               required:
                 - name
                 - type
-                - project_type
+                - project_type_id
                 - url
               additionalProperties: false
             examples:
@@ -212,19 +212,19 @@ paths:
                 value:
                   name: k8s-rejected-consumer
                   type: project
-                  project_type: Consumer
+                  project_type_id: 1
                   description: A rejected consumer that runs in Kubernetes
                   url: 'https://gitlab.com/aweber/cookiecutters/k8s-rejected-consumer.git'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full cookie cutter record
                 value:
                   name: k8s-rejected-consumer
                   type: project
-                  project_type: Consumer
+                  project_type_id: 1
                   description: A rejected consumer that runs in Kubernetes
                   url: 'https://gitlab.com/aweber/cookiecutters/k8s-rejected-consumer.git'
       tags:
@@ -236,29 +236,29 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/examples/record'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/cookie_cutter/{name}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/cookie_cutters/{name}':
     get:
       summary: Get Record
       description: Retrieve a cookie cutter record
@@ -266,11 +266,11 @@ paths:
         - Cookie Cutters
       responses:
         '200':
-          $ref: '#/paths/~1admin~1cookie_cutter/post/responses/200'
+          $ref: '#/paths/~1cookie_cutters/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: |-
@@ -283,29 +283,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1cookie_cutter/post/responses/200'
+          $ref: '#/paths/~1cookie_cutters/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove a cookie cutter record
@@ -313,11 +313,11 @@ paths:
         - Cookie Cutters
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: name
         in: path
@@ -326,7 +326,7 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /admin/data_center:
+  /data_centers:
     post:
       summary: Create Record
       description: Create a new data center record
@@ -365,7 +365,7 @@ paths:
                   icon_class: fab fa-aws
           application/msgpack:
             schema:
-              $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full data center record
@@ -382,29 +382,29 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/examples/record'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/data_center/{name}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/data_centers/{name}':
     get:
       summary: Get Record
       description: Retrieve a data center record
@@ -412,11 +412,11 @@ paths:
         - Data Centers
       responses:
         '200':
-          $ref: '#/paths/~1admin~1data_center/post/responses/200'
+          $ref: '#/paths/~1data_centers/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update a data center, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -427,29 +427,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1data_center/post/responses/200'
+          $ref: '#/paths/~1data_centers/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove a data center record
@@ -457,11 +457,11 @@ paths:
         - Data Centers
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: name
         in: path
@@ -470,7 +470,7 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /admin/deployment_type:
+  /deployment_types:
     post:
       summary: Create Record
       description: Create a new deployment type record
@@ -506,7 +506,7 @@ paths:
                   icon_class: fab fa-aws
           application/msgpack:
             schema:
-              $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full deployment type record
@@ -523,29 +523,29 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/examples/record'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/deployment_type/{name}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/deployment_types/{name}':
     get:
       summary: Get Record
       description: Retrieve a deployment type record
@@ -553,11 +553,11 @@ paths:
         - Deployment Types
       responses:
         '200':
-          $ref: '#/paths/~1admin~1deployment_type/post/responses/200'
+          $ref: '#/paths/~1deployment_types/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update a deployment type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -568,29 +568,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1deployment_type/post/responses/200'
+          $ref: '#/paths/~1deployment_types/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove a deployment type record
@@ -598,11 +598,11 @@ paths:
         - Deployment Types
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: name
         in: path
@@ -611,7 +611,7 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /admin/environment:
+  /environments:
     post:
       summary: Create Record
       description: Create a new environment record
@@ -649,7 +649,7 @@ paths:
                   icon_class: fab fa-aws
           application/msgpack:
             schema:
-              $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full environment record
@@ -668,29 +668,29 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/examples/record'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/environment/{name}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/environments/{name}':
     get:
       summary: Get Record
       description: Retrieve an environment record
@@ -698,11 +698,11 @@ paths:
         - Environments
       responses:
         '200':
-          $ref: '#/paths/~1admin~1environment/post/responses/200'
+          $ref: '#/paths/~1environments/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update an environment, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -713,29 +713,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1environment/post/responses/200'
+          $ref: '#/paths/~1environments/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove an environment record
@@ -743,11 +743,11 @@ paths:
         - Environments
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: name
         in: path
@@ -756,7 +756,7 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /admin/group:
+  /groups:
     post:
       summary: Create Record
       description: Create a new group record
@@ -803,7 +803,7 @@ paths:
                     - user
           application/msgpack:
             schema:
-              $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full group record
@@ -823,29 +823,126 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              description: Indicates when the last modification of the data occurred
+              schema:
+                type: string
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              description: |
+                Links to related resources, in the format defined by
+                [RFC 5988](https://tools.ietf.org/html/rfc5988#section-5).
+                This will include a link with relation type `canonical` with the
+                canonical link to the item.
+              schema:
+                type: string
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/examples/record'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          description: The request data could not be validated or contained an error
+          content:
+            application/json:
+              schema:
+                title: Problem Detail
+                description: A problem detail document as defined by RFC 7807
+                externalDocs:
+                  url: 'https://tools.ietf.org/html/rfc7807'
+                type: object
+                properties:
+                  type:
+                    description: Machine-readable error type
+                    type: string
+                    format: url
+                  title:
+                    description: 'A short, human-readable summary of the problem type.'
+                    type: string
+                  status:
+                    description: |-
+                      The HTTP status code generated by the origin server for this
+                      occurrence of the problem.
+                    type: integer
+                  detail:
+                    description: |-
+                      A human-readable explanation specific to this occurrence of the
+                      problem.
+                  instance:
+                    description: URI that identifies this specific problem occurrence
+                    type: string
+                    format: url
+                additionalProperties: false
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 400 Request Error
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 400 Request Error
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          description: The request could not be authorized using the session cookie or provided API token
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 401 Unauthorized
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 401 Unauthorized
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/group/{name}':
+          description: The request could not be completed due to a race condition
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: 'HTTP 409: Conflict'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: 'HTTP 409: Conflict'
+  '/groups/{name}':
     get:
       summary: Get Record
       description: Retrieve a group record
@@ -853,11 +950,32 @@ paths:
         - Groups
       responses:
         '200':
-          $ref: '#/paths/~1admin~1group/post/responses/200'
+          $ref: '#/paths/~1groups/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          description: The requested resource was not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: 'HTTP 404: Resource not found'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: 'HTTP 404: Resource not found'
     patch:
       summary: Update Record
       description: 'Update a group, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -868,29 +986,100 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              title: JSON Patch
+              description: A JSONPatch document as defined by RFC 6902
+              type: array
+              items:
+                anyOf:
+                  - title: Add / Replace / Test
+                    type: object
+                    properties:
+                      path:
+                        description: A JSON Pointer path to apply the operation to
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                      op:
+                        description: The operation to perform
+                        type: string
+                        enum:
+                          - add
+                          - replace
+                          - test
+                      value:
+                        description: 'The value to add, replace or test'
+                        oneOf:
+                          - type: array
+                          - type: boolean
+                          - type: number
+                          - type: object
+                          - type: string
+                        nullable: true
+                    required:
+                      - path
+                      - op
+                      - value
+                  - title: Copy / Move
+                    type: object
+                    properties:
+                      path:
+                        description: A JSON Pointer path to apply the operation to
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                      op:
+                        description: The operation to perform
+                        type: string
+                        enum:
+                          - copy
+                          - move
+                      from:
+                        description: A JSON Pointer path to the referenced value
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                    required:
+                      - path
+                      - op
+                      - from
+                  - title: Remove
+                    type: object
+                    properties:
+                      path:
+                        description: A JSON Pointer path to apply the operation to
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                      op:
+                        description: The operation to perform
+                        type: string
+                        enum:
+                          - remove
+                    required:
+                      - path
+                      - op
+              example:
+                - op: replace
+                  path: icon_class
+                  value: fas fa-microscope
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1group/post/responses/200'
+          $ref: '#/paths/~1groups/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          description: No changes were found in the requested update
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove a group record
@@ -898,11 +1087,11 @@ paths:
         - Groups
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          description: The record was removed as requested
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
       security:
         - apiKey: []
         - session: []
@@ -914,7 +1103,7 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /admin/namespace:
+  /namespaces:
     post:
       summary: Create Record
       description: Create a new namespace record
@@ -956,9 +1145,9 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -993,12 +1182,12 @@ paths:
                       - Developers
                       - Operations
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/namespace/{id}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/namespaces/{id}':
     get:
       summary: Get Record
       description: Retrieve a namespace record
@@ -1006,11 +1195,11 @@ paths:
         - Namespaces
       responses:
         '200':
-          $ref: '#/paths/~1admin~1namespace/post/responses/200'
+          $ref: '#/paths/~1namespaces/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update a namespace, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1021,29 +1210,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1namespace/post/responses/200'
+          $ref: '#/paths/~1namespaces/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove a namespace record
@@ -1051,11 +1240,11 @@ paths:
         - Namespaces
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: id
         in: path
@@ -1063,7 +1252,7 @@ paths:
         required: true
         schema:
           type: number
-  /admin/orchestration_system:
+  /orchestration_systems:
     post:
       summary: Create Record
       description: Create a new orchestration system record
@@ -1101,7 +1290,7 @@ paths:
                   icon_class: fas fa-blind
           application/msgpack:
             schema:
-              $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full orchestration system record
@@ -1118,29 +1307,29 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/examples/record'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/orchestration_system/{name}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/orchestration_systems/{name}':
     get:
       summary: Get Record
       description: Retrieve an orchestration system record
@@ -1148,11 +1337,11 @@ paths:
         - Orchestration Systems
       responses:
         '200':
-          $ref: '#/paths/~1admin~1orchestration_system/post/responses/200'
+          $ref: '#/paths/~1orchestration_systems/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update an orchestration system, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1163,29 +1352,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1orchestration_system/post/responses/200'
+          $ref: '#/paths/~1orchestration_systems/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove an orchestration system record
@@ -1193,11 +1382,11 @@ paths:
         - Orchestration Systems
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: name
         in: path
@@ -1206,7 +1395,7 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /admin/project_fact_type:
+  /project_fact_types:
     post:
       summary: Create Record
       description: Create a new project fact type record
@@ -1242,9 +1431,9 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -1273,12 +1462,12 @@ paths:
                     fact_type: Programming Language
                     weight: 25
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/project_fact_type/{fact_type_id}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/project_fact_types/{fact_type_id}':
     get:
       summary: Get Record
       description: Retrieve a project fact type record
@@ -1286,11 +1475,11 @@ paths:
         - Project Fact Types
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_fact_type/post/responses/200'
+          $ref: '#/paths/~1project_fact_types/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update a project fact type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1301,29 +1490,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_fact_type/post/responses/200'
+          $ref: '#/paths/~1project_fact_types/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove a project fact type record
@@ -1331,11 +1520,11 @@ paths:
         - Project Fact Types
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: fact_type_id
         in: path
@@ -1343,7 +1532,7 @@ paths:
         required: true
         schema:
           type: number
-  /admin/project_fact_type_option:
+  /project_fact_type_options:
     post:
       summary: Create Record
       description: Create a new project fact type option record
@@ -1379,9 +1568,9 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -1410,12 +1599,12 @@ paths:
                     value: Python 3.5
                     weight: 50
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/project_fact_type_option/{id}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/project_fact_type_options/{id}':
     get:
       summary: Get Record
       description: Retrieve a project fact type option record
@@ -1423,11 +1612,11 @@ paths:
         - Project Fact Type Options
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_fact_type_option/post/responses/200'
+          $ref: '#/paths/~1project_fact_type_options/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update a project fact type option, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1438,29 +1627,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_fact_type_option/post/responses/200'
+          $ref: '#/paths/~1project_fact_type_options/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove a project fact type option record
@@ -1468,11 +1657,11 @@ paths:
         - Project Fact Type Options
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: id
         in: path
@@ -1480,7 +1669,7 @@ paths:
         required: true
         schema:
           type: number
-  /admin/project_link_type:
+  /project_link_types:
     post:
       summary: Create Record
       description: Create a new link type record
@@ -1514,9 +1703,9 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -1543,12 +1732,12 @@ paths:
                     link_type: documentation
                     icon_class: fab fa-bool
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/project_link_type/{id}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/project_link_types/{id}':
     get:
       summary: Get Record
       description: Retrieve an link type record
@@ -1556,11 +1745,11 @@ paths:
         - Project Link Types
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_link_type/post/responses/200'
+          $ref: '#/paths/~1project_link_types/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update an link type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1571,29 +1760,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_link_type/post/responses/200'
+          $ref: '#/paths/~1project_link_types/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove an link type record
@@ -1601,11 +1790,11 @@ paths:
         - Project Link Types
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: id
         in: path
@@ -1613,7 +1802,7 @@ paths:
         required: true
         schema:
           type: number
-  /admin/project_type:
+  /project_types:
     post:
       summary: Create Record
       description: Create a new project type record
@@ -1651,9 +1840,9 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -1684,12 +1873,12 @@ paths:
                     slug: http-api
                     icon_class: fab fa-aws
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
-  '/admin/project_type/{id}':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/project_types/{id}':
     get:
       summary: Get Record
       description: Retrieve a project type record
@@ -1697,11 +1886,11 @@ paths:
         - Project Types
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_type/post/responses/200'
+          $ref: '#/paths/~1project_types/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Record
       description: 'Update a project type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1712,29 +1901,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1admin~1project_type/post/responses/200'
+          $ref: '#/paths/~1project_types/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Record
       description: Remove a project type record
@@ -1742,11 +1931,11 @@ paths:
         - Project Types
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: id
         in: path
@@ -1938,54 +2127,7 @@ paths:
                         - Staging
                         - Production
         '401':
-          description: The request could not be authorized using the session cookie or provided API token
-          content:
-            application/json:
-              schema:
-                title: Problem Detail
-                description: A problem detail document as defined by RFC 7807
-                externalDocs:
-                  url: 'https://tools.ietf.org/html/rfc7807'
-                type: object
-                properties:
-                  type:
-                    description: Machine-readable error type
-                    type: string
-                    format: url
-                  title:
-                    description: 'A short, human-readable summary of the problem type.'
-                    type: string
-                  status:
-                    description: |-
-                      The HTTP status code generated by the origin server for this
-                      occurrence of the problem.
-                    type: integer
-                  detail:
-                    description: |-
-                      A human-readable explanation specific to this occurrence of the
-                      problem.
-                  instance:
-                    description: URI that identifies this specific problem occurrence
-                    type: string
-                    format: url
-                additionalProperties: false
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: HTTP 401 Unauthorized
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: HTTP 401 Unauthorized
+          $ref: '#/paths/~1groups/post/responses/401'
     post:
       summary: Create Project
       description: Create a new project record
@@ -2089,17 +2231,9 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              description: Indicates when the last modification of the data occurred
-              schema:
-                type: string
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              description: |
-                Links to related resources, in the format defined by
-                [RFC 5988](https://tools.ietf.org/html/rfc5988#section-5).
-                This will include a link with relation type `canonical` with the
-                canonical link to the item.
-              schema:
-                type: string
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -2152,53 +2286,11 @@ paths:
                       - Staging
                       - Production
         '400':
-          description: The request data could not be validated or contained an error
-          content:
-            application/json:
-              schema:
-                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: HTTP 400 Request Error
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: HTTP 400 Request Error
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          description: The request could not be completed due to a race condition
-          content:
-            application/json:
-              schema:
-                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: 'HTTP 409: Conflict'
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: 'HTTP 409: Conflict'
+          $ref: '#/paths/~1groups/post/responses/409'
   '/projects/{id}':
     get:
       summary: Get Project
@@ -2209,30 +2301,9 @@ paths:
         '200':
           $ref: '#/paths/~1projects/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          description: The requested resource was not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: 'HTTP 404: Resource not found'
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1projects/get/responses/401/content/application~1json/schema'
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: 'HTTP 404: Resource not found'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Project
       description: 'Update a project, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -2243,100 +2314,29 @@ paths:
         content:
           application/json:
             schema:
-              title: JSON Patch
-              description: A JSONPatch document as defined by RFC 6902
-              type: array
-              items:
-                anyOf:
-                  - title: Add / Replace / Test
-                    type: object
-                    properties:
-                      path:
-                        description: A JSON Pointer path to apply the operation to
-                        type: string
-                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
-                      op:
-                        description: The operation to perform
-                        type: string
-                        enum:
-                          - add
-                          - replace
-                          - test
-                      value:
-                        description: 'The value to add, replace or test'
-                        oneOf:
-                          - type: array
-                          - type: boolean
-                          - type: number
-                          - type: object
-                          - type: string
-                        nullable: true
-                    required:
-                      - path
-                      - op
-                      - value
-                  - title: Copy / Move
-                    type: object
-                    properties:
-                      path:
-                        description: A JSON Pointer path to apply the operation to
-                        type: string
-                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
-                      op:
-                        description: The operation to perform
-                        type: string
-                        enum:
-                          - copy
-                          - move
-                      from:
-                        description: A JSON Pointer path to the referenced value
-                        type: string
-                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
-                    required:
-                      - path
-                      - op
-                      - from
-                  - title: Remove
-                    type: object
-                    properties:
-                      path:
-                        description: A JSON Pointer path to apply the operation to
-                        type: string
-                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
-                      op:
-                        description: The operation to perform
-                        type: string
-                        enum:
-                          - remove
-                    required:
-                      - path
-                      - op
-              example:
-                - op: replace
-                  path: icon_class
-                  value: fas fa-microscope
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
           $ref: '#/paths/~1projects/post/responses/200'
         '304':
-          description: No changes were found in the requested update
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Project
       description: Remove a project record
@@ -2344,11 +2344,11 @@ paths:
         - Projects
       responses:
         '204':
-          description: The record was removed as requested
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: id
         in: path
@@ -2468,7 +2468,7 @@ paths:
                       icon_class: fab gitlab
                       url: 'https://gitlab.com/AWeber/Imbi'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
     post:
       summary: Create Link
       description: Create a new project link record
@@ -2522,9 +2522,9 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -2553,11 +2553,11 @@ paths:
                     icon_class: fas book
                     url: 'https://imbi.readthedocs.io'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     parameters:
       - name: id
         in: path
@@ -2575,9 +2575,9 @@ paths:
         '200':
           $ref: '#/paths/~1projects~1%7Bid%7D~1links/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
       summary: Update Link
       description: 'Update a project link, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -2588,29 +2588,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1projects~1%7Bid%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
           $ref: '#/paths/~1projects~1%7Bid%7D~1links/post/responses/200'
         '304':
-          $ref: '#/paths/~1projects~1%7Bid%7D/patch/responses/304'
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Link
       description: Remove a project link record
@@ -2618,11 +2618,11 @@ paths:
         - Projects
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: project_id
         in: path
@@ -2706,7 +2706,7 @@ paths:
                       created_by: test_user
                       dependency_id: 1
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
     post:
       summary: Create Dependency
       description: Create a new project dependency record
@@ -2747,9 +2747,9 @@ paths:
             Cache-Control:
               $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
             Last-Modified:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Last-Modified'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects/post/responses/200/headers/Link'
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -2772,11 +2772,11 @@ paths:
                     created_by: test_user
                     dependency_id: 1
         '400':
-          $ref: '#/paths/~1projects/post/responses/400'
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '409':
-          $ref: '#/paths/~1projects/post/responses/409'
+          $ref: '#/paths/~1groups/post/responses/409'
     parameters:
       - name: id
         in: path
@@ -2794,9 +2794,9 @@ paths:
         '200':
           $ref: '#/paths/~1projects~1%7Bid%7D~1dependencies/post/responses/200'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     delete:
       summary: Delete Dependency
       description: Remove a project dependency record
@@ -2804,11 +2804,11 @@ paths:
         - Projects
       responses:
         '204':
-          $ref: '#/paths/~1projects~1%7Bid%7D/delete/responses/204'
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
         '404':
-          $ref: '#/paths/~1projects~1%7Bid%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
       - name: id
         in: path
@@ -2839,7 +2839,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple configuration system records
@@ -2854,7 +2854,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1configuration_system/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple configuration system records
@@ -2866,7 +2866,7 @@ paths:
                       description: Feature rich key/value store to easily configure projects
                       icon_class: fas fa-blind
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/cookie_cutters:
     get:
       description: Retrieve the collection of cookie cutters
@@ -2884,7 +2884,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple cookie cutter records
@@ -2908,7 +2908,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1cookie_cutter/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple cookie cutter records
@@ -2929,7 +2929,7 @@ paths:
                       description: A Grafana dashboard for a rejected consumer application
                       url: 'https://github.com/aweber/grafana-consumer-cookiecutter.git'
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/data_centers:
     get:
       description: Retrieve the collection of data centers
@@ -2947,7 +2947,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple data center records
@@ -2962,7 +2962,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1data_center/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple data center records
@@ -2974,7 +2974,7 @@ paths:
                       description: US East (Ohio)
                       icon_class: fab fa-aws
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/deployment_types:
     get:
       description: Retrieve the collection of deployment types
@@ -2992,7 +2992,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple deployment type records
@@ -3007,7 +3007,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1deployment_type/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple deployment type records
@@ -3019,7 +3019,7 @@ paths:
                       description: Package artifact uploaded to artifactory
                       icon_class: fab fa-aws
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/environments:
     get:
       description: Retrieve the collection of environments
@@ -3037,7 +3037,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple environment records
@@ -3056,7 +3056,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1environment/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple environment records
@@ -3072,7 +3072,7 @@ paths:
                         intended to be to deployed to production
                       icon_class: fab fa-aws
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/groups:
     get:
       description: Retrieve the collection of groups
@@ -3090,7 +3090,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple group records
@@ -3110,7 +3110,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1group/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple group records
@@ -3127,7 +3127,7 @@ paths:
                       permissions:
                         - user
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/namespaces:
     get:
       description: Retrieve the collection of namespaces
@@ -3300,7 +3300,7 @@ paths:
                         - Developers
                         - QA
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/orchestration_systems:
     get:
       description: Retrieve the collection of orchestration systems
@@ -3318,7 +3318,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple orchestration system records
@@ -3333,7 +3333,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1admin~1orchestration_system/post/requestBody/content/application~1json/schema'
+                  $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
               examples:
                 records:
                   summary: Multiple orchestration system records
@@ -3345,7 +3345,7 @@ paths:
                       description: HashiCorp Nomad
                       icon_class: fas fa-blind
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/permissions:
     get:
       description: Retrieve the collection of available permissions
@@ -3382,7 +3382,7 @@ paths:
                     - admin
                     - user
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/project_fact_type_options:
     get:
       description: Retrieve the collection of project fact type options
@@ -3547,7 +3547,7 @@ paths:
                       value: Python 2.7
                       score: 0
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/project_fact_types:
     get:
       description: Retrieve the collection of project fact types
@@ -3708,7 +3708,7 @@ paths:
                       fact_type: Has working CI pipeline
                       weight: 10
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/project_link_types:
     get:
       description: Retrieve the collection of project link types
@@ -3819,7 +3819,7 @@ paths:
                     - project_link_type: grafana
                       icon_class: fab fa-graph
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /settings/project_types:
     get:
       description: Retrieve the collection of project types
@@ -3972,7 +3972,7 @@ paths:
                       icon_class: imbi postgres
                       slug: postgres
         '401':
-          $ref: '#/paths/~1projects/get/responses/401'
+          $ref: '#/paths/~1groups/post/responses/401'
   /status:
     get:
       security: []

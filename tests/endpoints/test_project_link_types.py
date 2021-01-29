@@ -3,37 +3,36 @@ import uuid
 
 import jsonpatch
 
-from imbi.endpoints.admin import namespaces
+from imbi.endpoints import project_link_types
 from tests import base
 
 
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
-    TRUNCATE_TABLES = ['v1.namespaces']
+    TRUNCATE_TABLES = ['v1.project_types', 'v1.project_link_types']
 
-    def test_namespace_lifecycle(self):
+    def test_project_link_type_lifecycle(self):
         record = {
-            'name': str(uuid.uuid4()),
-            'slug': str(uuid.uuid4().hex),
-            'icon_class': 'fas fa-blind',
-            'maintained_by': []
+            'link_type': str(uuid.uuid4()),
+            'icon_class': 'fas fa-blind'
         }
 
         # Create
-        result = self.fetch('/admin/namespace', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/project_link_types', method='POST', headers=self.headers,
+            body=json.dumps(record).encode('utf-8'))
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
-        url = self.get_url('/admin/namespace/{}'.format(response['id']))
         record['id'] = response['id']
+        url = self.get_url(
+            '/project_link_types/{}'.format(response['id']))
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                namespaces.CRUDRequestHandler.TTL))
+                project_link_types.AdminCRUDRequestHandler.TTL))
         self.assertEqual(
             response['created_by'], self.USERNAME[self.ADMIN_ACCESS])
         for field in ['created_by', 'last_modified_by']:
@@ -50,12 +49,12 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
-        response = json.loads(result.body.decode('utf-8'))
+        new_value = json.loads(result.body.decode('utf-8'))
         for field in ['created_by', 'last_modified_by']:
             self.assertEqual(
-                response[field], self.USERNAME[self.ADMIN_ACCESS])
-            del response[field]
-        self.assertDictEqual(response, updated)
+                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
+            del new_value[field]
+        self.assertDictEqual(new_value, updated)
 
         # Patch no change
         result = self.fetch(
@@ -70,14 +69,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                namespaces.CRUDRequestHandler.TTL))
-
-        response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(
-            response['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+                project_link_types.AdminCRUDRequestHandler.TTL))
+        new_value = json.loads(result.body.decode('utf-8'))
         for field in ['created_by', 'last_modified_by']:
-            del response[field]
-        self.assertDictEqual(response, updated)
+            self.assertEqual(
+                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
+            del new_value[field]
+        self.assertDictEqual(new_value, updated)
 
         # DELETE
         result = self.fetch(url, method='DELETE', headers=self.headers)
@@ -92,40 +90,21 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
-        record = {
-            'name': str(uuid.uuid4()),
-            'slug': str(uuid.uuid4().hex),
-            'icon_class': 'fas fa-blind'
-        }
-        result = self.fetch('/admin/namespace', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
-        self.assertEqual(result.code, 200)
-        response = json.loads(result.body.decode('utf-8'))
-        url = self.get_url('/admin/namespace/{}'.format(response['id']))
-        self.assert_link_header_equals(result, url)
-        self.assertEqual(response['name'], record['name'])
-        self.assertEqual(response['slug'], record['slug'])
-        self.assertIsNotNone(response['icon_class'])
-
-        # DELETE
-        result = self.fetch(url, method='DELETE', headers=self.headers)
-        self.assertEqual(result.code, 204)
-
-        # GET record should not exist
-        result = self.fetch(url, headers=self.headers)
-        self.assertEqual(result.code, 404)
+        result = self.fetch(
+            '/project_link_types', method='POST', headers=self.headers,
+            body=json.dumps({
+                'link_type': str(uuid.uuid4())
+            }).encode('utf-8'))
+        self.assertEqual(result.code, 400)
 
     def test_method_not_implemented(self):
         for method in {'GET', 'DELETE', 'PATCH'}:
             result = self.fetch(
-                '/admin/namespace', method=method,
-                allow_nonstandard_methods=True,
-                headers=self.headers)
+                '/project_link_types', method=method, headers=self.headers,
+                allow_nonstandard_methods=True)
             self.assertEqual(result.code, 405)
-
-        url = '/admin/namespace/' + str(uuid.uuid4())
-        result = self.fetch(url, method='POST',
-                            allow_nonstandard_methods=True,
-                            headers=self.headers)
+        url = '/project_link_types/' + str(uuid.uuid4())
+        result = self.fetch(
+            url, method='POST', body='{}', headers=self.headers,
+            allow_nonstandard_methods=True)
         self.assertEqual(result.code, 405)

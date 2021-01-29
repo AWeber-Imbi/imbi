@@ -414,3 +414,22 @@ class CollectionRequestHandler(CRUDRequestHandler):
             self.COLLECTION_SQL, kwargs,
             metric_name='get-{}'.format(self.NAME))
         self.send_response(result.rows)
+
+
+class AdminCRUDRequestHandler(CRUDRequestHandler):
+
+    @require_permission('admin')
+    async def delete(self, *args, **kwargs):
+        await super().delete(*args, **kwargs)
+
+    @require_permission('admin')
+    async def get(self, *args, **kwargs):
+        await super().get(*args, **kwargs)
+
+    @require_permission('admin')
+    async def patch(self, *args, **kwargs):
+        await super().patch(*args, **kwargs)
+
+    @require_permission('admin')
+    async def post(self, *args, **kwargs):
+        await super().post(*args, **kwargs)
