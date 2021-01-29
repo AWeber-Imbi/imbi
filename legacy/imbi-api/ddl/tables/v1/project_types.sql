@@ -1,17 +1,22 @@
 SET search_path=v1;
 
 CREATE TABLE IF NOT EXISTS project_types (
-  "name"             TEXT                      NOT NULL  PRIMARY KEY,
+  id                 SERIAL                    NOT NULL  PRIMARY KEY,
   created_at         TIMESTAMP WITH TIME ZONE  NOT NULL  DEFAULT CURRENT_TIMESTAMP,
   created_by         TEXT                      NOT NULL,
   last_modified_at   TIMESTAMP WITH TIME ZONE,
   last_modified_by   TEXT,
+  "name"             TEXT                      NOT NULL,
   description        TEXT,
   slug               TEXT                      NOT NULL,
   icon_class         TEXT                                DEFAULT 'fas fa-box'
 );
 
+CREATE UNIQUE INDEX project_types_name ON project_types (name);
+CREATE UNIQUE INDEX project_types_slug ON project_types (slug);
+
 COMMENT ON TABLE project_types IS 'Project Types';
+COMMENT ON COLUMN project_types.id IS 'Surrogate key for URLs and linking';
 COMMENT ON COLUMN project_types.name IS 'The project type (API, Consumer, Database, etc)';
 COMMENT ON COLUMN project_types.created_at IS 'When the record was created at';
 COMMENT ON COLUMN project_types.created_by IS 'The user created the record';

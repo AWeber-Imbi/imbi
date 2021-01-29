@@ -1,22 +1,21 @@
 SET search_path=v1;
 
 CREATE TABLE IF NOT EXISTS project_fact_history (
-  namespace     TEXT                      NOT NULL,
-  "name"        TEXT                      NOT NULL,
-  fact_type     TEXT                      NOT NULL,
+  project_id    INT4                      NOT NULL,
+  fact_type_id  INT4                      NOT NULL,
   recorded_at   TIMESTAMP WITH TIME ZONE  NOT NULL  DEFAULT CURRENT_TIMESTAMP,
   recorded_by   TEXT                      NOT NULL,
   value         TEXT                      NOT NULL,
   score         INTEGER                   NOT NULL,
-  weight        NUMERIC (5,2)             NOT NULL,
-  PRIMARY KEY (namespace, "name", recorded_at),
-  FOREIGN KEY (namespace, "name") REFERENCES projects (namespace, "name") ON UPDATE CASCADE ON DELETE CASCADE
+  weight        INTEGER                   NOT NULL,
+  PRIMARY KEY (project_id, fact_type_id, recorded_at),
+  FOREIGN KEY (project_id) REFERENCES projects (id) ON UPDATE CASCADE ON DELETE CASCADE,
+  FOREIGN KEY (fact_type_id) REFERENCES project_fact_types (id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 COMMENT ON TABLE project_fact_history IS 'Stores the historical record of fact values for a project, including the score and weight of the score';
-COMMENT ON COLUMN project_fact_history.namespace IS 'The namespace of the project that the fact is for';
-COMMENT ON COLUMN project_fact_history.name IS 'The project name the fact is for';
-COMMENT ON COLUMN project_fact_history.fact_type IS 'The project fact type';
+COMMENT ON COLUMN project_fact_history.project_id IS 'The project the record is for';
+COMMENT ON COLUMN project_fact_history.fact_type_id IS 'The fact type for the record';
 COMMENT ON COLUMN project_fact_history.recorded_at IS 'When the record was created at';
 COMMENT ON COLUMN project_fact_history.recorded_by IS 'The user who created the new project fact record';
 COMMENT ON COLUMN project_fact_history.value IS 'The fact value';
