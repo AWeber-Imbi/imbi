@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import typing
 import uuid
@@ -99,6 +100,11 @@ class TestCaseWithReset(TestCase):
 
     TRUNCATE_TABLES = []
 
+    def setUp(self) -> None:
+        super().setUp()
+        self.project_fact_type = None
+        self.project_type = None
+
     async def async_setup(self) -> None:
         await super().async_setup()
         self.headers['Private-Token'] = await self.get_token()
@@ -108,3 +114,27 @@ class TestCaseWithReset(TestCase):
             await self.postgres_execute(
                 'TRUNCATE TABLE {} CASCADE'.format(table), {})
         await super().async_tear_down()
+
+    def create_project_fact_type(self) -> int:
+        result = self.fetch(
+            '/admin/project_fact_type', method='POST', headers=self.headers,
+            body=json.dumps({
+                'project_type_id': self.project_type,
+                'fact_type': str(uuid.uuid4()),
+                'weight': 100
+            }).encode('utf-8'))
+        self.assertEqual(result.code, 200)
+        return json.loads(result.body.decode('utf-8'))['id']
+
+    def create_project_type(self) -> int:
+        result = self.fetch(
+            '/admin/project_type', method='POST', headers=self.headers,
+            body=json.dumps({
+                'name': str(uuid.uuid4()),
+                'slug': str(uuid.uuid4()),
+                'description': str(uuid.uuid4()),
+                'icon_class': 'fas fa-blind'
+            }).encode('utf-8'))
+        self.assertEqual(result.code, 200)
+        return json.loads(result.body.decode('utf-8'))['id']
+
