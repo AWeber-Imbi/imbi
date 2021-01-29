@@ -1,7 +1,7 @@
 SET search_path=v1, public, pg_catalog;
 
 CREATE TABLE IF NOT EXISTS namespaces (
-  id                INTEGER                   NOT NULL  PRIMARY KEY,
+  id                SERIAL                    NOT NULL  PRIMARY KEY,
   created_at        TIMESTAMP WITH TIME ZONE  NOT NULL  DEFAULT CURRENT_TIMESTAMP,
   created_by        TEXT                      NOT NULL,
   last_modified_at  TIMESTAMP WITH TIME ZONE,
