@@ -32,8 +32,8 @@ CREATE OR REPLACE FUNCTION insert_project_fact_history() RETURNS trigger
         SELECT NEW.created_by
           INTO fact_recorded_by;
     ELSIF (TG_OP = 'UPDATE') THEN
-        SELECT CASE NEW.last_modified_by
-               WHEN NULL THEN NEW.created_by
+        SELECT CASE 
+               WHEN NEW.last_modified_by IS NULL THEN NEW.created_by
                ELSE NEW.last_modified_by
                 END
           INTO fact_recorded_by;
