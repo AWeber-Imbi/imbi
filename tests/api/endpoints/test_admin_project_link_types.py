@@ -23,13 +23,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                             body=json.dumps(record).encode('utf-8'),
                             headers=self.headers)
         self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        record['id'] = response['id']
+        url = self.get_url(
+            '/admin/project_link_type/{}'.format(response['id']))
+        self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
-        self.assertEqual(
-            result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url(
-                    '/admin/project_link_type/{}'.format(
-                        record['link_type']))))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 project_link_types.CRUDRequestHandler.TTL))
@@ -47,9 +47,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         patch_value = patch.to_string().encode('utf-8')
 
         result = self.fetch(
-            '/admin/project_link_type/{}'.format(record['link_type']),
-            method='PATCH', body=patch_value, headers=self.headers)
+            url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
+        self.assert_link_header_equals(result, url)
         new_value = json.loads(result.body.decode('utf-8'))
         for field in ['created_by', 'last_modified_by']:
             self.assertEqual(
@@ -59,22 +59,15 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         # Patch no change
         result = self.fetch(
-            '/admin/project_link_type/{}'.format(record['link_type']),
-            method='PATCH', body=patch_value, headers=self.headers)
+            url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 304)
 
         # GET
-        result = self.fetch(
-            '/admin/project_link_type/{}'.format(record['link_type']),
-            headers=self.headers)
+        result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 200)
+        self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
-        self.assertEqual(
-            result.headers['Link'], '<{}>; rel="self"'.format(
-                self.get_url(
-                    '/admin/project_link_type/{}'.format(
-                        record['link_type']))))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 project_link_types.CRUDRequestHandler.TTL))
@@ -86,30 +79,24 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(new_value, updated)
 
         # DELETE
-        result = self.fetch(
-            '/admin/project_link_type/{}'.format(record['link_type']),
-            method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(
-            '/admin/project_link_type/{}'.format(record['link_type']),
-            headers=self.headers)
+        result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
-        result = self.fetch(
-            '/admin/project_link_type/{}'.format(record['link_type']),
-            method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
         record = {
             'link_type': str(uuid.uuid4())
         }
-        result = self.fetch('/admin/project_link_type', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/admin/project_link_type', method='POST', headers=self.headers,
+            body=json.dumps(record).encode('utf-8'))
         self.assertEqual(result.code, 400)
 
     def test_method_not_implemented(self):

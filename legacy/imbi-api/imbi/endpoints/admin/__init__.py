@@ -53,7 +53,7 @@ URLS = [
             name='admin-groups'),
 
     web.url(r'/admin/namespace', namespaces.CRUDRequestHandler),
-    web.url(r'/admin/namespace/(?P<name>[\w_\-%\+]+)',
+    web.url(r'/admin/namespace/(?P<id>\d+)',
             namespaces.CRUDRequestHandler,
             name='admin-namespaces'),
 
@@ -65,26 +65,25 @@ URLS = [
 
     web.url(r'/admin/project_fact_type',
             project_fact_types.CRUDRequestHandler),
-    web.url(r'/admin/project_fact_type/(?P<project_type>[\w_\-%\+]+)'
+    web.url(r'/admin/project_fact_type/(?P<id>\d+)'
             r'/(?P<fact_type>[\w_\-%\+]+)',
             project_fact_types.CRUDRequestHandler,
             name='admin-project-fact-types'),
 
     web.url(r'/admin/project_fact_type_option',
             project_fact_type_options.CRUDRequestHandler),
-    web.url(r'/admin/project_fact_type_option/(?P<project_type>[\w_\-%\+]+)/'
-            r'(?P<fact_type>[\w_\-%\+]+)/(?P<value>[\w_\-%\+]+)',
+    web.url(r'/admin/project_fact_type_option/(?P<id>\d+)',
             project_fact_type_options.CRUDRequestHandler,
             name='admin-project-fact-type-options'),
 
     web.url(r'/admin/project_link_type',
             project_link_types.CRUDRequestHandler),
-    web.url(r'/admin/project_link_type/(?P<link_type>[\w_\-%\+]+)',
+    web.url(r'/admin/project_link_type/(?P<id>\d+)',
             project_link_types.CRUDRequestHandler,
             name='admin-project-link-types'),
 
     web.url(r'/admin/project_type', project_types.CRUDRequestHandler),
-    web.url(r'/admin/project_type/(?P<name>[\w_\-%\+]+)',
+    web.url(r'/admin/project_type/(?P<id>\d+)',
             project_types.CRUDRequestHandler,
             name='admin-project-types')
 ]
