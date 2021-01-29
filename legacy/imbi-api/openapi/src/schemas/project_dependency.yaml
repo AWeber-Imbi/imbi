@@ -1,14 +1,27 @@
-title: Project
-description: A record that indicates one project is dependent upon another
-type: object
-properties:
-  dependency_namespace:
-    description: The namespace of the project that is dependend upon
-    type: string
-  dependency_name:
-    description: The name of the project that is dependend upon
-    type: string
-required:
-  - dependency_namespace
-  - dependency_name
-additionalProperties: false
+read:
+  title: Project
+  description: A record that indicates one project is dependent upon another
+  type: object
+  properties:
+    project_id:
+      description: The ID of the project that has the dependency
+      type: number
+    created_by:
+      description: The username indicating who created the record
+      type: string
+    dependency_id:
+      description: The ID of the project that is depended upon
+      type: number
+  additionalProperties: false
+
+write:
+  title: Project
+  description: A record that indicates one project is dependent upon another
+  type: object
+  properties:
+    dependency_id:
+      description: The ID of the project that is depended upon
+      type: number
+  required:
+    - dependency_id
+  additionalProperties: false

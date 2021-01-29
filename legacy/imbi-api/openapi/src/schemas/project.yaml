@@ -1,49 +1,110 @@
-title: Project
-description: Describes a project managed by Imbi
-type: object
-properties:
-  namespace:
-    description: The project namespace
-    type: string
-  name:
-    description: The project name
-    type: string
-  slug:
-    description: The project URL slug (In GitLab and other projects)
-    type: string
-  description:
-    description: Long for description of the project
-    type: string
-    nullable: true
-  project_type:
-    description: The project type (API, Consumer, Database, etc)
-    type: string
-  environments:
-    description: The operational environments the project is available in
-    type: array
-    items:
+read:
+  title: Project
+  description: Describes a project managed by Imbi
+  type: object
+  properties:
+    id:
+      description: The project ID
+      type: number
+    created_by:
+      description: The user that created the record
       type: string
-    minLength: 1
-    nullable: true
-  data_center:
-    description: The data center the project runs in
-    type: string
-    nullable: true
-  configuration_system:
-    description: The system used to configure the project (Ansible, Consul, etc)
-    type: string
-    nullable: true
-  deployment_type:
-    description: How the project is deployed (Jenkins, GitLab-CI, etc)
-    type: string
-    nullable: true
-  orchestration_system:
-    description: TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)
-    type: string
-    nullable: true
-required:
-  - namespace
-  - name
-  - slug
-  - project_type
-additionalProperties: false
+    last_modified_by:
+      description: The user that last modified the record
+      type: string
+    namespace_id:
+      description: The project namespace ID
+      type: number
+    namespace:
+      description: The namespace name
+    project_type_id:
+      description: The project type ID
+      type: number
+    project_type:
+      description: The project type name
+      type: string
+    name:
+      description: The project name
+      type: string
+    slug:
+      description: The project URL slug (In GitLab and other projects)
+      type: string
+    description:
+      description: Long for description of the project
+      type: string
+      nullable: true
+    environments:
+      description: The operational environments the project is available in
+      type: array
+      items:
+        type: string
+      minLength: 1
+      nullable: true
+    data_center:
+      description: The data center the project runs in
+      type: string
+      nullable: true
+    configuration_system:
+      description: The system used to configure the project (Ansible, Consul, etc)
+      type: string
+      nullable: true
+    deployment_type:
+      description: How the project is deployed (Jenkins, GitLab-CI, etc)
+      type: string
+      nullable: true
+    orchestration_system:
+      description: TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)
+      type: string
+      nullable: true
+  additionalProperties: false
+
+write:
+  title: Project
+  description: Describes a project managed by Imbi
+  type: object
+  properties:
+    namespace_id:
+      description: The project namespace ID
+      type: number
+    project_type_id:
+      description: The project type ID
+      type: number
+    name:
+      description: The project name
+      type: string
+    slug:
+      description: The project URL slug (In GitLab and other projects)
+      type: string
+    description:
+      description: Long for description of the project
+      type: string
+      nullable: true
+    environments:
+      description: The operational environments the project is available in
+      type: array
+      items:
+        type: string
+      minLength: 1
+      nullable: true
+    data_center:
+      description: The data center the project runs in
+      type: string
+      nullable: true
+    configuration_system:
+      description: The system used to configure the project (Ansible, Consul, etc)
+      type: string
+      nullable: true
+    deployment_type:
+      description: How the project is deployed (Jenkins, GitLab-CI, etc)
+      type: string
+      nullable: true
+    orchestration_system:
+      description: TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)
+      type: string
+      nullable: true
+  required:
+    - namespace_id
+    - project_type_id
+    - name
+    - slug
+  additionalProperties: false

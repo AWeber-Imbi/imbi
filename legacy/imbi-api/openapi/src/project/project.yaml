@@ -42,30 +42,29 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: namespace
+      - name: id
         in: path
-        description: Project Namespace
+        description: Project ID
         required: true
         schema:
-          type: string
-      - name: name
-        in: path
-        description: Project Name
-        required: true
-        schema:
-          type: string
+          type: number
 
 components:
   examples:
     record:
       summary: An example of a project record
       value:
+        id: 1
+        created_by: test_user
+        last_modified_by: ~
+        namespace_id: 1
         namespace: User Experience
+        project_type_id: 1
+        project_type: HTTP API
         name: User Service
         slug: user
         description: |-
           The user service is used to manage user specific data, including profiles and content.
-        project_type: HTTP API
         data_center: us-east-1
         configuration_system: SSM Parameter Store
         deployment_type: ecs-pipeline-deploy
@@ -85,7 +84,7 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/project.yaml'
+            $ref: '../schemas/project.yaml#/read'
           examples:
             record:
               $ref: '#/components/examples/record'

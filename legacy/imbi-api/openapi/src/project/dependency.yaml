@@ -17,40 +17,27 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: namespace
+      - name: id
         in: path
-        description: Project Namespace
+        description: The ID of the project with the dependency
         required: true
         schema:
-          type: string
-      - name: name
+          type: number
+      - name: dependency_id
         in: path
-        description: Project Name
+        description: The ID of the project that is dependend upon
         required: true
         schema:
-          type: string
-      - name: dependency_namespace
-        in: path
-        description: The namespace of the project that is dependend upon
-        required: true
-        schema:
-          type: string
-      - name: dependency_name
-        in: path
-        description: The name of the project that is dependend upon
-        required: true
-        schema:
-          type: string
+          type: number
 
 components:
   examples:
     record:
       summary: A project dependency record
       value:
-        namespace: Example
-        name: Project A
-        dependency_namespace: Example
-        dependency_name: Project B
+        project_id: 2
+        created_by: test_user
+        dependency_id: 1
 
   responses:
     Success:
@@ -62,7 +49,7 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/project_dependency.yaml'
+            $ref: '../schemas/project_dependency.yaml#/read'
           examples:
             record:
               $ref: '#/components/examples/record'

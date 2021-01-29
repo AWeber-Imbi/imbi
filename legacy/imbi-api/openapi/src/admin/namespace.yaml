@@ -8,10 +8,10 @@ paths:
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/namespace.yaml'
+              $ref: '../schemas/namespace.yaml#/write'
             examples:
               record:
-                $ref: '#/components/examples/record'
+                $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
       tags: [Namespaces]
@@ -64,17 +64,28 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: namespace
+      - name: id
         in: path
-        description: Namespace
+        description: Namespace ID
         required: true
         schema:
-          type: string
-          pattern: '[\w_]+'
+          type: number
 
 components:
   examples:
-    record:
+    read:
+      summary: A full namespace record
+      value:
+        id: 1
+        created_by: test_user
+        last_modified_by: ~
+        name: Platform Support Engineering
+        slug: PSE
+        icon_class: fas fa-blind
+        maintainted_by:
+          - Developers
+          - Operations
+    write:
       summary: A full namespace record
       value:
         name: Platform Support Engineering
@@ -94,10 +105,10 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/namespace.yaml'
+            $ref: '../schemas/namespace.yaml#/read'
           examples:
             record:
-              $ref: '#/components/examples/record'
+              $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess
 

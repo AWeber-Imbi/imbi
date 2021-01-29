@@ -8,10 +8,10 @@ paths:
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/project_fact_type.yaml'
+              $ref: '../schemas/project_fact_type.yaml#/write'
             examples:
               record:
-                $ref: '#/components/examples/record'
+                $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
       tags: [Project Fact Types]
@@ -64,27 +64,34 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: project_type
+      - name: project_type_id
         in: path
-        description: Project Type
+        description: Project Type ID
         required: true
         schema:
-          type: string
-          pattern: '[\w_]+'
-      - name: fact_type
+          type: number
+      - name: fact_type_id
         in: path
-        description: Fact Type
+        description: Fact Type ID
         required: true
         schema:
-          type: string
-          pattern: '[\w_]+'
+          type: number
 
 components:
   examples:
-    record:
+    read:
       summary: A full project fact type record
       value:
-        project_type: API
+        id: 1
+        created_by: test_user
+        last_modified_by: ~
+        project_type_id: 1
+        fact_type: Programming Language
+        weight: 25
+    write:
+      summary: A full project fact type record
+      value:
+        project_type_id: 1
         fact_type: Programming Language
         weight: 25
 
@@ -98,10 +105,10 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/project_fact_type.yaml'
+            $ref: '../schemas/project_fact_type.yaml#/read'
           examples:
             record:
-              $ref: '#/components/examples/record'
+              $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess
 

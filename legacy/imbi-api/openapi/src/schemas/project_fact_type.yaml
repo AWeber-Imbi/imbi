@@ -1,20 +1,48 @@
-title: Project Fact Type
-description: |
-  Defines types of facts that can be recorded about a project
-type: object
-properties:
-  project_type:
-    description: The type of project the fact is associated with
-    type: string
-  fact_type:
-    description: The project fact type name
-    type: string
-  weight:
-    description: The weight of the fact type when computing a project score
-    type: number
-    default: 0
-required:
-  - project_type
-  - fact_type
-  - weight
-additionalProperties: false
+read:
+  title: Project Fact Type
+  description: |
+    Defines types of facts that can be recorded about a project
+  type: object
+  properties:
+    id:
+      description: The surrogate ID
+      type: number
+    created_by:
+      description: The user that created the record
+      type: string
+    last_modified_by:
+      description: The user that last modified the record
+      type: string
+    project_type_id:
+      description: The ID for the project type
+      type: number
+    fact_type:
+      description: The project fact type name
+      type: string
+    weight:
+      description: The weight of the fact type when computing a project score
+      type: number
+      default: 0
+  additionalProperties: false
+
+write:
+  title: Project Fact Type
+  description: |
+    Defines types of facts that can be recorded about a project
+  type: object
+  properties:
+    project_type_id:
+      description: The ID for the project type
+      type: number
+    fact_type:
+      description: The project fact type name
+      type: string
+    weight:
+      description: The weight of the fact type when computing a project score
+      type: number
+      default: 0
+  required:
+    - project_type_id
+    - fact_type
+    - weight
+  additionalProperties: false

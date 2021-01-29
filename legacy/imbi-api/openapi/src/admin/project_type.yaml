@@ -8,10 +8,10 @@ paths:
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/project_type.yaml'
+              $ref: '../schemas/project_type.yaml#/write'
             examples:
               record:
-                $ref: '#/components/examples/record'
+                $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
       tags: [Project Types]
@@ -64,20 +64,29 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: name
+      - name: id
         in: path
-        description: Project Type Name
+        description: Project Type ID
         required: true
         schema:
-          type: string
-          pattern: '[\w_]+'
+          type: number
 
 components:
   examples:
-    record:
+    read:
       summary: A full project type record
       value:
-        project_type: HTTP API
+        id: 1
+        created_by: test_user
+        last_modified_by: ~
+        name: HTTP API
+        description: RESTful HTTP 1.1 API
+        slug: http-api
+        icon_class: fab fa-aws
+    write:
+      summary: A full project type record
+      value:
+        name: HTTP API
         description: RESTful HTTP 1.1 API
         slug: http-api
         icon_class: fab fa-aws
@@ -92,10 +101,10 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/project_type.yaml'
+            $ref: '../schemas/project_type.yaml#/read'
           examples:
             record:
-              $ref: '#/components/examples/record'
+              $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess
 
