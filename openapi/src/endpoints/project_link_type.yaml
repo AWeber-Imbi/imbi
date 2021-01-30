@@ -1,5 +1,31 @@
 paths:
-  create:
+  collection:
+    get:
+      description: Retrieve the collection of project link types
+      summary: Get Project Link Types
+      tags: [Settings]
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/project_link_type.yaml'
+              examples:
+                records:
+                  summary: Multiple project link type records
+                  value:
+                    - project_link_type: documentation
+                      icon_class: fab fa-bool
+                    - project_link_type: grafana
+                      icon_class: fab fa-graph
+            application/msgpack:
+              <<: *responseContent
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
     post:
       summary: Create Record
       description: Create a new link type record

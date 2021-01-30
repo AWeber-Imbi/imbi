@@ -27,7 +27,51 @@ security:
   - session: []
   - token: []
 paths:
-  /configuration_systems:
+  /configuration-systems:
+    get:
+      description: Retrieve the collection of configuration systems
+      summary: Get Configuration Systems
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple configuration system records
+                  value:
+                    - name: Ansible
+                      description: Ansible is powerful IT automation that you can learn quickly
+                      icon_class: fas fa-microscope
+                    - name: Consul
+                      description: Feature rich key/value store to easily configure projects
+                      icon_class: fas fa-blind
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple configuration system records
+                  value:
+                    - name: Ansible
+                      description: Ansible is powerful IT automation that you can learn quickly
+                      icon_class: fas fa-microscope
+                    - name: Consul
+                      description: Feature rich key/value store to easily configure projects
+                      icon_class: fas fa-blind
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new configuration system record
@@ -63,7 +107,7 @@ paths:
                   icon_class: fas fa-blind
           application/msgpack:
             schema:
-              $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full configuration system record
@@ -78,7 +122,7 @@ paths:
           description: 'The request to create, update, or retrieve the configuration system was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -86,23 +130,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
-  '/configuration_systems/{name}':
+  '/configuration-systems/{name}':
     get:
       summary: Get Record
       description: Retrieve a configuration system record
@@ -110,9 +154,9 @@ paths:
         - Configuration Systems
       responses:
         '200':
-          $ref: '#/paths/~1configuration_systems/post/responses/200'
+          $ref: '#/paths/~1configuration-systems/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -137,13 +181,13 @@ paths:
               $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1configuration_systems/post/responses/200'
+          $ref: '#/paths/~1configuration-systems/post/responses/200'
         '304':
           $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -157,7 +201,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -168,7 +212,69 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /cookie_cutters:
+  /cookie-cutters:
+    get:
+      description: Retrieve the collection of cookie cutters
+      summary: Get Cookie Cutters
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple cookie cutter records
+                  value:
+                    - cookiecutter: buzzops-project
+                      project_type_id: 1
+                      type: project
+                      description: A HTTP API that runs in Kubernetes
+                      url: 'https://github.com/aweber/k8s-api-cookiecutter.git'
+                    - cookiecutter: buzzops-consumer
+                      project_type_id: 2
+                      type: project
+                      description: A rejected consumer application
+                      url: 'https://github.com/aweber/k8s-consumer-cookiecutter.git'
+                    - cookiecutter: buzzops-consumer-dashboard
+                      project_type_id: 1
+                      type: dashboard
+                      description: A Grafana dashboard for a rejected consumer application
+                      url: 'https://github.com/aweber/grafana-consumer-cookiecutter.git'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple cookie cutter records
+                  value:
+                    - cookiecutter: buzzops-project
+                      project_type_id: 1
+                      type: project
+                      description: A HTTP API that runs in Kubernetes
+                      url: 'https://github.com/aweber/k8s-api-cookiecutter.git'
+                    - cookiecutter: buzzops-consumer
+                      project_type_id: 2
+                      type: project
+                      description: A rejected consumer application
+                      url: 'https://github.com/aweber/k8s-consumer-cookiecutter.git'
+                    - cookiecutter: buzzops-consumer-dashboard
+                      project_type_id: 1
+                      type: dashboard
+                      description: A Grafana dashboard for a rejected consumer application
+                      url: 'https://github.com/aweber/grafana-consumer-cookiecutter.git'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new cookie cutter record
@@ -217,7 +323,7 @@ paths:
                   url: 'https://gitlab.com/aweber/cookiecutters/k8s-rejected-consumer.git'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full cookie cutter record
@@ -234,7 +340,7 @@ paths:
           description: 'The request to create, update, or retrieve the cookie cutter was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -242,23 +348,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
-  '/cookie_cutters/{name}':
+  '/cookie-cutters/{name}':
     get:
       summary: Get Record
       description: Retrieve a cookie cutter record
@@ -266,9 +372,9 @@ paths:
         - Cookie Cutters
       responses:
         '200':
-          $ref: '#/paths/~1cookie_cutters/post/responses/200'
+          $ref: '#/paths/~1cookie-cutters/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -295,13 +401,13 @@ paths:
               $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1cookie_cutters/post/responses/200'
+          $ref: '#/paths/~1cookie-cutters/post/responses/200'
         '304':
           $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -315,7 +421,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -326,7 +432,51 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /data_centers:
+  /data-centers:
+    get:
+      description: Retrieve the collection of data centers
+      summary: Get Data Centers
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple data center records
+                  value:
+                    - name: us-east-1
+                      description: US East (N. Virginia)
+                      icon_class: fab fa-aws
+                    - name: us-east-2
+                      description: US East (Ohio)
+                      icon_class: fab fa-aws
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple data center records
+                  value:
+                    - name: us-east-1
+                      description: US East (N. Virginia)
+                      icon_class: fab fa-aws
+                    - name: us-east-2
+                      description: US East (Ohio)
+                      icon_class: fab fa-aws
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new data center record
@@ -365,7 +515,7 @@ paths:
                   icon_class: fab fa-aws
           application/msgpack:
             schema:
-              $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full data center record
@@ -380,7 +530,7 @@ paths:
           description: 'The request to create, update, or retrieve the data center was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -388,23 +538,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
-  '/data_centers/{name}':
+  '/data-centers/{name}':
     get:
       summary: Get Record
       description: Retrieve a data center record
@@ -412,9 +562,9 @@ paths:
         - Data Centers
       responses:
         '200':
-          $ref: '#/paths/~1data_centers/post/responses/200'
+          $ref: '#/paths/~1data-centers/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -439,13 +589,13 @@ paths:
               $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1data_centers/post/responses/200'
+          $ref: '#/paths/~1data-centers/post/responses/200'
         '304':
           $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -459,7 +609,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -470,7 +620,51 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /deployment_types:
+  /deployment-types:
+    get:
+      description: Retrieve the collection of deployment types
+      summary: Get Deployment Types
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple deployment type records
+                  value:
+                    - name: Helm
+                      description: The package manager for Kubernetes
+                      icon_class: icon helm
+                    - name: Artifcatory
+                      description: Package artifact uploaded to artifactory
+                      icon_class: fab fa-aws
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple deployment type records
+                  value:
+                    - name: Helm
+                      description: The package manager for Kubernetes
+                      icon_class: icon helm
+                    - name: Artifcatory
+                      description: Package artifact uploaded to artifactory
+                      icon_class: fab fa-aws
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new deployment type record
@@ -506,7 +700,7 @@ paths:
                   icon_class: fab fa-aws
           application/msgpack:
             schema:
-              $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full deployment type record
@@ -521,7 +715,7 @@ paths:
           description: 'The request to create, update, or retrieve the deployment type was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -529,23 +723,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
-  '/deployment_types/{name}':
+  '/deployment-types/{name}':
     get:
       summary: Get Record
       description: Retrieve a deployment type record
@@ -553,9 +747,9 @@ paths:
         - Deployment Types
       responses:
         '200':
-          $ref: '#/paths/~1deployment_types/post/responses/200'
+          $ref: '#/paths/~1deployment-types/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -580,13 +774,13 @@ paths:
               $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1deployment_types/post/responses/200'
+          $ref: '#/paths/~1deployment-types/post/responses/200'
         '304':
           $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -600,7 +794,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -612,6 +806,58 @@ paths:
           type: string
           pattern: '[\w_]+'
   /environments:
+    get:
+      description: Retrieve the collection of environments
+      summary: Get Environments
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple environment records
+                  value:
+                    - name: testing
+                      description: |
+                        The testing environment reflects the state of HEAD state of the
+                        master branch in our Git Repositories for all projects
+                      icon_class: fab fa-aws
+                    - name: staging
+                      description: |
+                        The staging environment reflects tagged project releases that are
+                        intended to be to deployed to production
+                      icon_class: fab fa-aws
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple environment records
+                  value:
+                    - name: testing
+                      description: |
+                        The testing environment reflects the state of HEAD state of the
+                        master branch in our Git Repositories for all projects
+                      icon_class: fab fa-aws
+                    - name: staging
+                      description: |
+                        The staging environment reflects tagged project releases that are
+                        intended to be to deployed to production
+                      icon_class: fab fa-aws
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new environment record
@@ -666,7 +912,7 @@ paths:
           description: 'The request to create, update, or retrieve the environment was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -687,7 +933,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
   '/environments/{name}':
@@ -700,7 +946,7 @@ paths:
         '200':
           $ref: '#/paths/~1environments/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -731,7 +977,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -745,7 +991,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -757,6 +1003,109 @@ paths:
           type: string
           pattern: '[\w_]+'
   /groups:
+    get:
+      description: Retrieve the collection of groups
+      summary: Get Groups
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              description: Provides guidance indicating how the group record should be cached for
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple group records
+                  value:
+                    - name: Administrators
+                      group_type: external
+                      external_id: 'cn=admins,ou=users,dc=example,dc=org'
+                      permissions:
+                        - admin
+                        - user
+                    - group: Quality Assurance
+                      group_type: external
+                      external_id: 'cn=qa,ou=users,dc=example,dc=org'
+                      permissions:
+                        - user
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple group records
+                  value:
+                    - name: Administrators
+                      group_type: external
+                      external_id: 'cn=admins,ou=users,dc=example,dc=org'
+                      permissions:
+                        - admin
+                        - user
+                    - group: Quality Assurance
+                      group_type: external
+                      external_id: 'cn=qa,ou=users,dc=example,dc=org'
+                      permissions:
+                        - user
+        '401':
+          description: The request could not be authorized using the session cookie or provided API token
+          content:
+            application/json:
+              schema:
+                title: Problem Detail
+                description: A problem detail document as defined by RFC 7807
+                externalDocs:
+                  url: 'https://tools.ietf.org/html/rfc7807'
+                type: object
+                properties:
+                  type:
+                    description: Machine-readable error type
+                    type: string
+                    format: url
+                  title:
+                    description: 'A short, human-readable summary of the problem type.'
+                    type: string
+                  status:
+                    description: |-
+                      The HTTP status code generated by the origin server for this
+                      occurrence of the problem.
+                    type: integer
+                  detail:
+                    description: |-
+                      A human-readable explanation specific to this occurrence of the
+                      problem.
+                  instance:
+                    description: URI that identifies this specific problem occurrence
+                    type: string
+                    format: url
+                additionalProperties: false
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 401 Unauthorized
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
+              examples:
+                problemDetail:
+                  description: An example of the response body
+                  value:
+                    type: HTTPError
+                    traceback: []
+                    message: HTTP 401 Unauthorized
     post:
       summary: Create Record
       description: Create a new group record
@@ -821,7 +1170,7 @@ paths:
           description: 'The request to create, update, or retrieve the group was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               description: Indicates when the last modification of the data occurred
               schema:
@@ -852,33 +1201,7 @@ paths:
           content:
             application/json:
               schema:
-                title: Problem Detail
-                description: A problem detail document as defined by RFC 7807
-                externalDocs:
-                  url: 'https://tools.ietf.org/html/rfc7807'
-                type: object
-                properties:
-                  type:
-                    description: Machine-readable error type
-                    type: string
-                    format: url
-                  title:
-                    description: 'A short, human-readable summary of the problem type.'
-                    type: string
-                  status:
-                    description: |-
-                      The HTTP status code generated by the origin server for this
-                      occurrence of the problem.
-                    type: integer
-                  detail:
-                    description: |-
-                      A human-readable explanation specific to this occurrence of the
-                      problem.
-                  instance:
-                    description: URI that identifies this specific problem occurrence
-                    type: string
-                    format: url
-                additionalProperties: false
+                $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -888,7 +1211,7 @@ paths:
                     message: HTTP 400 Request Error
             application/msgpack:
               schema:
-                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -897,34 +1220,13 @@ paths:
                     traceback: []
                     message: HTTP 400 Request Error
         '401':
-          description: The request could not be authorized using the session cookie or provided API token
-          content:
-            application/json:
-              schema:
-                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: HTTP 401 Unauthorized
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
-              examples:
-                problemDetail:
-                  description: An example of the response body
-                  value:
-                    type: HTTPError
-                    traceback: []
-                    message: HTTP 401 Unauthorized
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           description: The request could not be completed due to a race condition
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -934,7 +1236,7 @@ paths:
                     message: 'HTTP 409: Conflict'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -952,13 +1254,13 @@ paths:
         '200':
           $ref: '#/paths/~1groups/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           description: The requested resource was not found
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -968,7 +1270,7 @@ paths:
                     message: 'HTTP 404: Resource not found'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1groups/post/responses/400/content/application~1json/schema'
+                $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
               examples:
                 problemDetail:
                   description: An example of the response body
@@ -1075,7 +1377,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -1089,7 +1391,7 @@ paths:
         '204':
           description: The record was removed as requested
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
       security:
@@ -1104,6 +1406,182 @@ paths:
           type: string
           pattern: '[\w_]+'
   /namespaces:
+    get:
+      description: Retrieve the collection of namespaces
+      summary: Get Namespaces
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Namespace
+                    description: Used to create namespaces for project organization
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate key for URLs and table linking
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      name:
+                        description: The namespace name
+                        type: string
+                      slug:
+                        description: Team path slug / abbreviation
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                      maintained_by:
+                        description: Association of the namespace to one or more internal or external Imbi groups
+                        type: array
+                        items:
+                          type: string
+                        nullable: true
+                    required:
+                      - name
+                      - slug
+                      - icon_class
+                    additionalProperties: false
+                  write:
+                    title: Namespace
+                    description: Used to create namespaces for project organization
+                    type: object
+                    properties:
+                      name:
+                        description: The namespace name
+                        type: string
+                      slug:
+                        description: Team path slug / abbreviation
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                      maintained_by:
+                        description: Association of the namespace to one or more internal or external Imbi groups
+                        type: array
+                        items:
+                          type: string
+                        nullable: true
+                    required:
+                      - name
+                      - slug
+                      - icon_class
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple namespace records
+                  value:
+                    - id: 1
+                      name: Platform Support Engineering
+                      slug: PSE
+                      icon_class: fas fa-blind
+                      maintained_by:
+                        - Developers
+                        - Operations
+                    - id: 2
+                      name: Quality Assurance
+                      slug: QA
+                      icon_class: fas fa-microscope
+                      maintained_by:
+                        - Developers
+                        - QA
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Namespace
+                    description: Used to create namespaces for project organization
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate key for URLs and table linking
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      name:
+                        description: The namespace name
+                        type: string
+                      slug:
+                        description: Team path slug / abbreviation
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                      maintained_by:
+                        description: Association of the namespace to one or more internal or external Imbi groups
+                        type: array
+                        items:
+                          type: string
+                        nullable: true
+                    required:
+                      - name
+                      - slug
+                      - icon_class
+                    additionalProperties: false
+                  write:
+                    title: Namespace
+                    description: Used to create namespaces for project organization
+                    type: object
+                    properties:
+                      name:
+                        description: The namespace name
+                        type: string
+                      slug:
+                        description: Team path slug / abbreviation
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                      maintained_by:
+                        description: Association of the namespace to one or more internal or external Imbi groups
+                        type: array
+                        items:
+                          type: string
+                        nullable: true
+                    required:
+                      - name
+                      - slug
+                      - icon_class
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple namespace records
+                  value:
+                    - id: 1
+                      name: Platform Support Engineering
+                      slug: PSE
+                      icon_class: fas fa-blind
+                      maintained_by:
+                        - Developers
+                        - Operations
+                    - id: 2
+                      name: Quality Assurance
+                      slug: QA
+                      icon_class: fas fa-microscope
+                      maintained_by:
+                        - Developers
+                        - QA
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new namespace record
@@ -1112,7 +1590,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1settings~1namespaces/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full namespace record
@@ -1125,7 +1603,7 @@ paths:
                     - Operations
           application/msgpack:
             schema:
-              $ref: '#/paths/~1settings~1namespaces/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full namespace record
@@ -1143,7 +1621,7 @@ paths:
           description: 'The request to create, update, or retrieve the namespace was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -1151,7 +1629,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1settings~1namespaces/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: A full namespace record
@@ -1167,7 +1645,7 @@ paths:
                       - Operations
             application/msgpack:
               schema:
-                $ref: '#/paths/~1settings~1namespaces/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: A full namespace record
@@ -1184,7 +1662,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
   '/namespaces/{id}':
@@ -1197,7 +1675,7 @@ paths:
         '200':
           $ref: '#/paths/~1namespaces/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -1228,7 +1706,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -1242,7 +1720,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -1252,7 +1730,51 @@ paths:
         required: true
         schema:
           type: number
-  /orchestration_systems:
+  /orchestration-systems:
+    get:
+      description: Retrieve the collection of orchestration systems
+      summary: Get Orchestration Systems
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple orchestration system records
+                  value:
+                    - orchestration_system: Kubernetes
+                      description: Production-Grade Container Orchestration
+                      icon_class: fas fa-blind
+                    - orchestration_system: Nomad
+                      description: HashiCorp Nomad
+                      icon_class: fas fa-blind
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple orchestration system records
+                  value:
+                    - orchestration_system: Kubernetes
+                      description: Production-Grade Container Orchestration
+                      icon_class: fas fa-blind
+                    - orchestration_system: Nomad
+                      description: HashiCorp Nomad
+                      icon_class: fas fa-blind
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new orchestration system record
@@ -1290,7 +1812,7 @@ paths:
                   icon_class: fas fa-blind
           application/msgpack:
             schema:
-              $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
             examples:
               record:
                 summary: A full orchestration system record
@@ -1305,7 +1827,7 @@ paths:
           description: 'The request to create, update, or retrieve the orchestration system was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -1313,23 +1835,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
+                $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
               examples:
                 record:
-                  $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
-  '/orchestration_systems/{name}':
+  '/orchestration-systems/{name}':
     get:
       summary: Get Record
       description: Retrieve an orchestration system record
@@ -1337,9 +1859,9 @@ paths:
         - Orchestration Systems
       responses:
         '200':
-          $ref: '#/paths/~1orchestration_systems/post/responses/200'
+          $ref: '#/paths/~1orchestration-systems/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -1364,13 +1886,13 @@ paths:
               $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1orchestration_systems/post/responses/200'
+          $ref: '#/paths/~1orchestration-systems/post/responses/200'
         '304':
           $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -1384,7 +1906,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -1395,7 +1917,204 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
-  /project_fact_types:
+  /permissions:
+    get:
+      description: Retrieve the collection of available permissions
+      summary: Get Permissions
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              examples:
+                records:
+                  summary: Multiple permissions
+                  value:
+                    - admin
+                    - user
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: string
+              examples:
+                records:
+                  summary: Multiple permissions
+                  value:
+                    - admin
+                    - user
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+  /project-fact-types:
+    get:
+      description: Retrieve the collection of project fact types
+      summary: Get Project Fact Types
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Project Fact Type
+                    description: |
+                      Defines types of facts that can be recorded about a project
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate ID
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      project_type_id:
+                        description: The ID for the project type
+                        type: number
+                      fact_type:
+                        description: The project fact type name
+                        type: string
+                      weight:
+                        description: The weight of the fact type when computing a project score
+                        type: number
+                        default: 0
+                    additionalProperties: false
+                  write:
+                    title: Project Fact Type
+                    description: |
+                      Defines types of facts that can be recorded about a project
+                    type: object
+                    properties:
+                      project_type_id:
+                        description: The ID for the project type
+                        type: number
+                      fact_type:
+                        description: The project fact type name
+                        type: string
+                      weight:
+                        description: The weight of the fact type when computing a project score
+                        type: number
+                        default: 0
+                    required:
+                      - project_type_id
+                      - fact_type
+                      - weight
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple project fact type records
+                  value:
+                    - project_type: Consumer
+                      fact_type: Programming Language
+                      weight: 25
+                    - project_type: Consumer
+                      fact_type: Test Coverage
+                      weight: 25
+                    - project_type: Consumer
+                      fact_type: Deployed to all Environments
+                      weight: 20
+                    - project_type: Consumer
+                      fact_type: Has Acceptance Tests
+                      weight: 10
+                    - project_type: Consumer
+                      fact_type: Meets Current Standards
+                      weight: 10
+                    - project_type: Consumer
+                      fact_type: Has working CI pipeline
+                      weight: 10
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Project Fact Type
+                    description: |
+                      Defines types of facts that can be recorded about a project
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate ID
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      project_type_id:
+                        description: The ID for the project type
+                        type: number
+                      fact_type:
+                        description: The project fact type name
+                        type: string
+                      weight:
+                        description: The weight of the fact type when computing a project score
+                        type: number
+                        default: 0
+                    additionalProperties: false
+                  write:
+                    title: Project Fact Type
+                    description: |
+                      Defines types of facts that can be recorded about a project
+                    type: object
+                    properties:
+                      project_type_id:
+                        description: The ID for the project type
+                        type: number
+                      fact_type:
+                        description: The project fact type name
+                        type: string
+                      weight:
+                        description: The weight of the fact type when computing a project score
+                        type: number
+                        default: 0
+                    required:
+                      - project_type_id
+                      - fact_type
+                      - weight
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple project fact type records
+                  value:
+                    - project_type: Consumer
+                      fact_type: Programming Language
+                      weight: 25
+                    - project_type: Consumer
+                      fact_type: Test Coverage
+                      weight: 25
+                    - project_type: Consumer
+                      fact_type: Deployed to all Environments
+                      weight: 20
+                    - project_type: Consumer
+                      fact_type: Has Acceptance Tests
+                      weight: 10
+                    - project_type: Consumer
+                      fact_type: Meets Current Standards
+                      weight: 10
+                    - project_type: Consumer
+                      fact_type: Has working CI pipeline
+                      weight: 10
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new project fact type record
@@ -1404,7 +2123,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1settings~1project_fact_types/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full project fact type record
@@ -1414,7 +2133,7 @@ paths:
                   weight: 25
           application/msgpack:
             schema:
-              $ref: '#/paths/~1settings~1project_fact_types/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full project fact type record
@@ -1429,7 +2148,7 @@ paths:
           description: 'The request to create, update, or retrieve the project fact type was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -1437,7 +2156,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1settings~1project_fact_types/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: A full project fact type record
@@ -1450,7 +2169,7 @@ paths:
                     weight: 25
             application/msgpack:
               schema:
-                $ref: '#/paths/~1settings~1project_fact_types/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: A full project fact type record
@@ -1464,10 +2183,10 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
-  '/project_fact_types/{fact_type_id}':
+  '/project-fact-types/{fact_type_id}':
     get:
       summary: Get Record
       description: Retrieve a project fact type record
@@ -1475,9 +2194,9 @@ paths:
         - Project Fact Types
       responses:
         '200':
-          $ref: '#/paths/~1project_fact_types/post/responses/200'
+          $ref: '#/paths/~1project-fact-types/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -1502,13 +2221,13 @@ paths:
               $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1project_fact_types/post/responses/200'
+          $ref: '#/paths/~1project-fact-types/post/responses/200'
         '304':
           $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -1522,7 +2241,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -1532,7 +2251,171 @@ paths:
         required: true
         schema:
           type: number
-  /project_fact_type_options:
+  /project-fact-type-options:
+    get:
+      description: Retrieve the collection of project fact type options
+      summary: Get Project Fact Type Options
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Project Fact Type Option
+                    description: |
+                      Defines options that are available for a project fact type
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate key for the fact type option
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      fact_type_id:
+                        description: The ID of the fact type the option is for
+                        type: string
+                      value:
+                        description: The option value
+                        type: string
+                      score:
+                        description: The score value for the option
+                        type: number
+                        default: 0
+                    additionalProperties: false
+                  write:
+                    title: Project Fact Type Option
+                    description: |
+                      Defines options that are available for a project fact type
+                    type: object
+                    properties:
+                      fact_type_id:
+                        description: The ID of the fact type the option is for
+                        type: number
+                      value:
+                        description: The option value
+                        type: string
+                      score:
+                        description: The score value for the option
+                        type: number
+                        default: 0
+                    required:
+                      - fact_type_id
+                      - value
+                      - score
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple project fact type option records
+                  value:
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 3.9
+                      score: 100
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 3.7
+                      score: 75
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 3.6
+                      score: 50
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 3.5
+                      score: 50
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 2.7
+                      score: 0
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Project Fact Type Option
+                    description: |
+                      Defines options that are available for a project fact type
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate key for the fact type option
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      fact_type_id:
+                        description: The ID of the fact type the option is for
+                        type: string
+                      value:
+                        description: The option value
+                        type: string
+                      score:
+                        description: The score value for the option
+                        type: number
+                        default: 0
+                    additionalProperties: false
+                  write:
+                    title: Project Fact Type Option
+                    description: |
+                      Defines options that are available for a project fact type
+                    type: object
+                    properties:
+                      fact_type_id:
+                        description: The ID of the fact type the option is for
+                        type: number
+                      value:
+                        description: The option value
+                        type: string
+                      score:
+                        description: The score value for the option
+                        type: number
+                        default: 0
+                    required:
+                      - fact_type_id
+                      - value
+                      - score
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple project fact type option records
+                  value:
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 3.9
+                      score: 100
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 3.7
+                      score: 75
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 3.6
+                      score: 50
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 3.5
+                      score: 50
+                    - project_type: HTTP API
+                      fact_type: Programming Language
+                      value: Python 2.7
+                      score: 0
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new project fact type option record
@@ -1541,7 +2424,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1settings~1project_fact_type_options/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1project-fact-type-options/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full project fact type option record
@@ -1551,7 +2434,7 @@ paths:
                   weight: 50
           application/msgpack:
             schema:
-              $ref: '#/paths/~1settings~1project_fact_type_options/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1project-fact-type-options/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full project fact type option record
@@ -1566,7 +2449,7 @@ paths:
           description: 'The request to create, update, or retrieve the project fact type option was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -1574,7 +2457,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1settings~1project_fact_type_options/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1project-fact-type-options/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: A full project fact type option record
@@ -1587,7 +2470,7 @@ paths:
                     weight: 50
             application/msgpack:
               schema:
-                $ref: '#/paths/~1settings~1project_fact_type_options/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1project-fact-type-options/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: A full project fact type option record
@@ -1601,10 +2484,10 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
-  '/project_fact_type_options/{id}':
+  '/project-fact-type-options/{id}':
     get:
       summary: Get Record
       description: Retrieve a project fact type option record
@@ -1612,9 +2495,9 @@ paths:
         - Project Fact Type Options
       responses:
         '200':
-          $ref: '#/paths/~1project_fact_type_options/post/responses/200'
+          $ref: '#/paths/~1project-fact-type-options/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -1639,13 +2522,13 @@ paths:
               $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1project_fact_type_options/post/responses/200'
+          $ref: '#/paths/~1project-fact-type-options/post/responses/200'
         '304':
           $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -1659,7 +2542,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -1669,7 +2552,117 @@ paths:
         required: true
         schema:
           type: number
-  /project_link_types:
+  /project-link-types:
+    get:
+      description: Retrieve the collection of project link types
+      summary: Get Project Link Types
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Link Type
+                    description: Used to describe the types of project deployment systems
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate key for URLs and table linking
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      link_type:
+                        description: The display name for a link type
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                    additionalProperties: false
+                  write:
+                    title: Link Type
+                    description: Used to describe the types of project deployment systems
+                    type: object
+                    properties:
+                      link_type:
+                        description: The display name for a link type
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                    required:
+                      - link_type
+                      - icon_class
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple project link type records
+                  value:
+                    - project_link_type: documentation
+                      icon_class: fab fa-bool
+                    - project_link_type: grafana
+                      icon_class: fab fa-graph
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Link Type
+                    description: Used to describe the types of project deployment systems
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate key for URLs and table linking
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      link_type:
+                        description: The display name for a link type
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                    additionalProperties: false
+                  write:
+                    title: Link Type
+                    description: Used to describe the types of project deployment systems
+                    type: object
+                    properties:
+                      link_type:
+                        description: The display name for a link type
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                    required:
+                      - link_type
+                      - icon_class
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple project link type records
+                  value:
+                    - project_link_type: documentation
+                      icon_class: fab fa-bool
+                    - project_link_type: grafana
+                      icon_class: fab fa-graph
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new link type record
@@ -1678,7 +2671,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1settings~1project_link_types/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full link type record
@@ -1687,7 +2680,7 @@ paths:
                   icon_class: fab fa-bool
           application/msgpack:
             schema:
-              $ref: '#/paths/~1settings~1project_link_types/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full link type record
@@ -1701,7 +2694,7 @@ paths:
           description: 'The request to create, update, or retrieve the link type was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -1709,7 +2702,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1settings~1project_link_types/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: The record when returned from the API
@@ -1721,7 +2714,7 @@ paths:
                     icon_class: fab fa-bool
             application/msgpack:
               schema:
-                $ref: '#/paths/~1settings~1project_link_types/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: The record when returned from the API
@@ -1734,10 +2727,10 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
-  '/project_link_types/{id}':
+  '/project-link-types/{id}':
     get:
       summary: Get Record
       description: Retrieve an link type record
@@ -1745,9 +2738,9 @@ paths:
         - Project Link Types
       responses:
         '200':
-          $ref: '#/paths/~1project_link_types/post/responses/200'
+          $ref: '#/paths/~1project-link-types/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -1772,13 +2765,13 @@ paths:
               $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1project_link_types/post/responses/200'
+          $ref: '#/paths/~1project-link-types/post/responses/200'
         '304':
           $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -1792,7 +2785,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -1802,7 +2795,159 @@ paths:
         required: true
         schema:
           type: number
-  /project_types:
+  /project-types:
+    get:
+      description: Retrieve the collection of project types
+      summary: Get Project Types
+      tags:
+        - Settings
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Project Type
+                    description: |
+                      Used to describe the types of operational project_types for projects
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate key for URLs and table linking
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      name:
+                        description: The display name for a project type
+                        type: string
+                      description:
+                        description: A description of the project type
+                        type: string
+                        nullable: true
+                      slug:
+                        description: 'The slug for project types, used in filtering'
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                    additionalProperties: false
+                  write:
+                    title: Project Type
+                    description: |
+                      Used to describe the types of operational project_types for projects
+                    type: object
+                    properties:
+                      name:
+                        description: The display name for a project type
+                        type: string
+                      description:
+                        description: A description of the project type
+                        type: string
+                        nullable: true
+                      slug:
+                        description: 'The slug for project types, used in filtering'
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                    required:
+                      - name
+                      - slug
+                      - icon_class
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple project type records
+                  value:
+                    - project_type: HTTP API
+                      description: RESTful HTTP 1.1 API
+                      icon_class: fab fa-aws
+                      slug: http-api
+                    - project_type: Postgres
+                      description: A PostgreSQL database
+                      icon_class: imbi postgres
+                      slug: postgres
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  read:
+                    title: Project Type
+                    description: |
+                      Used to describe the types of operational project_types for projects
+                    type: object
+                    properties:
+                      id:
+                        description: The surrogate key for URLs and table linking
+                        type: number
+                      created_by:
+                        description: The user that created the record
+                        type: string
+                      last_modified_by:
+                        description: The user that last modified the record
+                        type: string
+                      name:
+                        description: The display name for a project type
+                        type: string
+                      description:
+                        description: A description of the project type
+                        type: string
+                        nullable: true
+                      slug:
+                        description: 'The slug for project types, used in filtering'
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                    additionalProperties: false
+                  write:
+                    title: Project Type
+                    description: |
+                      Used to describe the types of operational project_types for projects
+                    type: object
+                    properties:
+                      name:
+                        description: The display name for a project type
+                        type: string
+                      description:
+                        description: A description of the project type
+                        type: string
+                        nullable: true
+                      slug:
+                        description: 'The slug for project types, used in filtering'
+                        type: string
+                      icon_class:
+                        description: Font Awesome UI icon class
+                        type: string
+                    required:
+                      - name
+                      - slug
+                      - icon_class
+                    additionalProperties: false
+              examples:
+                records:
+                  summary: Multiple project type records
+                  value:
+                    - project_type: HTTP API
+                      description: RESTful HTTP 1.1 API
+                      icon_class: fab fa-aws
+                      slug: http-api
+                    - project_type: Postgres
+                      description: A PostgreSQL database
+                      icon_class: imbi postgres
+                      slug: postgres
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Record
       description: Create a new project type record
@@ -1811,7 +2956,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1settings~1project_types/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full project type record
@@ -1822,7 +2967,7 @@ paths:
                   icon_class: fab fa-aws
           application/msgpack:
             schema:
-              $ref: '#/paths/~1settings~1project_types/get/responses/200/content/application~1json/schema/items/write'
+              $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items/write'
             examples:
               record:
                 summary: A full project type record
@@ -1838,7 +2983,7 @@ paths:
           description: 'The request to create, update, or retrieve the project type was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -1846,7 +2991,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1settings~1project_types/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: A full project type record
@@ -1860,7 +3005,7 @@ paths:
                     icon_class: fab fa-aws
             application/msgpack:
               schema:
-                $ref: '#/paths/~1settings~1project_types/get/responses/200/content/application~1json/schema/items/read'
+                $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items/read'
               examples:
                 record:
                   summary: A full project type record
@@ -1875,10 +3020,10 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
-  '/project_types/{id}':
+  '/project-types/{id}':
     get:
       summary: Get Record
       description: Retrieve a project type record
@@ -1886,9 +3031,9 @@ paths:
         - Project Types
       responses:
         '200':
-          $ref: '#/paths/~1project_types/post/responses/200'
+          $ref: '#/paths/~1project-types/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -1913,13 +3058,13 @@ paths:
               $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
-          $ref: '#/paths/~1project_types/post/responses/200'
+          $ref: '#/paths/~1project-types/post/responses/200'
         '304':
           $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -1933,7 +3078,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -1954,9 +3099,7 @@ paths:
           description: Success
           headers:
             Cache-Control:
-              description: Provides guidance indicating how the group record should be cached for
-              schema:
-                type: string
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
           content:
             application/json:
               schema:
@@ -2127,7 +3270,7 @@ paths:
                         - Staging
                         - Production
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Project
       description: Create a new project record
@@ -2229,7 +3372,7 @@ paths:
           description: 'The request to create, update, or retrieve the project was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -2288,7 +3431,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
   '/projects/{id}':
@@ -2301,7 +3444,7 @@ paths:
         '200':
           $ref: '#/paths/~1projects/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -2332,7 +3475,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -2346,7 +3489,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -2367,7 +3510,7 @@ paths:
           description: Success
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
           content:
             application/json:
               schema:
@@ -2468,7 +3611,7 @@ paths:
                       icon_class: fab gitlab
                       url: 'https://gitlab.com/AWeber/Imbi'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Link
       description: Create a new project link record
@@ -2520,7 +3663,7 @@ paths:
           description: 'The request to create, update, or retrieve the project was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -2555,7 +3698,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
     parameters:
@@ -2575,7 +3718,7 @@ paths:
         '200':
           $ref: '#/paths/~1projects~1%7Bid%7D~1links/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     patch:
@@ -2606,7 +3749,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
         '409':
@@ -2620,7 +3763,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -2647,7 +3790,7 @@ paths:
           description: Success
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
           content:
             application/json:
               schema:
@@ -2706,7 +3849,7 @@ paths:
                       created_by: test_user
                       dependency_id: 1
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
     post:
       summary: Create Dependency
       description: Create a new project dependency record
@@ -2745,7 +3888,7 @@ paths:
           description: 'The request to create, update, or retrieve the project was successful'
           headers:
             Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
@@ -2774,7 +3917,7 @@ paths:
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '409':
           $ref: '#/paths/~1groups/post/responses/409'
     parameters:
@@ -2794,7 +3937,7 @@ paths:
         '200':
           $ref: '#/paths/~1projects~1%7Bid%7D~1dependencies/post/responses/200'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     delete:
@@ -2806,7 +3949,7 @@ paths:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
         '401':
-          $ref: '#/paths/~1groups/post/responses/401'
+          $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
@@ -2822,1157 +3965,6 @@ paths:
         required: true
         schema:
           type: number
-  /settings/configuration_systems:
-    get:
-      description: Retrieve the collection of configuration systems
-      summary: Get Configuration Systems
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple configuration system records
-                  value:
-                    - name: Ansible
-                      description: Ansible is powerful IT automation that you can learn quickly
-                      icon_class: fas fa-microscope
-                    - name: Consul
-                      description: Feature rich key/value store to easily configure projects
-                      icon_class: fas fa-blind
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1configuration_systems/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple configuration system records
-                  value:
-                    - name: Ansible
-                      description: Ansible is powerful IT automation that you can learn quickly
-                      icon_class: fas fa-microscope
-                    - name: Consul
-                      description: Feature rich key/value store to easily configure projects
-                      icon_class: fas fa-blind
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/cookie_cutters:
-    get:
-      description: Retrieve the collection of cookie cutters
-      summary: Get Cookie Cutters
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple cookie cutter records
-                  value:
-                    - cookiecutter: buzzops-project
-                      project_type: HTTP API
-                      type: project
-                      description: A HTTP API that runs in Kubernetes
-                      url: 'https://github.com/aweber/k8s-api-cookiecutter.git'
-                    - cookiecutter: buzzops-consumer
-                      project_type: Consumer
-                      type: project
-                      description: A rejected consumer application
-                      url: 'https://github.com/aweber/k8s-consumer-cookiecutter.git'
-                    - cookiecutter: buzzops-consumer-dashboard
-                      project_type: Consumer
-                      type: dashboard
-                      description: A Grafana dashboard for a rejected consumer application
-                      url: 'https://github.com/aweber/grafana-consumer-cookiecutter.git'
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1cookie_cutters/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple cookie cutter records
-                  value:
-                    - cookiecutter: buzzops-project
-                      project_type: HTTP API
-                      type: project
-                      description: A HTTP API that runs in Kubernetes
-                      url: 'https://github.com/aweber/k8s-api-cookiecutter.git'
-                    - cookiecutter: buzzops-consumer
-                      project_type: Consumer
-                      type: project
-                      description: A rejected consumer application
-                      url: 'https://github.com/aweber/k8s-consumer-cookiecutter.git'
-                    - cookiecutter: buzzops-consumer-dashboard
-                      project_type: Consumer
-                      type: dashboard
-                      description: A Grafana dashboard for a rejected consumer application
-                      url: 'https://github.com/aweber/grafana-consumer-cookiecutter.git'
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/data_centers:
-    get:
-      description: Retrieve the collection of data centers
-      summary: Get Data Centers
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple data center records
-                  value:
-                    - name: us-east-1
-                      description: US East (N. Virginia)
-                      icon_class: fab fa-aws
-                    - name: us-east-2
-                      description: US East (Ohio)
-                      icon_class: fab fa-aws
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1data_centers/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple data center records
-                  value:
-                    - name: us-east-1
-                      description: US East (N. Virginia)
-                      icon_class: fab fa-aws
-                    - name: us-east-2
-                      description: US East (Ohio)
-                      icon_class: fab fa-aws
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/deployment_types:
-    get:
-      description: Retrieve the collection of deployment types
-      summary: Get Deployment Types
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple deployment type records
-                  value:
-                    - name: Helm
-                      description: The package manager for Kubernetes
-                      icon_class: icon helm
-                    - name: Artifcatory
-                      description: Package artifact uploaded to artifactory
-                      icon_class: fab fa-aws
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1deployment_types/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple deployment type records
-                  value:
-                    - name: Helm
-                      description: The package manager for Kubernetes
-                      icon_class: icon helm
-                    - name: Artifcatory
-                      description: Package artifact uploaded to artifactory
-                      icon_class: fab fa-aws
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/environments:
-    get:
-      description: Retrieve the collection of environments
-      summary: Get Environments
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple environment records
-                  value:
-                    - name: testing
-                      description: |
-                        The testing environment reflects the state of HEAD state of the
-                        master branch in our Git Repositories for all projects
-                      icon_class: fab fa-aws
-                    - name: staging
-                      description: |
-                        The staging environment reflects tagged project releases that are
-                        intended to be to deployed to production
-                      icon_class: fab fa-aws
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple environment records
-                  value:
-                    - name: testing
-                      description: |
-                        The testing environment reflects the state of HEAD state of the
-                        master branch in our Git Repositories for all projects
-                      icon_class: fab fa-aws
-                    - name: staging
-                      description: |
-                        The staging environment reflects tagged project releases that are
-                        intended to be to deployed to production
-                      icon_class: fab fa-aws
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/groups:
-    get:
-      description: Retrieve the collection of groups
-      summary: Get Groups
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple group records
-                  value:
-                    - name: Administrators
-                      group_type: external
-                      external_id: 'cn=admins,ou=users,dc=example,dc=org'
-                      permissions:
-                        - admin
-                        - user
-                    - group: Quality Assurance
-                      group_type: external
-                      external_id: 'cn=qa,ou=users,dc=example,dc=org'
-                      permissions:
-                        - user
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple group records
-                  value:
-                    - name: Administrators
-                      group_type: external
-                      external_id: 'cn=admins,ou=users,dc=example,dc=org'
-                      permissions:
-                        - admin
-                        - user
-                    - group: Quality Assurance
-                      group_type: external
-                      external_id: 'cn=qa,ou=users,dc=example,dc=org'
-                      permissions:
-                        - user
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/namespaces:
-    get:
-      description: Retrieve the collection of namespaces
-      summary: Get Namespaces
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Namespace
-                    description: Used to create namespaces for project organization
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The namespace name
-                        type: string
-                      slug:
-                        description: Team path slug / abbreviation
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      maintained_by:
-                        description: Association of the namespace to one or more internal or external Imbi groups
-                        type: array
-                        items:
-                          type: string
-                        nullable: true
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-                  write:
-                    title: Namespace
-                    description: Used to create namespaces for project organization
-                    type: object
-                    properties:
-                      name:
-                        description: The namespace name
-                        type: string
-                      slug:
-                        description: Team path slug / abbreviation
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      maintained_by:
-                        description: Association of the namespace to one or more internal or external Imbi groups
-                        type: array
-                        items:
-                          type: string
-                        nullable: true
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple namespace records
-                  value:
-                    - namespace_name: Platform Support Engineering
-                      slug: PSE
-                      icon_class: fas fa-blind
-                      maintained_by:
-                        - Developers
-                        - Operations
-                    - namespace_name: Quality Assurance
-                      slug: QA
-                      icon_class: fas fa-microscope
-                      maintained_by:
-                        - Developers
-                        - QA
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Namespace
-                    description: Used to create namespaces for project organization
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The namespace name
-                        type: string
-                      slug:
-                        description: Team path slug / abbreviation
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      maintained_by:
-                        description: Association of the namespace to one or more internal or external Imbi groups
-                        type: array
-                        items:
-                          type: string
-                        nullable: true
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-                  write:
-                    title: Namespace
-                    description: Used to create namespaces for project organization
-                    type: object
-                    properties:
-                      name:
-                        description: The namespace name
-                        type: string
-                      slug:
-                        description: Team path slug / abbreviation
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      maintained_by:
-                        description: Association of the namespace to one or more internal or external Imbi groups
-                        type: array
-                        items:
-                          type: string
-                        nullable: true
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple namespace records
-                  value:
-                    - namespace_name: Platform Support Engineering
-                      slug: PSE
-                      icon_class: fas fa-blind
-                      maintained_by:
-                        - Developers
-                        - Operations
-                    - namespace_name: Quality Assurance
-                      slug: QA
-                      icon_class: fas fa-microscope
-                      maintained_by:
-                        - Developers
-                        - QA
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/orchestration_systems:
-    get:
-      description: Retrieve the collection of orchestration systems
-      summary: Get Orchestration Systems
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple orchestration system records
-                  value:
-                    - orchestration_system: Kubernetes
-                      description: Production-Grade Container Orchestration
-                      icon_class: fas fa-blind
-                    - orchestration_system: Nomad
-                      description: HashiCorp Nomad
-                      icon_class: fas fa-blind
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1orchestration_systems/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple orchestration system records
-                  value:
-                    - orchestration_system: Kubernetes
-                      description: Production-Grade Container Orchestration
-                      icon_class: fas fa-blind
-                    - orchestration_system: Nomad
-                      description: HashiCorp Nomad
-                      icon_class: fas fa-blind
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/permissions:
-    get:
-      description: Retrieve the collection of available permissions
-      summary: Get Permissions
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: string
-              examples:
-                records:
-                  summary: Multiple permissions
-                  value:
-                    - admin
-                    - user
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  type: string
-              examples:
-                records:
-                  summary: Multiple permissions
-                  value:
-                    - admin
-                    - user
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/project_fact_type_options:
-    get:
-      description: Retrieve the collection of project fact type options
-      summary: Get Project Fact Type Options
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Project Fact Type Option
-                    description: |
-                      Defines options that are available for a project fact type
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for the fact type option
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: string
-                      value:
-                        description: The option value
-                        type: string
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type Option
-                    description: |
-                      Defines options that are available for a project fact type
-                    type: object
-                    properties:
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: number
-                      value:
-                        description: The option value
-                        type: string
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    required:
-                      - fact_type_id
-                      - value
-                      - score
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple project fact type option records
-                  value:
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 3.9
-                      score: 100
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 3.7
-                      score: 75
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 3.6
-                      score: 50
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 3.5
-                      score: 50
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 2.7
-                      score: 0
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Project Fact Type Option
-                    description: |
-                      Defines options that are available for a project fact type
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for the fact type option
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: string
-                      value:
-                        description: The option value
-                        type: string
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type Option
-                    description: |
-                      Defines options that are available for a project fact type
-                    type: object
-                    properties:
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: number
-                      value:
-                        description: The option value
-                        type: string
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    required:
-                      - fact_type_id
-                      - value
-                      - score
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple project fact type option records
-                  value:
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 3.9
-                      score: 100
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 3.7
-                      score: 75
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 3.6
-                      score: 50
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 3.5
-                      score: 50
-                    - project_type: HTTP API
-                      fact_type: Programming Language
-                      value: Python 2.7
-                      score: 0
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/project_fact_types:
-    get:
-      description: Retrieve the collection of project fact types
-      summary: Get Project Fact Types
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Project Fact Type
-                    description: |
-                      Defines types of facts that can be recorded about a project
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate ID
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      project_type_id:
-                        description: The ID for the project type
-                        type: number
-                      fact_type:
-                        description: The project fact type name
-                        type: string
-                      weight:
-                        description: The weight of the fact type when computing a project score
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type
-                    description: |
-                      Defines types of facts that can be recorded about a project
-                    type: object
-                    properties:
-                      project_type_id:
-                        description: The ID for the project type
-                        type: number
-                      fact_type:
-                        description: The project fact type name
-                        type: string
-                      weight:
-                        description: The weight of the fact type when computing a project score
-                        type: number
-                        default: 0
-                    required:
-                      - project_type_id
-                      - fact_type
-                      - weight
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple project fact type records
-                  value:
-                    - project_type: Consumer
-                      fact_type: Programming Language
-                      weight: 25
-                    - project_type: Consumer
-                      fact_type: Test Coverage
-                      weight: 25
-                    - project_type: Consumer
-                      fact_type: Deployed to all Environments
-                      weight: 20
-                    - project_type: Consumer
-                      fact_type: Has Acceptance Tests
-                      weight: 10
-                    - project_type: Consumer
-                      fact_type: Meets Current Standards
-                      weight: 10
-                    - project_type: Consumer
-                      fact_type: Has working CI pipeline
-                      weight: 10
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Project Fact Type
-                    description: |
-                      Defines types of facts that can be recorded about a project
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate ID
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      project_type_id:
-                        description: The ID for the project type
-                        type: number
-                      fact_type:
-                        description: The project fact type name
-                        type: string
-                      weight:
-                        description: The weight of the fact type when computing a project score
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type
-                    description: |
-                      Defines types of facts that can be recorded about a project
-                    type: object
-                    properties:
-                      project_type_id:
-                        description: The ID for the project type
-                        type: number
-                      fact_type:
-                        description: The project fact type name
-                        type: string
-                      weight:
-                        description: The weight of the fact type when computing a project score
-                        type: number
-                        default: 0
-                    required:
-                      - project_type_id
-                      - fact_type
-                      - weight
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple project fact type records
-                  value:
-                    - project_type: Consumer
-                      fact_type: Programming Language
-                      weight: 25
-                    - project_type: Consumer
-                      fact_type: Test Coverage
-                      weight: 25
-                    - project_type: Consumer
-                      fact_type: Deployed to all Environments
-                      weight: 20
-                    - project_type: Consumer
-                      fact_type: Has Acceptance Tests
-                      weight: 10
-                    - project_type: Consumer
-                      fact_type: Meets Current Standards
-                      weight: 10
-                    - project_type: Consumer
-                      fact_type: Has working CI pipeline
-                      weight: 10
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/project_link_types:
-    get:
-      description: Retrieve the collection of project link types
-      summary: Get Project Link Types
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Link Type
-                    description: Used to describe the types of project deployment systems
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      link_type:
-                        description: The display name for a link type
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    additionalProperties: false
-                  write:
-                    title: Link Type
-                    description: Used to describe the types of project deployment systems
-                    type: object
-                    properties:
-                      link_type:
-                        description: The display name for a link type
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    required:
-                      - link_type
-                      - icon_class
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple project link type records
-                  value:
-                    - project_link_type: documentation
-                      icon_class: fab fa-bool
-                    - project_link_type: grafana
-                      icon_class: fab fa-graph
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Link Type
-                    description: Used to describe the types of project deployment systems
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      link_type:
-                        description: The display name for a link type
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    additionalProperties: false
-                  write:
-                    title: Link Type
-                    description: Used to describe the types of project deployment systems
-                    type: object
-                    properties:
-                      link_type:
-                        description: The display name for a link type
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    required:
-                      - link_type
-                      - icon_class
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple project link type records
-                  value:
-                    - project_link_type: documentation
-                      icon_class: fab fa-bool
-                    - project_link_type: grafana
-                      icon_class: fab fa-graph
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
-  /settings/project_types:
-    get:
-      description: Retrieve the collection of project types
-      summary: Get Project Types
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1projects/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Project Type
-                    description: |
-                      Used to describe the types of operational project_types for projects
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The display name for a project type
-                        type: string
-                      description:
-                        description: A description of the project type
-                        type: string
-                        nullable: true
-                      slug:
-                        description: 'The slug for project types, used in filtering'
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    additionalProperties: false
-                  write:
-                    title: Project Type
-                    description: |
-                      Used to describe the types of operational project_types for projects
-                    type: object
-                    properties:
-                      name:
-                        description: The display name for a project type
-                        type: string
-                      description:
-                        description: A description of the project type
-                        type: string
-                        nullable: true
-                      slug:
-                        description: 'The slug for project types, used in filtering'
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple project type records
-                  value:
-                    - project_type: HTTP API
-                      description: RESTful HTTP 1.1 API
-                      icon_class: fab fa-aws
-                      slug: http-api
-                    - project_type: Postgres
-                      description: A PostgreSQL database
-                      icon_class: imbi postgres
-                      slug: postgres
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  read:
-                    title: Project Type
-                    description: |
-                      Used to describe the types of operational project_types for projects
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The display name for a project type
-                        type: string
-                      description:
-                        description: A description of the project type
-                        type: string
-                        nullable: true
-                      slug:
-                        description: 'The slug for project types, used in filtering'
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    additionalProperties: false
-                  write:
-                    title: Project Type
-                    description: |
-                      Used to describe the types of operational project_types for projects
-                    type: object
-                    properties:
-                      name:
-                        description: The display name for a project type
-                        type: string
-                      description:
-                        description: A description of the project type
-                        type: string
-                        nullable: true
-                      slug:
-                        description: 'The slug for project types, used in filtering'
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-              examples:
-                records:
-                  summary: Multiple project type records
-                  value:
-                    - project_type: HTTP API
-                      description: RESTful HTTP 1.1 API
-                      icon_class: fab fa-aws
-                      slug: http-api
-                    - project_type: Postgres
-                      description: A PostgreSQL database
-                      icon_class: imbi postgres
-                      slug: postgres
-        '401':
-          $ref: '#/paths/~1groups/post/responses/401'
   /status:
     get:
       security: []
@@ -4174,7 +4166,7 @@ tags:
       The health check endpoint can be used by a load balancer to indicate
       service health.
 x-tagGroups:
-  - name: Administration
+  - name: Metadata
     tags:
       - Configuration Systems
       - Cookie Cutters

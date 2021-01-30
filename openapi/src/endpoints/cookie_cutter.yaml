@@ -1,5 +1,42 @@
 paths:
-  create:
+  collection:
+    get:
+      description: Retrieve the collection of cookie cutters
+      summary: Get Cookie Cutters
+      tags: [Settings]
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/cookie_cutter.yaml'
+              examples:
+                records:
+                  summary: Multiple cookie cutter records
+                  value:
+                    - cookiecutter: buzzops-project
+                      project_type_id: 1
+                      type: project
+                      description: A HTTP API that runs in Kubernetes
+                      url: https://github.com/aweber/k8s-api-cookiecutter.git
+                    - cookiecutter: buzzops-consumer
+                      project_type_id: 2
+                      type: project
+                      description: A rejected consumer application
+                      url: https://github.com/aweber/k8s-consumer-cookiecutter.git
+                    - cookiecutter: buzzops-consumer-dashboard
+                      project_type_id: 1
+                      type: dashboard
+                      description: A Grafana dashboard for a rejected consumer application
+                      url: https://github.com/aweber/grafana-consumer-cookiecutter.git
+            application/msgpack:
+              <<: *responseContent
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
     post:
       summary: Create Record
       description: Create a new cookie cutter record
