@@ -30,24 +30,24 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         # Create
         result = self.fetch(
-            '/project_fact_type_options',
+            '/project-fact-type-options',
             method='POST', body=json.dumps(record).encode('utf-8'),
             headers=self.headers)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
-        record['id'] = response['id']
         url = self.get_url(
-            '/project_fact_type_options/{}'.format(response['id']))
+            '/project-fact-type-options/{}'.format(response['id']))
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                project_types.AdminCRUDRequestHandler.TTL))
-        self.assertEqual(
-            response['created_by'], self.USERNAME[self.ADMIN_ACCESS])
-        for field in ['created_by', 'last_modified_by']:
-            del response[field]
+                project_types.RecordRequestHandler.TTL))
+        record.update({
+            'id': response['id'],
+            'created_by': self.USERNAME[self.ADMIN_ACCESS],
+            'last_modified_by': None
+        })
         self.assertDictEqual(record, response)
 
         # PATCH
@@ -60,12 +60,12 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
+        record.update({
+            'score': updated['score'],
+            'last_modified_by': self.USERNAME[self.ADMIN_ACCESS]
+        })
         new_value = json.loads(result.body.decode('utf-8'))
-        for field in ['created_by', 'last_modified_by']:
-            self.assertEqual(
-                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
-            del new_value[field]
-        self.assertDictEqual(new_value, updated)
+        self.assertDictEqual(new_value, record)
 
         # Patch no change
         result = self.fetch(
@@ -80,14 +80,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                project_types.AdminCRUDRequestHandler.TTL))
-
+                project_types.RecordRequestHandler.TTL))
         new_value = json.loads(result.body.decode('utf-8'))
-        for field in ['created_by', 'last_modified_by']:
-            self.assertEqual(
-                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
-            del new_value[field]
-        self.assertDictEqual(new_value, updated)
+        self.assertDictEqual(new_value, record)
+
+        # Collection
+        result = self.fetch('/project-fact-type-options', headers=self.headers)
+        self.assertEqual(result.code, 200)
+        self.assertListEqual(
+            json.loads(result.body.decode('utf-8')),
+            [{k: v for k, v in record.items()
+              if k not in ['created_by', 'last_modified_by']}])
 
         # DELETE
         result = self.fetch(url, method='DELETE', headers=self.headers)

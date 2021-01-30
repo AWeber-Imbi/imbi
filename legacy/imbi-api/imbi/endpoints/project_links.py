@@ -11,12 +11,12 @@ class _LinkRequestMixin:
     TTL = 300
 
     GET_SQL = re.sub(r'\s+', ' ', """\
-    SELECT a.project_id, 
-           a.link_type_id, 
-           a.created_at, 
-           a.created_by,
-           a.last_modified_at, 
-           a.last_modified_by, 
+    SELECT a.project_id,
+           a.link_type_id,
+           a.created_at,
+           a.created_by
+           a.last_modified_at,
+           a.last_modified_by,
            b.link_type,
            b.icon_class,
            a.url
@@ -33,12 +33,12 @@ class CollectionRequestHandler(_LinkRequestMixin,
     NAME = 'project-links'
 
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
-    SELECT a.project_id, 
-           a.link_type_id, 
-           a.created_at, 
+    SELECT a.project_id,
+           a.link_type_id,
+           a.created_at,
            a.created_by,
-           a.last_modified_at, 
-           a.last_modified_by, 
+           a.last_modified_at,
+           a.last_modified_by,
            b.link_type,
            b.icon_class,
            a.url

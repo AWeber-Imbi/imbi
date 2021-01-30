@@ -35,7 +35,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def create_configuration_system(self):
         result = self.fetch(
-            '/configuration_systems', method='POST', headers=self.headers,
+            '/configuration-systems', method='POST', headers=self.headers,
             body=json.dumps({
                 'name': str(uuid.uuid4()),
                 'description': str(uuid.uuid4()),
@@ -46,7 +46,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def create_data_center(self):
         result = self.fetch(
-            '/data_centers', method='POST', headers=self.headers,
+            '/data-centers', method='POST', headers=self.headers,
             body=json.dumps({
                 'name': str(uuid.uuid4()),
                 'description': str(uuid.uuid4()),
@@ -57,7 +57,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def create_deployment_type(self):
         result = self.fetch(
-            '/deployment_types', method='POST', headers=self.headers,
+            '/deployment-types', method='POST', headers=self.headers,
             body=json.dumps({
                 'name': str(uuid.uuid4()),
                 'description': str(uuid.uuid4()),
@@ -83,7 +83,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def create_orchestration_system(self):
         result = self.fetch(
-            '/orchestration_systems', method='POST', headers=self.headers,
+            '/orchestration-systems', method='POST', headers=self.headers,
             body=json.dumps({
                 'name': str(uuid.uuid4()),
                 'description': str(uuid.uuid4()),
@@ -94,7 +94,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def create_project_link_type(self):
         result = self.fetch(
-            '/project_link_types', method='POST', headers=self.headers,
+            '/project-link-types', method='POST', headers=self.headers,
             body=json.dumps({
                 'link_type': str(uuid.uuid4()),
                 'icon_class': 'fas fa-blind'

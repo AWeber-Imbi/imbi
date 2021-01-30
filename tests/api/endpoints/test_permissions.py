@@ -8,7 +8,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
     ADMIN_ACCESS = True
 
     def test_permission_values(self):
-        result = self.fetch('/settings/permissions', headers=self.headers)
+        result = self.fetch('/permissions', headers=self.headers)
         self.assertEqual(result.code, 200)
         values = json.loads(result.body.decode('utf-8'))
         self.assertListEqual(values, list(self._app.settings['permissions']))
@@ -17,5 +17,5 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 class AsyncHTTPUnauthorizedTestCase(base.TestCaseWithReset):
 
     def test_permission_values(self):
-        result = self.fetch('/settings/permissions', headers=self.headers)
+        result = self.fetch('/permissions', headers=self.headers)
         self.assertEqual(result.code, 403)

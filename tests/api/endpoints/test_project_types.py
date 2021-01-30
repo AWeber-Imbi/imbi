@@ -22,41 +22,40 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         # Create
         result = self.fetch(
-            '/project_types', method='POST', headers=self.headers,
+            '/project-types', method='POST', headers=self.headers,
             body=json.dumps(record).encode('utf-8'))
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
-        url = self.get_url('/project_types/{}'.format(response['id']))
-        record['id'] = response['id']
+        url = self.get_url('/project-types/{}'.format(response['id']))
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                project_types.AdminCRUDRequestHandler.TTL))
-        new_value = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(
-            new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
-        for field in ['created_by', 'last_modified_by']:
-            del new_value[field]
-        self.assertDictEqual(new_value, record)
+                project_types.RecordRequestHandler.TTL))
+        record.update({
+            'id': response['id'],
+            'created_by': self.USERNAME[self.ADMIN_ACCESS],
+            'last_modified_by': None
+        })
+        self.assertDictEqual(response, record)
 
         # PATCH
         updated = dict(record)
         updated['icon_class'] = str(uuid.uuid4())
         patch = jsonpatch.make_patch(record, updated)
         patch_value = patch.to_string().encode('utf-8')
+        record.update({
+            'icon_class': updated['icon_class'],
+            'last_modified_by': self.USERNAME[self.ADMIN_ACCESS]
+        })
 
         result = self.fetch(
             url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         new_value = json.loads(result.body.decode('utf-8'))
-        for field in ['created_by', 'last_modified_by']:
-            self.assertEqual(
-                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
-            del new_value[field]
-        self.assertDictEqual(new_value, updated)
+        self.assertDictEqual(new_value, record)
 
         # Patch no change
         result = self.fetch(
@@ -71,14 +70,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assert_link_header_equals(result, url)
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                project_types.AdminCRUDRequestHandler.TTL))
-
+                project_types.RecordRequestHandler.TTL))
         new_value = json.loads(result.body.decode('utf-8'))
-        for field in ['created_by', 'last_modified_by']:
-            self.assertEqual(
-                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
-            del new_value[field]
-        self.assertDictEqual(new_value, updated)
+        self.assertDictEqual(new_value, record)
+
+        # Collection
+        result = self.fetch('/project-types', headers=self.headers)
+        self.assertEqual(result.code, 200)
+        self.assertListEqual(
+            json.loads(result.body.decode('utf-8')),
+            [{k: v for k, v in record.items()
+              if k not in ['created_by', 'last_modified_by']}])
 
         # DELETE
         result = self.fetch(url, method='DELETE', headers=self.headers)
@@ -94,7 +96,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_create_with_missing_fields(self):
         result = self.fetch(
-            '/project_types', method='POST', headers=self.headers,
+            '/project-types', method='POST', headers=self.headers,
             body=json.dumps({
                 'name': str(uuid.uuid4()),
                 'slug': str(uuid.uuid4())
@@ -102,14 +104,14 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 400)
 
     def test_method_not_implemented(self):
-        for method in {'GET', 'DELETE', 'PATCH'}:
+        for method in {'DELETE', 'PATCH'}:
             result = self.fetch(
-                '/project_types', method=method,
+                '/project-types', method=method,
                 allow_nonstandard_methods=True,
                 headers=self.headers)
             self.assertEqual(result.code, 405)
 
-        url = '/project_types/' + str(uuid.uuid4())
+        url = '/project-types/' + str(uuid.uuid4())
         result = self.fetch(
             url, method='POST', headers=self.headers,
             allow_nonstandard_methods=True)

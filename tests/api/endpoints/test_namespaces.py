@@ -27,17 +27,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/namespaces/{}'.format(response['id']))
-        record['id'] = response['id']
+        record.update({
+            'id': response['id'],
+            'created_by': self.USERNAME[self.ADMIN_ACCESS],
+            'last_modified_by': None
+        })
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                namespaces.AdminCRUDRequestHandler.TTL))
-        self.assertEqual(
-            response['created_by'], self.USERNAME[self.ADMIN_ACCESS])
-        for field in ['created_by', 'last_modified_by']:
-            del response[field]
+                namespaces.RecordRequestHandler.TTL))
         self.assertDictEqual(response, record)
 
         # PATCH
@@ -45,17 +45,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         updated['icon_class'] = str(uuid.uuid4())
         patch = jsonpatch.make_patch(record, updated)
         patch_value = patch.to_string().encode('utf-8')
+        record.update({
+            'icon_class': updated['icon_class'],
+            'last_modified_by': self.USERNAME[self.ADMIN_ACCESS]
+        })
 
         result = self.fetch(
             url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         response = json.loads(result.body.decode('utf-8'))
-        for field in ['created_by', 'last_modified_by']:
-            self.assertEqual(
-                response[field], self.USERNAME[self.ADMIN_ACCESS])
-            del response[field]
-        self.assertDictEqual(response, updated)
+        self.assertDictEqual(response, record)
 
         # Patch no change
         result = self.fetch(
@@ -70,14 +70,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                namespaces.AdminCRUDRequestHandler.TTL))
-
+                namespaces.RecordRequestHandler.TTL))
         response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(
-            response['created_by'], self.USERNAME[self.ADMIN_ACCESS])
-        for field in ['created_by', 'last_modified_by']:
-            del response[field]
-        self.assertDictEqual(response, updated)
+        self.assertDictEqual(response, record)
+
+        # Collection
+        result = self.fetch('/namespaces', headers=self.headers)
+        self.assertEqual(result.code, 200)
+        self.assertListEqual(
+            json.loads(result.body.decode('utf-8')),
+            [{k: v for k, v in record.items()
+              if k not in ['created_by', 'last_modified_by']}])
 
         # DELETE
         result = self.fetch(url, method='DELETE', headers=self.headers)
@@ -117,7 +120,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 404)
 
     def test_method_not_implemented(self):
-        for method in {'GET', 'DELETE', 'PATCH'}:
+        for method in {'DELETE', 'PATCH'}:
             result = self.fetch(
                 '/namespaces', method=method,
                 allow_nonstandard_methods=True,

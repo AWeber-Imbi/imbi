@@ -1,5 +1,34 @@
 paths:
-  create:
+  collection:
+    get:
+      description: Retrieve the collection of configuration systems
+      summary: Get Configuration Systems
+      tags: [Settings]
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/configuration_system.yaml'
+              examples:
+                records:
+                  summary: Multiple configuration system records
+                  value:
+                    - name: Ansible
+                      description: Ansible is powerful IT automation that you can learn quickly
+                      icon_class: fas fa-microscope
+                    - name: Consul
+                      description: Feature rich key/value store to easily configure projects
+                      icon_class: fas fa-blind
+            application/msgpack:
+              <<: *responseContent
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+
     post:
       summary: Create Record
       description: Create a new configuration system record

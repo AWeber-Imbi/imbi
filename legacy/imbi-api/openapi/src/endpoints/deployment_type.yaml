@@ -1,5 +1,33 @@
 paths:
-  create:
+  collection:
+    get:
+      description: Retrieve the collection of deployment types
+      summary: Get Deployment Types
+      tags: [Settings]
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/deployment_type.yaml'
+              examples:
+                records:
+                  summary: Multiple deployment type records
+                  value:
+                    - name: Helm
+                      description: The package manager for Kubernetes
+                      icon_class: icon helm
+                    - name: Artifcatory
+                      description: Package artifact uploaded to artifactory
+                      icon_class: fab fa-aws
+            application/msgpack:
+              <<: *responseContent
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
     post:
       summary: Create Record
       description: Create a new deployment type record

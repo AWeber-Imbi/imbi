@@ -118,7 +118,7 @@ class TestCaseWithReset(TestCase):
 
     def create_project_fact_type(self) -> int:
         result = self.fetch(
-            '/project_fact_types', method='POST', headers=self.headers,
+            '/project-fact-types', method='POST', headers=self.headers,
             body=json.dumps({
                 'project_type_id': self.project_type,
                 'fact_type': str(uuid.uuid4()),
@@ -130,7 +130,7 @@ class TestCaseWithReset(TestCase):
     def create_project_type(self) -> int:
         self.project_type_name = str(uuid.uuid4())
         result = self.fetch(
-            '/project_types', method='POST', headers=self.headers,
+            '/project-types', method='POST', headers=self.headers,
             body=json.dumps({
                 'name': self.project_type_name,
                 'slug': str(uuid.uuid4()),

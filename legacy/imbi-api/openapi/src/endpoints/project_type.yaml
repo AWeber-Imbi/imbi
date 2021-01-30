@@ -1,5 +1,35 @@
 paths:
-  create:
+  collection:
+    get:
+      description: Retrieve the collection of project types
+      summary: Get Project Types
+      tags: [Settings]
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+          content:
+            application/json: &responseContent
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/project_type.yaml'
+              examples:
+                records:
+                  summary: Multiple project type records
+                  value:
+                    - project_type: HTTP API
+                      description: RESTful HTTP 1.1 API
+                      icon_class: fab fa-aws
+                      slug: http-api
+                    - project_type: Postgres
+                      description: A PostgreSQL database
+                      icon_class: imbi postgres
+                      slug: postgres
+            application/msgpack:
+              <<: *responseContent
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
     post:
       summary: Create Record
       description: Create a new project type record
