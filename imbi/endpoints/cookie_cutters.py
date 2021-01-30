@@ -5,7 +5,7 @@ from imbi.endpoints import base
 
 class AdminCRUDRequestHandler(base.CRUDRequestHandler):
 
-    NAME = 'admin-cookie-cutters'
+    NAME = 'cookie-cutters'
     ID_KEY = 'name'
     FIELDS = ['name', 'description', 'type', 'project_type', 'url']
 

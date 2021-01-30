@@ -5,7 +5,7 @@ from imbi.endpoints import base
 
 class AdminCRUDRequestHandler(base.CRUDRequestHandler):
 
-    NAME = 'admin-data-centers'
+    NAME = 'data-centers'
     ID_KEY = 'name'
     FIELDS = ['name', 'description', 'icon_class']
     DEFAULTS = {'icon_class': 'fas fa-building'}

@@ -5,7 +5,7 @@ from imbi.endpoints import base
 
 class AdminCRUDRequestHandler(base.CRUDRequestHandler):
 
-    NAME = 'admin-deployment-types'
+    NAME = 'deployment-types'
     ID_KEY = 'name'
     FIELDS = ['name', 'description', 'icon_class']
     DEFAULTS = {'icon_class': 'fas fa-box'}

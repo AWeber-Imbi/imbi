@@ -42,7 +42,7 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: project_id
+      - name: id
         in: path
         description: Project ID for the link
         required: true

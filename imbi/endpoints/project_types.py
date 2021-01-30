@@ -5,7 +5,7 @@ from imbi.endpoints import base
 
 class AdminCRUDRequestHandler(base.CRUDRequestHandler):
 
-    NAME = 'admin-project-types'
+    NAME = 'project-types'
     ID_KEY = 'id'
     FIELDS = ['id', 'name', 'description', 'icon_class']
     DEFAULTS = {'icon_class': 'fas fa-folder'}

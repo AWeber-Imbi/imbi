@@ -104,6 +104,7 @@ class TestCaseWithReset(TestCase):
         super().setUp()
         self.project_fact_type = None
         self.project_type = None
+        self.project_type_name = None
 
     async def async_setup(self) -> None:
         await super().async_setup()
@@ -127,10 +128,11 @@ class TestCaseWithReset(TestCase):
         return json.loads(result.body.decode('utf-8'))['id']
 
     def create_project_type(self) -> int:
+        self.project_type_name = str(uuid.uuid4())
         result = self.fetch(
             '/project_types', method='POST', headers=self.headers,
             body=json.dumps({
-                'name': str(uuid.uuid4()),
+                'name': self.project_type_name,
                 'slug': str(uuid.uuid4()),
                 'description': str(uuid.uuid4()),
                 'icon_class': 'fas fa-blind'
