@@ -5,7 +5,7 @@ from imbi.endpoints import base
 
 class AdminCRUDRequestHandler(base.CRUDRequestHandler):
 
-    NAME = 'admin-namespaces'
+    NAME = 'namespaces'
     ID_KEY = 'id'
     FIELDS = ['id', 'name', 'slug', 'icon_class', 'maintained_by']
     DEFAULTS = {'icon_class': 'fas fa-users', 'maintained_by': []}

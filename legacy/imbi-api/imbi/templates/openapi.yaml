@@ -2624,7 +2624,7 @@ paths:
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
     parameters:
-      - name: project_id
+      - name: id
         in: path
         description: Project ID for the link
         required: true

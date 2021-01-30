@@ -3,7 +3,7 @@ import uuid
 
 import jsonpatch
 
-from imbi.endpoints.project import link, project
+from imbi.endpoints import project_links, projects
 from tests import base
 
 
@@ -23,149 +23,132 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def setUp(self):
         super().setUp()
-        self._configuration_system = self.create_configuration_system()
-        self._data_center = self.create_data_center()
-        self._deployment_type = self.create_deployment_type()
-        self._environments = self.create_environments()
-        self._namespace = self.create_namespace()
-        self._orchestration_system = self.create_orchestration_system()
-        self._project_link_type = self.create_project_link_type()
-        self._project_type = self.create_project_type()
+        self.configuration_system = self.create_configuration_system()
+        self.data_center = self.create_data_center()
+        self.deployment_type = self.create_deployment_type()
+        self.environments = self.create_environments()
+        self.namespace_name = str(uuid.uuid4())
+        self.namespace = self.create_namespace()
+        self.orchestration_system = self.create_orchestration_system()
+        self.project_link_type = self.create_project_link_type()
+        self.project_type = self.create_project_type()
 
     def create_configuration_system(self):
-        record = {
-            'name': str(uuid.uuid4()),
-            'description': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind'
-        }
-        result = self.fetch('/admin/configuration_system', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/configuration_systems', method='POST', headers=self.headers,
+            body=json.dumps({
+                'name': str(uuid.uuid4()),
+                'description': str(uuid.uuid4()),
+                'icon_class': 'fas fa-blind'
+            }).encode('utf-8'))
         self.assertEqual(result.code, 200)
-        return record['name']
+        return json.loads(result.body.decode('utf-8'))['name']
 
     def create_data_center(self):
-        record = {
-            'name': str(uuid.uuid4()),
-            'description': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind'
-        }
-        result = self.fetch('/admin/data_center', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/data_centers', method='POST', headers=self.headers,
+            body=json.dumps({
+                'name': str(uuid.uuid4()),
+                'description': str(uuid.uuid4()),
+                'icon_class': 'fas fa-blind'
+            }).encode('utf-8'))
         self.assertEqual(result.code, 200)
-        return record['name']
+        return json.loads(result.body.decode('utf-8'))['name']
 
     def create_deployment_type(self):
-        record = {
-            'name': str(uuid.uuid4()),
-            'description': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind'
-        }
-        result = self.fetch('/admin/deployment_type', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/deployment_types', method='POST', headers=self.headers,
+            body=json.dumps({
+                'name': str(uuid.uuid4()),
+                'description': str(uuid.uuid4()),
+                'icon_class': 'fas fa-blind'
+            }).encode('utf-8'))
         self.assertEqual(result.code, 200)
-        return record['name']
+        return json.loads(result.body.decode('utf-8'))['name']
 
     def create_environments(self):
         environments = []
         for iteration in range(0, 2):
-            record = {
-                'name': str(uuid.uuid4()),
-                'description': str(uuid.uuid4()),
-                'icon_class': 'fas fa-blind'
-            }
-            result = self.fetch('/admin/environment', method='POST',
-                                body=json.dumps(record).encode('utf-8'),
-                                headers=self.headers)
+            result = self.fetch(
+                '/environments', method='POST', headers=self.headers,
+                body=json.dumps({
+                    'name': str(uuid.uuid4()),
+                    'description': str(uuid.uuid4()),
+                    'icon_class': 'fas fa-blind'
+                }).encode('utf-8'))
             self.assertEqual(result.code, 200)
-            environments.append(record['name'])
+            environments.append(
+                json.loads(result.body.decode('utf-8'))['name'])
         return environments
 
     def create_orchestration_system(self):
-        record = {
-            'name': str(uuid.uuid4()),
-            'description': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind'
-        }
-        result = self.fetch('/admin/orchestration_system', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/orchestration_systems', method='POST', headers=self.headers,
+            body=json.dumps({
+                'name': str(uuid.uuid4()),
+                'description': str(uuid.uuid4()),
+                'icon_class': 'fas fa-blind'
+            }).encode('utf-8'))
         self.assertEqual(result.code, 200)
-        return record['name']
+        return json.loads(result.body.decode('utf-8'))['name']
 
     def create_project_link_type(self):
-        record = {
-            'link_type': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind'
-        }
-        result = self.fetch('/admin/project_link_type', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/project_link_types', method='POST', headers=self.headers,
+            body=json.dumps({
+                'link_type': str(uuid.uuid4()),
+                'icon_class': 'fas fa-blind'
+            }).encode('utf-8'))
         self.assertEqual(result.code, 200)
-        return record['link_type']
-
-    def create_project_type(self):
-        record = {
-            'name': str(uuid.uuid4()),
-            'slug': str(uuid.uuid4()),
-            'description': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind'
-        }
-        result = self.fetch('/admin/project_type', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
-        self.assertEqual(result.code, 200)
-        return record['name']
+        return json.loads(result.body.decode('utf-8'))['id']
 
     def create_namespace(self):
-        record = {
-            'name': str(uuid.uuid4()),
-            'slug': str(uuid.uuid4().hex),
-            'icon_class': 'fas fa-blind',
-            'maintained_by': []
-        }
-        result = self.fetch('/admin/namespace', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/namespaces', method='POST', headers=self.headers,
+            body=json.dumps({
+                'name': self.namespace_name,
+                'slug': str(uuid.uuid4().hex),
+                'icon_class': 'fas fa-blind',
+                'maintained_by': []
+            }).encode('utf-8'))
         self.assertEqual(result.code, 200)
-        return record['name']
+        return json.loads(result.body.decode('utf-8'))['id']
 
     def test_project_lifecycle(self):
         record = {
-            'namespace': self._namespace,
+            'namespace_id': self.namespace,
+            'project_type_id': self.project_type,
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'description': str(uuid.uuid4()),
-            'data_center': self._data_center,
-            'project_type': self._project_type,
-            'configuration_system': self._configuration_system,
-            'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system,
-            'environments': self._environments
+            'data_center': self.data_center,
+            'configuration_system': self.configuration_system,
+            'deployment_type': self.deployment_type,
+            'orchestration_system': self.orchestration_system,
+            'environments': self.environments
         }
 
-        url = self.get_url('/projects/{}/{}'.format(
-            self._namespace, record['name']))
-
         # Create
-        result = self.fetch('/projects', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/projects', method='POST', headers=self.headers,
+            body=json.dumps(record).encode('utf-8'))
         self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        url = self.get_url('/projects/{}'.format(response['id']))
+        self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
-        self.assert_link_header_equals(result, url)
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                project.RecordRequestHandler.TTL))
-        new_value = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(
-            new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
-        for field in ['created_by', 'last_modified_by']:
-            del new_value[field]
-        self.assertDictEqual(new_value, record)
+                projects.RecordRequestHandler.TTL))
+        record.update({
+            'id': response['id'],
+            'namespace': self.namespace_name,
+            'project_type': self.project_type_name,
+            'created_by': self.USERNAME[self.ADMIN_ACCESS],
+            'last_modified_by': None
+        })
+        self.assertDictEqual(record, response)
 
         # PATCH
         updated = dict(record)
@@ -177,11 +160,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
-        for field in ['created_by', 'last_modified_by']:
-            self.assertEqual(
-                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
-            del new_value[field]
-        self.assertDictEqual(new_value, updated)
+        record['description'] = updated['description']
+        record['last_modified_by'] = self.USERNAME[self.ADMIN_ACCESS]
+        self.assertDictEqual(record, new_value)
 
         # Patch no change
         result = self.fetch(
@@ -191,19 +172,16 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # GET
         result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 200)
+        self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assert_link_header_equals(result, url)
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                project.RecordRequestHandler.TTL))
+                projects.RecordRequestHandler.TTL))
 
         new_value = json.loads(result.body.decode('utf-8'))
-        for field in ['created_by', 'last_modified_by']:
-            self.assertEqual(
-                new_value[field], self.USERNAME[self.ADMIN_ACCESS])
-            del new_value[field]
-        self.assertDictEqual(new_value, updated)
+        self.assertDictEqual(record, new_value)
 
         # DELETE
         result = self.fetch(url, method='DELETE', headers=self.headers)
@@ -219,176 +197,167 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_create_with_missing_fields(self):
         record = {
-            'namespace': self._namespace,
+            'namespace_id': self.namespace,
+            'project_type_id': self.project_type,
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
-            'data_center': self._data_center,
-            'project_type': self._project_type,
-            'configuration_system': self._configuration_system,
-            'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system,
-            'environments': self._environments
+            'data_center': self.data_center,
+            'configuration_system': self.configuration_system,
+            'deployment_type': self.deployment_type,
+            'orchestration_system': self.orchestration_system,
+            'environments': self.environments
         }
 
-        url = self.get_url('/projects/{}/{}'.format(
-            self._namespace, record['name']))
-
         # Create
-        result = self.fetch('/projects', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/projects', method='POST', headers=self.headers,
+            body=json.dumps(record).encode('utf-8'))
         self.assertEqual(result.code, 200)
-        self.assertIsNone(result.headers.get('Last-Modified', None))
+        response = json.loads(result.body.decode('utf-8'))
+        url = self.get_url('/projects/{}'.format(response['id']))
         self.assert_link_header_equals(result, url)
+        self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                project.RecordRequestHandler.TTL))
-        new_value = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(
-            new_value['created_by'], self.USERNAME[self.ADMIN_ACCESS])
-        for field in ['created_by', 'last_modified_by']:
-            del new_value[field]
-        record['description'] = None
-        self.assertDictEqual(new_value, record)
+                projects.RecordRequestHandler.TTL))
+        record.update({
+            'id': response['id'],
+            'namespace': self.namespace_name,
+            'project_type': self.project_type_name,
+            'created_by': self.USERNAME[self.ADMIN_ACCESS],
+            'description': None,
+            'last_modified_by': None
+        })
+        self.assertDictEqual(record, response)
 
     def test_dependencies(self):
         project_a = {
-            'namespace': self._namespace,
+            'namespace_id': self.namespace,
+            'project_type_id': self.project_type,
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
-            'data_center': self._data_center,
-            'project_type': self._project_type,
-            'configuration_system': self._configuration_system,
-            'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system,
-            'environments': self._environments
+            'data_center': self.data_center,
+            'configuration_system': self.configuration_system,
+            'deployment_type': self.deployment_type,
+            'orchestration_system': self.orchestration_system,
+            'environments': self.environments
         }
-
         result = self.fetch(
             '/projects', method='POST', headers=self.headers,
             body=json.dumps(project_a).encode('utf-8'))
         self.assertEqual(result.code, 200)
+        project_a = json.loads(result.body.decode('utf-8'))
 
         project_b = {
-            'namespace': self._namespace,
+            'namespace_id': self.namespace,
+            'project_type_id': self.project_type,
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
-            'data_center': self._data_center,
-            'project_type': self._project_type,
-            'configuration_system': self._configuration_system,
-            'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system,
-            'environments': self._environments
+            'data_center': self.data_center,
+            'configuration_system': self.configuration_system,
+            'deployment_type': self.deployment_type,
+            'orchestration_system': self.orchestration_system,
+            'environments': self.environments
         }
-
         result = self.fetch(
             '/projects', method='POST', headers=self.headers,
             body=json.dumps(project_b).encode('utf-8'))
         self.assertEqual(result.code, 200)
+        project_b = json.loads(result.body.decode('utf-8'))
 
         # Create the dependency
         result = self.fetch(
-            '/projects/{}/{}/dependencies'.format(
-                self._namespace, project_b['name']),
+            '/projects/{}/dependencies'.format(project_b['id']),
             method='POST', headers=self.headers,
             body=json.dumps({
-                'dependency_namespace': self._namespace,
-                'dependency_name': project_a['name']
+                'dependency_id': project_a['id']
             }).encode('utf-8'))
         self.assertEqual(result.code, 200)
 
         result = self.fetch(
-            '/projects/{}/{}/dependencies'.format(
-                self._namespace, project_b['name']),
+            '/projects/{}/dependencies'.format(project_b['id']),
             method='GET', headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assertListEqual(
             json.loads(result.body.decode('utf-8')),
             [{
-                'dependency_namespace': self._namespace,
-                'dependency_name': project_a['name']
+                'project_id': project_b['id'],
+                'created_by': self.USERNAME[self.ADMIN_ACCESS],
+                'dependency_id': project_a['id']
             }])
 
         result = self.fetch(
-            '/projects/{}/{}/dependencies/{}/{}'.format(
-                self._namespace, project_b['name'],
-                self._namespace, project_a['name']),
+            '/projects/{}/dependencies/{}'.format(
+                project_b['id'], project_a['id']),
             method='GET', headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assertDictEqual(
             json.loads(result.body.decode('utf-8')),
             {
+                'project_id': project_b['id'],
                 'created_by': self.USERNAME[self.ADMIN_ACCESS],
-                'namespace': self._namespace,
-                'name': project_b['name'],
-                'dependency_namespace': self._namespace,
-                'dependency_name': project_a['name']
+                'dependency_id': project_a['id']
             })
 
         result = self.fetch(
-            '/projects/{}/{}/dependencies/{}/{}'.format(
-                self._namespace, project_b['name'],
-                self._namespace, project_a['name']),
+            '/projects/{}/dependencies/{}'.format(
+                project_b['id'], project_a['id']),
             method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 204)
 
         result = self.fetch(
-            '/projects/{}/{}/dependencies/{}/{}'.format(
-                self._namespace, project_b['name'],
-                self._namespace, project_a['name']),
+            '/projects/{}/dependencies/{}'.format(
+                project_b['id'], project_a['id']),
             method='GET', headers=self.headers)
         self.assertEqual(result.code, 404)
 
     def test_links(self):
         project_record = {
-            'namespace': self._namespace,
+            'namespace_id': self.namespace,
+            'project_type_id': self.project_type,
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
-            'data_center': self._data_center,
-            'project_type': self._project_type,
-            'configuration_system': self._configuration_system,
-            'deployment_type': self._deployment_type,
-            'orchestration_system': self._orchestration_system,
-            'environments': self._environments
+            'data_center': self.data_center,
+            'configuration_system': self.configuration_system,
+            'deployment_type': self.deployment_type,
+            'orchestration_system': self.orchestration_system,
+            'environments': self.environments
         }
 
-        result = self.fetch('/projects', method='POST',
-                            body=json.dumps(project_record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch(
+            '/projects', method='POST', headers=self.headers,
+            body=json.dumps(project_record).encode('utf-8'))
         self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
 
         record = {
-            'namespace': self._namespace,
-            'name': project_record['name'],
-            'link_type': self._project_link_type,
+            'project_id': response['id'],
+            'link_type_id': self.project_link_type,
             'url': 'https://github.com/AWeber/Imbi'
         }
 
-        url = self.get_url('/projects/{}/{}/links/{}'.format(
-            self._namespace, project_record['name'], self._project_link_type))
+        links_url = self.get_url('/projects/{}/links'.format(response['id']))
+        url = self.get_url('/projects/{}/links/{}'.format(
+            response['id'], self.project_link_type))
 
         # Create
         result = self.fetch(
-            '/projects/{}/{}/links'.format(
-                self._namespace, project_record['name']), headers=self.headers,
-            method='POST', body=json.dumps(record).encode('utf-8'))
+            links_url, headers=self.headers, method='POST',
+            body=json.dumps(record).encode('utf-8'))
         self.assertEqual(result.code, 200)
         link_record = json.loads(result.body.decode('utf-8'))
         self.assert_link_header_equals(result, url)
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                link.RecordRequestHandler.TTL))
+                project_links.RecordRequestHandler.TTL))
         self.assertEqual(
             link_record['created_by'], self.USERNAME[self.ADMIN_ACCESS])
         self.assertEqual(link_record['url'], record['url'])
 
         # Get links
-        result = self.fetch('/projects/{}/{}/links'.format(
-            self._namespace, project_record['name']), headers=self.headers)
+        result = self.fetch(links_url, headers=self.headers)
         self.assertEqual(result.code, 200)
-        self.assert_link_header_equals(
-            result, self.get_url('/projects/{}/{}/links'.format(
-                self._namespace, project_record['name'])))
+        self.assert_link_header_equals(result, links_url)
         records = []
         for row in json.loads(result.body.decode('utf-8')):
             for field in {'created_at', 'last_modified_at'}:
@@ -407,6 +376,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         record = json.loads(result.body.decode('utf-8'))
+        for field in {'link_type', 'icon_class'}:
+            self.assertIsNotNone(record[field])
+            del record[field]
         for field in {'created_by', 'last_modified_by'}:
             del record[field]
         self.assertDictEqual(record, updated)
@@ -421,6 +393,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 200)
         record = json.loads(result.body.decode('utf-8'))
+        for field in {'link_type', 'icon_class'}:
+            self.assertIsNotNone(record[field])
+            del record[field]
         for field in {'created_by', 'last_modified_by'}:
             del record[field]
         self.assertDictEqual(record, updated)

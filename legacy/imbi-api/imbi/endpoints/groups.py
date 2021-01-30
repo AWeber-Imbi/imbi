@@ -5,7 +5,7 @@ from imbi.endpoints import base
 
 class AdminCRUDRequestHandler(base.CRUDRequestHandler):
 
-    NAME = 'admin-groups'
+    NAME = 'groups'
     ID_KEY = 'name'
     FIELDS = ['name', 'group_type', 'external_id', 'permissions']
     DEFAULTS = {'group_type': 'internal', 'permissions': []}

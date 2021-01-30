@@ -5,7 +5,7 @@ from imbi.endpoints import base
 
 class AdminCRUDRequestHandler(base.CRUDRequestHandler):
 
-    NAME = 'admin-project-fact-types'
+    NAME = 'project-fact-types'
     ID_KEY = ['id']
     FIELDS = ['id', 'project_type_id', 'fact_type', 'weight']
 

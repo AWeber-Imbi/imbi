@@ -5,7 +5,7 @@ from imbi.endpoints import base
 
 class AdminCRUDRequestHandler(base.CRUDRequestHandler):
 
-    NAME = 'admin-orchestration-systems'
+    NAME = 'orchestration-systems'
     ID_KEY = 'name'
     FIELDS = ['name', 'description', 'icon_class']
     DEFAULTS = {'icon_class': 'fas fa-hand-point-right'}
