@@ -80,3 +80,16 @@ library.add({
   ]
 })
 icons.push('imbi redis')
+
+library.add({
+  prefix: 'imbi',
+  iconName: 'rundeck',
+  icon: [
+    60,
+    60,
+    [],
+    'ff56',
+    'M 0.021 0 L 7.629 11.986 L 45.691 11.986 L 38.148 0 Z M 15.281 23.932 L 18.965 29.675 L 14.997 35.982 L 53.397 35.982 L 57.212 29.977 L 53.397 24.082 L 15.357 24.082 Z M 7.455 48.014 L 0 59.76 L 0 60 L 38.148 60 L 45.712 48.012 Z'
+  ]
+})
+icons.push('imbi rundeck')
