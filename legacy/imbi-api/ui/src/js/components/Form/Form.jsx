@@ -9,6 +9,7 @@ import { Field } from './Field'
 
 function Form({
   columns,
+  formType,
   jsonSchema,
   onClose,
   onSubmit,
@@ -28,16 +29,17 @@ function Form({
   const [formReady, setFormReady] = useState(false)
   const [formValues, setFormValues] = useState(
     columns.reduce((result, column) => {
-      result[column.name] =
-        values !== null
-          ? values[column.name] !== undefined
-            ? values[column.name]
+      if ((formType === 'add' && column.omitOnAdd === true) === false)
+        result[column.name] =
+          values !== null
+            ? values[column.name] !== undefined
+              ? values[column.name]
+              : null
+            : column.default !== undefined
+            ? typeof column.default === 'function'
+              ? column.default()
+              : column.default
             : null
-          : column.default !== undefined
-          ? typeof column.default === 'function'
-            ? column.default()
-            : column.default
-          : null
       return result
     }, {})
   )
@@ -55,6 +57,7 @@ function Form({
           }
         })
       })
+      console.log(result.errors)
       setErrors(errors)
       setFormReady(false)
     } else {
@@ -88,6 +91,7 @@ function Form({
         )}
         <form onSubmit={handleSubmit}>
           {columns.map((column, index) => {
+            if (formType === 'add' && column.omitOnAdd === true) return null
             return (
               <Field
                 autoFocus={index === 0}
@@ -122,8 +126,13 @@ function Form({
   )
 }
 
+Form.defaultProps = {
+  formType: 'edit'
+}
+
 Form.propTypes = {
   columns: Columns.isRequired,
+  formType: PropTypes.oneOf(['add', 'edit']),
   jsonSchema: PropTypes.object.isRequired,
   onClose: PropTypes.func.isRequired,
   onSubmit: PropTypes.func.isRequired,

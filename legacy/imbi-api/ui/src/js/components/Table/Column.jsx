@@ -16,7 +16,11 @@ function Column({ definition, children }) {
       {definition !== undefined && definition.type === 'icon' && (
         <Icon className="mr-2" icon={children} />
       )}
-      {children}
+      {definition !== undefined &&
+      definition.tableOptions !== undefined &&
+      definition.tableOptions.lookupFunction !== undefined
+        ? definition.tableOptions.lookupFunction(children)
+        : children}
     </td>
   )
 }

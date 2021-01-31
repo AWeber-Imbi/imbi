@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 
 export const Column = {
+  castTo: PropTypes.oneOf(['bool', 'number']),
   default: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
   description: PropTypes.string,
   format: PropTypes.string,
@@ -8,22 +9,29 @@ export const Column = {
   minimum: PropTypes.number,
   multiple: PropTypes.bool,
   name: PropTypes.string.isRequired,
+  omitOnAdd: PropTypes.bool,
   options: PropTypes.arrayOf(
     PropTypes.exact({
       label: PropTypes.string.isRequired,
-      value: PropTypes.string.isRequired
+      value: PropTypes.oneOfType([
+        PropTypes.bool,
+        PropTypes.number,
+        PropTypes.string
+      ]).isRequired
     })
   ),
   placeholder: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),
   readOnly: PropTypes.bool,
   tableOptions: PropTypes.exact({
     className: PropTypes.string,
+    lookupFunction: PropTypes.func,
     headerClassName: PropTypes.string,
     hide: PropTypes.bool,
     sortable: PropTypes.bool
   }),
   title: PropTypes.string.isRequired,
   type: PropTypes.oneOf([
+    'hidden',
     'icon',
     'internal',
     'number',
