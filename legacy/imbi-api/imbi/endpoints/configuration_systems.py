@@ -16,7 +16,7 @@ class _RequestHandlerMixin:
                last_modified_at, last_modified_by,
                description, icon_class
           FROM v1.configuration_systems
-         WHERE "name"=%(name)s;""")
+         WHERE "name"=%(name)s""")
 
 
 class CollectionRequestHandler(_RequestHandlerMixin,
@@ -27,7 +27,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
         SELECT "name", created_by, last_modified_by, description, icon_class
           FROM v1.configuration_systems
-         ORDER BY "name" ASC;""")
+         ORDER BY "name" ASC""")
 
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.configuration_systems
@@ -40,7 +40,7 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
 
     NAME = 'configuration-system'
 
-    DELETE_SQL = 'DELETE FROM v1.configuration_systems WHERE "name"=%(name)s;'
+    DELETE_SQL = 'DELETE FROM v1.configuration_systems WHERE "name"=%(name)s'
 
     PATCH_SQL = re.sub(r'\s+', ' ', """\
         UPDATE v1.configuration_systems
@@ -49,4 +49,4 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
                last_modified_by=%(username)s,
                description=%(description)s,
                icon_class=%(icon_class)s
-         WHERE "name"=%(current_name)s;""")
+         WHERE "name"=%(current_name)s""")

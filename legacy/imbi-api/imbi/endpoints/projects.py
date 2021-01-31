@@ -33,7 +33,7 @@ class _RequestHandlerMixin:
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
-         WHERE a.id=%(id)s;""")
+         WHERE a.id=%(id)s""")
 
 
 class CollectionRequestHandler(_RequestHandlerMixin,
@@ -95,4 +95,4 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                deployment_type=%(deployment_type)s,
                orchestration_system=%(orchestration_system)s,
                environments=%(environments)s
-         WHERE id=%(id)s;""")
+         WHERE id=%(id)s""")
