@@ -10,12 +10,12 @@ import { httpGet, httpDelete } from '../../utils'
 import { Form } from './Form'
 
 function CRUD({
-  addPath,
   collectionIcon,
   collectionName,
   collectionPath,
   columns,
   errorStrings,
+  itemIgnore,
   itemKey,
   itemName,
   itemPath,
@@ -70,6 +70,9 @@ function CRUD({
       fetchMethod,
       itemPath.replace(/{{value}}/, value),
       (data) => {
+        itemIgnore.map((key) => {
+          delete data[key]
+        })
         setItemToEdit(data)
         setShowForm(true)
       },
@@ -92,6 +95,20 @@ function CRUD({
     setShowForm(false)
   }
 
+  // Remove the error message after 30 seconds
+  useEffect(() => {
+    if (errorMessage !== null) {
+      if (timerHandle !== null) clearTimeout(timerHandle)
+      setTimerHandle(
+        setTimeout(() => {
+          setErrorMessage(null)
+          setTimerHandle(null)
+        }, 30000)
+      )
+    }
+  }, [errorMessage])
+
+  // Fetch the collection data
   useEffect(() => {
     if (fetchData === true) {
       setFetchData(false)
@@ -108,18 +125,13 @@ function CRUD({
     }
   }, [fetchData])
 
-  // Remove the error message after 30 seconds
+  // Filter row data if it includes fields to ignore
   useEffect(() => {
-    if (errorMessage !== null) {
-      if (timerHandle !== null) clearTimeout(timerHandle)
-      setTimerHandle(
-        setTimeout(() => {
-          setErrorMessage(null)
-          setTimerHandle(null)
-        }, 30000)
-      )
-    }
-  }, [errorMessage])
+
+
+
+  }, [itemToEdit])
+
 
   // Remove the success message after 30 seconds
   useEffect(() => {
@@ -170,7 +182,7 @@ function CRUD({
           errorStrings={errorStrings}
           isEdit={itemToEdit !== null}
           itemKey={itemKey}
-          itemPath={itemToEdit === null ? addPath : itemPath}
+          itemPath={itemToEdit === null ? collectionPath : itemPath}
           jsonSchema={jsonSchema}
           onClose={onFormClosed}
           onEditClick={onEditClick}
@@ -220,12 +232,12 @@ function CRUD({
 }
 
 CRUD.propTypes = {
-  addPath: PropTypes.string.isRequired,
   collectionIcon: PropTypes.string.isRequired,
   collectionName: PropTypes.string.isRequired,
   collectionPath: PropTypes.string.isRequired,
   columns: Columns.isRequired,
   errorStrings: PropTypes.object.isRequired,
+  itemIgnore: PropTypes.arrayOf(PropTypes.string),
   itemKey: PropTypes.oneOfType([
     PropTypes.string,
     PropTypes.arrayOf(PropTypes.String)
