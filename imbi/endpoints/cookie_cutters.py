@@ -14,7 +14,7 @@ class _RequestHandlerMixin:
         SELECT "name", created_at, created_by, last_modified_at,
                last_modified_by, description, "type", project_type_id, url
           FROM v1.cookie_cutters
-         WHERE "name"=%(name)s;""")
+         WHERE "name"=%(name)s""")
 
 
 class CollectionRequestHandler(_RequestHandlerMixin,
@@ -25,7 +25,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
         SELECT "name", "type", project_type_id, description, url
           FROM v1.cookie_cutters
-         ORDER BY "name" ASC;""")
+         ORDER BY "name" ASC""")
 
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.cookie_cutters
@@ -40,7 +40,7 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
 
     NAME = 'cookie-cutter'
 
-    DELETE_SQL = 'DELETE FROM v1.cookie_cutters WHERE "name"=%(name)s;'
+    DELETE_SQL = 'DELETE FROM v1.cookie_cutters WHERE "name"=%(name)s'
 
     PATCH_SQL = re.sub(r'\s+', ' ', """\
         UPDATE v1.cookie_cutters
@@ -51,4 +51,4 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
                "type"=%(type)s,
                project_type_id=%(project_type_id)s,
                url=%(url)s
-         WHERE "name"=%(current_name)s;""")
+         WHERE "name"=%(current_name)s""")

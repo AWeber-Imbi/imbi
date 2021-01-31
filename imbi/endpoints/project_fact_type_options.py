@@ -30,7 +30,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
         INSERT INTO v1.project_fact_type_options
                     (fact_type_id, value, created_by, score)
              VALUES (%(fact_type_id)s, %(value)s, %(username)s, %(score)s)
-          RETURNING id;""")
+          RETURNING id""")
 
 
 class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):

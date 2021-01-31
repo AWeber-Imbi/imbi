@@ -14,7 +14,7 @@ class _RequestHandlerMixin:
                last_modified_at, last_modified_by,
                group_type, external_id, permissions
           FROM v1.groups
-         WHERE "name"=%(name)s;""")
+         WHERE "name"=%(name)s""")
 
 
 class CollectionRequestHandler(_RequestHandlerMixin,
@@ -26,7 +26,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
         SELECT "name", group_type, external_id, permissions
           FROM v1.groups
-         ORDER BY "name" ASC;""")
+         ORDER BY "name" ASC""")
 
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.groups
@@ -50,4 +50,4 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
                group_type=%(group_type)s,
                external_id=%(external_id)s,
                permissions=%(permissions)s
-         WHERE "name"=%(current_name)s;""")
+         WHERE "name"=%(current_name)s""")

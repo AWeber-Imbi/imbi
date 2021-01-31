@@ -13,7 +13,7 @@ class _RequestHandlerMixin:
         SELECT id, "name", created_at, created_by,
                last_modified_at, last_modified_by,
                slug, icon_class, maintained_by
-          FROM v1.namespaces WHERE id=%(id)s;""")
+          FROM v1.namespaces WHERE id=%(id)s""")
 
 
 class CollectionRequestHandler(_RequestHandlerMixin,
@@ -24,21 +24,21 @@ class CollectionRequestHandler(_RequestHandlerMixin,
 
     COLLECTION_SQL = re.sub(r'\s+', ' ', """ \
         SELECT id, "name", slug, icon_class, maintained_by
-          FROM v1.namespaces ORDER BY "name" ASC;""")
+          FROM v1.namespaces ORDER BY "name" ASC""")
 
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.namespaces
                     ("name", created_by, slug, icon_class, "maintained_by")
              VALUES (%(name)s, %(username)s, %(slug)s, %(icon_class)s,
                      %(maintained_by)s)
-          RETURNING id;""")
+          RETURNING id""")
 
 
 class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
 
     NAME = 'namespace'
 
-    DELETE_SQL = 'DELETE FROM v1.namespaces WHERE id=%(id)s;'
+    DELETE_SQL = 'DELETE FROM v1.namespaces WHERE id=%(id)s'
 
     PATCH_SQL = re.sub(r'\s+', ' ', """\
         UPDATE v1.namespaces
@@ -48,4 +48,4 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
                slug = %(slug)s,
                icon_class = %(icon_class)s,
                "maintained_by" = %(maintained_by)s
-         WHERE id=%(id)s;""")
+         WHERE id=%(id)s""")

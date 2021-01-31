@@ -13,7 +13,7 @@ class _RequestHandlerMixin:
                last_modified_at, last_modified_by,
                project_type_id, fact_type, weight
           FROM v1.project_fact_types
-         WHERE id=%(id)s;""")
+         WHERE id=%(id)s""")
 
 
 class CollectionRequestHandler(_RequestHandlerMixin,
@@ -32,7 +32,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                     (project_type_id, fact_type, created_by, weight)
              VALUES (%(project_type_id)s, %(fact_type)s, %(username)s,
                      %(weight)s)
-          RETURNING id;""")
+          RETURNING id""")
 
 
 class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
@@ -48,4 +48,4 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
                last_modified_at=CURRENT_TIMESTAMP,
                last_modified_by=%(username)s,
                weight=%(weight)s
-         WHERE id=%(id)s;""")
+         WHERE id=%(id)s""")
