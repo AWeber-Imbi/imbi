@@ -19,6 +19,7 @@ function CRUD({
   itemKey,
   itemName,
   itemPath,
+  itemTitle,
   jsonSchema
 }) {
   const fetchMethod = useContext(FetchContext)
@@ -125,14 +126,6 @@ function CRUD({
     }
   }, [fetchData])
 
-  // Filter row data if it includes fields to ignore
-  useEffect(() => {
-
-
-
-  }, [itemToEdit])
-
-
   // Remove the success message after 30 seconds
   useEffect(() => {
     if (successMessage !== null) {
@@ -183,6 +176,7 @@ function CRUD({
           isEdit={itemToEdit !== null}
           itemKey={itemKey}
           itemPath={itemToEdit === null ? collectionPath : itemPath}
+          itemTitle={itemTitle}
           jsonSchema={jsonSchema}
           onClose={onFormClosed}
           onEditClick={onEditClick}
@@ -231,6 +225,11 @@ function CRUD({
   )
 }
 
+CRUD.defaultProps = {
+  itemIgnore: [],
+  omitOnAdd: []
+}
+
 CRUD.propTypes = {
   collectionIcon: PropTypes.string.isRequired,
   collectionName: PropTypes.string.isRequired,
@@ -244,7 +243,9 @@ CRUD.propTypes = {
   ]),
   itemName: PropTypes.string.isRequired,
   itemPath: PropTypes.string.isRequired,
-  jsonSchema: PropTypes.object.isRequired
+  itemTitle: PropTypes.string,
+  jsonSchema: PropTypes.object.isRequired,
+  omitOnAdd: PropTypes.arrayOf(PropTypes.string)
 }
 
 export { CRUD }

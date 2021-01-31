@@ -4,11 +4,13 @@ import React from 'react'
 import { IconSelect } from './IconSelect'
 import { NumericInput } from './NumericInput'
 import { Select } from './Select'
+import { SelectOptions } from '../../schema/PropTypes'
 import { TextInput } from './TextInput'
 import { TextArea } from './TextArea'
 
 function Field({
   autoFocus,
+  castTo,
   description,
   errorMessage,
   maximum,
@@ -23,6 +25,10 @@ function Field({
   type,
   value
 }) {
+  if (type === 'hidden') {
+    if (value === null) return null
+    return <input type="hidden" name={name} value={value} />
+  }
   return (
     <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:pt-5">
       <label
@@ -59,6 +65,7 @@ function Field({
         {type === 'select' && (
           <Select
             autoFocus={autoFocus}
+            castTo={castTo}
             hasError={errorMessage !== null}
             multiple={multiple}
             name={name}
@@ -66,6 +73,7 @@ function Field({
             options={options}
             placeholder={placeholder}
             required={required}
+            value={value}
           />
         )}
         {type === 'text' && (
@@ -114,6 +122,7 @@ Field.defaultProps = {
 
 Field.propTypes = {
   autoFocus: PropTypes.bool,
+  castTo: PropTypes.oneOf(['bool', 'number']),
   description: PropTypes.string,
   errorMessage: PropTypes.string,
   maximum: PropTypes.number,
@@ -121,17 +130,18 @@ Field.propTypes = {
   multiple: PropTypes.bool,
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
-  options: PropTypes.arrayOf(
-    PropTypes.exact({
-      label: PropTypes.string.isRequired,
-      value: PropTypes.string.isRequired
-    })
-  ),
+  options: SelectOptions,
   placeholder: PropTypes.string,
   required: PropTypes.bool,
   title: PropTypes.oneOfType([PropTypes.string, PropTypes.element]).isRequired,
-  type: PropTypes.oneOf(['icon', 'number', 'select', 'text', 'textarea'])
-    .isRequired,
+  type: PropTypes.oneOf([
+    'hidden',
+    'icon',
+    'number',
+    'select',
+    'text',
+    'textarea'
+  ]).isRequired,
   value: PropTypes.oneOfType([
     PropTypes.number,
     PropTypes.string,

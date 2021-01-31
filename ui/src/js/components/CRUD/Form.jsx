@@ -13,6 +13,7 @@ function CrudForm({
   isEdit,
   itemKey,
   itemPath,
+  itemTitle,
   jsonSchema,
   onClose,
   savingTitle,
@@ -35,7 +36,7 @@ function CrudForm({
       result = await httpPost(fetchMethod, itemPath, formValues)
     }
     if (result.success === true) {
-      onClose(formValues[itemKey])
+      onClose(formValues[itemTitle !== undefined ? itemTitle : itemKey])
     } else {
       return errorStrings[result.data] !== undefined
         ? errorStrings[result.data]
@@ -46,6 +47,7 @@ function CrudForm({
   return (
     <Form
       columns={columns}
+      formType={isEdit === true ? 'edit' : 'add'}
       jsonSchema={jsonSchema}
       onClose={onClose}
       onSubmit={handleSubmit}
@@ -62,6 +64,7 @@ CrudForm.propTypes = {
   isEdit: PropTypes.bool.isRequired,
   itemKey: PropTypes.string.isRequired,
   itemPath: PropTypes.string.isRequired,
+  itemTitle: PropTypes.string,
   jsonSchema: PropTypes.object.isRequired,
   onClose: PropTypes.func.isRequired,
   savingTitle: PropTypes.string.isRequired,
