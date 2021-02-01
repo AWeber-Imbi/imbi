@@ -1,4 +1,4 @@
-import { fetchSettings } from '../../settings'
+import { fetchMetadata as _fetchMetadata } from '../../metadata'
 
 export function fetchMetadata(fetch, onSuccess, onError) {
   const data = {
@@ -28,82 +28,99 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     onError(value)
   }
 
-  fetchSettings(
+  _fetchMetadata(
     fetch,
-    '/settings/configuration_systems',
+    '/configuration-systems',
     true,
+    'name',
+    'name',
     (data) => {
       onData('configurationSystems', data)
     },
     onErr
   )
-  fetchSettings(
+  _fetchMetadata(
     fetch,
-    '/settings/cookie_cutters',
+    '/cookie-cutters',
     true,
+    'name',
+    'name',
     (data) => {
       onData('cookieCutters', data)
     },
     onErr
   )
-  fetchSettings(
+  _fetchMetadata(
     fetch,
-    '/settings/data_centers',
+    '/data-centers',
     true,
+    'name',
+    'name',
     (data) => {
       onData('dataCenters', data)
     },
     onErr
   )
-  fetchSettings(
+  _fetchMetadata(
     fetch,
-    '/settings/deployment_types',
+    '/deployment-types',
     true,
+    'name',
+    'name',
     (data) => {
       onData('deploymentTypes', data)
     },
     onErr
   )
-  fetchSettings(
+  _fetchMetadata(
     fetch,
-    '/settings/environments',
+    '/environments',
     true,
+    'name',
+    'name',
     (data) => {
       onData('environments', data)
     },
     onErr
   )
-  fetchSettings(
+  _fetchMetadata(
     fetch,
-    '/settings/namespaces',
+    '/namespaces',
     true,
+    'name',
+    'id',
     (data) => {
       onData('namespaces', data)
     },
     onErr
   )
-  fetchSettings(
+  _fetchMetadata(
     fetch,
-    '/settings/orchestration_systems',
+    '/orchestration-systems',
     true,
+    'name',
+    'name',
     (data) => {
       onData('orchestrationSystems', data)
     },
     onErr
   )
-  fetchSettings(
+  _fetchMetadata(
     fetch,
-    '/settings/project_link_types',
+    '/project-link-types',
     false,
+    '', '',
     (data) => {
       onData('projectLinkTypes', data)
     },
     onErr
   )
-  fetchSettings(
+  _fetchMetadata(
     fetch,
-    '/settings/project_types',
+    '/project-types',
     true,
+    'name',
+    'id',
     (data) => {
       onData('projectTypes', data)
     },

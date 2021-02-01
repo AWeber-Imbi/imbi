@@ -47,8 +47,7 @@ function Select({
         let value = event.target.value
         if (multiple === true) {
           value = Array.from(event.target.selectedOptions, (option) => {
-            if (castTo === 'number') parseInt(option.value)
-            else option.value
+            return castTo === 'number' ? parseInt(option.value) : option.value
           })
           if (value === null) value = []
         } else {

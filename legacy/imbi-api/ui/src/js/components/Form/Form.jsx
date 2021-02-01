@@ -57,7 +57,6 @@ function Form({
           }
         })
       })
-      console.log(result.errors)
       setErrors(errors)
       setFormReady(false)
     } else {
