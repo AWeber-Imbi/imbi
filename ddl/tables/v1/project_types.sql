@@ -13,7 +13,6 @@ CREATE TABLE IF NOT EXISTS project_types (
 );
 
 CREATE UNIQUE INDEX project_types_name ON project_types (name);
-CREATE UNIQUE INDEX project_types_slug ON project_types (slug);
 
 COMMENT ON TABLE project_types IS 'Project Types';
 COMMENT ON COLUMN project_types.id IS 'Surrogate key for URLs and linking';
