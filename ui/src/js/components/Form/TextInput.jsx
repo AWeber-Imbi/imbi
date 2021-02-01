@@ -8,6 +8,7 @@ function TextInput({
   onChange,
   placeholder,
   required,
+  type,
   value
 }) {
   const [hasFocus, setHasFocus] = useState(false)
@@ -43,7 +44,7 @@ function TextInput({
       placeholder={placeholder}
       ref={ref}
       required={required}
-      type="text"
+      type={type}
     />
   )
 }
@@ -61,6 +62,7 @@ TextInput.propTypes = {
   onChange: PropTypes.func,
   placeholder: PropTypes.string,
   required: PropTypes.bool,
+  type: PropTypes.oneOf(['email', 'text', 'url']),
   value: PropTypes.string
 }
 

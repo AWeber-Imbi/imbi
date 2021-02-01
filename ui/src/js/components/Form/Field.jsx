@@ -76,7 +76,7 @@ function Field({
             value={value}
           />
         )}
-        {type === 'text' && (
+        {(type === 'email' || type === 'text' || type === 'url') && (
           <TextInput
             autoFocus={autoFocus}
             hasError={errorMessage !== null}
@@ -84,6 +84,7 @@ function Field({
             onChange={onChange}
             placeholder={placeholder}
             required={required}
+            type={type}
             value={value}
           />
         )}
@@ -135,12 +136,14 @@ Field.propTypes = {
   required: PropTypes.bool,
   title: PropTypes.oneOfType([PropTypes.string, PropTypes.element]).isRequired,
   type: PropTypes.oneOf([
+    'email',
     'hidden',
     'icon',
     'number',
     'select',
     'text',
-    'textarea'
+    'textarea',
+    'url'
   ]).isRequired,
   value: PropTypes.oneOfType([
     PropTypes.number,
