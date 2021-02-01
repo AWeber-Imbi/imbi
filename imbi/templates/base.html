@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Imbi &mdash; {% block title %}Tile{% end %}</title>
     <link rel="icon" href="{{ static_url('images/logo.ico') }}">
+    <link rel="apple-touch-icon" href="{{ static_url('images/icon2x.png') }}">
     <link rel="stylesheet" href="{{ static_url('css/backend.css') }}">
   </head>
   <body>
@@ -16,7 +17,7 @@
          data-ldap="{{ str(handler.application.settings['ldap']['enabled']).lower() }}"
          data-version="{{ handler.application.settings['version'] }}">
       <h1>
-        <img src="{{ static_url('images/logo.png') }}" alt="Imbi" />
+        <img src="{{ static_url('images/logo.svg') }}" alt="Imbi" />
       </h1>
       <div>
         {% block content %}

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg viewBox="0 0 550 550" xmlns="http://www.w3.org/2000/svg">
+  <path class="st2" d="M 273.87 369.902" style="fill: rgb(255, 255, 255); stroke: rgb(0, 0, 0); stroke-miterlimit: 10; stroke-width: 4px;"/>
+  <g>
+    <polygon class="st1" points="390.322 365.816 340.27 282.439 390.282 199.176 490.219 199.061 540.27 282.439 490.219 365.816" style="stroke: rgb(0, 0, 0); fill: rgb(255, 255, 255);"/>
+    <polygon class="st1" points="58.022 365.816 7.971 282.439 57.982 199.176 157.92 199.061 207.971 282.439 157.92 365.816" style="stroke: rgb(0, 0, 0); fill: rgb(255, 255, 255);"/>
+    <g>
+      <polygon class="st1" points="223.922 453.28 173.87 369.902 223.882 286.639 323.819 286.524 373.87 369.902 323.819 453.28" style="stroke: rgb(0, 0, 0); fill: rgb(251, 206, 57);"/>
+      <polygon style="paint-order: stroke;" points="198.583 328.608 223.878 286.726 323.922 286.551 349.169 328.566"/>
+      <polygon style="" points="174.193 369.902 373.869 369.931 348.467 411.825 199.013 411.896" transform="matrix(1, 0.000078, -0.000078, 1, 0.030491, -0.021373)"/>
+    </g>
+    <g id="Layer_1_copy" transform="matrix(1, 0, 0, 1, -80.697464, -74.685524)">
+      <polygon class="st3" points="354.8389892578125 613.1690063476562 399.1239929199219 539.9650268554688 310.6369934082031 539.9650268554688" style="stroke: rgb(0, 0, 0); stroke-miterlimit: 10;"/>
+    </g>
+    <g>
+      <path class="st0" d="M 238.722 108.392 L 216.172 67.97 L 193.622 27.549 L 216.172 67.97 Z" style="stroke-linecap: round; fill: rgb(255, 255, 255); stroke: rgb(0, 0, 0); stroke-miterlimit: 10; stroke-width: 5px;"/>
+      <polygon class="st1" points="223.922 273.105 173.87 189.727 223.882 106.464 323.819 106.349 373.87 189.727 323.819 273.105" style="stroke: rgb(0, 0, 0); fill: rgb(0, 0, 0);"/>
+      <path class="st0" d="M 355.916 27.55 L 333.366 67.972 L 310.816 108.393 L 333.366 67.971 Z" style="fill: rgb(255, 255, 255); stroke: rgb(0, 0, 0); stroke-miterlimit: 10; stroke-width: 5px;" transform="matrix(-1, 0, 0, -1, 666.731995, 135.943001)"/>
+      <circle style="" cx="193.208" cy="23.721" r="12.637"/>
+      <circle style="" cx="354.788" cy="23.721" r="12.637"/>
+    </g>
+  </g>
+</svg>

@@ -8,7 +8,6 @@ build/
 ddl/build/
 dist/
 ddl.sql
-imbi/static/
 imbi/static/fonts/
 imbi/static/*.js
 imbi/static/*.js.map
