@@ -122,7 +122,7 @@ Field.defaultProps = {
 
 Field.propTypes = {
   autoFocus: PropTypes.bool,
-  castTo: PropTypes.oneOf(['bool', 'number']),
+  castTo: PropTypes.oneOf(['number']),
   description: PropTypes.string,
   errorMessage: PropTypes.string,
   maximum: PropTypes.number,

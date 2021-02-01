@@ -28,7 +28,13 @@ function Select({
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
-      defaultValue={value !== undefined && value !== null ? value.toString() : value}
+      defaultValue={
+        value !== undefined && value !== null && value !== []
+          ? castTo === 'number'
+            ? value.toString()
+            : value
+          : value
+      }
       id={'field-' + name}
       multiple={multiple}
       name={name}
@@ -44,6 +50,7 @@ function Select({
             if (castTo === 'number') parseInt(option.value)
             else option.value
           })
+          if (value === null) value = []
         } else {
           if (castTo === 'number') value = parseInt(value)
         }
@@ -61,7 +68,9 @@ function Select({
       )}
       {options.map((option) => {
         return (
-          <option key={name + '-' + option.value} value={option.value.toString()}>
+          <option
+            key={name + '-' + option.value}
+            value={option.value.toString()}>
             {option.label}
           </option>
         )
@@ -79,7 +88,7 @@ Select.defaultProps = {
 
 Select.propTypes = {
   autoFocus: PropTypes.bool,
-  castTo: PropTypes.oneOf(['bool', 'number']),
+  castTo: PropTypes.oneOf(['number']),
   hasError: PropTypes.bool,
   multiple: PropTypes.bool,
   name: PropTypes.string.isRequired,
@@ -87,7 +96,12 @@ Select.propTypes = {
   options: SelectOptions,
   placeholder: PropTypes.string,
   required: PropTypes.bool,
-  value: PropTypes.oneOfType([PropTypes.bool, PropTypes.number, PropTypes.string])
+  value: PropTypes.oneOfType([
+    PropTypes.array,
+    PropTypes.bool,
+    PropTypes.number,
+    PropTypes.string
+  ])
 }
 
 export { Select }
