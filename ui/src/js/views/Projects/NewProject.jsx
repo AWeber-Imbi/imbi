@@ -139,7 +139,7 @@ function NewProject() {
               name="namespace_id"
               type="select"
               autoFocus={true}
-              castTo='number'
+              castTo="number"
               options={metadata.namespaces !== null ? metadata.namespaces : []}
               onChange={onValueChange}
               errorMessage={errors.namespace_id}
@@ -157,7 +157,7 @@ function NewProject() {
               title={t('project.projectType')}
               name="project_type_id"
               type="select"
-              castTo='number'
+              castTo="number"
               options={
                 metadata.projectTypes !== null ? metadata.projectTypes : []
               }

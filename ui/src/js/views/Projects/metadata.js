@@ -109,7 +109,8 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     fetch,
     '/project-link-types',
     false,
-    '', '',
+    '',
+    '',
     (data) => {
       onData('projectLinkTypes', data)
     },
