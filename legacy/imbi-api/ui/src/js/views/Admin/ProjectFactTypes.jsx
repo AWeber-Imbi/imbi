@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { CRUD, Error } from '../../components'
 import { FetchContext } from '../../contexts'
-import { fetchProjectTypes } from '../../settings'
+import { fetchMetadata } from '../../metadata'
 import { jsonSchema } from '../../schema/ProjectFactType'
 
 export function ProjectFactTypes() {
@@ -14,9 +14,12 @@ export function ProjectFactTypes() {
 
   useEffect(() => {
     if (projectTypes === null) {
-      fetchProjectTypes(
+      fetchMetadata(
         fetch,
+        '/project-types',
         true,
+        'name',
+        'id',
         (result) => {
           setProjectTypes(result)
         },
@@ -33,18 +36,35 @@ export function ProjectFactTypes() {
       {!projectTypes && <div>Loading</div>}
       {projectTypes && (
         <CRUD
-          addPath="/admin/project_fact_type"
           collectionIcon="fas ruler"
           collectionName={t('admin.projectFactTypes.collectionName')}
-          collectionPath="/settings/project_fact_types"
+          collectionPath="/project-fact-types"
           columns={[
             {
-              title: t('admin.projectFactTypes.projectType'),
-              name: 'project_type',
+              title: t('id'),
+              name: 'id',
+              type: 'hidden',
+              omitOnAdd: true,
+              tableOptions: {
+                hide: true
+              }
+            },
+            {
+              title: t('admin.projectTypes.itemName'),
+              name: 'project_type_id',
               type: 'select',
+              castTo: 'number',
               options: projectTypes,
               tableOptions: {
-                headerClassName: 'w-4/12'
+                className: 'truncate',
+                headerClassName: 'w-4/12',
+                lookupFunction: (value) => {
+                  let displayValue = null
+                  projectTypes.forEach((item) => {
+                    if (item.value === value) displayValue = item.label
+                  })
+                  return displayValue
+                }
               }
             },
             {
@@ -73,9 +93,11 @@ export function ProjectFactTypes() {
               'admin.projectFactTypes.errors.uniqueViolation'
             )
           }}
+          itemIgnore={['created_by', 'last_modified_by']}
           itemKey="id"
           itemName={t('admin.projectFactTypes.itemName')}
-          itemPath="/admin/project_fact_type/{{value}}"
+          itemPath="/project-fact-types/{{value}}"
+          itemTitle="fact_type"
           jsonSchema={jsonSchema}
         />
       )}

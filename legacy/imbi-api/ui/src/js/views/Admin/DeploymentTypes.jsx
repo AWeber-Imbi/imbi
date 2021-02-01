@@ -9,10 +9,9 @@ export function DeploymentTypes() {
   const { t } = useTranslation()
   return (
     <CRUD
-      addPath="/admin/deployment_type"
       collectionIcon="fas upload"
       collectionName={t('admin.deploymentTypes.collectionName')}
-      collectionPath="/settings/deployment_types"
+      collectionPath="/deployment-types"
       columns={[
         {
           title: t('common.name'),
@@ -45,9 +44,10 @@ export function DeploymentTypes() {
       errorStrings={{
         'Unique Violation': t('admin.deploymentTypes.errors.uniqueViolation')
       }}
+      itemIgnore={['created_by', 'last_modified_by']}
       itemKey="name"
       itemName={t('admin.deploymentTypes.itemName')}
-      itemPath="/admin/deployment_type/{{value}}"
+      itemPath="/deployment-types/{{value}}"
       jsonSchema={jsonSchema}
     />
   )

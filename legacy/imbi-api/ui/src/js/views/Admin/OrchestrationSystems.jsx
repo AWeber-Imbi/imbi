@@ -9,10 +9,9 @@ export function OrchestrationSystems() {
   const { t } = useTranslation()
   return (
     <CRUD
-      addPath="/admin/orchestration_system"
       collectionIcon="fas cogs"
       collectionName={t('admin.orchestrationSystems.collectionName')}
-      collectionPath="/settings/orchestration_systems"
+      collectionPath="/orchestration-systems"
       columns={[
         {
           title: t('common.name'),
@@ -47,9 +46,10 @@ export function OrchestrationSystems() {
           'admin.orchestrationSystems.errors.uniqueViolation'
         )
       }}
+      itemIgnore={['created_by', 'last_modified_by']}
       itemKey="name"
       itemName={t('admin.orchestrationSystems.itemName')}
-      itemPath="/admin/orchestration_system/{{value}}"
+      itemPath="/orchestration-systems/{{value}}"
       jsonSchema={jsonSchema}
     />
   )

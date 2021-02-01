@@ -8,8 +8,8 @@ export const jsonSchema = {
       type: 'string',
       minLength: 3
     },
-    project_type: {
-      type: 'string'
+    project_type_id: {
+      type: 'number'
     },
     type: {
       type: 'string',
@@ -23,13 +23,13 @@ export const jsonSchema = {
     }
   },
   additionalProperties: false,
-  required: ['name', 'type', 'project_type', 'url']
+  required: ['name', 'type', 'project_type_id', 'url']
 }
 
 export const propTypes = {
   name: PropTypes.string.isRequired,
   type: PropTypes.oneOf(['dashboard', 'project']).isRequired,
-  project_type: PropTypes.string.isRequired,
+  project_type_id: PropTypes.number.isRequired,
   description: PropTypes.string,
   url: PropTypes.string.isRequired
 }

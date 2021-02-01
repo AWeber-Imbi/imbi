@@ -4,8 +4,11 @@ export const jsonSchema = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   type: 'object',
   properties: {
-    project_type: {
-      type: 'string'
+    id: {
+      type: 'number'
+    },
+    project_type_id: {
+      type: 'number'
     },
     fact_type: {
       type: 'string',
@@ -18,11 +21,12 @@ export const jsonSchema = {
     }
   },
   additionalProperties: false,
-  required: ['project_type', 'fact_type', 'weight']
+  required: ['project_type_id', 'fact_type', 'weight']
 }
 
 export const propTypes = {
-  project_type: PropTypes.string.isRequired,
+  id: PropTypes.number,
+  project_type_id: PropTypes.string.isRequired,
   fact_type: PropTypes.string.isRequired,
   weight: PropTypes.number.isRequired
 }

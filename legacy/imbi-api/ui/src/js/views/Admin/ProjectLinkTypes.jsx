@@ -9,11 +9,19 @@ export function ProjectLinkTypes() {
   const { t } = useTranslation()
   return (
     <CRUD
-      addPath="/admin/project_link_type"
       collectionIcon="fas external-link-alt"
       collectionName={t('admin.projectLinkTypes.collectionName')}
-      collectionPath="/settings/project_link_types"
+      collectionPath="/project-link-types"
       columns={[
+        {
+          title: t('id'),
+          name: 'id',
+          type: 'hidden',
+          omitOnAdd: true,
+          tableOptions: {
+            hide: true
+          }
+        },
         {
           title: t('admin.projectLinkTypes.linkType'),
           name: 'link_type',
@@ -36,9 +44,11 @@ export function ProjectLinkTypes() {
       errorStrings={{
         'Unique Violation': t('admin.projectLinkTypes.errors.uniqueViolation')
       }}
-      itemKey="link_type"
+      itemIgnore={['created_by', 'last_modified_by']}
+      itemKey="id"
       itemName={t('admin.projectLinkTypes.itemName')}
-      itemPath="/admin/project_link_type/{{value}}"
+      itemPath="/project-link-types/{{value}}"
+      itemTitle="link_type"
       jsonSchema={jsonSchema}
     />
   )

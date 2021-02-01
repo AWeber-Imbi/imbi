@@ -2,7 +2,7 @@ import React, { Fragment, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CRUD, Error } from '../../components'
-import { fetchGroups } from '../../settings'
+import { fetchMetadata } from '../../metadata'
 import { jsonSchema } from '../../schema/Namespace'
 
 export function Namespaces() {
@@ -12,9 +12,12 @@ export function Namespaces() {
 
   useEffect(() => {
     if (groups === null) {
-      fetchGroups(
+      fetchMetadata(
         fetch,
+        '/groups',
         true,
+        'name',
+        'name',
         (result) => {
           setGroups(result)
         },
@@ -29,11 +32,19 @@ export function Namespaces() {
     <Fragment>
       {errorMessage && <Error>{{ errorMessage }}</Error>}
       <CRUD
-        addPath="/admin/namespace"
         collectionIcon="fas boxes"
         collectionName={t('admin.namespaces.collectionName')}
-        collectionPath="/settings/namespaces"
+        collectionPath="/namespaces"
         columns={[
+          {
+            title: t('id'),
+            name: 'id',
+            type: 'hidden',
+            omitOnAdd: true,
+            tableOptions: {
+              hide: true
+            }
+          },
           {
             title: t('common.name'),
             name: 'name',
@@ -65,6 +76,7 @@ export function Namespaces() {
           {
             title: t('admin.namespaces.maintainedBy'),
             name: 'maintained_by',
+            default: [],
             description: t('admin.namespaces.maintainedByDescription'),
             multiple: true,
             options: groups,
@@ -77,9 +89,11 @@ export function Namespaces() {
         errorStrings={{
           'Unique Violation': t('admin.namespaces.errors.uniqueViolation')
         }}
-        itemKey="name"
+        itemIgnore={['created_by', 'last_modified_by']}
+        itemKey="id"
         itemName={t('admin.namespaces.itemName')}
-        itemPath="/admin/namespace/{{value}}"
+        itemPath="/namespaces/{{value}}"
+        itemTitle="name"
         jsonSchema={jsonSchema}
       />
     </Fragment>

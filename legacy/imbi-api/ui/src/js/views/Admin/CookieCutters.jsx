@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { CRUD, Error } from '../../components'
 import { FetchContext } from '../../contexts'
-import { fetchProjectTypes } from '../../settings'
+import { fetchMetadata } from '../../metadata'
 import { jsonSchema } from '../../schema/CookieCutter'
 
 export function CookieCutters() {
@@ -14,9 +14,12 @@ export function CookieCutters() {
 
   useEffect(() => {
     if (projectTypes === null) {
-      fetchProjectTypes(
+      fetchMetadata(
         fetch,
+        '/project-types',
         true,
+        'name',
+        'id',
         (result) => {
           setProjectTypes(result)
         },
@@ -27,44 +30,62 @@ export function CookieCutters() {
     }
   }, [projectTypes])
 
+  const options = [
+    { label: 'Dashboard', value: 'dashboard' },
+    { label: 'Project', value: 'project' }
+  ]
+
   return (
     <Fragment>
       {errorMessage && <Error>{{ errorMessage }}</Error>}
       {!projectTypes && <div>Loading</div>}
       {projectTypes && (
         <CRUD
-          addPath="/admin/cookie_cutter"
           collectionIcon="fas cookie"
           collectionName={t('admin.cookieCutters.collectionName')}
-          collectionPath="/settings/cookie_cutters"
+          collectionPath="/cookie-cutters"
           columns={[
             {
               title: t('common.name'),
               name: 'name',
               type: 'text',
               tableOptions: {
-                headerClassName: 'w-2/12'
+                className: 'truncate',
+                headerClassName: 'w-3/12'
               }
             },
             {
               title: t('admin.cookieCutters.type'),
               name: 'type',
               type: 'select',
-              options: [
-                { label: 'Dashboard', value: 'dashboard' },
-                { label: 'Project', value: 'project' }
-              ],
+              options: options,
               tableOptions: {
-                headerClassName: 'w-1/12'
+                headerClassName: 'w-1/12',
+                lookupFunction: (value) => {
+                  let displayValue = null
+                  options.forEach((item) => {
+                    if (item.value === value) displayValue = item.label
+                  })
+                  return displayValue
+                }
               }
             },
             {
               title: t('admin.projectTypes.itemName'),
-              name: 'project_type',
+              name: 'project_type_id',
               type: 'select',
+              castTo: 'number',
               options: projectTypes,
               tableOptions: {
-                headerClassName: 'w-2/12'
+                className: 'truncate',
+                headerClassName: 'w-2/12',
+                lookupFunction: (value) => {
+                  let displayValue = null
+                  projectTypes.forEach((item) => {
+                    if (item.value === value) displayValue = item.label
+                  })
+                  return displayValue
+                }
               }
             },
             {
@@ -90,9 +111,10 @@ export function CookieCutters() {
           errorStrings={{
             'Unique Violation': t('admin.cookieCutters.errors.uniqueViolation')
           }}
+          itemIgnore={['created_by', 'last_modified_by']}
           itemKey="name"
           itemName={t('admin.cookieCutters.itemName')}
-          itemPath="/admin/cookie_cutter/{{value}}"
+          itemPath="/cookie-cutters/{{value}}"
           jsonSchema={jsonSchema}
         />
       )}

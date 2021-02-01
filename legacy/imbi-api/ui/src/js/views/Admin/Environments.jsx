@@ -9,10 +9,9 @@ export function Environments() {
   const { t } = useTranslation()
   return (
     <CRUD
-      addPath="/admin/environment"
       collectionIcon="fas tree"
       collectionName={t('admin.environments.collectionName')}
-      collectionPath="/settings/environments"
+      collectionPath="/environments"
       columns={[
         {
           title: t('common.name'),
@@ -45,9 +44,10 @@ export function Environments() {
       errorStrings={{
         'Unique Violation': t('admin.projectTypes.errors.uniqueViolation')
       }}
+      itemIgnore={['created_by', 'last_modified_by']}
       itemKey="name"
       itemName={t('admin.environments.itemName')}
-      itemPath="/admin/environment/{{value}}"
+      itemPath="/environments/{{value}}"
       jsonSchema={jsonSchema}
     />
   )
