@@ -14,11 +14,11 @@ import { httpPost } from '../../utils'
 function NewProject() {
   const { t } = useTranslation()
   const emptyErrors = {
-    namespace: null,
+    namespace_id: null,
+    project_type_id: null,
     name: null,
-    owned_by: null,
+    slug: null,
     description: null,
-    project_type: null,
     data_center: null,
     environments: null,
     configuration_system: null,
@@ -41,14 +41,14 @@ function NewProject() {
     projectTypes: null,
     ready: false
   })
+  const [projectId, setProjectId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [formValues, setFormValues] = useState({
-    namespace: null,
+    namespace_id: null,
+    project_type_id: null,
     name: null,
     slug: null,
-    owned_by: null,
     description: null,
-    project_type: null,
     data_center: null,
     environments: null,
     configuration_system: null,
@@ -59,8 +59,10 @@ function NewProject() {
   async function handleSubmit(event) {
     event.preventDefault()
     setSaving(true)
-    let result = await httpPost(fetchMethod, '/project/', formValues)
+    let result = await httpPost(fetchMethod, '/projects', formValues)
     if (result.success === true) {
+      setProjectId(result.data.id)
+      console.log(result.data)
       console.log('Project Saved')
     } else {
       setErrorMessage(result.data)
@@ -69,6 +71,7 @@ function NewProject() {
 
   function onValueChange(key, value) {
     const values = { ...formValues, [key]: value }
+    console.log('Changing ' + key + ' to ' + value)
     if (key === 'name') values.slug = slugify(value).toLowerCase()
     setFormValues(values)
   }
@@ -84,6 +87,7 @@ function NewProject() {
           }
         })
       })
+      console.log(result.errors)
       setErrors(errors)
       setFormReady(false)
     } else {
@@ -132,12 +136,13 @@ function NewProject() {
           <div className="border-t border-gray-300 w-full pl-5">
             <Field
               title={t('project.namespace')}
-              name="namespace"
+              name="namespace_id"
               type="select"
               autoFocus={true}
+              castTo='number'
               options={metadata.namespaces !== null ? metadata.namespaces : []}
               onChange={onValueChange}
-              errorMessage={errors.namespace}
+              errorMessage={errors.namespace_id}
               required={true}
             />
             <Field
@@ -149,6 +154,18 @@ function NewProject() {
               required={true}
             />
             <Field
+              title={t('project.projectType')}
+              name="project_type_id"
+              type="select"
+              castTo='number'
+              options={
+                metadata.projectTypes !== null ? metadata.projectTypes : []
+              }
+              onChange={onValueChange}
+              errorMessage={errors.project_type_id}
+              required={true}
+            />
+            <Field
               title={t('common.slug')}
               name="slug"
               type="text"
@@ -157,17 +174,6 @@ function NewProject() {
               onChange={onValueChange}
               required={true}
               value={formValues.slug}
-            />
-            <Field
-              title={t('project.projectType')}
-              name="project_type"
-              type="select"
-              options={
-                metadata.projectTypes !== null ? metadata.projectTypes : []
-              }
-              onChange={onValueChange}
-              errorMessage={errors.project_type}
-              required={true}
             />
             <Field
               title={t('common.description')}

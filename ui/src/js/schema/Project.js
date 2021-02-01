@@ -5,8 +5,13 @@ export const jsonSchema = {
   type: 'object',
   properties: {
     id: {
-      type: 'string',
-      format: 'uuid'
+      type: 'number'
+    },
+    namespace_id: {
+      type: 'number'
+    },
+    project_type_id: {
+      type: 'number'
     },
     name: {
       type: 'string',
@@ -16,13 +21,7 @@ export const jsonSchema = {
       type: 'string',
       minLength: 3
     },
-    owned_by: {
-      type: 'string'
-    },
     description: {
-      type: 'string'
-    },
-    project_type: {
       type: 'string'
     },
     data_center: {
@@ -47,38 +46,21 @@ export const jsonSchema = {
     },
     orchestration_system: {
       oneOf: [{ type: 'string' }, { type: 'null' }]
-    },
-    automations: {
-      type: 'object'
-    },
-    dependencies: {
-      oneOf: [
-        {
-          type: 'array',
-          items: {
-            type: 'string',
-            format: 'uuid'
-          }
-        },
-        { type: 'null' }
-      ]
     }
   },
   additionalProperties: false,
-  required: ['id', 'name', 'slug', 'owned_by', 'project_type']
+  required: ['name', 'slug', 'namespace_id', 'project_type_id']
 }
 
 export const propTypes = {
-  id: PropTypes.string.isRequired,
+  id: PropTypes.number.isRequired,
+  namespace_id: PropTypes.number.isRequired,
+  project_type_id: PropTypes.number.isRequired,
   name: PropTypes.string.isRequired,
   slug: PropTypes.string.isRequired,
-  owned_by: PropTypes.string.isRequired,
-  project_type: PropTypes.string.isRequired,
   data_center: PropTypes.string,
   environments: PropTypes.arrayOf(PropTypes.string),
   configuration_system: PropTypes.string,
   deployment_type: PropTypes.string,
-  orchestration_system: PropTypes.string,
-  automations: PropTypes.arrayOf(PropTypes.object),
-  dependencies: PropTypes.arrayOf(PropTypes.string)
+  orchestration_system: PropTypes.string
 }

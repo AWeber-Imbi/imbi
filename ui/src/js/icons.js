@@ -107,7 +107,6 @@ library.add({
 })
 icons.push('imbi rundeck')
 
-
 library.add({
   prefix: 'imbi',
   iconName: 'sentry',
