@@ -1,8 +1,13 @@
 import PropTypes from 'prop-types'
 
 export const Column = {
-  castTo: PropTypes.oneOf(['bool', 'number']),
-  default: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
+  castTo: PropTypes.oneOf(['number']),
+  default: PropTypes.oneOfType([
+    PropTypes.array,
+    PropTypes.number,
+    PropTypes.string,
+    PropTypes.func
+  ]),
   description: PropTypes.string,
   format: PropTypes.string,
   maximum: PropTypes.number,
