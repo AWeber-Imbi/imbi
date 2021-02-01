@@ -11,6 +11,7 @@ export default {
         edit: 'Edit',
         delete: 'Delete',
         cancel: 'Cancel',
+        close: 'Close',
         save: 'Save',
         saving: 'Saving ...',
         slugDescription:
@@ -18,7 +19,8 @@ export default {
         textClass: 'Text Class',
         welcome: 'Welcome',
         required: 'Required Field',
-        group: 'Group'
+        group: 'Group',
+        invalidURL: 'Value does not appear to be a URL'
       },
       error: {
         title: 'ERROR',
@@ -167,6 +169,12 @@ export default {
         title: 'Add Operations Log Entry'
       },
       project: {
+        projectAttributes: 'Project Attributes',
+        attributes: 'Attributes',
+        projectLinks: 'Project Links',
+        links: 'Links',
+        projectDependencies: 'Project Dependencies',
+        dependencies: 'Dependencies',
         name: 'Name',
         namespace: 'Namespace',
         selectNamespace: 'Select a Namespace',
@@ -175,7 +183,14 @@ export default {
         environments: 'Environments',
         configurationSystem: 'Configuration System',
         deploymentType: 'Deployment Type',
-        orchestrationSystem: 'Orchestration System'
+        orchestrationSystem: 'Orchestration System',
+        descriptionDescription: 'Provide a high-level purpose and context for the project',
+        savingProject: 'Saving Project',
+        projectSaved: 'Project Saved',
+        savingLinks: 'Saving Links',
+        linksSaved: 'Links Saved',
+        savingDependencies: 'Saving Dependencies',
+        dependenciesSaved: 'Dependencies Saved'
       },
       projects: {
         newProject: 'New Project',
