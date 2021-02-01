@@ -184,7 +184,8 @@ export default {
         configurationSystem: 'Configuration System',
         deploymentType: 'Deployment Type',
         orchestrationSystem: 'Orchestration System',
-        descriptionDescription: 'Provide a high-level purpose and context for the project',
+        descriptionDescription:
+          'Provide a high-level purpose and context for the project',
         savingProject: 'Saving Project',
         projectSaved: 'Project Saved',
         savingLinks: 'Saving Links',

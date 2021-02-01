@@ -4,7 +4,7 @@ import { Switch, Route } from 'react-router-dom'
 
 import { Admin, Dashboard, NotFound, User } from '.'
 import { NewEntry, OperationsLog } from './OperationsLog/'
-import { NewProject, Projects } from './Projects/'
+import { NewProject, Project, Projects } from './Projects/'
 import { User as UserSchema } from '../schema'
 
 function Main({ user }) {
@@ -24,6 +24,9 @@ function Main({ user }) {
         </Route>
         <Route path="/ui/projects/new">
           <NewProject user={user} />
+        </Route>
+        <Route path="/ui/projects/:projectId">
+          <Project user={user} />
         </Route>
         <Route path="/ui/projects">
           <Projects user={user} />
