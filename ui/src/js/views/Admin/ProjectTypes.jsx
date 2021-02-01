@@ -9,17 +9,26 @@ export function ProjectTypes() {
   const { t } = useTranslation()
   return (
     <CRUD
-      addPath="/admin/project_type"
       collectionIcon="fas cubes"
       collectionName={t('admin.projectTypes.collectionName')}
-      collectionPath="/settings/project_types"
+      collectionPath="/project-types"
       columns={[
+        {
+          title: t('id'),
+          name: 'id',
+          type: 'hidden',
+          omitOnAdd: true,
+          tableOptions: {
+            hide: true
+          }
+        },
         {
           title: t('common.name'),
           name: 'name',
           type: 'text',
           tableOptions: {
-            headerClassName: 'w-2/12'
+            className: 'truncate',
+            headerClassName: 'w-3/12'
           }
         },
         {
@@ -28,7 +37,7 @@ export function ProjectTypes() {
           type: 'text',
           description: t('common.slugDescription'),
           tableOptions: {
-            className: 'font-mono font-gray-500',
+            className: 'font-mono font-gray-500 truncate',
             headerClassName: 'w-2/12'
           }
         },
@@ -38,7 +47,7 @@ export function ProjectTypes() {
           type: 'textarea',
           tableOptions: {
             className: 'truncate',
-            headerClassName: 'w-4/12'
+            headerClassName: 'w-3/12'
           }
         },
         {
@@ -55,10 +64,13 @@ export function ProjectTypes() {
       errorStrings={{
         'Unique Violation': t('admin.projectTypes.errors.uniqueViolation')
       }}
-      itemKey="name"
+      itemIgnore={['created_by', 'last_modified_by']}
+      itemKey="id"
       itemName={t('admin.projectTypes.itemName')}
-      itemPath="/admin/project_type/{{value}}"
+      itemTitle="name"
+      itemPath="/project-types/{{value}}"
       jsonSchema={jsonSchema}
+      omitOnAdd={['id']}
     />
   )
 }

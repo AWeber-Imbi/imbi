@@ -9,17 +9,18 @@ export function ConfigurationSystems() {
   const { t } = useTranslation()
   return (
     <CRUD
-      addPath="/admin/configuration_system"
+      addPath="/configuration-systems"
       collectionIcon="fas tools"
       collectionName={t('admin.configurationSystems.collectionName')}
-      collectionPath="/settings/configuration_systems"
+      collectionPath="/configuration-systems"
       columns={[
         {
           title: t('common.name'),
           name: 'name',
           type: 'text',
           tableOptions: {
-            headerClassName: 'w-2/12'
+            className: 'truncate',
+            headerClassName: 'w-3/12'
           }
         },
         {
@@ -28,7 +29,7 @@ export function ConfigurationSystems() {
           type: 'textarea',
           tableOptions: {
             className: 'truncate',
-            headerClassName: 'w-6/12'
+            headerClassName: 'w-5/12'
           }
         },
         {
@@ -47,9 +48,10 @@ export function ConfigurationSystems() {
           'admin.configurationSystems.errors.uniqueViolation'
         )
       }}
+      itemIgnore={['created_by', 'last_modified_by']}
       itemKey="name"
       itemName={t('admin.configurationSystems.itemName')}
-      itemPath="/admin/configuration_system/{{value}}"
+      itemPath="/configuration-systems/{{value}}"
       jsonSchema={jsonSchema}
     />
   )

@@ -4,13 +4,16 @@ export const jsonSchema = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   type: 'object',
   properties: {
+    id: {
+      type: 'number'
+    },
     name: {
       type: 'string',
       minLength: 3
     },
     slug: {
       type: 'string',
-      minLength: 3
+      minLength: 2
     },
     icon_class: {
       oneOf: [{ type: 'string' }, { type: 'null' }]

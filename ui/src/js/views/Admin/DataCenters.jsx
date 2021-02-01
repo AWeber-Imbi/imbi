@@ -9,10 +9,9 @@ export function DataCenters() {
   const { t } = useTranslation()
   return (
     <CRUD
-      addPath="/admin/data_center"
       collectionIcon="fas building"
       collectionName={t('admin.dataCenters.collectionName')}
-      collectionPath="/settings/data_centers"
+      collectionPath="/data-centers"
       columns={[
         {
           title: t('common.name'),
@@ -45,9 +44,10 @@ export function DataCenters() {
       errorStrings={{
         'Unique Violation': t('admin.dataCenters.errors.uniqueViolation')
       }}
+      itemIgnore={['created_by', 'last_modified_by']}
       itemKey="name"
       itemName={t('admin.dataCenters.itemName')}
-      itemPath="/admin/data_center/{{value}}"
+      itemPath="/data-centers/{{value}}"
       jsonSchema={jsonSchema}
     />
   )
