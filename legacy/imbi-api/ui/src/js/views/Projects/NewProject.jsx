@@ -151,7 +151,11 @@ function NewProject() {
             let result = await httpPost(
               fetchMethod,
               '/projects/' + projectId.toString() + '/links',
-              { project_id: projectId, link_type_id: parseInt(linkTypeId), url: url }
+              {
+                project_id: projectId,
+                link_type_id: parseInt(linkTypeId),
+                url: url
+              }
             )
             if (result.success === false) {
               setErrorMessage(result.data)
@@ -391,7 +395,7 @@ function NewProject() {
           ]}
           onSaveComplete={(event) => {
             event.preventDefault()
-            history.push(`/projects/${projectId}`)
+            history.push(`/ui/projects/${projectId}`)
           }}
         />
       )}
