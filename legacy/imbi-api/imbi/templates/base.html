@@ -15,6 +15,7 @@
          data-logo="{{ static_url('images/logo.png') }}"
          data-service="Imbi"
          data-ldap="{{ str(handler.application.settings['ldap']['enabled']).lower() }}"
+         data-sentry_dsn="{{ handler.application.settings['sentry_ui_dsn'] }}"
          data-version="{{ handler.application.settings['version'] }}">
       <h1>
         <img src="{{ static_url('images/logo.svg') }}" alt="Imbi" />

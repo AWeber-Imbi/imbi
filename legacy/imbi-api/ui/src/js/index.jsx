@@ -2,6 +2,7 @@ import { BrowserRouter as Router } from 'react-router-dom'
 import PropTypes from 'prop-types'
 import React, { useEffect, useState } from 'react'
 import { render } from 'react-dom'
+import * as Sentry from '@sentry/react'
 import { useHistory } from 'react-router-dom'
 
 require('./i18n')
@@ -24,7 +25,9 @@ export const loggedOutUser = {
   permissions: []
 }
 
-function App({ logo, service, ldap, version }) {
+function App({ logo, service, ldap, sentry_dsn, version }) {
+  if (sentry_dsn !== 'false') Sentry.init({ dsn: sentry_dsn })
+
   const [content, setContent] = useState(<Loading />)
   const [errorMessage, setErrorMessage] = useState(null)
   const history = useHistory()
@@ -126,6 +129,7 @@ App.propTypes = {
   logo: PropTypes.string,
   service: PropTypes.string,
   ldap: PropTypes.string,
+  sentry_dsn: PropTypes.string,
   version: PropTypes.string
 }
 

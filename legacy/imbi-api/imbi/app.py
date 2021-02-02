@@ -7,18 +7,28 @@ import asyncio
 import datetime
 import json
 import logging
+import os
 import re
 import typing
 
 import aioredis
 import sprockets_postgres
+try:
+    import sentry_sdk
+except ImportError:
+    sentry_sdk = None
 import umsgpack
 from sprockets import http
 from sprockets.http import app
 from sprockets.mixins.mediatype import content
 from tornado import httputil, ioloop, web
+try:
+    from sentry_sdk.integrations import logging as sentry_logging
+    from sentry_sdk.integrations import tornado as sentry_tornado
+except ImportError:
+    sentry_logging, sentry_tornado = None, None
 
-from imbi import endpoints, openapi, permissions, stats, transcoders
+from imbi import endpoints, openapi, permissions, stats, transcoders, version
 from imbi.endpoints import default
 
 LOGGER = logging.getLogger(__name__)
@@ -116,6 +126,18 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         """Invoked on startup of the application"""
         self.startup_complete = asyncio.Event()
+
+        if sentry_sdk and self.settings['sentry_backend_dsn']:
+            sentry_sdk.init(
+                debug=self.settings['debug'],
+                dsn=self.settings['sentry_backend_dsn'],
+                environment=os.environ.get('environment', 'production'),
+                integrations=[
+                    sentry_logging.LoggingIntegration(
+                        event_level=logging.CRITICAL),
+                    sentry_tornado.TornadoIntegration()],
+                release=version)
+
         self.loop = ioloop.IOLoop.current()
         try:
             self.session_redis = aioredis.Redis(
