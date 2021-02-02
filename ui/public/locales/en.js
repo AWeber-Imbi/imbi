@@ -2,7 +2,8 @@ export default {
   en: {
     translation: {
       common: {
-        loading: 'Initializing',
+        initializing: 'Initializing',
+        loading: 'Loading',
         name: 'Name',
         description: 'Description',
         slug: 'Slug',
@@ -21,6 +22,14 @@ export default {
         required: 'Required Field',
         group: 'Group',
         invalidURL: 'Value does not appear to be a URL'
+      },
+      terms: {
+        name: 'Name',
+        namespace: 'Namespace',
+        projectType: 'Project Type',
+        dataCenter: 'Data Center',
+        deploymentType: 'Deployment Type',
+        links: 'Links'
       },
       error: {
         title: 'ERROR',

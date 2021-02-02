@@ -1,7 +1,7 @@
 export { Admin } from './Admin'
 export { Dashboard } from './Dashboard'
 export { Error } from './Error'
-export { Loading } from './Loading'
+export { Initializing } from './Initializing'
 export { Login } from './Login'
 export { Main } from './Main'
 export { OperationsLog } from './OperationsLog'

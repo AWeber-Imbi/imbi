@@ -3,6 +3,7 @@ import React from 'react'
 
 const colors = {
   blue: 'border border-blue-300 bg-blue-100 text-blue-800',
+  dark: 'border border-gray-300 bg-gray-500 text-gray-300',
   gray: 'border border-gray-300 bg-gray-100 text-gray-800',
   green: 'border border-green-300 bg-green-100 text-green-800',
   indigo: 'border border-indigo-300 bg-indigo-100 text-indigo-800',
@@ -12,7 +13,16 @@ const colors = {
   yellow: 'border border-yellow-300 g-yellow-100 text-yellow-800'
 }
 
-function Badge({ color, children }) {
+function Badge({ color, children, href, target }) {
+  if (href !== undefined)
+    return (
+      <a
+        href={href}
+        target={target}
+        className={`inline-flex cursor-default items-center px-2.5 py-0.5 rounded-md text-sm font-medium ${colors[color]}`}>
+        {children}
+      </a>
+    )
   return (
     <div
       className={`inline-flex cursor-default items-center px-2.5 py-0.5 rounded-md text-sm font-medium ${colors[color]}`}>
@@ -28,6 +38,7 @@ Badge.defaultProps = {
 Badge.propTypes = {
   color: PropTypes.oneOf([
     'blue',
+    'dark',
     'gray',
     'green',
     'indigo',
@@ -40,7 +51,9 @@ Badge.propTypes = {
     PropTypes.arrayOf(PropTypes.node),
     PropTypes.element,
     PropTypes.string
-  ]).isRequired
+  ]).isRequired,
+  href: PropTypes.string,
+  target: PropTypes.string
 }
 
 export { Badge }

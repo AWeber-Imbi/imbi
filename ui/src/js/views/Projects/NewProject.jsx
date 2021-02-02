@@ -5,7 +5,14 @@ import { useHistory } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { validate } from 'jsonschema'
 
-import { Alert, Button, Field, Icon, SavingModal } from '../../components'
+import {
+  Alert,
+  Button,
+  Field,
+  Icon,
+  Loading,
+  SavingModal
+} from '../../components'
 import { FetchContext } from '../../contexts'
 import { fetchMetadata } from './metadata'
 import { jsonSchema } from '../../schema/Project'
@@ -194,6 +201,8 @@ function NewProject() {
     if (metadata.ready !== true)
       fetchMetadata(fetchMethod, setMetadata, setErrorMessage)
   }, [metadata])
+
+  if (metadata.ready === false) return <Loading />
 
   return (
     <Fragment>
