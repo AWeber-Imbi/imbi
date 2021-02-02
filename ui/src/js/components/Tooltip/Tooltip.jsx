@@ -1,18 +1,20 @@
 import PropTypes from 'prop-types'
 import React, { useState } from 'react'
 
-function Tooltip({ children, value }) {
-  const [showTooltip, setShowTooltip] = useState(false)
+function Tooltip({ always, arrowPosition, children, className, value }) {
+  const [showTooltip, setShowTooltip] = useState(always)
+  let rightMargin = value.length > 12 ? '-ml-20' : '-ml-16'
+  const position = arrowPosition === 'left' ? '-ml-3' : rightMargin
   return (
     <div
       className="inline-block"
       onMouseOver={() => setShowTooltip(true)}
-      onMouseOut={() => setShowTooltip(false)}>
+      onMouseOut={() => setShowTooltip(always ? true : false)}>
       {children}
       <div
         className={
           (showTooltip === true ? 'visible' : 'hidden') +
-          ' absolute z-50 mt ml-4 text-xs'
+          ` absolute z-50 mt text-xs ${className}`
         }
         role="tooltip">
         <svg
@@ -24,7 +26,8 @@ function Tooltip({ children, value }) {
           xmlSpace="preserve">
           <polygon className="fill-current" points="0,10 5,5 10,10" />
         </svg>
-        <div className="bg-black z-50 text-center rounded text-white px-3 py-2 -ml-3">
+        <div
+          className={`bg-black z-50 cursor-default text-center rounded text-white px-3 py-2 ${position}`}>
           {value}
         </div>
       </div>
@@ -32,8 +35,17 @@ function Tooltip({ children, value }) {
   )
 }
 
+Tooltip.defaultProps = {
+  always: false,
+  className: 'ml-4',
+  arrowPosition: 'left'
+}
+
 Tooltip.propTypes = {
+  always: PropTypes.bool,
+  arrowPosition: PropTypes.oneOf(['left', 'right']),
   children: PropTypes.any,
+  className: PropTypes.string,
   value: PropTypes.string.isRequired
 }
 
