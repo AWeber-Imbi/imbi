@@ -20,7 +20,7 @@ class Group:
 
     def __init__(self, name: str, permissions: typing.List[str]):
         self.name = name
-        self.permissions = sorted(permissions) or []
+        self.permissions = sorted(permissions or [])
 
     def __iter__(self):
         return iter([('name', self.name), ('permissions', self.permissions)])
