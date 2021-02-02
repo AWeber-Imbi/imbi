@@ -14,7 +14,7 @@ import { FetchContext, LogoutContext } from './contexts'
 
 import { httpGet } from './utils'
 import { Header, Footer } from './components'
-import { Error, Loading, Login, Main } from './views'
+import { Error, Initializing, Login, Main } from './views'
 
 export const loggedOutUser = {
   username: null,
@@ -28,7 +28,7 @@ export const loggedOutUser = {
 function App({ logo, service, ldap, sentry_dsn, version }) {
   if (sentry_dsn !== 'false') Sentry.init({ dsn: sentry_dsn })
 
-  const [content, setContent] = useState(<Loading />)
+  const [content, setContent] = useState(<Initializing />)
   const [errorMessage, setErrorMessage] = useState(null)
   const history = useHistory()
   const [user, setUser] = useState(loggedOutUser)
@@ -56,7 +56,7 @@ function App({ logo, service, ldap, sentry_dsn, version }) {
   }
 
   const resetState = () => {
-    setContent(<Loading />)
+    setContent(<Initializing />)
     setErrorMessage(null)
     setUser({ ...loggedOutUser })
     setUserState({

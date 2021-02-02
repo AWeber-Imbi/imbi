@@ -5,7 +5,7 @@ import { Icon, Tooltip } from '..'
 
 function IconBar({ icons }) {
   return (
-    <div className="text-gray-500 ">
+    <div className="inline-block text-gray-500">
       {icons.map((icon) => {
         if (icon.url !== undefined && icon.url !== null)
           return (
