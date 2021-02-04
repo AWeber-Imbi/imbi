@@ -1,7 +1,7 @@
 import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { CRUD, Error } from '../../components'
+import { CRUD, Error, Loading } from '../../components'
 import { FetchContext } from '../../contexts'
 import { fetchMetadata } from '../../metadata'
 import { jsonSchema } from '../../schema/ProjectFactType'
@@ -33,7 +33,11 @@ export function ProjectFactTypes() {
   return (
     <Fragment>
       {errorMessage && <Error>{{ errorMessage }}</Error>}
-      {!projectTypes && <div>Loading</div>}
+      {!projectTypes && (
+        <div className="min-h-full flex flex-column items-center">
+          <Loading className="flex-shrink" />
+        </div>
+      )}
       {projectTypes && (
         <CRUD
           collectionIcon="fas ruler"

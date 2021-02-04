@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next'
 
 import { ContentArea } from '../../components'
 import { User } from '../../schema'
+import { setDocumentTitle } from '../../utils'
 
 function NewEntry() {
   const { t } = useTranslation()
+  setDocumentTitle(t('operationsLogNewEntry.title'))
   return (
     <ContentArea
       pageIcon="fas calendar-plus"

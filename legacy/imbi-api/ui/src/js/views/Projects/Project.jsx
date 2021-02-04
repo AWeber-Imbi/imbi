@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { FetchContext } from '../../contexts'
-import { httpGet } from '../../utils'
+import { httpGet, setDocumentTitle } from '../../utils'
 import { User } from '../../schema'
 import { Alert, Badge, Icon, IconBar, Loading, Tooltip } from '../../components'
 
@@ -30,7 +30,13 @@ function Project({ user }) {
     }
   }, [projectId, project])
 
-  if (project.name === undefined) return <Loading />
+  if (project.name === undefined) {
+    setDocumentTitle(t('common.loading'))
+    return <Loading />
+  }
+
+  setDocumentTitle(project.name)
+
   return (
     <div className="flex-auto px-6 py-4">
       {errorMessage !== null && <Alert level="error">{errorMessage}</Alert>}
