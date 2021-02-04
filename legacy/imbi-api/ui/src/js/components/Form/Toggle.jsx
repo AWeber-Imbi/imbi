@@ -19,7 +19,9 @@ function Toggle({ name, onChange, value }) {
         onChange(name, !toggleOn)
       }}
       title={toggleOn ? t('common.turnOff') : t('common.turnOn')}>
-      <span className="sr-only">Toggle {toggleOn ? t('common.off') : t('common.on')}</span>
+      <span className="sr-only">
+        Toggle {toggleOn ? t('common.off') : t('common.on')}
+      </span>
       <span
         aria-hidden="true"
         className={
