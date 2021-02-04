@@ -42,9 +42,9 @@ export function fetchMetadata(fetch, onSuccess, onError) {
   _fetchMetadata(
     fetch,
     '/cookie-cutters',
-    true,
-    'name',
-    'name',
+    false,
+    null,
+    null,
     (data) => {
       onData('cookieCutters', data)
     },

@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types'
 import React, { useState } from 'react'
-import {useTranslation} from "react-i18next";
+import { useTranslation } from 'react-i18next'
 
 function Toggle({ name, onChange, value }) {
   const { t } = useTranslation()
@@ -18,7 +18,7 @@ function Toggle({ name, onChange, value }) {
         setToggleOn(!toggleOn)
         onChange(name, !toggleOn)
       }}
-      title={toggleOn ? t('Off') : t('On')}>
+      title={toggleOn ? t('turnOff') : t('turnOn')}>
       <span className="sr-only">Toggle {toggleOn ? t('Off') : t('On')}</span>
       <span
         aria-hidden="true"

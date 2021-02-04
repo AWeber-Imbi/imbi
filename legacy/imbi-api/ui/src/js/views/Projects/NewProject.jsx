@@ -22,7 +22,7 @@ import { httpPost, isURL, setDocumentTitle } from '../../utils'
 function FormSection({ name, title, firstSection, children }) {
   return (
     <Fragment>
-      <div className={'pb-5' + (firstSection ? '' : ' mt-5')}>
+      <div className={'pb-5' + (firstSection ? '' : ' mt-10')}>
         <h3 className="text-lg leading-6 font-medium">
           <a name={name}>{title}</a>
         </h3>
@@ -43,13 +43,11 @@ FormSection.propTypes = {
 
 function SideBar({ links }) {
   return (
-    <ol className="list-decimal list-inside ml-4 text-gray-500">
+    <ol className="list-decimal list-inside ml-4 text-gray-500 whitespace-nowrap">
       {links.map((link) => {
         return (
           <li className="mb-2" key={'link-' + link.label}>
-            <a
-              className="text-gray-600 hover:text-blue-600 whitespace-nowrap"
-              href={link.href}>
+            <a className="text-gray-600 hover:text-blue-600" href={link.href}>
               {link.label}
             </a>
           </li>
@@ -68,7 +66,13 @@ SideBar.propTypes = {
 }
 
 function NewProject() {
-  const { t } = useTranslation()
+  const [automations, setAutomations] = useState({
+    createGitlabRepo: false,
+    createSentryProject: false,
+    dashboardCookieCutter: null,
+    projectCookieCutter: null
+  })
+  const [dependencies, setDependencies] = useState([])
   const emptyErrors = {
     namespace_id: null,
     project_type_id: null,
@@ -118,6 +122,13 @@ function NewProject() {
     dependencies: true
   })
   const [saving, setSaving] = useState(false)
+  const [savingSteps, setSavingSteps] = useState([])
+  const { t } = useTranslation()
+
+  function onAutomationChange(key, value) {
+    setAutomations({ ...automations, [key]: value })
+    // Set URls based upon key changes
+  }
 
   function onLinkChange(key, value) {
     const linkType = parseInt(key.split('-')[1])
@@ -199,6 +210,62 @@ function NewProject() {
     }
   }, [formValues])
 
+  // Update the available steps when saving for the UI
+
+  useEffect(() => {
+    const steps = [
+      {
+        isComplete: saveComplete.attributes,
+        pendingLabel: t('project.savingProject'),
+        completedLabel: t('project.projectSaved')
+      }
+    ]
+    if (dependencies.length > 0) {
+      steps.push({
+        isComplete: saveComplete.dependencies,
+        pendingLabel: t('project.savingDependencies'),
+        completedLabel: t('project.dependenciesSaved')
+      })
+    }
+    if (Object.values(links).length > 0) {
+      steps.push({
+        isComplete: saveComplete.links,
+        pendingLabel: t('project.savingLinks'),
+        completedLabel: t('project.linksSaved')
+      })
+    }
+    if (automations.createGitlabRepo === true) {
+      steps.push({
+        isComplete: false,
+        pendingLabel: t('project.createGitLabRepo'),
+        completedLabel: t('project.gitlabRepoCreated')
+      })
+    }
+    if (automations.createSentryProject === true) {
+      steps.push({
+        isComplete: false,
+        pendingLabel: t('project.createSentryProject'),
+        completedLabel: t('project.sentryProjectCreated')
+      })
+    }
+    if (automations.projectCookieCutter !== null) {
+      steps.push({
+        isComplete: false,
+        pendingLabel: t('project.creatingInitialProjectCommit'),
+        completedLabel: t('project.initialProjectCommitCreated')
+      })
+    }
+    if (automations.dashboardCookieCutter !== null) {
+      steps.push({
+        isComplete: false,
+        pendingLabel: t('project.creatingGrafanaDashboard'),
+        completedLabel: t('project.grafanaDashboardCreated')
+      })
+    }
+    setSavingSteps(steps)
+  }, [dependencies, links, automations])
+
+  // Fetch metadata on load
   useEffect(() => {
     if (metadata.ready !== true)
       fetchMetadata(fetchMethod, setMetadata, setErrorMessage)
@@ -218,7 +285,9 @@ function NewProject() {
           <SideBar
             links={[
               { href: '#attributes', label: t('project.attributes') },
-              { href: '#links', label: t('project.links') }
+              { href: '#automations', label: t('project.automations') },
+              { href: '#links', label: t('project.links') },
+              { href: '#dependencies', label: t('project.dependencies') }
             ]}
           />
         </div>
@@ -346,6 +415,68 @@ function NewProject() {
                 errorMessage={errors.orchestration_system}
               />
             </FormSection>
+            <FormSection
+              name="automations"
+              title={t('project.projectAutomations')}>
+              <Field
+                title={t('project.createGitLabRepository')}
+                name="createGitlabRepo"
+                type="toggle"
+                onChange={onAutomationChange}
+              />
+              <Field
+                title={t('project.createSentryProject')}
+                name="createSentryProject"
+                type="toggle"
+                onChange={onAutomationChange}
+              />
+              <Field
+                title={t('project.projectCookieCutter')}
+                name="projectCookieCutter"
+                type="select"
+                options={
+                  metadata.cookieCutters !== null
+                    ? metadata.cookieCutters
+                        .filter(
+                          (cookieCutter) =>
+                            cookieCutter.type === 'project' &&
+                            cookieCutter.project_type_id ===
+                              formValues.project_type_id
+                        )
+                        .map((cookieCutter) => {
+                          return {
+                            label: cookieCutter.name,
+                            value: cookieCutter.url
+                          }
+                        })
+                    : []
+                }
+                onChange={onAutomationChange}
+              />
+              <Field
+                title={t('project.dashboardCookieCutter')}
+                name="dashboardCookieCutter"
+                type="select"
+                options={
+                  metadata.cookieCutters !== null
+                    ? metadata.cookieCutters
+                        .filter(
+                          (cookieCutter) =>
+                            cookieCutter.type === 'dashboard' &&
+                            cookieCutter.project_type_id ===
+                              formValues.project_type_id
+                        )
+                        .map((cookieCutter) => {
+                          return {
+                            label: cookieCutter.name,
+                            value: cookieCutter.url
+                          }
+                        })
+                    : []
+                }
+                onChange={onAutomationChange}
+              />
+            </FormSection>
             <FormSection name="links" title={t('project.projectLinks')}>
               {metadata.projectLinkTypes.map((linkType) => {
                 const key = 'link-' + linkType.id
@@ -366,8 +497,12 @@ function NewProject() {
                 )
               })}
             </FormSection>
-
-            <div className="flex flex-row border-t border-gray-300 mt-5 pt-5">
+            <FormSection
+              name="dependencies"
+              title={t('project.projectDependencies')}
+            />
+            <p className="text-center p-6 font-mono">@TODO</p>
+            <div className="flex flex-row border-t border-gray-300 mt-10 pt-5">
               <div className="flex-shrink text-xs pl-2">
                 <sup className="mr-2">*</sup> {t('common.required')}
               </div>
@@ -388,23 +523,7 @@ function NewProject() {
           title={
             saving ? t('project.savingProject') : t('project.projectSaved')
           }
-          steps={[
-            {
-              isComplete: saveComplete.attributes,
-              pendingLabel: t('project.savingProject'),
-              completedLabel: t('project.projectSaved')
-            },
-            {
-              isComplete: saveComplete.links,
-              pendingLabel: t('project.savingLinks'),
-              completedLabel: t('project.linksSaved')
-            },
-            {
-              isComplete: saveComplete.dependencies,
-              pendingLabel: t('project.savingDependencies'),
-              completedLabel: t('project.dependenciesSaved')
-            }
-          ]}
+          steps={savingSteps}
           onSaveComplete={(event) => {
             event.preventDefault()
             history.push(`/ui/projects/${projectId}`)
