@@ -7,6 +7,7 @@ import { Select } from './Select'
 import { SelectOptions } from '../../schema/PropTypes'
 import { TextInput } from './TextInput'
 import { TextArea } from './TextArea'
+import { Toggle } from './Toggle'
 
 function Field({
   autoFocus,
@@ -30,14 +31,14 @@ function Field({
     return <input type="hidden" name={name} value={value} />
   }
   return (
-    <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start sm:pt-5">
+    <div className="grid grid-cols-3 gap-4 items-start pt-5">
       <label
         htmlFor={'field-' + name}
-        className="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
+        className="block text-sm mt-2 font-medium text-gray-700 whitespace-nowrap">
         {title}
         {required === true && <sup>*</sup>}
       </label>
-      <div className="mt-1 sm:mt-0 sm:col-span-2">
+      <div className="col-span-2">
         {type === 'icon' && (
           <IconSelect
             autoFocus={autoFocus}
@@ -99,6 +100,9 @@ function Field({
             value={value}
           />
         )}
+        {type === 'toggle' && (
+          <Toggle name={name} onChange={onChange} value={value} />
+        )}
         {errorMessage !== null && (
           <p className="ml-2 mt-2 text-sm text-red-700 col-span-2">
             {errorMessage}
@@ -143,6 +147,7 @@ Field.propTypes = {
     'select',
     'text',
     'textarea',
+    'toggle',
     'url'
   ]).isRequired,
   value: PropTypes.oneOfType([
