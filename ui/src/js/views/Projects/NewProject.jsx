@@ -47,7 +47,9 @@ function SideBar({ links }) {
       {links.map((link) => {
         return (
           <li className="mb-2" key={'link-' + link.label}>
-            <a className="text-gray-600 hover:text-blue-600" href={link.href}>
+            <a
+              className="text-gray-600 hover:text-blue-600 whitespace-nowrap"
+              href={link.href}>
               {link.label}
             </a>
           </li>
@@ -209,7 +211,7 @@ function NewProject() {
     <Fragment>
       <div className="flex-grow flex flex-row px-6 py-4 w-full">
         <div className="flex-shrink pr-20 text-gray-600">
-          <h1 className="inline-block text-xl mb-3">
+          <h1 className="inline-block text-xl mb-3 whitespace-nowrap">
             <Icon icon="fas folder-plus" className="mr-2" />
             {t('projects.newProject')}
           </h1>
