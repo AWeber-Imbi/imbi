@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Alert, ContentArea, Loading, Table } from '../../components'
 import { FetchContext } from '../../contexts'
-import { httpGet } from '../../utils'
+import { httpGet, setDocumentTitle } from '../../utils'
 import { User } from '../../schema'
 
 function Projects() {
@@ -57,6 +57,8 @@ function Projects() {
       )
     }
   }, [initialized])
+
+  setDocumentTitle(t('projects.title'))
 
   if (initialized === false) return <Loading />
   return (

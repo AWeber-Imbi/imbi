@@ -2,10 +2,10 @@ import PropTypes from 'prop-types'
 import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, ConfirmationDialog, Icon, Table } from '..'
+import { Alert, ConfirmationDialog, Icon, Loading, Table } from '..'
 import { Columns } from '../../schema'
 import { FetchContext } from '../../contexts'
-import { httpGet, httpDelete } from '../../utils'
+import { httpGet, httpDelete, setDocumentTitle } from '../../utils'
 
 import { Form } from './Form'
 
@@ -29,6 +29,7 @@ function CRUD({
   const [fetchData, setFetchData] = useState(true)
   const [itemToDelete, setItemToDelete] = useState(null)
   const [itemToEdit, setItemToEdit] = useState(null)
+  const [ready, setReady] = useState(false)
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [successMessage, setSuccessMessage] = useState(null)
@@ -118,6 +119,7 @@ function CRUD({
         collectionPath,
         (result) => {
           setData(result)
+          setReady(true)
         },
         (error) => {
           setErrorMessage(error)
@@ -144,32 +146,41 @@ function CRUD({
     if (timerHandle !== null) clearTimeout(timerHandle)
   })
 
+  setDocumentTitle(collectionName)
+
   return (
     <Fragment>
-      <div className="grid grid-cols-2 mt-1 mb-3">
-        <h1 className="inline-block text-xl text-gray-600 pt-2">
-          <Icon icon={collectionIcon} className="ml-2 mr-2" />
-          {collectionName}
-        </h1>
-        <div className="text-right">
-          <button
-            className="btn-green"
-            onClick={() => {
-              setShowForm(true)
-            }}>
-            <Icon className="mr-3" icon="fas plus-circle" />
-            {t('admin.crud.newTitle', {
-              itemName: itemName,
-              ...strings
-            })}
-          </button>
+      {ready && (
+        <div className="grid grid-cols-2 mt-1 mb-3">
+          <h1 className="inline-block text-xl text-gray-600 pt-2">
+            <Icon icon={collectionIcon} className="ml-2 mr-2" />
+            {collectionName}
+          </h1>
+          <div className="text-right">
+            <button
+              className="btn-green"
+              onClick={() => {
+                setShowForm(true)
+              }}>
+              <Icon className="mr-3" icon="fas plus-circle" />
+              {t('admin.crud.newTitle', {
+                itemName: itemName,
+                ...strings
+              })}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       {errorMessage !== null && <Alert level="error">{errorMessage}</Alert>}
       {successMessage !== null && (
         <Alert level="success">{successMessage}</Alert>
       )}
-      {showForm === true && (
+      {!ready && (
+        <div className="min-h-full flex flex-column items-center">
+          <Loading className="flex-shrink" />
+        </div>
+      )}
+      {ready && showForm && (
         <Form
           columns={columns}
           errorStrings={errorStrings}
@@ -192,13 +203,15 @@ function CRUD({
           values={itemToEdit}
         />
       )}
-      <Table
-        columns={columns}
-        data={data}
-        itemKey={itemKey}
-        onDeleteClick={onDeleteClick}
-        onEditClick={onEditClick}
-      />
+      {ready && (
+        <Table
+          columns={columns}
+          data={data}
+          itemKey={itemKey}
+          onDeleteClick={onDeleteClick}
+          onEditClick={onEditClick}
+        />
+      )}
       {showDeleteConfirmation === true && (
         <ConfirmationDialog
           mode="error"

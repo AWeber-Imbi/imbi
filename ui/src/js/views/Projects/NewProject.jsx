@@ -17,7 +17,7 @@ import { FetchContext } from '../../contexts'
 import { fetchMetadata } from './metadata'
 import { jsonSchema } from '../../schema/Project'
 import { User } from '../../schema'
-import { httpPost, isURL } from '../../utils'
+import { httpPost, isURL, setDocumentTitle } from '../../utils'
 
 function FormSection({ name, title, firstSection, children }) {
   return (
@@ -202,8 +202,9 @@ function NewProject() {
       fetchMetadata(fetchMethod, setMetadata, setErrorMessage)
   }, [metadata])
 
-  if (metadata.ready === false) return <Loading />
+  setDocumentTitle(t('projects.newProject'))
 
+  if (metadata.ready === false) return <Loading />
   return (
     <Fragment>
       <div className="flex-grow flex flex-row px-6 py-4 w-full">
