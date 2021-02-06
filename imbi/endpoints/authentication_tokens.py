@@ -12,9 +12,10 @@ class RequestHandler(base.ValidatingRequestHandler):
     ENDPOINT = 'authentication-tokens'
 
     CREATE_SQL = re.sub(r'\s+', ' ', """
-        INSERT INTO v1.authentication_tokens (token, username)
-             VALUES (%(token)s, %(username)s)
-          RETURNING username, token, created_at, expires_at""")
+        INSERT INTO v1.authentication_tokens (token, name, username)
+             VALUES (%(token)s, %(name)s, %(username)s)
+          RETURNING username, token, name, created_at, expires_at, last_used_at
+        """)
 
     DELETE_SQL = re.sub(r'\s+', ' ', """
         DELETE FROM v1.authentication_tokens
@@ -22,7 +23,7 @@ class RequestHandler(base.ValidatingRequestHandler):
                 AND token = %(token)s""")
 
     GET_SQL = re.sub(r'\s+', ' ', """
-        SELECT token, created_at, expires_at
+        SELECT token, name, username, created_at, expires_at, last_used_at
           FROM v1.authentication_tokens
          WHERE username = %(username)s
          ORDER BY created_at""")
@@ -43,9 +44,11 @@ class RequestHandler(base.ValidatingRequestHandler):
         self.send_response(result.rows)
 
     async def post(self):
+        values = self.get_request_body()
+        values.update({
+            'token': uuid.UUID(ulid.ULID().hex),
+            'username': self.current_user.username
+        })
         result = await self.postgres_execute(
-            self.CREATE_SQL, {
-                'token': uuid.UUID(ulid.ULID().hex),
-                'username': self.current_user.username
-            }, 'create-authentication-token')
+            self.CREATE_SQL, values, 'create-authentication-token')
         self.send_response(result.row)

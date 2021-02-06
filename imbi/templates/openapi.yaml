@@ -33,6 +33,41 @@ paths:
       description: Create a new authentication token for the API
       tags:
         - User
+      requestBody:
+        description: The configuration system record to create
+        content:
+          application/json:
+            schema:
+              schema:
+                title: Authentication Token
+                description: Configuration Management or Storage System
+                type: object
+                properties:
+                  name:
+                    description: The name of the token provided by the user
+                    type: string
+                required:
+                  - name
+                additionalProperties: false
+            examples:
+              record:
+                name: Test Integration
+          application/msgpack:
+            schema:
+              schema:
+                title: Authentication Token
+                description: Configuration Management or Storage System
+                type: object
+                properties:
+                  name:
+                    description: The name of the token provided by the user
+                    type: string
+                required:
+                  - name
+                additionalProperties: false
+            examples:
+              record:
+                name: Test Integration
       responses:
         '200':
           description: Success
@@ -43,6 +78,9 @@ paths:
                 description: Configuration Management or Storage System
                 type: object
                 properties:
+                  name:
+                    description: The name of the token provided by the user
+                    type: string
                   username:
                     description: The username that owns the token
                     type: string
@@ -58,15 +96,22 @@ paths:
                     description: The timestamp indicating when the token expires
                     type: string
                     format: iso8601-timestamp
+                  last_used_at:
+                    description: The timestamp indicating when the token was last used
+                    type: string
+                    format: iso8601-timestamp
+                    nullable: true
                 additionalProperties: false
               examples:
                 records:
                   summary: The newly created authentication token
                   value:
+                    name: Test Integration
                     username: ffink
                     token: 017778b5-188e-c3ac-7aa6-76e41e116a95
                     created_at: 1964-01-01T19:11:11.000Z
                     expires_at: 1965-01-01T19:11:11.000Z
+                    last_used_at: null
             application/msgpack:
               schema:
                 $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
@@ -74,10 +119,12 @@ paths:
                 records:
                   summary: The newly created authentication token
                   value:
+                    name: Test Integration
                     username: ffink
                     token: 017778b5-188e-c3ac-7aa6-76e41e116a95
                     created_at: 1964-01-01T19:11:11.000Z
                     expires_at: 1965-01-01T19:11:11.000Z
+                    last_used_at: null
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
@@ -100,14 +147,18 @@ paths:
                 records:
                   summary: Multiple authentication tokens
                   value:
-                    - username: ffink
+                    - name: Test Integration
+                      username: ffink
                       token: 017778b5-188e-c3ac-7aa6-76e41e116a95
                       created_at: 1964-01-01T19:11:11.000Z
                       expires_at: 1965-01-01T19:11:11.000Z
-                    - username: ffink
+                      last_used_at: 2021-02-06T20:34:00.000Z
+                    - name: Test Integration
+                      username: ffink
                       token: 017778b6-94d3-ab49-f9c8-ae5d7fd999bf
                       created_at: 1964-02-28T19:11:11.000Z
                       expires_at: 1965-02-28T19:11:11.000Z
+                      last_used_at: null
             application/msgpack:
               schema:
                 type: array
@@ -117,14 +168,18 @@ paths:
                 records:
                   summary: Multiple authentication tokens
                   value:
-                    - username: ffink
+                    - name: Test Integration
+                      username: ffink
                       token: 017778b5-188e-c3ac-7aa6-76e41e116a95
                       created_at: 1964-01-01T19:11:11.000Z
                       expires_at: 1965-01-01T19:11:11.000Z
-                    - username: ffink
+                      last_used_at: 2021-02-06T20:34:00.000Z
+                    - name: Test Integration
+                      username: ffink
                       token: 017778b6-94d3-ab49-f9c8-ae5d7fd999bf
                       created_at: 1964-02-28T19:11:11.000Z
                       expires_at: 1965-02-28T19:11:11.000Z
+                      last_used_at: null
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
   '/authentication-tokens/{token}':

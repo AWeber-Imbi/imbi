@@ -20,6 +20,10 @@ Section.propTypes = {
   name: PropTypes.string.isRequired,
   title: PropTypes.string.isRequired,
   firstSection: PropTypes.bool,
-  children: PropTypes.arrayOf(PropTypes.element)
+  children: PropTypes.oneOfType([
+    PropTypes.arrayOf(PropTypes.element),
+    PropTypes.element,
+    PropTypes.string
+  ])
 }
 export { Section }
