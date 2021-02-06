@@ -12,7 +12,7 @@ require('typeface-inter')
 
 import { FetchContext, LogoutContext } from './contexts'
 
-import { httpGet } from './utils'
+import { httpGet, isURL } from './utils'
 import { Header, Footer } from './components'
 import { Error, Initializing, Login, Main } from './views'
 
@@ -26,7 +26,7 @@ export const loggedOutUser = {
 }
 
 function App({ logo, service, ldap, sentry_dsn, url, version }) {
-  if (sentry_dsn !== 'false') Sentry.init({ dsn: sentry_dsn })
+  if (isURL(sentry_dsn)) Sentry.init({ dsn: sentry_dsn })
   const [content, setContent] = useState(<Initializing />)
   const [errorMessage, setErrorMessage] = useState(null)
   const history = useHistory()
