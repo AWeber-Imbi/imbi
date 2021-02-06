@@ -1,8 +1,23 @@
-export { Field } from './Field'
-export { Form } from './Form'
-export { IconSelect } from './IconSelect'
-export { NumericInput } from './NumericInput'
-export { Select } from './Select'
-export { TextArea } from './TextArea'
-export { TextInput } from './TextInput'
-export { Toggle } from './Toggle'
+import { Field } from './Field'
+import { ModalForm } from './ModalForm'
+import { MultiSectionForm } from './MultiSectionForm'
+import { IconSelect } from './IconSelect'
+import { NumericInput } from './NumericInput'
+import { Section } from './Section'
+import { Select } from './Select'
+import { TextArea } from './TextArea'
+import { TextInput } from './TextInput'
+import { Toggle } from './Toggle'
+
+export const Form = {
+  Field: Field,
+  IconSelect: IconSelect,
+  ModalForm: ModalForm,
+  MultiSectionForm: MultiSectionForm,
+  NumericInput: NumericInput,
+  Section: Section,
+  Select: Select,
+  TextArea: TextArea,
+  TextInput: TextInput,
+  Toggle: Toggle
+}

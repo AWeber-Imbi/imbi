@@ -7,7 +7,7 @@ import { Alert, Button, Modal } from '..'
 import { Columns } from '../../schema'
 import { Field } from './Field'
 
-function Form({
+function ModalForm({
   columns,
   formType,
   jsonSchema,
@@ -125,11 +125,11 @@ function Form({
   )
 }
 
-Form.defaultProps = {
+ModalForm.defaultProps = {
   formType: 'edit'
 }
 
-Form.propTypes = {
+ModalForm.propTypes = {
   columns: Columns.isRequired,
   formType: PropTypes.oneOf(['add', 'edit']),
   jsonSchema: PropTypes.object.isRequired,
@@ -140,4 +140,4 @@ Form.propTypes = {
   values: PropTypes.object
 }
 
-export { Form }
+export { ModalForm }
