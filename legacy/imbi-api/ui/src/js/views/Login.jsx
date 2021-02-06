@@ -4,20 +4,20 @@ import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../components'
 import { FetchContext } from '../contexts'
-import { httpPost } from '../utils'
+import { httpPost, setDocumentTitle } from '../utils'
 
 function Login({ onLoginCallback, useLDAP }) {
   const { t } = useTranslation()
   const fetch = useContext(FetchContext)
-
   const [credentials, setCredentials] = useState({
     username: null,
     password: null
   })
   const [errorMessage, setErrorMessage] = useState(null)
   const [submitting, setSubmitting] = useState(false)
-
   const usernameRef = useRef()
+
+  setDocumentTitle(t('login.signIn'))
 
   function onChange(e) {
     const { name, value } = e.target
@@ -31,7 +31,6 @@ function Login({ onLoginCallback, useLDAP }) {
 
     const url = new URL(fetch.baseURL)
     url.pathname = '/ui/login'
-
     const response = await httpPost(
       fetch.function,
       url,
