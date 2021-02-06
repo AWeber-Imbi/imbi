@@ -32,6 +32,10 @@ security:
   - token: []
 
 paths:
+  /authentication-tokens:
+    { $ref: 'endpoints/authentication_tokens.yaml#/paths/collection' }
+  /authentication-tokens/{token}:
+    { $ref: 'endpoints/authentication_tokens.yaml#/paths/manage' }
   /configuration-systems:
     { $ref: 'endpoints/configuration_system.yaml#/paths/collection' }
   /configuration-systems/{name}:
@@ -100,6 +104,10 @@ tags:
   - { '$ref': 'status.yaml#/tag' }
 
 x-tagGroups:
+  - name: Administration
+    tags:
+      - Groups
+      - Users
   - name: Metadata
     tags:
       - Configuration Systems
@@ -107,19 +115,21 @@ x-tagGroups:
       - Data Centers
       - Deployment Types
       - Environments
-      - Groups
+      - Namespaces
       - Orchestration Systems
       - Project Fact Types
       - Project Fact Type Options
       - Project Link Types
       - Project Types
-      - Teams
   - name: Project Management
     tags:
       - Projects
   - name: Settings
     tags:
       - Settings
+  - name: User Specific
+    tags:
+      - User
   - name: Other
     tags:
       - Health Check
