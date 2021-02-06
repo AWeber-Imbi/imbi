@@ -3,7 +3,13 @@ import React, { useContext, useEffect, useState } from 'react'
 import { useHistory } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, ContentArea, Loading, Table } from '../../components'
+import {
+  Alert,
+  ContentArea,
+  Loading,
+  Pagination,
+  Table
+} from '../../components'
 import { FetchContext } from '../../contexts'
 import { httpGet, setDocumentTitle } from '../../utils'
 import { User } from '../../schema'
@@ -17,6 +23,8 @@ function Projects() {
   const [initialized, setInitialized] = useState(false)
   const [lastRequest, setLastRequest] = useState(null)
   const [offset, setOffset] = useState(0)
+  const [pageSize, setPageSize] = useState(10)
+  const [rowCount, setRowCount] = useState(0)
   const [rows, setRows] = useState([])
   const [sort, setSort] = useState({ name: null })
   const history = useHistory()
@@ -84,7 +92,8 @@ function Projects() {
         fetch.function,
         url,
         (result) => {
-          setRows(result)
+          setRowCount(result.rows)
+          setRows(result.data)
           setInitialized(true)
         },
         (error) => {
@@ -105,6 +114,15 @@ function Projects() {
       pageTitle={t('projects.title')}>
       {errorMessage !== null && <Alert level="error">{errorMessage}</Alert>}
       <Table columns={columns} data={rows} onRowClick={onRowClick} />
+      <Pagination
+        currentPage={offset + 1}
+        itemCount={rowCount}
+        itemsPerPage={pageSize}
+        onChange={(page) => {
+          setOffset(page - 1)
+          console.log('Offset set to ', page - 1)
+        }}
+      />
     </ContentArea>
   )
 }

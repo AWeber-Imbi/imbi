@@ -1,13 +1,12 @@
 import PropTypes from 'prop-types'
-import React from 'react'
+import React, { Fragment } from 'react'
+
+import { Backdrop } from '..'
 
 function Modal({ title, children, buttons }) {
   return (
-    <div className="fixed z-10 inset-0 overflow-y-auto">
-      <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-          <div className="absolute inset-0 bg-gray-500 opacity-75" />
-        </div>
+    <Backdrop>
+      <Fragment>
         <span
           className="hidden sm:inline-block sm:align-middle sm:h-screen"
           aria-hidden="true">
@@ -28,8 +27,8 @@ function Modal({ title, children, buttons }) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </Fragment>
+    </Backdrop>
   )
 }
 
