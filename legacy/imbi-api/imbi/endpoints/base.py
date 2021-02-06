@@ -285,7 +285,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         if isinstance(value, list):
             return super().send_response(value)
 
-        if not self.IS_COLLECTION:
+        if not (self.request.method == 'GET' and self.IS_COLLECTION):
             self._add_last_modified_header(
                 value.get('last_modified_at', value.get('created_at')))
             for key in {'created_at', 'last_modified_at'}:
