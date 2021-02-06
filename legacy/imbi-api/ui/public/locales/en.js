@@ -230,6 +230,10 @@ export default {
           externalId: 'External ID',
           emailAddress: 'Email Address',
           groups: 'Groups'
+        },
+        settings: {
+          title: 'User Settings',
+          authenticationTokens: 'Authentication Tokens'
         }
       }
     }

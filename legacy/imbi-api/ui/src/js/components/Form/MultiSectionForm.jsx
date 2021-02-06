@@ -33,9 +33,11 @@ function MultiSectionForm({
         )}
         {children}
         <form onSubmit={onSubmit}>
-          <Footer disabled={disabled} instructions={instructions}>
-            {submitButtonText}
-          </Footer>
+          {submitButtonText && (
+            <Footer disabled={disabled} instructions={instructions}>
+              {submitButtonText}
+            </Footer>
+          )}
         </form>
       </div>
     </div>

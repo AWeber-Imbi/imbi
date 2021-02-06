@@ -1,4 +1,5 @@
 import json
+import uuid
 
 from tests import base
 
@@ -9,14 +10,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_token_lifecycle(self):
         # Create the token
+        token_name = str(uuid.uuid4())
         response = self.fetch(
             '/authentication-tokens', method='POST', headers=self.headers,
-            body='{}', allow_nonstandard_methods=True)
+            body=json.dumps({"name": token_name}))
         self.assertEqual(response.code, 200)
         result = json.loads(response.body.decode('utf-8'))
+        self.assertEqual(result['name'], token_name)
         self.assertEqual(result['username'], self.USERNAME[self.ADMIN_ACCESS])
         for field in {'token', 'created_at', 'expires_at'}:
             self.assertIsNotNone(result[field])
+        self.assertIsNone(result['last_used_at'])
 
         # Get the token list for the current user with new token
         headers = dict(self.headers)

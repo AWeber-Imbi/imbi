@@ -28,8 +28,8 @@ class TestCase(testing.AsyncHTTPTestCase):
     }
 
     SQL_INSERT_TOKEN = """\
-    INSERT INTO v1.authentication_tokens (token, username)
-         VALUES (%(token)s, %(username)s);"""
+    INSERT INTO v1.authentication_tokens (token, name, username)
+         VALUES (%(token)s, %(name)s, %(username)s);"""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -73,8 +73,10 @@ class TestCase(testing.AsyncHTTPTestCase):
         return app.Application(**self.settings)
 
     async def get_token(self, username: typing.Optional[str] = None) -> str:
+        token_value = str(uuid.uuid4())
         values = {
-            'token': str(uuid.uuid4()),
+            'token': token_value,
+            'name': token_value,
             'username': username or self.USERNAME[self.ADMIN_ACCESS]
         }
         result = await self.postgres_execute(self.SQL_INSERT_TOKEN, values)
