@@ -44,7 +44,7 @@ function CrudForm({
   }
 
   return (
-    <Form
+    <Form.ModalForm
       columns={columns}
       formType={isEdit === true ? 'edit' : 'add'}
       jsonSchema={jsonSchema}
