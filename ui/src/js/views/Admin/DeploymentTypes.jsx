@@ -18,6 +18,7 @@ export function DeploymentTypes() {
           name: 'name',
           type: 'text',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-2/12'
           }
         },
@@ -37,6 +38,7 @@ export function DeploymentTypes() {
           placeholder: 'fas upload',
           default: 'fas upload',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-2/12'
           }
         }

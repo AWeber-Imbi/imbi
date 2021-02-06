@@ -9,9 +9,11 @@ export function fetchMetadata(
   onSuccess,
   onError
 ) {
+  const url = new URL(fetch.baseURL)
+  url.pathname = path
   httpGet(
-    fetch,
-    path,
+    fetch.function,
+    url,
     (data) => {
       if (asOptions) {
         const options = []

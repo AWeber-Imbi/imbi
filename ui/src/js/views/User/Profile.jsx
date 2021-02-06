@@ -22,8 +22,11 @@ function Groups({ groups }) {
     </Fragment>
   )
 }
+Groups.defaultProps = {
+  groups: []
+}
 Groups.propTypes = {
-  groups: PropTypes.arrayOf[PropTypes.string]
+  groups: PropTypes.arrayOf(PropTypes.string)
 }
 
 const Item = ({ label, value, children }) => {

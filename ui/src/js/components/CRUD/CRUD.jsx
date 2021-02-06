@@ -22,19 +22,18 @@ function CRUD({
   itemTitle,
   jsonSchema
 }) {
-  const fetchMethod = useContext(FetchContext)
+  const fetch = useContext(FetchContext)
 
   const [data, setData] = useState([])
   const [errorMessage, setErrorMessage] = useState(null)
   const [fetchData, setFetchData] = useState(true)
-  const [itemToDelete, setItemToDelete] = useState(null)
+  const [itemToDelete, setItemToDelete] = useState('')
   const [itemToEdit, setItemToEdit] = useState(null)
   const [ready, setReady] = useState(false)
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [successMessage, setSuccessMessage] = useState(null)
   const [timerHandle, setTimerHandle] = useState(null)
-
   const strings = {
     collectionName: collectionName,
     itemName: itemName
@@ -42,10 +41,9 @@ function CRUD({
   const { t } = useTranslation()
 
   async function deleteItem() {
-    const result = await httpDelete(
-      fetchMethod,
-      itemPath.replace(/{{value}}/, itemToDelete)
-    )
+    const url = new URL(fetch.baseURL)
+    url.pathname = itemPath.replace(/{{value}}/, itemToDelete)
+    const result = await httpDelete(fetch.function, url)
     if (result.success === true) {
       setSuccessMessage(
         t('admin.crud.itemDeleted', { value: itemToDelete, ...strings })
@@ -68,9 +66,11 @@ function CRUD({
   }
 
   async function onEditClick(value) {
+    const url = new URL(fetch.baseURL)
+    url.pathname = itemPath.replace(/{{value}}/, value)
     httpGet(
-      fetchMethod,
-      itemPath.replace(/{{value}}/, value),
+      fetch.function,
+      url,
       (data) => {
         itemIgnore.map((key) => {
           delete data[key]
@@ -114,9 +114,11 @@ function CRUD({
   useEffect(() => {
     if (fetchData === true) {
       setFetchData(false)
+      const url = new URL(fetch.baseURL)
+      url.pathname = collectionPath
       httpGet(
-        fetchMethod,
-        collectionPath,
+        fetch.function,
+        url,
         (result) => {
           setData(result)
           setReady(true)

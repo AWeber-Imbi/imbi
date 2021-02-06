@@ -39,6 +39,7 @@ export function ConfigurationSystems() {
           placeholder: 'fas sliders-h',
           default: 'fas sliders-h',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-2/12'
           }
         }

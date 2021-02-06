@@ -14,9 +14,11 @@ export function ProjectFactTypes() {
 
   useEffect(() => {
     if (projectTypes === null) {
+      const url = new URL(fetch.baseURL)
+      url.pathname = '/project-types'
       fetchMetadata(
-        fetch,
-        '/project-types',
+        fetch.function,
+        url,
         true,
         'name',
         'id',
@@ -76,6 +78,7 @@ export function ProjectFactTypes() {
               name: 'fact_type',
               type: 'text',
               tableOptions: {
+                className: 'truncate',
                 headerClassName: 'w-4/12'
               }
             },

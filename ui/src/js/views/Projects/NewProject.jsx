@@ -88,7 +88,7 @@ function NewProject() {
   const [errors, setErrors] = useState(emptyErrors)
   const [errorMessage, setErrorMessage] = useState(null)
   const [links, setLinks] = useState({})
-  const fetchMethod = useContext(FetchContext)
+  const fetch = useContext(FetchContext)
   const [formReady, setFormReady] = useState(false)
   const [formValues, setFormValues] = useState({
     namespace_id: null,
@@ -158,7 +158,9 @@ function NewProject() {
     async function saveProject() {
       if (saving === true) {
         if (saveComplete.attributes === false) {
-          let result = await httpPost(fetchMethod, '/projects', formValues)
+          let url = new URL(fetch.baseURL)
+          url.pathname = '/projects'
+          let result = await httpPost(fetch.function, url, formValues)
           if (result.success === true) {
             setSaveComplete({ ...saveComplete, attributes: true })
             setProjectId(result.data.id)
@@ -168,15 +170,13 @@ function NewProject() {
           }
         } else if (saveComplete.links === false && projectId !== null) {
           for (const [linkTypeId, url] of Object.entries(links)) {
-            let result = await httpPost(
-              fetchMethod,
-              '/projects/' + projectId.toString() + '/links',
-              {
-                project_id: projectId,
-                link_type_id: parseInt(linkTypeId),
-                url: url
-              }
-            )
+            let linkURL = new URL(fetch.baseURL)
+            linkURL.pathname = '/projects/' + projectId.toString() + '/links'
+            let result = await httpPost(fetch.function, linkURL, {
+              project_id: projectId,
+              link_type_id: parseInt(linkTypeId),
+              url: url
+            })
             if (result.success === false) {
               setErrorMessage(result.data)
               setSaving(false)
@@ -268,7 +268,7 @@ function NewProject() {
   // Fetch metadata on load
   useEffect(() => {
     if (metadata.ready !== true)
-      fetchMetadata(fetchMethod, setMetadata, setErrorMessage)
+      fetchMetadata(fetch, setMetadata, setErrorMessage)
   }, [metadata])
 
   setDocumentTitle(t('projects.newProject'))

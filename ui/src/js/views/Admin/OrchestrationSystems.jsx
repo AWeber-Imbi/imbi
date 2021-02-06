@@ -18,6 +18,7 @@ export function OrchestrationSystems() {
           name: 'name',
           type: 'text',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-2/12'
           }
         },
@@ -37,6 +38,7 @@ export function OrchestrationSystems() {
           placeholder: 'fas cogs',
           default: 'fas cogs',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-2/12'
           }
         }

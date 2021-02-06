@@ -28,9 +28,13 @@ function Login({ onLoginCallback, useLDAP }) {
     e.preventDefault()
     setSubmitting(true)
     setErrorMessage(null)
+
+    const url = new URL(fetch.baseURL)
+    url.pathname = '/ui/login'
+
     const response = await httpPost(
-      fetch,
-      '/ui/login',
+      fetch.function,
+      url,
       {
         username: credentials.username,
         password: credentials.password

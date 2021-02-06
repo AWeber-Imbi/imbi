@@ -18,6 +18,7 @@ export function Environments() {
           name: 'name',
           type: 'text',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-3/12'
           }
         },
@@ -37,6 +38,7 @@ export function Environments() {
           placeholder: 'fas tree',
           default: 'fas tree',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-3/12'
           }
         }
