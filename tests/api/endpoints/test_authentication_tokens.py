@@ -13,7 +13,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         token_name = str(uuid.uuid4())
         response = self.fetch(
             '/authentication-tokens', method='POST', headers=self.headers,
-            body=json.dumps({"name": token_name}))
+            body=json.dumps({'name': token_name}))
         self.assertEqual(response.code, 200)
         result = json.loads(response.body.decode('utf-8'))
         self.assertEqual(result['name'], token_name)
