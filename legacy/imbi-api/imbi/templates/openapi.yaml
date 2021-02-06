@@ -27,6 +27,127 @@ security:
   - session: []
   - token: []
 paths:
+  /authentication-tokens:
+    post:
+      summary: Create Token
+      description: Create a new authentication token for the API
+      tags:
+        - User
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                title: Authentication Token
+                description: Configuration Management or Storage System
+                type: object
+                properties:
+                  username:
+                    description: The username that owns the token
+                    type: string
+                  token:
+                    description: The authentication token value
+                    type: string
+                    format: uuid
+                  created_at:
+                    description: The timestamp indicating when the token was created
+                    type: string
+                    format: iso8601-timestamp
+                  expires_at:
+                    description: The timestamp indicating when the token expires
+                    type: string
+                    format: iso8601-timestamp
+                additionalProperties: false
+              examples:
+                records:
+                  summary: The newly created authentication token
+                  value:
+                    username: ffink
+                    token: 017778b5-188e-c3ac-7aa6-76e41e116a95
+                    created_at: 1964-01-01T19:11:11.000Z
+                    expires_at: 1965-01-01T19:11:11.000Z
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
+              examples:
+                records:
+                  summary: The newly created authentication token
+                  value:
+                    username: ffink
+                    token: 017778b5-188e-c3ac-7aa6-76e41e116a95
+                    created_at: 1964-01-01T19:11:11.000Z
+                    expires_at: 1965-01-01T19:11:11.000Z
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+    get:
+      description: Retrieve the list of tokens for the current authenticated user
+      summary: Get Tokens
+      tags:
+        - User
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple authentication tokens
+                  value:
+                    - username: ffink
+                      token: 017778b5-188e-c3ac-7aa6-76e41e116a95
+                      created_at: 1964-01-01T19:11:11.000Z
+                      expires_at: 1965-01-01T19:11:11.000Z
+                    - username: ffink
+                      token: 017778b6-94d3-ab49-f9c8-ae5d7fd999bf
+                      created_at: 1964-02-28T19:11:11.000Z
+                      expires_at: 1965-02-28T19:11:11.000Z
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
+              examples:
+                records:
+                  summary: Multiple authentication tokens
+                  value:
+                    - username: ffink
+                      token: 017778b5-188e-c3ac-7aa6-76e41e116a95
+                      created_at: 1964-01-01T19:11:11.000Z
+                      expires_at: 1965-01-01T19:11:11.000Z
+                    - username: ffink
+                      token: 017778b6-94d3-ab49-f9c8-ae5d7fd999bf
+                      created_at: 1964-02-28T19:11:11.000Z
+                      expires_at: 1965-02-28T19:11:11.000Z
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+  '/authentication-tokens/{token}':
+    delete:
+      summary: Delete Token
+      description: Remove an authentication token
+      tags:
+        - User
+      responses:
+        '204':
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+      parameters:
+        - name: token
+          in: path
+          description: Authentication Token
+          required: true
+          schema:
+            type: string
+            format: uuid
   /configuration-systems:
     get:
       description: Retrieve the collection of configuration systems
@@ -4166,6 +4287,10 @@ tags:
       The health check endpoint can be used by a load balancer to indicate
       service health.
 x-tagGroups:
+  - name: Administration
+    tags:
+      - Groups
+      - Users
   - name: Metadata
     tags:
       - Configuration Systems
@@ -4173,19 +4298,21 @@ x-tagGroups:
       - Data Centers
       - Deployment Types
       - Environments
-      - Groups
+      - Namespaces
       - Orchestration Systems
       - Project Fact Types
       - Project Fact Type Options
       - Project Link Types
       - Project Types
-      - Teams
   - name: Project Management
     tags:
       - Projects
   - name: Settings
     tags:
       - Settings
+  - name: User Specific
+    tags:
+      - User
   - name: Other
     tags:
       - Health Check
