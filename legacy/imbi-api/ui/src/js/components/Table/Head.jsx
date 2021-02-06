@@ -9,7 +9,7 @@ import { HeadColumn } from './HeadColumn'
 function Head({ columns, includeEdit }) {
   const { t } = useTranslation()
   return (
-    <thead className="bg-gray-50">
+    <thead>
       <tr>
         {columns.map((column) => {
           if (

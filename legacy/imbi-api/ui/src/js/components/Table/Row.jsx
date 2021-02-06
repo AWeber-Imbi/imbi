@@ -6,7 +6,15 @@ import { Columns } from '../../schema'
 
 import { Column } from '.'
 
-function Row({ columns, data, index, itemKey, onDeleteClick, onEditClick }) {
+function Row({
+  columns,
+  data,
+  index,
+  itemKey,
+  onClick,
+  onDeleteClick,
+  onEditClick
+}) {
   const { t } = useTranslation()
   const toRender = columns
     .map((column) => {
@@ -27,7 +35,14 @@ function Row({ columns, data, index, itemKey, onDeleteClick, onEditClick }) {
 
   let colOffset = -1
   return (
-    <tr className={'hover:bg-gray-100'}>
+    <tr
+      className={
+        (onClick !== undefined ? 'cursor-pointer ' : '') + 'hover:bg-gray-100'
+      }
+      onClick={(event) => {
+        event.preventDefault()
+        if (onClick !== undefined) onClick(data)
+      }}>
       {toRender.map((column) => {
         colOffset += 1
         return (
@@ -77,6 +92,7 @@ Row.propTypes = {
   data: PropTypes.object.isRequired,
   index: PropTypes.number.isRequired,
   itemKey: PropTypes.string,
+  onClick: PropTypes.func,
   onDeleteClick: PropTypes.func,
   onEditClick: PropTypes.func
 }

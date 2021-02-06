@@ -27,6 +27,7 @@ export const Column = {
   ),
   placeholder: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),
   readOnly: PropTypes.bool,
+  sortCallback: PropTypes.func,
   tableOptions: PropTypes.exact({
     className: PropTypes.string,
     lookupFunction: PropTypes.func,

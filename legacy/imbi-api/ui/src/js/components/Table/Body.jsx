@@ -5,7 +5,14 @@ import { Columns } from '../../schema'
 
 import { Row } from '.'
 
-function Body({ columns, data, itemKey, onDeleteClick, onEditClick }) {
+function Body({
+  columns,
+  data,
+  itemKey,
+  onDeleteClick,
+  onEditClick,
+  onRowClick
+}) {
   let rowOffset = -1
   return (
     <tbody className="bg-white divide-y divide-gray-200">
@@ -18,6 +25,7 @@ function Body({ columns, data, itemKey, onDeleteClick, onEditClick }) {
             index={rowOffset}
             itemKey={itemKey}
             key={'table-row-' + rowOffset}
+            onClick={onRowClick}
             onDeleteClick={onDeleteClick}
             onEditClick={onEditClick}
           />
@@ -34,7 +42,8 @@ Body.propTypes = {
   data: PropTypes.arrayOf(PropTypes.object).isRequired,
   itemKey: PropTypes.string,
   onDeleteClick: PropTypes.func,
-  onEditClick: PropTypes.func
+  onEditClick: PropTypes.func,
+  onRowClick: PropTypes.func
 }
 
 export { Body }
