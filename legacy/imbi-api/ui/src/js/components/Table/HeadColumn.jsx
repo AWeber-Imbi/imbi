@@ -68,7 +68,7 @@ function HeadColumn({ column, children, className, srOnly }) {
 }
 
 HeadColumn.defaultProps = {
-  column: {name: 'default', title: 'default', type: 'text'},
+  column: { name: 'default', title: 'default', type: 'text' },
   srOnly: false
 }
 

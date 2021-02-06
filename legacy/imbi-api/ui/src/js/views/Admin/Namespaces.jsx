@@ -12,9 +12,11 @@ export function Namespaces() {
 
   useEffect(() => {
     if (groups === null) {
+      const url = new URL(fetch.baseURL)
+      url.pathname = 'groups'
       fetchMetadata(
-        fetch,
-        '/groups',
+        fetch.function,
+        url,
         true,
         'name',
         'name',
@@ -56,6 +58,7 @@ export function Namespaces() {
               name: 'name',
               type: 'text',
               tableOptions: {
+                className: 'truncate',
                 headerClassName: 'w-4/12'
               }
             },
@@ -76,6 +79,7 @@ export function Namespaces() {
               placeholder: 'fas boxes',
               default: 'fas boxes',
               tableOptions: {
+                className: 'truncate',
                 headerClassName: 'w-3/12'
               }
             },

@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types'
 import React, { useContext, useEffect, useState } from 'react'
+import { useHistory } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { Alert, ContentArea, Loading, Table } from '../../components'
@@ -11,42 +12,77 @@ function Projects() {
   const { t } = useTranslation()
 
   const [errorMessage, setErrorMessage] = useState(null)
-  const fetchMethod = useContext(FetchContext)
+  const fetch = useContext(FetchContext)
+  const [filter, setFilter] = useState({})
   const [initialized, setInitialized] = useState(false)
+  const [lastRequest, setLastRequest] = useState(null)
+  const [offset, setOffset] = useState(0)
   const [rows, setRows] = useState([])
+  const [sort, setSort] = useState({ name: null })
+  const history = useHistory()
+
+  function onRowClick(data) {
+    history.push(`/ui/projects/${data['id']}`)
+  }
+
+  function onSortDirection(column, direction) {
+    setSort({ ...sort, [column]: direction })
+  }
 
   const columns = [
     {
       title: t('terms.namespace'),
       name: 'namespace_slug',
+      sortCallback: onSortDirection,
       type: 'text',
       tableOptions: {
-        className: 'w-1/12'
+        className: 'truncate',
+        headerClassName: 'w-1/12'
       }
     },
     {
       title: t('terms.projectType'),
       name: 'project_type',
+      sortCallback: onSortDirection,
       type: 'text',
       tableOptions: {
-        className: 'min-w-sm'
+        className: 'truncate',
+        headerClassName: 'w-2/12'
       }
     },
     {
       title: t('terms.name'),
       name: 'name',
+      sortCallback: onSortDirection,
       type: 'text',
       tableOptions: {
-        className: 'min-w-sm'
+        className: 'truncate',
+        headerClassName: 'w-2/12'
+      }
+    },
+    {
+      title: t('terms.description'),
+      name: 'description',
+      type: 'text',
+      tableOptions: {
+        className: 'truncate',
+        headerClassName: 'w-7/12'
       }
     }
   ]
 
   useEffect(() => {
-    if (initialized === false) {
+    const url = new URL(fetch.baseURL)
+    url.pathname = '/projects'
+    Object.entries(sort).forEach(([key, value]) => {
+      url.searchParams.append(`sort_${key}`, value)
+    })
+    url.searchParams.append('offset', offset.toString())
+    if (lastRequest === null || lastRequest.toString() !== url.toString()) {
+      setLastRequest(url)
       httpGet(
-        fetchMethod,
-        '/projects',
+        fetch.function,
+        url,
         (result) => {
           setRows(result)
           setInitialized(true)
@@ -56,7 +92,7 @@ function Projects() {
         }
       )
     }
-  }, [initialized])
+  }, [lastRequest, sort])
 
   setDocumentTitle(t('projects.title'))
 
@@ -68,7 +104,7 @@ function Projects() {
       pageIcon="fas folder"
       pageTitle={t('projects.title')}>
       {errorMessage !== null && <Alert level="error">{errorMessage}</Alert>}
-      <Table columns={columns} data={rows} />
+      <Table columns={columns} data={rows} onRowClick={onRowClick} />
     </ContentArea>
   )
 }

@@ -39,6 +39,7 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     },
     onErr
   )
+
   _fetchMetadata(
     fetch,
     '/cookie-cutters',
@@ -50,6 +51,7 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     },
     onErr
   )
+
   _fetchMetadata(
     fetch,
     '/data-centers',
@@ -61,6 +63,7 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     },
     onErr
   )
+
   _fetchMetadata(
     fetch,
     '/deployment-types',
@@ -72,6 +75,7 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     },
     onErr
   )
+
   _fetchMetadata(
     fetch,
     '/environments',
@@ -83,6 +87,7 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     },
     onErr
   )
+
   _fetchMetadata(
     fetch,
     '/namespaces',
@@ -94,6 +99,7 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     },
     onErr
   )
+
   _fetchMetadata(
     fetch,
     '/orchestration-systems',
@@ -105,6 +111,7 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     },
     onErr
   )
+
   _fetchMetadata(
     fetch,
     '/project-link-types',
@@ -116,6 +123,7 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     },
     onErr
   )
+
   _fetchMetadata(
     fetch,
     '/project-types',

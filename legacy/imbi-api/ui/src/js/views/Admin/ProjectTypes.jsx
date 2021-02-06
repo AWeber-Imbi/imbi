@@ -57,6 +57,7 @@ export function ProjectTypes() {
           placeholder: 'fas cubes',
           default: 'fas cubes',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-2/12'
           }
         }

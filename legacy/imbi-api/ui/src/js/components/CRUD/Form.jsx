@@ -20,20 +20,19 @@ function CrudForm({
   title,
   values
 }) {
-  const fetchMethod = useContext(FetchContext)
+  const fetch = useContext(FetchContext)
   const [originalValues, _] = useState(values) // eslint-disable-line
 
   async function handleSubmit(formValues) {
+    const url = new URL(fetch.baseURL)
     let result = null
     if (isEdit === true) {
       const patchValue = compare(originalValues, formValues)
-      result = await httpPatch(
-        fetchMethod,
-        itemPath.replace(/{{value}}/, originalValues[itemKey]),
-        patchValue
-      )
+      url.pathname = itemPath.replace(/{{value}}/, originalValues[itemKey])
+      result = await httpPatch(fetch.function, url, patchValue)
     } else {
-      result = await httpPost(fetchMethod, itemPath, formValues)
+      url.pathname = itemPath
+      result = await httpPost(fetch.function, url, formValues)
     }
     if (result.success === true) {
       onClose(formValues[itemTitle !== undefined ? itemTitle : itemKey])

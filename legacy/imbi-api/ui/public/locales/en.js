@@ -28,6 +28,7 @@ export default {
         invalidURL: 'Value does not appear to be a URL'
       },
       terms: {
+        description: 'Description',
         name: 'Name',
         namespace: 'Namespace',
         projectType: 'Project Type',

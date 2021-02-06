@@ -18,6 +18,7 @@ export function DataCenters() {
           name: 'name',
           type: 'text',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-2/12'
           }
         },
@@ -37,6 +38,7 @@ export function DataCenters() {
           placeholder: 'fas building',
           default: 'fas building',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-2/12'
           }
         }

@@ -27,6 +27,7 @@ export function ProjectLinkTypes() {
           name: 'link_type',
           type: 'text',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-5/12'
           }
         },
@@ -37,6 +38,7 @@ export function ProjectLinkTypes() {
           placeholder: 'fas external-link-alt',
           default: 'fas external-link-alt',
           tableOptions: {
+            className: 'truncate',
             headerClassName: 'w-5/12'
           }
         }

@@ -1,25 +1,26 @@
-import PropTypes from 'prop-types'
 import React, { useContext, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { FetchContext } from '../../contexts'
 import { httpGet, setDocumentTitle } from '../../utils'
-import { User } from '../../schema'
 import { Alert, Badge, Icon, IconBar, Loading, Tooltip } from '../../components'
 
-function Project({ user }) {
+function Project({}) {
   const { t } = useTranslation()
   const [errorMessage, setErrorMessage] = useState(null)
-  const fetchMethod = useContext(FetchContext)
+  const fetch = useContext(FetchContext)
   const { projectId } = useParams()
   const [project, setProject] = useState({})
 
   useEffect(() => {
     if (project.id === undefined) {
+      const url = new URL(fetch.baseURL)
+      url.pathname = `/projects/${projectId}`
+      url.searchParams.append('full', 'true')
       httpGet(
-        fetchMethod,
-        `/projects/${projectId}?full=true`,
+        fetch.function,
+        url,
         (result) => {
           setProject(result)
         },
@@ -135,8 +136,6 @@ function Project({ user }) {
   )
 }
 
-Project.propTypes = {
-  user: PropTypes.exact(User)
-}
+Project.propTypes = {}
 
 export { Project }

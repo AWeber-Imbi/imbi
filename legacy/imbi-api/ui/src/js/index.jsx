@@ -25,9 +25,8 @@ export const loggedOutUser = {
   permissions: []
 }
 
-function App({ logo, service, ldap, sentry_dsn, version }) {
+function App({ logo, service, ldap, sentry_dsn, url, version }) {
   if (sentry_dsn !== 'false') Sentry.init({ dsn: sentry_dsn })
-
   const [content, setContent] = useState(<Initializing />)
   const [errorMessage, setErrorMessage] = useState(null)
   const history = useHistory()
@@ -49,7 +48,10 @@ function App({ logo, service, ldap, sentry_dsn, version }) {
   }
 
   const logout = () => {
-    fetch('/ui/logout').then(() => {
+    const logoutURL = new URL(url)
+    logoutURL.pathname = '/ui/logout'
+    console.log(logoutURL)
+    fetch(logoutURL.toString()).then(() => {
       resetState()
       history.push(`/ui/`)
     })
@@ -110,7 +112,8 @@ function App({ logo, service, ldap, sentry_dsn, version }) {
   }, [errorMessage])
 
   return (
-    <FetchContext.Provider value={authenticatedFetch}>
+    <FetchContext.Provider
+      value={{ function: authenticatedFetch, baseURL: url }}>
       <LogoutContext.Provider value={logout}>
         <Header
           authenticated={userState.authenticated}
@@ -130,6 +133,7 @@ App.propTypes = {
   service: PropTypes.string,
   ldap: PropTypes.string,
   sentry_dsn: PropTypes.string,
+  url: PropTypes.string,
   version: PropTypes.string
 }
 
