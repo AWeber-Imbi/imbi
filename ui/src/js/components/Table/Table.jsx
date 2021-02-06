@@ -5,22 +5,34 @@ import { Columns } from '../../schema'
 
 import { Head, Body, Footer } from '.'
 
-function Table({ columns, data, itemKey, onDeleteClick, onEditClick }) {
+function Table({
+  columns,
+  data,
+  itemKey,
+  onDeleteClick,
+  onEditClick,
+  onRowClick
+}) {
   return (
-    <table className="bg-gray-50 border-b border-gray-200 divide-y divide-gray-200 mt-3 table-fixed w-full shadow">
-      <Head
-        columns={columns}
-        includeEdit={onEditClick !== undefined || onDeleteClick !== undefined}
-      />
-      <Body
-        columns={columns}
-        data={data}
-        itemKey={itemKey}
-        onDeleteClick={onDeleteClick}
-        onEditClick={onEditClick}
-      />
-      <Footer columns={columns.length + (onEditClick !== undefined ? 1 : 0)} />
-    </table>
+    <div className="shadow bg-gray-50 overflow-hidden border-b border-gray-200 mt-3 pt-1 rounded-lg">
+      <table className="bg-gray-50 divide-y divide-gray-200 table-fixed w-full">
+        <Head
+          columns={columns}
+          includeEdit={onEditClick !== undefined || onDeleteClick !== undefined}
+        />
+        <Body
+          columns={columns}
+          data={data}
+          itemKey={itemKey}
+          onDeleteClick={onDeleteClick}
+          onEditClick={onEditClick}
+          onRowClick={onRowClick}
+        />
+        <Footer
+          columns={columns.length + (onEditClick !== undefined ? 1 : 0)}
+        />
+      </table>
+    </div>
   )
 }
 
@@ -29,7 +41,8 @@ Table.propTypes = {
   data: PropTypes.arrayOf(PropTypes.object),
   itemKey: PropTypes.string,
   onDeleteClick: PropTypes.func,
-  onEditClick: PropTypes.func
+  onEditClick: PropTypes.func,
+  onRowClick: PropTypes.func
 }
 
 export { Table }
