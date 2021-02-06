@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, ConfirmationDialog, Icon, Loading, Table } from '..'
+import { Alert, Backdrop, ConfirmationDialog, Icon, Loading, Table } from '..'
 import { Columns } from '../../schema'
 import { FetchContext } from '../../contexts'
 import { httpGet, httpDelete, setDocumentTitle } from '../../utils'
@@ -27,6 +27,7 @@ function CRUD({
   const [data, setData] = useState([])
   const [errorMessage, setErrorMessage] = useState(null)
   const [fetchData, setFetchData] = useState(true)
+  const [fetching, setFetching] = useState(false)
   const [itemToDelete, setItemToDelete] = useState('')
   const [itemToEdit, setItemToEdit] = useState(null)
   const [ready, setReady] = useState(false)
@@ -66,6 +67,7 @@ function CRUD({
   }
 
   async function onEditClick(value) {
+    setFetching(true)
     const url = new URL(fetch.baseURL)
     url.pathname = itemPath.replace(/{{value}}/, value)
     httpGet(
@@ -76,6 +78,7 @@ function CRUD({
           delete data[key]
         })
         setItemToEdit(data)
+        setFetching(false)
         setShowForm(true)
       },
       (message) => {
@@ -214,6 +217,7 @@ function CRUD({
           onEditClick={onEditClick}
         />
       )}
+      {fetching && <Backdrop wait={true} />}
       {showDeleteConfirmation === true && (
         <ConfirmationDialog
           mode="error"

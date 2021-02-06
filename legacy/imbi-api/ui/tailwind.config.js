@@ -2,7 +2,7 @@ const defaultTheme = require('tailwindcss/defaultTheme')
 
 module.exports = {
   purge: ['./**/*.{js,jsx,ts,tsx}'],
-  darkMode: false,
+  darkMode: 'media',
   theme: {
     extend: {
       fontFamily: {

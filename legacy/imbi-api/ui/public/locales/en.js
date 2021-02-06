@@ -25,7 +25,11 @@ export default {
         welcome: 'Welcome',
         required: 'Required Field',
         group: 'Group',
-        invalidURL: 'Value does not appear to be a URL'
+        invalidURL: 'Value does not appear to be a URL',
+        paginationState:
+          'Showing {{startRecord}} to {{endRecord}} of {{totalRecords}} results',
+        previous: 'Previous',
+        next: 'Next'
       },
       terms: {
         description: 'Description',

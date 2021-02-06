@@ -41,7 +41,7 @@ class _RequestHandlerMixin:
 class CollectionRequestHandler(_RequestHandlerMixin,
                                base.CollectionRequestHandler):
     NAME = 'projects'
-
+    IS_COLLECTION = True
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
         SELECT a.id,
                a.created_at,
@@ -81,11 +81,11 @@ class CollectionRequestHandler(_RequestHandlerMixin,
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
-          {{WHERE}} {{ORDER_BY}}""")
+          {{WHERE}}""")
 
     FILTER_CHUNKS = {
-        'namespace': 'b.name = %(namespace)s OR b.slug = %(namespace)s',
-        'project_type': 'c.name = %(namespace)s OR c.slug = %(namespace)s'
+        'namespace': '(b.name = %(namespace)s OR b.slug = %(namespace)s)',
+        'project_type': '(c.name = %(namespace)s OR c.slug = %(namespace)s)'
     }
 
     POST_SQL = re.sub(r'\s+', ' ', """\
@@ -113,6 +113,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
         if where_chunks:
             where_sql = ' WHERE {}'.format(' AND '.join(where_chunks))
         sql = self.COLLECTION_SQL.replace('{{WHERE}}', where_sql)
+        count_sql = self.COUNT_SQL.replace('{{WHERE}}', where_sql)
 
         order_by_chunks = []
         for (kwarg, column) in [('namespace', 'b.name'),
@@ -123,14 +124,21 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                 order_by_chunks.append(
                     '{} {}'.format(column, direction.upper()))
 
-        order_sql = 'ORDER BY name ASC'
+        order_sql = 'ORDER BY a.name ASC'
         if order_by_chunks:
             order_sql = ' ORDER BY {}'.format(', '.join(order_by_chunks))
         sql = sql.replace('{{ORDER_BY}}', order_sql)
+        count_sql = count_sql.replace('{{ORDER_BY}}', order_sql)
+
+        print(count_sql)
+        count = await self.postgres_execute(
+            count_sql, kwargs, metric_name='count-{}'.format(self.NAME))
 
         result = await self.postgres_execute(
             sql, kwargs, metric_name='get-{}'.format(self.NAME))
-        self.send_response(result.rows)
+        self.send_response({
+            'rows': count.row['records'],
+            'data': result.rows})
 
 
 class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):

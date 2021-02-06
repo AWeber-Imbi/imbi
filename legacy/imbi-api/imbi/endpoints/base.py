@@ -244,6 +244,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     NAME = 'default'
     DEFAULTS = {}
     ID_KEY: typing.Union[str, list] = 'id'
+    IS_COLLECTION = False
     FIELDS = None
     GET_NAME = None  # Used to create link headers for POST requests
     TTL = 300
@@ -284,24 +285,24 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         if isinstance(value, list):
             return super().send_response(value)
 
-        self._add_last_modified_header(
-            value.get('last_modified_at', value['created_at']))
-        for key in {'created_at', 'last_modified_at'}:
-            if key in value:
-                del value[key]
+        if not self.IS_COLLECTION:
+            self._add_last_modified_header(
+                value.get('last_modified_at', value.get('created_at')))
+            for key in {'created_at', 'last_modified_at'}:
+                if key in value:
+                    del value[key]
+            if isinstance(self.ID_KEY, list):
+                args = [str(value[k]) for k in self.ID_KEY]
+            else:
+                args = [str(value[self.ID_KEY])]
 
-        if isinstance(self.ID_KEY, list):
-            args = [str(value[k]) for k in self.ID_KEY]
-        else:
-            args = [str(value[self.ID_KEY])]
-
-        try:
-            self._add_self_link(
-                self.reverse_url(self.ITEM_NAME or self.NAME, *args))
-        except (AssertionError, KeyError):
-            self.logger.debug('Failed to reverse URL for %s %r',
-                              self.NAME, args)
-        self._add_link_header()
+            try:
+                self._add_self_link(
+                    self.reverse_url(self.ITEM_NAME or self.NAME, *args))
+            except (AssertionError, KeyError):
+                self.logger.debug('Failed to reverse URL for %s %r',
+                                  self.NAME, args)
+            self._add_link_header()
         super().send_response(value)
 
     async def _delete(self, kwargs):
@@ -404,6 +405,7 @@ class CollectionRequestHandler(CRUDRequestHandler):
 
     DEFAULTS = {}
     ID_KEY: typing.Union[str, list] = 'id'
+    IS_COLLECTION: True
     FIELDS = None
     GET_NAME = None  # Used to create link headers for POST requests
     COLLECTION_SQL = """SELECT * FROM pg_tables WHERE schemaname = 'v1';"""

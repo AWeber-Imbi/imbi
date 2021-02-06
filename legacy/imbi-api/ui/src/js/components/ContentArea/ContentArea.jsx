@@ -14,7 +14,7 @@ function ContentArea({
   pageTitle
 }) {
   return (
-    <div className="flex-auto px-6 py-4">
+    <div className="flex-auto p-4">
       <PageHeader
         buttonClass={buttonClass}
         buttonDestination={buttonDestination}
