@@ -1,7 +1,7 @@
 import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ContentArea, Error, Icon, Loading, Stats } from '../components/'
+import { ContentArea, Error, Loading, Stats } from '../components/'
 import { httpGet, setDocumentTitle } from '../utils'
 import { FetchContext } from '../contexts'
 
@@ -43,12 +43,8 @@ export function Dashboard() {
               return (
                 <Stats.Value
                   key={`stats-${row.name}`}
-                  title={
-                    <Fragment>
-                      <Icon className="mr-2" icon={row.icon} />
-                      {row.count === 1 ? row.name : row.plural}
-                    </Fragment>
-                  }
+                  title={row.count === 1 ? row.name : row.plural}
+                  icon={row.icon}
                   url={`/ui/projects?project_type=${row.slug}`}
                   value={row.count}
                 />
