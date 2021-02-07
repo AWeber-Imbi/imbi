@@ -47,33 +47,47 @@ function Project() {
           {project.name}
         </h1>
         <div className="flex-auto ml-10 space-x-2 text-right">
-          <Tooltip value="Orchestration System">
-            <Badge color="blue">
-              <Icon icon={project.orchestration_system_icon} className="mr-1" />
-              {project.orchestration_system}
-            </Badge>
-          </Tooltip>
-          <Tooltip value="Deployment Type">
-            <Badge color="green">
-              <Icon icon={project.deployment_type_icon} className="mr-1" />
-              {project.deployment_type}
-            </Badge>
-          </Tooltip>
-          <Tooltip
-            value="Configuration System"
-            arrowPosition="right"
-            className="ml-6">
-            <Badge color="red">
-              <Icon icon={project.configuration_system_icon} className="mr-1" />
-              {project.configuration_system}
-            </Badge>
-          </Tooltip>
-          <Tooltip value="Data Center" arrowPosition="right">
-            <Badge color="purple" href="#" target="_new">
-              <Icon icon={project.data_center_icon} className="mr-1" />
-              {project.data_center}
-            </Badge>
-          </Tooltip>
+          {project.orchestration_system && (
+            <Tooltip value="Orchestration System">
+              <Badge color="blue">
+                <Icon
+                  icon={project.orchestration_system_icon}
+                  className="mr-1"
+                />
+                {project.orchestration_system}
+              </Badge>
+            </Tooltip>
+          )}
+          {project.deployment_type && (
+            <Tooltip value="Deployment Type">
+              <Badge color="green">
+                <Icon icon={project.deployment_type_icon} className="mr-1" />
+                {project.deployment_type}
+              </Badge>
+            </Tooltip>
+          )}
+          {project.configuration_system && (
+            <Tooltip
+              value="Configuration System"
+              arrowPosition="right"
+              className="ml-6">
+              <Badge color="red">
+                <Icon
+                  icon={project.configuration_system_icon}
+                  className="mr-1"
+                />
+                {project.configuration_system}
+              </Badge>
+            </Tooltip>
+          )}
+          {project.data_center && (
+            <Tooltip value="Data Center" arrowPosition="right">
+              <Badge color="purple" href="#" target="_new">
+                <Icon icon={project.data_center_icon} className="mr-1" />
+                {project.data_center}
+              </Badge>
+            </Tooltip>
+          )}
         </div>
       </div>
       <div className="my-2 flex flex-row">

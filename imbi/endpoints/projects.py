@@ -70,10 +70,12 @@ class CollectionRequestHandler(_RequestHandlerMixin,
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
-          JOIN v1.configuration_systems AS d ON d.name = a.configuration_system
-          JOIN v1.data_centers AS e ON e.name = a.data_center
-          JOIN v1.deployment_types AS f ON f.name = a.deployment_type
-          JOIN v1.orchestration_systems AS g ON g.name = a.orchestration_system
+          LEFT JOIN v1.configuration_systems AS d
+                 ON d.name = a.configuration_system
+          LEFT JOIN v1.data_centers AS e ON e.name = a.data_center
+          LEFT JOIN v1.deployment_types AS f ON f.name = a.deployment_type
+          LEFT JOIN v1.orchestration_systems AS g
+                 ON g.name = a.orchestration_system
           {{WHERE}} {{ORDER_BY}} LIMIT %(limit)s OFFSET %(offset)s""")
 
     COUNT_SQL = re.sub(r'\s+', ' ', """\
@@ -171,10 +173,14 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
-          JOIN v1.configuration_systems AS d ON d.name = a.configuration_system
-          JOIN v1.data_centers AS e ON e.name = a.data_center
-          JOIN v1.deployment_types AS f ON f.name = a.deployment_type
-          JOIN v1.orchestration_systems AS g ON g.name = a.orchestration_system
+          LEFT JOIN v1.configuration_systems AS d
+                 ON d.name = a.configuration_system
+          LEFT JOIN v1.data_centers AS e
+                 ON e.name = a.data_center
+          LEFT JOIN v1.deployment_types AS f
+                 ON f.name = a.deployment_type
+          LEFT JOIN v1.orchestration_systems AS g
+                 ON g.name = a.orchestration_system
          WHERE a.id=%(id)s""")
 
     GET_LINKS_SQL = re.sub(r'\s+', ' ', """\
