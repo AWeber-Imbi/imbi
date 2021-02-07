@@ -82,14 +82,15 @@ function Project() {
           <IconBar icons={project.links} />
         </div>
         <div className="flex-1 space-x-2 text-right">
-          {project.environments.map((environment) => {
-            return (
-              <Badge color="gray" key={`environment-${environment}`}>
-                <Icon icon="fas external-link-alt" className="mr-2" />
-                {environment}
-              </Badge>
-            )
-          })}
+          {project.environments &&
+            project.environments.map((environment) => {
+              return (
+                <Badge color="gray" key={`environment-${environment}`}>
+                  <Icon icon="fas external-link-alt" className="mr-2" />
+                  {environment}
+                </Badge>
+              )
+            })}
         </div>
       </div>
       <p className="m-3 text-sm text-gray-500">{project.description}</p>
