@@ -135,6 +135,7 @@ class TestCaseWithReset(TestCase):
             '/project-types', method='POST', headers=self.headers,
             body=json.dumps({
                 'name': self.project_type_name,
+                'plural_name': '{}s'.format(self.project_type_name),
                 'slug': str(uuid.uuid4()),
                 'description': str(uuid.uuid4()),
                 'icon_class': 'fas fa-blind'

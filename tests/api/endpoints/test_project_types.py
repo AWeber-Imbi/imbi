@@ -15,6 +15,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
     def test_project_type_lifecycle(self):
         record = {
             'name': str(uuid.uuid4()),
+            'plural_name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4()),
             'description': str(uuid.uuid4()),
             'icon_class': 'fas fa-blind'
@@ -99,6 +100,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             '/project-types', method='POST', headers=self.headers,
             body=json.dumps({
                 'name': str(uuid.uuid4()),
+                'plural_name': str(uuid.uuid4()),
                 'slug': str(uuid.uuid4())
             }).encode('utf-8'))
         self.assertEqual(result.code, 400)

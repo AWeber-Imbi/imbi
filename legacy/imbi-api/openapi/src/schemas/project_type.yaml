@@ -16,6 +16,9 @@ read:
     name:
       description: The display name for a project type
       type: string
+    plural_name:
+      description: The display name for a project type when there is more than 1 item
+      type: string
     description:
       description: A description of the project type
       type: string
@@ -37,6 +40,9 @@ write:
     name:
       description: The display name for a project type
       type: string
+    plural_name:
+      description: The display name for a project type when there is more than 1 item
+      type: string
     description:
       description: A description of the project type
       type: string
@@ -49,6 +55,7 @@ write:
       type: string
   required:
     - name
+    - plural_name
     - slug
     - icon_class
   additionalProperties: false
