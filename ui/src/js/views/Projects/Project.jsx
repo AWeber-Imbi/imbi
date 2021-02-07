@@ -6,7 +6,7 @@ import { FetchContext } from '../../contexts'
 import { httpGet, setDocumentTitle } from '../../utils'
 import { Alert, Badge, Icon, IconBar, Loading, Tooltip } from '../../components'
 
-function Project({}) {
+function Project() {
   const { t } = useTranslation()
   const [errorMessage, setErrorMessage] = useState(null)
   const fetch = useContext(FetchContext)

@@ -1,6 +1,6 @@
 import PropTypes from 'prop-types'
 import React, { useContext, useEffect, useState } from 'react'
-import { useHistory } from 'react-router-dom'
+import { useHistory, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -15,11 +15,16 @@ import { httpGet, setDocumentTitle } from '../../utils'
 import { User } from '../../schema'
 
 function Projects() {
+  const query = useQuery()
   const { t } = useTranslation()
 
   const [errorMessage, setErrorMessage] = useState(null)
   const fetch = useContext(FetchContext)
-  const [filter, setFilter] = useState({})
+  const [filter, setFilter] = useState({
+    namespace: query.get('namespace'),
+    project_type: query.get('project_type')
+  })
+  const history = useHistory()
   const [initialized, setInitialized] = useState(false)
   const [lastRequest, setLastRequest] = useState(null)
   const [offset, setOffset] = useState(0)
@@ -27,7 +32,6 @@ function Projects() {
   const [rowCount, setRowCount] = useState(0)
   const [rows, setRows] = useState([])
   const [sort, setSort] = useState({ name: null })
-  const history = useHistory()
 
   function onRowClick(data) {
     history.push(`/ui/projects/${data['id']}`)
@@ -37,25 +41,19 @@ function Projects() {
     setSort({ ...sort, [column]: direction })
   }
 
+  function useQuery() {
+    return new URLSearchParams(useLocation().search);
+  }
+
   const columns = [
     {
       title: t('terms.namespace'),
-      name: 'namespace_slug',
+      name: 'namespace',
       sortCallback: onSortDirection,
       type: 'text',
       tableOptions: {
         className: 'truncate',
-        headerClassName: 'w-1/12'
-      }
-    },
-    {
-      title: t('terms.projectType'),
-      name: 'project_type',
-      sortCallback: onSortDirection,
-      type: 'text',
-      tableOptions: {
-        className: 'truncate',
-        headerClassName: 'w-2/12'
+        headerClassName: 'w-3/12'
       }
     },
     {
@@ -65,7 +63,17 @@ function Projects() {
       type: 'text',
       tableOptions: {
         className: 'truncate',
-        headerClassName: 'w-2/12'
+        headerClassName: 'w-3/12'
+      }
+    },
+    {
+      title: t('terms.projectType'),
+      name: 'project_type',
+      sortCallback: onSortDirection,
+      type: 'text',
+      tableOptions: {
+        className: 'truncate',
+        headerClassName: 'w-3/12'
       }
     },
     {
@@ -74,7 +82,7 @@ function Projects() {
       type: 'text',
       tableOptions: {
         className: 'truncate',
-        headerClassName: 'w-7/12'
+        headerClassName: 'w-3/12'
       }
     }
   ]
@@ -86,6 +94,10 @@ function Projects() {
       url.searchParams.append(`sort_${key}`, value)
     })
     url.searchParams.append('offset', offset.toString())
+    Object.entries(filter).forEach(([key, value]) => {
+      if ( value !== null)
+        url.searchParams.append(`where_${key}`, value)
+    })
     if (lastRequest === null || lastRequest.toString() !== url.toString()) {
       setLastRequest(url)
       httpGet(
