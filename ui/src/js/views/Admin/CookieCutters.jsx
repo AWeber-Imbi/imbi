@@ -14,11 +14,9 @@ export function CookieCutters() {
 
   useEffect(() => {
     if (projectTypes === null) {
-      const url = new URL(fetch.baseURL)
-      url.pathname = '/project-types'
       fetchMetadata(
-        fetch.function,
-        url,
+        fetch,
+        '/project-types',
         true,
         'name',
         'id',

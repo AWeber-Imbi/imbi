@@ -28,11 +28,9 @@ function Settings() {
   }
 
   function deleteToken(value) {
-    setShowBackdrop(true)
     const url = new URL(fetch.baseURL)
     url.pathname = `/authentication-tokens/${value}`
     httpDelete(fetch.function, url).then(({ data, success }) => {
-      setShowBackdrop(false)
       if (success === true) {
         setRefresh(true)
       } else {
