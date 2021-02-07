@@ -42,7 +42,7 @@ function Projects() {
   }
 
   function useQuery() {
-    return new URLSearchParams(useLocation().search);
+    return new URLSearchParams(useLocation().search)
   }
 
   const columns = [
@@ -95,8 +95,7 @@ function Projects() {
     })
     url.searchParams.append('offset', offset.toString())
     Object.entries(filter).forEach(([key, value]) => {
-      if ( value !== null)
-        url.searchParams.append(`where_${key}`, value)
+      if (value !== null) url.searchParams.append(`where_${key}`, value)
     })
     if (lastRequest === null || lastRequest.toString() !== url.toString()) {
       setLastRequest(url)
