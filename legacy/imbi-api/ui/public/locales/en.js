@@ -11,6 +11,7 @@ export default {
         id: 'ID',
         edit: 'Edit',
         delete: 'Delete',
+        done: 'Done',
         cancel: 'Cancel',
         close: 'Close',
         save: 'Save',
@@ -233,7 +234,21 @@ export default {
         },
         settings: {
           title: 'User Settings',
-          authenticationTokens: 'Authentication Tokens'
+          authenticationTokens: {
+            title: 'Authentication Tokens',
+            buttonText: 'Generate New Token',
+            createdAt: 'Created On',
+            expiresAt: 'Expires On',
+            lastUsedAt: 'Last Used',
+            generate: 'Generate Token',
+            generated: 'Token Generated',
+            generatedWarning:
+              '<p>Make sure to copy your new authentication token.</p><p>You won&rsquo;t be able to see it again!</p>',
+            generating: 'Generating Token',
+            description:
+              'Authentication Tokens are used to access Imbi&rsquo;s <a href="/api-docs" target="_new">API</a>.',
+            unused: 'Unused'
+          }
         }
       }
     }

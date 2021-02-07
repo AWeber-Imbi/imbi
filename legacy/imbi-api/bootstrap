@@ -94,7 +94,7 @@ logging:
   version: 1
   formatters:
     verbose:
-      format: "%(levelname) -10s %(asctime)s %(name) -20s %(funcName) -25s: %(message)s"
+      format: "%(levelname) -10s %(asctime)s %(name) -15s %(funcName) -15s: %(message)s"
   handlers:
     console:
       class: logging.StreamHandler
@@ -137,7 +137,7 @@ logging:
   version: 1
   formatters:
     verbose:
-      format: "%(levelname) -10s %(asctime)s %(name) -20s %(funcName) -25s: %(message)s"
+      format: "%(levelname) -10s %(asctime)s %(name) -15s %(funcName) -15s: %(message)s"
   handlers:
     console:
       class: logging.StreamHandler

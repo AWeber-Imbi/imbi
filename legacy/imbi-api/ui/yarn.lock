@@ -1174,7 +1174,7 @@
     "@nodelib/fs.scandir" "2.1.4"
     fastq "^1.6.0"
 
-"@sentry/browser@6.0.4", "@sentry/browser@^6.0.4":
+"@sentry/browser@6.0.4":
   version "6.0.4"
   resolved "https://registry.yarnpkg.com/@sentry/browser/-/browser-6.0.4.tgz#f31c0a9e7b22638cff9da70aa96c7934a18a2059"
   integrity sha512-DrlH53IPNZmW6XWT0Za7vGtIyKpm45An662xvXavI8LQQH0qhPU9mb7NcvecwDfs6jXEV2w5Y8rKjuu/J4QxAA==
@@ -5303,6 +5303,11 @@ lru-cache@^6.0.0:
   integrity sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==
   dependencies:
     yallist "^4.0.0"
+
+luxon@^1.25.0:
+  version "1.25.0"
+  resolved "https://registry.yarnpkg.com/luxon/-/luxon-1.25.0.tgz#d86219e90bc0102c0eb299d65b2f5e95efe1fe72"
+  integrity sha512-hEgLurSH8kQRjY6i4YLey+mcKVAWXbDNlZRmM6AgWDJ1cY3atl8Ztf5wEY7VBReFbmGnwQPz7KYJblL8B2k0jQ==
 
 lz-string@^1.4.4:
   version "1.4.4"

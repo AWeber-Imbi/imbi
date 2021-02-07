@@ -34,8 +34,11 @@ Button.defaultProps = {
 }
 
 Button.propTypes = {
-  children: PropTypes.oneOfType([PropTypes.string, PropTypes.element])
-    .isRequired,
+  children: PropTypes.oneOfType([
+    PropTypes.arrayOf(PropTypes.element),
+    PropTypes.element,
+    PropTypes.string
+  ]).isRequired,
   className: PropTypes.string,
   destination: PropTypes.string,
   disabled: PropTypes.bool,
