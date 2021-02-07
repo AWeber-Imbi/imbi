@@ -1,22 +1,22 @@
-import React, { Fragment, useEffect, useState } from 'react'
+import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CRUD, Error, Loading } from '../../components'
+import { FetchContext } from '../../contexts'
 import { fetchMetadata } from '../../metadata'
 import { jsonSchema } from '../../schema/Namespace'
 
 export function Namespaces() {
-  const { t } = useTranslation()
+  const fetch = useContext(FetchContext)
   const [errorMessage, setErrorMessage] = useState(null)
   const [groups, setGroups] = useState(null)
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (groups === null) {
-      const url = new URL(fetch.baseURL)
-      url.pathname = 'groups'
       fetchMetadata(
-        fetch.function,
-        url,
+        fetch,
+        '/groups',
         true,
         'name',
         'name',
