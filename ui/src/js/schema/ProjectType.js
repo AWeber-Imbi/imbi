@@ -11,6 +11,10 @@ export const jsonSchema = {
       type: 'string',
       minLength: 3
     },
+    plural_name: {
+      type: 'string',
+      minLength: 3
+    },
     slug: {
       type: 'string',
       minLength: 3
@@ -29,6 +33,7 @@ export const jsonSchema = {
 export const propTypes = {
   id: PropTypes.number,
   name: PropTypes.string.isRequired,
+  plural_name: PropTypes.string.isRequired,
   slug: PropTypes.string.isRequired,
   description: PropTypes.string,
   icon_class: PropTypes.string

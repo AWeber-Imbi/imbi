@@ -32,6 +32,14 @@ export function ProjectTypes() {
           }
         },
         {
+          title: t('admin.projectTypes.pluralName'),
+          name: 'plural_name',
+          type: 'text',
+          tableOptions: {
+            hide: true
+          }
+        },
+        {
           title: t('common.slug'),
           name: 'slug',
           type: 'text',

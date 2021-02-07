@@ -19,11 +19,13 @@ paths:
                 records:
                   summary: Multiple project type records
                   value:
-                    - project_type: HTTP API
+                    - name: HTTP API
+                      plural_name: HTTP APIs
                       description: RESTful HTTP 1.1 API
                       icon_class: fab fa-aws
                       slug: http-api
-                    - project_type: Postgres
+                    - name: Postgres
+                      plural_name: Postgres Databases
                       description: A PostgreSQL database
                       icon_class: imbi postgres
                       slug: postgres
@@ -110,6 +112,7 @@ components:
         created_by: test_user
         last_modified_by: ~
         name: HTTP API
+        plural_name: HTTP APIs
         description: RESTful HTTP 1.1 API
         slug: http-api
         icon_class: fab fa-aws
@@ -117,6 +120,7 @@ components:
       summary: A full project type record
       value:
         name: HTTP API
+        plural_name: HTTP APIs
         description: RESTful HTTP 1.1 API
         slug: http-api
         icon_class: fab fa-aws
