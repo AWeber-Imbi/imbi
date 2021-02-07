@@ -85,7 +85,8 @@ class CollectionRequestHandler(_RequestHandlerMixin,
 
     FILTER_CHUNKS = {
         'namespace': '(b.name = %(namespace)s OR b.slug = %(namespace)s)',
-        'project_type': '(c.name = %(namespace)s OR c.slug = %(namespace)s)'
+        'project_type': '(c.name = %(project_type)s '
+                        'OR c.slug = %(project_type)s)'
     }
 
     POST_SQL = re.sub(r'\s+', ' ', """\
@@ -102,10 +103,9 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     async def get(self, *args, **kwargs):
         kwargs['limit'] = int(self.get_query_argument('limit', '10'))
         kwargs['offset'] = int(self.get_query_argument('offset', '20'))
-
         where_chunks = []
         for kwarg in ['namespace', 'project_type', 'name']:
-            value = self.get_query_argument('where_kwarg', None)
+            value = self.get_query_argument(f'where_{kwarg}', None)
             if value is not None:
                 kwargs[kwarg] = value
                 where_chunks.append(self.FILTER_CHUNKS[kwarg])
@@ -114,7 +114,6 @@ class CollectionRequestHandler(_RequestHandlerMixin,
             where_sql = ' WHERE {}'.format(' AND '.join(where_chunks))
         sql = self.COLLECTION_SQL.replace('{{WHERE}}', where_sql)
         count_sql = self.COUNT_SQL.replace('{{WHERE}}', where_sql)
-
         order_by_chunks = []
         for (kwarg, column) in [('namespace', 'b.name'),
                                 ('project_type', 'c.name'),
@@ -123,17 +122,13 @@ class CollectionRequestHandler(_RequestHandlerMixin,
             if direction in ['asc', 'desc']:
                 order_by_chunks.append(
                     '{} {}'.format(column, direction.upper()))
-
         order_sql = 'ORDER BY a.name ASC'
         if order_by_chunks:
             order_sql = ' ORDER BY {}'.format(', '.join(order_by_chunks))
         sql = sql.replace('{{ORDER_BY}}', order_sql)
         count_sql = count_sql.replace('{{ORDER_BY}}', order_sql)
-
-        print(count_sql)
         count = await self.postgres_execute(
             count_sql, kwargs, metric_name='count-{}'.format(self.NAME))
-
         result = await self.postgres_execute(
             sql, kwargs, metric_name='get-{}'.format(self.NAME))
         self.send_response({
