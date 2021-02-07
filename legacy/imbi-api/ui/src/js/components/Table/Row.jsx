@@ -37,7 +37,8 @@ function Row({
   return (
     <tr
       className={
-        (onClick !== undefined ? 'cursor-pointer ' : '') + 'hover:bg-gray-100'
+        (onClick !== undefined ? 'cursor-pointer ' : '') +
+        'hover:bg-gray-100 hover:text-blue-700'
       }
       onClick={(event) => {
         event.preventDefault()
