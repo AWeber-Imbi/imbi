@@ -2,7 +2,7 @@ from tornado import web
 
 from imbi import constants
 from . import (authentication_tokens, configuration_systems, cookie_cutters,
-               data_centers, deployment_types, environments, groups,
+               dashboard, data_centers, deployment_types, environments, groups,
                namespaces, openapi, orchestration_systems, permissions,
                project_dependencies, project_fact_type_options,
                project_fact_types, project_link_types, project_links,
@@ -29,6 +29,7 @@ URLS = [
     web.url(r'^/deployment-types/(?P<name>[\w_\-%\+]+$)',
             deployment_types.RecordRequestHandler,
             name='deployment-type'),
+    web.url(r'^/dashboard$', dashboard.RequestHandler),
     web.url(r'^/data-centers$', data_centers.CollectionRequestHandler),
     web.url(r'^/data-centers/(?P<name>[\w_\-%\+]+)$',
             data_centers.RecordRequestHandler,

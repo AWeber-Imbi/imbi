@@ -167,6 +167,7 @@ export default {
         projectTypes: {
           collectionName: 'Project Types',
           itemName: 'Project Type',
+          pluralName: 'Pluralized Name',
           errors: {
             uniqueViolation: 'A project type with the same name already exists'
           }
@@ -178,7 +179,8 @@ export default {
         signIn: 'Sign in'
       },
       dashboard: {
-        title: 'Dashboard'
+        title: 'Dashboard',
+        projectTypes: 'Projects by Type'
       },
       operationsLog: {
         addEntry: 'Add Entry',
