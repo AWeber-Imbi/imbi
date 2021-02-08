@@ -7,7 +7,7 @@ import {
   Alert,
   ContentArea,
   Loading,
-  Pagination,
+  SyncedPaginator,
   Table
 } from '../../components'
 import { FetchContext } from '../../contexts'
@@ -28,7 +28,7 @@ function Projects() {
   const [initialized, setInitialized] = useState(false)
   const [lastRequest, setLastRequest] = useState(null)
   const [offset, setOffset] = useState(0)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(25)
   const [rowCount, setRowCount] = useState(0)
   const [rows, setRows] = useState([])
   const [sort, setSort] = useState({ name: null })
@@ -93,6 +93,7 @@ function Projects() {
     Object.entries(sort).forEach(([key, value]) => {
       url.searchParams.append(`sort_${key}`, value)
     })
+    url.searchParams.append('limit', pageSize.toString())
     url.searchParams.append('offset', offset.toString())
     Object.entries(filter).forEach(([key, value]) => {
       if (value !== null) url.searchParams.append(`where_${key}`, value)
@@ -112,7 +113,7 @@ function Projects() {
         }
       )
     }
-  }, [lastRequest, sort])
+  }, [lastRequest, offset, pageSize, sort])
 
   setDocumentTitle(t('projects.title'))
 
@@ -124,16 +125,23 @@ function Projects() {
       pageIcon="fas folder"
       pageTitle={t('projects.title')}>
       {errorMessage !== null && <Alert level="error">{errorMessage}</Alert>}
-      <Table columns={columns} data={rows} onRowClick={onRowClick} />
-      <Pagination
-        currentPage={offset + 1}
+      <SyncedPaginator.Container
         itemCount={rowCount}
         itemsPerPage={pageSize}
-        onChange={(page) => {
-          setOffset(page - 1)
-          console.log('Offset set to ', page - 1)
-        }}
-      />
+        offset={offset}
+        onChange={setOffset}
+        onPageSize={setPageSize}>
+        <SyncedPaginator.Paginator
+          positionNounSingular="projects.project"
+          positionNounPlural="projects.projects"
+          showStateDisplay={true}
+        />
+        <Table columns={columns} data={rows} onRowClick={onRowClick} />
+        <SyncedPaginator.Paginator
+          showPageSizeSelector={true}
+          showStateDisplay={true}
+        />
+      </SyncedPaginator.Container>
     </ContentArea>
   )
 }

@@ -27,8 +27,9 @@ export default {
         required: 'Required Field',
         group: 'Group',
         invalidURL: 'Value does not appear to be a URL',
-        paginationState:
-          'Showing {{startRecord}} to {{endRecord}} of {{totalRecords}} results',
+        paginatorPosition:
+          'Showing {{startRecord}} to {{endRecord}} of {{totalRecords}} {{noun}}',
+        pageSize: 'Page Size',
         previous: 'Previous',
         next: 'Next'
       },
@@ -39,7 +40,9 @@ export default {
         projectType: 'Project Type',
         dataCenter: 'Data Center',
         deploymentType: 'Deployment Type',
-        links: 'Links'
+        links: 'Links',
+        record: 'record',
+        records: 'records'
       },
       error: {
         title: 'ERROR',
@@ -222,6 +225,10 @@ export default {
       },
       projects: {
         newProject: 'New Project',
+        project: 'project',
+        projects: 'projects',
+        paginationState:
+          'Showing {{startRecord}} to {{endRecord}} of {{totalRecords}} {{noun}}',
         title: 'Projects'
       },
       user: {
