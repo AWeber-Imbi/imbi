@@ -19,7 +19,6 @@ class RequestHandler(base.AuthenticatedRequestHandler):
          GROUP BY b.name, b.plural_name, b.icon_class, b.slug
          ORDER BY count(a.*) DESC""")
 
-    @base.require_permission('admin')
     async def get(self):
         stats = await self.postgres_execute(
             self.PROJECT_COUNTS, metric_name='dashboard-project-types')
