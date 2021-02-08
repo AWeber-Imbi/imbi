@@ -18,7 +18,11 @@ function PageSizeSelector({ display }) {
               {pageSizes.map((size, index) => {
                 return (
                   <Fragment key={`page-size-${size}`}>
-                    {size === context.pageSize && <span className="font-semibold underline text-blue-700">{size}</span>}
+                    {size === context.pageSize && (
+                      <span className="font-semibold underline text-blue-700">
+                        {size}
+                      </span>
+                    )}
                     {size !== context.pageSize && (
                       <button
                         className="text-gray-700 hover:text-blue-700"
