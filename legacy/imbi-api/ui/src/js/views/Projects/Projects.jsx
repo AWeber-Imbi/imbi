@@ -145,9 +145,7 @@ function Projects() {
     </ContentArea>
   )
 }
-
 Projects.propTypes = {
   user: PropTypes.exact(User)
 }
-
 export { Projects }
