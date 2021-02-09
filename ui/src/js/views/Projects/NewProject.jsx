@@ -222,7 +222,7 @@ function NewProject() {
       })
     }
     setSavingSteps(steps)
-  }, [dependencies, links, automations])
+  }, [saveComplete, dependencies, links, automations])
 
   // Fetch metadata on load
   useEffect(() => {
