@@ -36,28 +36,14 @@ paths:
     { $ref: 'endpoints/authentication_tokens.yaml#/paths/collection' }
   /authentication-tokens/{token}:
     { $ref: 'endpoints/authentication_tokens.yaml#/paths/manage' }
-  /configuration-systems:
-    { $ref: 'endpoints/configuration_system.yaml#/paths/collection' }
-  /configuration-systems/{name}:
-    { $ref: 'endpoints/configuration_system.yaml#/paths/manage' }
   /cookie-cutters: { $ref: 'endpoints/cookie_cutter.yaml#/paths/collection' }
   /cookie-cutters/{name}: { $ref: 'endpoints/cookie_cutter.yaml#/paths/manage' }
-  /data-centers: { $ref: 'endpoints/data_center.yaml#/paths/collection' }
-  /data-centers/{name}: { $ref: 'endpoints/data_center.yaml#/paths/manage' }
-  /deployment-types:
-    { $ref: 'endpoints/deployment_type.yaml#/paths/collection' }
-  /deployment-types/{name}:
-    { $ref: 'endpoints/deployment_type.yaml#/paths/manage' }
   /environments: { $ref: 'endpoints/environment.yaml#/paths/collection' }
   /environments/{name}: { $ref: 'endpoints/environment.yaml#/paths/manage' }
   /groups: { $ref: 'endpoints/group.yaml#/paths/collection' }
   /groups/{name}: { $ref: 'endpoints/group.yaml#/paths/manage' }
   /namespaces: { $ref: 'endpoints/namespace.yaml#/paths/collection' }
   /namespaces/{id}: { $ref: 'endpoints/namespace.yaml#/paths/manage' }
-  /orchestration-systems:
-    { $ref: 'endpoints/orchestration_system.yaml#/paths/collection' }
-  /orchestration-systems/{name}:
-    { $ref: 'endpoints/orchestration_system.yaml#/paths/manage' }
   /permissions: { $ref: 'endpoints/permissions.yaml#/paths/collection' }
   /project-fact-types:
     { $ref: 'endpoints/project_fact_type.yaml#/paths/collection' }
@@ -85,14 +71,10 @@ paths:
   /status: { $ref: 'status.yaml#/paths/status' }
 
 tags:
-  - { '$ref': 'endpoints/configuration_system.yaml#/tag' }
   - { '$ref': 'endpoints/cookie_cutter.yaml#/tag' }
-  - { '$ref': 'endpoints/data_center.yaml#/tag' }
-  - { '$ref': 'endpoints/deployment_type.yaml#/tag' }
   - { '$ref': 'endpoints/environment.yaml#/tag' }
   - { '$ref': 'endpoints/group.yaml#/tag' }
   - { '$ref': 'endpoints/namespace.yaml#/tag' }
-  - { '$ref': 'endpoints/orchestration_system.yaml#/tag' }
   - { '$ref': 'endpoints/project_fact_type.yaml#/tag' }
   - { '$ref': 'endpoints/project_fact_type_option.yaml#/tag' }
   - { '$ref': 'endpoints/project_link_type.yaml#/tag' }
@@ -110,13 +92,9 @@ x-tagGroups:
       - Users
   - name: Metadata
     tags:
-      - Configuration Systems
       - Cookie Cutters
-      - Data Centers
-      - Deployment Types
       - Environments
       - Namespaces
-      - Orchestration Systems
       - Project Fact Types
       - Project Fact Type Options
       - Project Link Types

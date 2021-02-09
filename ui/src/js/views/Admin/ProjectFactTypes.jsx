@@ -59,9 +59,10 @@ export function ProjectFactTypes() {
               type: 'select',
               castTo: 'number',
               options: projectTypes,
+              description: 'Leave empty for all project types',
               tableOptions: {
                 className: 'truncate',
-                headerClassName: 'w-4/12',
+                headerClassName: 'w-3/12',
                 lookupFunction: (value) => {
                   let displayValue = null
                   projectTypes.forEach((item) => {
@@ -78,6 +79,31 @@ export function ProjectFactTypes() {
               tableOptions: {
                 className: 'truncate',
                 headerClassName: 'w-4/12'
+              }
+            },
+            {
+              title: t('common.description'),
+              name: 'description',
+              type: 'textarea',
+              tableOptions: {
+                hide: true
+              }
+            },
+            {
+              title: t('admin.projectFactTypes.dataType'),
+              name: 'data_type',
+              type: 'select',
+              options: [
+                {label: 'Boolean',  value: 'boolean'},
+                {label: 'ISO-8601 Date',  value: 'date'},
+                {label: 'Decimal',  value: 'decimal'},
+                {label: 'Integer',  value: 'integer'},
+                {label: 'String',  value: 'string'},
+                {label: 'ISO-8601 Timestamp',  value: 'timestamp'}
+              ],
+              tableOptions: {
+                className: 'truncate',
+                headerClassName: 'w-2/12'
               }
             },
             {

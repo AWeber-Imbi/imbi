@@ -19,6 +19,9 @@ read:
     value:
       description: The option value
       type: string
+    icon_class:
+      description: An icon that is specific to the fact type option
+      type: string
     score:
       description: The score value for the option
       type: number
@@ -37,6 +40,10 @@ write:
     value:
       description: The option value
       type: string
+    icon_class:
+      description: An icon that is specific to the fact type option
+      type: string
+      nullable: true
     score:
       description: The score value for the option
       type: number

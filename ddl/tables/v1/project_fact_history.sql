@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS project_fact_history (
   fact_type_id  INTEGER                   NOT NULL,
   recorded_at   TIMESTAMP WITH TIME ZONE  NOT NULL  DEFAULT CURRENT_TIMESTAMP,
   recorded_by   TEXT                      NOT NULL,
-  value         TEXT                      NOT NULL,
+  value         TEXT,
   score         INTEGER                   NOT NULL,
   weight        INTEGER                   NOT NULL,
   PRIMARY KEY (project_id, fact_type_id, recorded_at),
@@ -23,4 +23,4 @@ COMMENT ON COLUMN project_fact_history.score IS 'The score for this value, with 
 COMMENT ON COLUMN project_fact_history.weight IS 'The weight from 0.0 to 100.0 of the total score for a project. Total weight should across all columns for a project type should not exceed 100.';
 
 GRANT SELECT ON project_fact_history TO reader;
-GRANT SELECT, INSERT, UPDATE, DELETE ON project_fact_history TO admin;
+GRANT SELECT, INSERT, UPDATE, DELETE ON project_fact_history TO writer;

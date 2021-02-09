@@ -6,12 +6,13 @@ from imbi.endpoints import base
 class _RequestHandlerMixin:
 
     ID_KEY = ['id']
-    FIELDS = ['id', 'project_type_id', 'fact_type', 'weight']
+    FIELDS = ['id', 'project_type_id', 'fact_type', 'data_type', 'description',
+              'weight']
 
     GET_SQL = re.sub(r'\s+', ' ', """\
         SELECT id, created_at, created_by,
                last_modified_at, last_modified_by,
-               project_type_id, fact_type, weight
+               project_type_id, fact_type, data_type, description, weight
           FROM v1.project_fact_types
          WHERE id=%(id)s""")
 
@@ -23,15 +24,16 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     ITEM_NAME = 'project-fact-type'
 
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
-        SELECT id, project_type_id, fact_type, weight
+        SELECT id, project_type_id, fact_type, description, data_type, weight
           FROM v1.project_fact_types
          ORDER BY id""")
 
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.project_fact_types
-                    (project_type_id, fact_type, created_by, weight)
+                    (project_type_id, fact_type, created_by, data_type,
+                     description, weight)
              VALUES (%(project_type_id)s, %(fact_type)s, %(username)s,
-                     %(weight)s)
+                     %(data_type)s, %(description)s, %(weight)s)
           RETURNING id""")
 
 
@@ -45,6 +47,8 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
         UPDATE v1.project_fact_types
            SET project_type_id=%(project_type_id)s,
                fact_type=%(fact_type)s,
+               data_type=%(data_type)s,
+               description=%(description)s,
                last_modified_at=CURRENT_TIMESTAMP,
                last_modified_by=%(username)s,
                weight=%(weight)s

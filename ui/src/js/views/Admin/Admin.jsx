@@ -8,13 +8,9 @@ import { setDocumentTitle } from '../../utils'
 import { Sidebar } from '../../components'
 import { User } from '../../schema'
 
-import { ConfigurationSystems } from './ConfigurationSystems'
 import { CookieCutters } from './CookieCutters'
-import { DataCenters } from './DataCenters'
-import { DeploymentTypes } from './DeploymentTypes'
 import { Environments } from './Environments'
 import { Namespaces } from './Namespaces'
-import { OrchestrationSystems } from './OrchestrationSystems'
 import { ProjectFactTypes } from './ProjectFactTypes'
 import { ProjectLinkTypes } from './ProjectLinkTypes'
 import { ProjectTypes } from './ProjectTypes'
@@ -29,24 +25,9 @@ function Admin({ user }) {
       <Sidebar title={t('admin.title')}>
         <Sidebar.Section name={t('admin.sidebar.settings')} open={true}>
           <Sidebar.MenuItem
-            value={t('admin.configurationSystems.collectionName')}
-            to="/ui/admin/configuration-systems"
-            icon="fas tools"
-          />
-          <Sidebar.MenuItem
             value={t('admin.cookieCutters.collectionName')}
             to="/ui/admin/cookie-cutters"
             icon="fas cookie"
-          />
-          <Sidebar.MenuItem
-            value={t('admin.dataCenters.collectionName')}
-            to="/ui/admin/data-centers"
-            icon="fas building"
-          />
-          <Sidebar.MenuItem
-            value={t('admin.deploymentTypes.collectionName')}
-            to="/ui/admin/deployment-types"
-            icon="fas upload"
           />
           <Sidebar.MenuItem
             value={t('admin.environments.collectionName')}
@@ -57,11 +38,6 @@ function Admin({ user }) {
             value={t('admin.namespaces.collectionName')}
             to="/ui/admin/namespaces"
             icon="fas boxes"
-          />
-          <Sidebar.MenuItem
-            value={t('admin.orchestrationSystems.collectionName')}
-            to="/ui/admin/orchestration-systems"
-            icon="fas cogs"
           />
           <Sidebar.MenuItem
             value={t('admin.projectFactTypes.collectionName')}
@@ -93,19 +69,9 @@ function Admin({ user }) {
         </Sidebar.Section>
       </Sidebar>
       <div className="flex-1 py-2 px-4">
-        <Route
-          path="/ui/admin/configuration-systems"
-          component={ConfigurationSystems}
-        />
         <Route path="/ui/admin/cookie-cutters" component={CookieCutters} />
-        <Route path="/ui/admin/data-centers" component={DataCenters} />
-        <Route path="/ui/admin/deployment-types" component={DeploymentTypes} />
         <Route path="/ui/admin/environments" component={Environments} />
         <Route path="/ui/admin/namespaces" component={Namespaces} />
-        <Route
-          path="/ui/admin/orchestration-systems"
-          component={OrchestrationSystems}
-        />
         <Route
           path="/ui/admin/project-fact-types"
           component={ProjectFactTypes}

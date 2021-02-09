@@ -19,6 +19,20 @@ read:
     fact_type:
       description: The project fact type name
       type: string
+    description:
+      description: Provides additional context about the fact typee
+      type: string
+      nullable: true
+    data_type:
+      description: The data type for the value
+      type: string
+      enum:
+        - boolean
+        - date
+        - decimal
+        - integer
+        - string
+        - timestamp
     weight:
       description: The weight of the fact type when computing a project score
       type: number
@@ -34,9 +48,24 @@ write:
     project_type_id:
       description: The ID for the project type
       type: number
+      nullable: true
     fact_type:
       description: The project fact type name
       type: string
+    description:
+      description: Provides additional context about the fact typee
+      type: string
+      nullable: true
+    data_type:
+      description: The data type for the value
+      type: string
+      enum:
+        - boolean
+        - date
+        - decimal
+        - integer
+        - string
+        - timestamp
     weight:
       description: The weight of the fact type when computing a project score
       type: number
@@ -44,5 +73,6 @@ write:
   required:
     - project_type_id
     - fact_type
+    - data_type
     - weight
   additionalProperties: false

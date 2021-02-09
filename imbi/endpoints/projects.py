@@ -10,8 +10,7 @@ class _RequestHandlerMixin:
     ITEM_NAME = 'project'
     ID_KEY = ['id']
     FIELDS = ['id', 'namespace_id', 'project_type_id', 'name', 'slug',
-              'description', 'data_center', 'environments', 'deployment_type',
-              'configuration_system', 'orchestration_system']
+              'description', 'environments']
     TTL = 300
 
     GET_SQL = re.sub(r'\s+', ' ', """\
@@ -27,11 +26,7 @@ class _RequestHandlerMixin:
                a.name,
                a.slug,
                a.description,
-               a.data_center,
-               a.environments,
-               a.configuration_system,
-               a.deployment_type,
-               a.orchestration_system
+               a.environments
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
@@ -58,24 +53,10 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                a.name,
                a.slug,
                a.description,
-               a.configuration_system,
-               d.icon_class AS configuration_system_icon,
-               a.data_center,
-               e.icon_class AS data_center_icon,
-               a.deployment_type,
-               f.icon_class AS deployment_type_icon,
-               a.environments,
-               a.orchestration_system,
-               g.icon_class AS orchestration_system_icon
+               a.environments
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
-          LEFT JOIN v1.configuration_systems AS d
-                 ON d.name = a.configuration_system
-          LEFT JOIN v1.data_centers AS e ON e.name = a.data_center
-          LEFT JOIN v1.deployment_types AS f ON f.name = a.deployment_type
-          LEFT JOIN v1.orchestration_systems AS g
-                 ON g.name = a.orchestration_system
           {{WHERE}} {{ORDER_BY}} LIMIT %(limit)s OFFSET %(offset)s""")
 
     COUNT_SQL = re.sub(r'\s+', ' ', """\
@@ -94,12 +75,9 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.projects
                     (namespace_id, project_type_id, created_by,  "name", slug,
-                     description, data_center, environments, deployment_type,
-                     configuration_system, orchestration_system)
+                     description, environments)
              VALUES (%(namespace_id)s, %(project_type_id)s, %(username)s,
-                     %(name)s, %(slug)s, %(description)s, %(data_center)s,
-                     %(environments)s, %(deployment_type)s,
-                     %(configuration_system)s, %(orchestration_system)s)
+                     %(name)s, %(slug)s, %(description)s, %(environments)s)
           RETURNING id""")
 
     async def get(self, *args, **kwargs):
@@ -161,26 +139,10 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                a.name,
                a.slug,
                a.description,
-               a.configuration_system,
-               d.icon_class AS configuration_system_icon,
-               a.data_center,
-               e.icon_class AS data_center_icon,
-               a.deployment_type,
-               f.icon_class AS deployment_type_icon,
-               a.environments,
-               a.orchestration_system,
-               g.icon_class AS orchestration_system_icon
+               a.environments
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
-          LEFT JOIN v1.configuration_systems AS d
-                 ON d.name = a.configuration_system
-          LEFT JOIN v1.data_centers AS e
-                 ON e.name = a.data_center
-          LEFT JOIN v1.deployment_types AS f
-                 ON f.name = a.deployment_type
-          LEFT JOIN v1.orchestration_systems AS g
-                 ON g.name = a.orchestration_system
          WHERE a.id=%(id)s""")
 
     GET_LINKS_SQL = re.sub(r'\s+', ' ', """\
@@ -201,10 +163,6 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                "name"=%(name)s,
                slug=%(slug)s,
                description=%(description)s,
-               data_center=%(data_center)s,
-               configuration_system=%(configuration_system)s,
-               deployment_type=%(deployment_type)s,
-               orchestration_system=%(orchestration_system)s,
                environments=%(environments)s
          WHERE id=%(id)s""")
 

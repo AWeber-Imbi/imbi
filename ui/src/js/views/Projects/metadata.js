@@ -2,13 +2,9 @@ import { fetchMetadata as _fetchMetadata } from '../../metadata'
 
 export function fetchMetadata(fetch, onSuccess, onError) {
   const data = {
-    configurationSystems: null,
     cookieCutters: null,
-    dataCenters: null,
-    deploymentTypes: null,
     environments: null,
     namespaces: null,
-    orchestrationSystems: null,
     projectLinkTypes: null,
     projectTypes: null,
     ready: false
@@ -30,48 +26,12 @@ export function fetchMetadata(fetch, onSuccess, onError) {
 
   _fetchMetadata(
     fetch,
-    '/configuration-systems',
-    true,
-    'name',
-    'name',
-    (data) => {
-      onData('configurationSystems', data)
-    },
-    onErr
-  )
-
-  _fetchMetadata(
-    fetch,
     '/cookie-cutters',
     false,
     null,
     null,
     (data) => {
       onData('cookieCutters', data)
-    },
-    onErr
-  )
-
-  _fetchMetadata(
-    fetch,
-    '/data-centers',
-    true,
-    'name',
-    'name',
-    (data) => {
-      onData('dataCenters', data)
-    },
-    onErr
-  )
-
-  _fetchMetadata(
-    fetch,
-    '/deployment-types',
-    true,
-    'name',
-    'name',
-    (data) => {
-      onData('deploymentTypes', data)
     },
     onErr
   )
@@ -96,18 +56,6 @@ export function fetchMetadata(fetch, onSuccess, onError) {
     'id',
     (data) => {
       onData('namespaces', data)
-    },
-    onErr
-  )
-
-  _fetchMetadata(
-    fetch,
-    '/orchestration-systems',
-    true,
-    'name',
-    'name',
-    (data) => {
-      onData('orchestrationSystems', data)
     },
     onErr
   )
