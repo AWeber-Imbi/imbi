@@ -203,191 +203,6 @@ paths:
           schema:
             type: string
             format: uuid
-  /configuration-systems:
-    get:
-      description: Retrieve the collection of configuration systems
-      summary: Get Configuration Systems
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple configuration system records
-                  value:
-                    - name: Ansible
-                      description: Ansible is powerful IT automation that you can learn quickly
-                      icon_class: fas fa-microscope
-                    - name: Consul
-                      description: Feature rich key/value store to easily configure projects
-                      icon_class: fas fa-blind
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple configuration system records
-                  value:
-                    - name: Ansible
-                      description: Ansible is powerful IT automation that you can learn quickly
-                      icon_class: fas fa-microscope
-                    - name: Consul
-                      description: Feature rich key/value store to easily configure projects
-                      icon_class: fas fa-blind
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-    post:
-      summary: Create Record
-      description: Create a new configuration system record
-      requestBody:
-        description: The configuration system record to create
-        content:
-          application/json:
-            schema:
-              title: Configuration System
-              description: Configuration Management or Storage System
-              type: object
-              properties:
-                name:
-                  description: The display name for a configuration system
-                  type: string
-                description:
-                  description: A description of the configuration system
-                  type: string
-                  nullable: true
-                icon_class:
-                  description: Font Awesome UI icon class
-                  type: string
-              required:
-                - name
-                - icon_class
-              additionalProperties: false
-            examples:
-              record:
-                summary: A full configuration system record
-                value:
-                  name: Consul
-                  description: Feature rich key/value store to easily configure projects
-                  icon_class: fas fa-blind
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
-            examples:
-              record:
-                summary: A full configuration system record
-                value:
-                  name: Consul
-                  description: Feature rich key/value store to easily configure projects
-                  icon_class: fas fa-blind
-      tags:
-        - Configuration Systems
-      responses:
-        '200':
-          description: 'The request to create, update, or retrieve the configuration system was successful'
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
-            Last-Modified:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
-            Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
-          content:
-            application/json:
-              schema:
-                $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/examples/record'
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1configuration-systems/post/requestBody/content/application~1json/examples/record'
-        '400':
-          $ref: '#/paths/~1groups/post/responses/400'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '409':
-          $ref: '#/paths/~1groups/post/responses/409'
-  '/configuration-systems/{name}':
-    get:
-      summary: Get Record
-      description: Retrieve a configuration system record
-      tags:
-        - Configuration Systems
-      responses:
-        '200':
-          $ref: '#/paths/~1configuration-systems/post/responses/200'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-    patch:
-      summary: Update Record
-      description: 'Update a configuration system, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
-      tags:
-        - Configuration Systems
-      requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-      responses:
-        '200':
-          $ref: '#/paths/~1configuration-systems/post/responses/200'
-        '304':
-          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
-        '400':
-          $ref: '#/paths/~1groups/post/responses/400'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-        '409':
-          $ref: '#/paths/~1groups/post/responses/409'
-    delete:
-      summary: Delete Record
-      description: Remove a configuration system record
-      tags:
-        - Configuration Systems
-      responses:
-        '204':
-          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-    parameters:
-      - name: name
-        in: path
-        description: Configuration System Name
-        required: true
-        schema:
-          type: string
-          pattern: '[\w_]+'
   /cookie-cutters:
     get:
       description: Retrieve the collection of cookie cutters
@@ -604,379 +419,6 @@ paths:
       - name: name
         in: path
         description: Cookie Cutter Name
-        required: true
-        schema:
-          type: string
-          pattern: '[\w_]+'
-  /data-centers:
-    get:
-      description: Retrieve the collection of data centers
-      summary: Get Data Centers
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple data center records
-                  value:
-                    - name: us-east-1
-                      description: US East (N. Virginia)
-                      icon_class: fab fa-aws
-                    - name: us-east-2
-                      description: US East (Ohio)
-                      icon_class: fab fa-aws
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple data center records
-                  value:
-                    - name: us-east-1
-                      description: US East (N. Virginia)
-                      icon_class: fab fa-aws
-                    - name: us-east-2
-                      description: US East (Ohio)
-                      icon_class: fab fa-aws
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-    post:
-      summary: Create Record
-      description: Create a new data center record
-      requestBody:
-        description: The data center record to create
-        content:
-          application/json:
-            schema:
-              title: Data Center
-              description: |-
-                A large group of networked computer servers typically used by
-                organizations for the remote storage, processing, or distribution of
-                large amounts of data.
-              type: object
-              properties:
-                name:
-                  description: The display name for a data center
-                  type: string
-                description:
-                  description: A description of the data center
-                  type: string
-                  nullable: true
-                icon_class:
-                  description: Font Awesome UI icon class
-                  type: string
-              required:
-                - name
-                - icon_class
-              additionalProperties: false
-            examples:
-              record:
-                summary: A full data center record
-                value:
-                  name: us-east-1
-                  description: US East (N. Virginia)
-                  icon_class: fab fa-aws
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
-            examples:
-              record:
-                summary: A full data center record
-                value:
-                  name: us-east-1
-                  description: US East (N. Virginia)
-                  icon_class: fab fa-aws
-      tags:
-        - Data Centers
-      responses:
-        '200':
-          description: 'The request to create, update, or retrieve the data center was successful'
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
-            Last-Modified:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
-            Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
-          content:
-            application/json:
-              schema:
-                $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/examples/record'
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1data-centers/post/requestBody/content/application~1json/examples/record'
-        '400':
-          $ref: '#/paths/~1groups/post/responses/400'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '409':
-          $ref: '#/paths/~1groups/post/responses/409'
-  '/data-centers/{name}':
-    get:
-      summary: Get Record
-      description: Retrieve a data center record
-      tags:
-        - Data Centers
-      responses:
-        '200':
-          $ref: '#/paths/~1data-centers/post/responses/200'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-    patch:
-      summary: Update Record
-      description: 'Update a data center, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
-      tags:
-        - Data Centers
-      requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-      responses:
-        '200':
-          $ref: '#/paths/~1data-centers/post/responses/200'
-        '304':
-          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
-        '400':
-          $ref: '#/paths/~1groups/post/responses/400'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-        '409':
-          $ref: '#/paths/~1groups/post/responses/409'
-    delete:
-      summary: Delete Record
-      description: Remove a data center record
-      tags:
-        - Data Centers
-      responses:
-        '204':
-          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-    parameters:
-      - name: name
-        in: path
-        description: Data Center Name
-        required: true
-        schema:
-          type: string
-          pattern: '[\w_]+'
-  /deployment-types:
-    get:
-      description: Retrieve the collection of deployment types
-      summary: Get Deployment Types
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple deployment type records
-                  value:
-                    - name: Helm
-                      description: The package manager for Kubernetes
-                      icon_class: icon helm
-                    - name: Artifcatory
-                      description: Package artifact uploaded to artifactory
-                      icon_class: fab fa-aws
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple deployment type records
-                  value:
-                    - name: Helm
-                      description: The package manager for Kubernetes
-                      icon_class: icon helm
-                    - name: Artifcatory
-                      description: Package artifact uploaded to artifactory
-                      icon_class: fab fa-aws
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-    post:
-      summary: Create Record
-      description: Create a new deployment type record
-      requestBody:
-        description: The deployment type record to create
-        content:
-          application/json:
-            schema:
-              title: Deployment Type
-              description: Used to describe the types of project deployment systems
-              type: object
-              properties:
-                name:
-                  description: The display name for a deployment type
-                  type: string
-                description:
-                  description: A description of the deployment type
-                  type: string
-                  nullable: true
-                icon_class:
-                  description: Font Awesome UI icon class
-                  type: string
-              required:
-                - name
-                - icon_class
-              additionalProperties: false
-            examples:
-              record:
-                summary: A full deployment type record
-                value:
-                  name: gitlab-ci
-                  description: Helm
-                  icon_class: fab fa-aws
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
-            examples:
-              record:
-                summary: A full deployment type record
-                value:
-                  name: gitlab-ci
-                  description: Helm
-                  icon_class: fab fa-aws
-      tags:
-        - Deployment Types
-      responses:
-        '200':
-          description: 'The request to create, update, or retrieve the deployment type was successful'
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
-            Last-Modified:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
-            Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
-          content:
-            application/json:
-              schema:
-                $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/examples/record'
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1deployment-types/post/requestBody/content/application~1json/examples/record'
-        '400':
-          $ref: '#/paths/~1groups/post/responses/400'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '409':
-          $ref: '#/paths/~1groups/post/responses/409'
-  '/deployment-types/{name}':
-    get:
-      summary: Get Record
-      description: Retrieve a deployment type record
-      tags:
-        - Deployment Types
-      responses:
-        '200':
-          $ref: '#/paths/~1deployment-types/post/responses/200'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-    patch:
-      summary: Update Record
-      description: 'Update a deployment type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
-      tags:
-        - Deployment Types
-      requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-      responses:
-        '200':
-          $ref: '#/paths/~1deployment-types/post/responses/200'
-        '304':
-          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
-        '400':
-          $ref: '#/paths/~1groups/post/responses/400'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-        '409':
-          $ref: '#/paths/~1groups/post/responses/409'
-    delete:
-      summary: Delete Record
-      description: Remove a deployment type record
-      tags:
-        - Deployment Types
-      responses:
-        '204':
-          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-    parameters:
-      - name: name
-        in: path
-        description: Deployment Type Name
         required: true
         schema:
           type: string
@@ -1906,193 +1348,6 @@ paths:
         required: true
         schema:
           type: number
-  /orchestration-systems:
-    get:
-      description: Retrieve the collection of orchestration systems
-      summary: Get Orchestration Systems
-      tags:
-        - Settings
-      responses:
-        '200':
-          description: Success
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple orchestration system records
-                  value:
-                    - orchestration_system: Kubernetes
-                      description: Production-Grade Container Orchestration
-                      icon_class: fas fa-blind
-                    - orchestration_system: Nomad
-                      description: HashiCorp Nomad
-                      icon_class: fas fa-blind
-            application/msgpack:
-              schema:
-                type: array
-                items:
-                  $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
-              examples:
-                records:
-                  summary: Multiple orchestration system records
-                  value:
-                    - orchestration_system: Kubernetes
-                      description: Production-Grade Container Orchestration
-                      icon_class: fas fa-blind
-                    - orchestration_system: Nomad
-                      description: HashiCorp Nomad
-                      icon_class: fas fa-blind
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-    post:
-      summary: Create Record
-      description: Create a new orchestration system record
-      requestBody:
-        description: The orchestration system record to create
-        content:
-          application/json:
-            schema:
-              title: Orchestration System
-              description: |-
-                Orchestration systems provide automated configuration, coordination and
-                management of complex computing networks, systems and services.
-              type: object
-              properties:
-                name:
-                  description: The display name for a orchestration system
-                  type: string
-                description:
-                  description: A description of the orchestration system
-                  type: string
-                  nullable: true
-                icon_class:
-                  description: Font Awesome UI icon class
-                  type: string
-              required:
-                - name
-                - icon_class
-              additionalProperties: false
-            examples:
-              record:
-                summary: A full orchestration system record
-                value:
-                  name: Kubernetes
-                  description: Production-Grade Container Orchestration
-                  icon_class: fas fa-blind
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
-            examples:
-              record:
-                summary: A full orchestration system record
-                value:
-                  name: Kubernetes
-                  description: Production-Grade Container Orchestration
-                  icon_class: fas fa-blind
-      tags:
-        - Orchestration Systems
-      responses:
-        '200':
-          description: 'The request to create, update, or retrieve the orchestration system was successful'
-          headers:
-            Cache-Control:
-              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
-            Last-Modified:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
-            Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
-          content:
-            application/json:
-              schema:
-                $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/examples/record'
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1orchestration-systems/post/requestBody/content/application~1json/examples/record'
-        '400':
-          $ref: '#/paths/~1groups/post/responses/400'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '409':
-          $ref: '#/paths/~1groups/post/responses/409'
-  '/orchestration-systems/{name}':
-    get:
-      summary: Get Record
-      description: Retrieve an orchestration system record
-      tags:
-        - Orchestration Systems
-      responses:
-        '200':
-          $ref: '#/paths/~1orchestration-systems/post/responses/200'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-    patch:
-      summary: Update Record
-      description: 'Update an orchestration system, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
-      tags:
-        - Orchestration Systems
-      requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-      responses:
-        '200':
-          $ref: '#/paths/~1orchestration-systems/post/responses/200'
-        '304':
-          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
-        '400':
-          $ref: '#/paths/~1groups/post/responses/400'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-        '409':
-          $ref: '#/paths/~1groups/post/responses/409'
-    delete:
-      summary: Delete Record
-      description: Remove an orchestration system record
-      tags:
-        - Orchestration Systems
-      responses:
-        '204':
-          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
-        '401':
-          $ref: '#/paths/~1groups/get/responses/401'
-        '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
-    parameters:
-      - name: name
-        in: path
-        description: Orchestration System Name
-        required: true
-        schema:
-          type: string
-          pattern: '[\w_]+'
   /permissions:
     get:
       description: Retrieve the collection of available permissions
@@ -2168,6 +1423,20 @@ paths:
                       fact_type:
                         description: The project fact type name
                         type: string
+                      description:
+                        description: Provides additional context about the fact typee
+                        type: string
+                        nullable: true
+                      data_type:
+                        description: The data type for the value
+                        type: string
+                        enum:
+                          - boolean
+                          - date
+                          - decimal
+                          - integer
+                          - string
+                          - timestamp
                       weight:
                         description: The weight of the fact type when computing a project score
                         type: number
@@ -2182,9 +1451,24 @@ paths:
                       project_type_id:
                         description: The ID for the project type
                         type: number
+                        nullable: true
                       fact_type:
                         description: The project fact type name
                         type: string
+                      description:
+                        description: Provides additional context about the fact typee
+                        type: string
+                        nullable: true
+                      data_type:
+                        description: The data type for the value
+                        type: string
+                        enum:
+                          - boolean
+                          - date
+                          - decimal
+                          - integer
+                          - string
+                          - timestamp
                       weight:
                         description: The weight of the fact type when computing a project score
                         type: number
@@ -2192,6 +1476,7 @@ paths:
                     required:
                       - project_type_id
                       - fact_type
+                      - data_type
                       - weight
                     additionalProperties: false
               examples:
@@ -2241,6 +1526,20 @@ paths:
                       fact_type:
                         description: The project fact type name
                         type: string
+                      description:
+                        description: Provides additional context about the fact typee
+                        type: string
+                        nullable: true
+                      data_type:
+                        description: The data type for the value
+                        type: string
+                        enum:
+                          - boolean
+                          - date
+                          - decimal
+                          - integer
+                          - string
+                          - timestamp
                       weight:
                         description: The weight of the fact type when computing a project score
                         type: number
@@ -2255,9 +1554,24 @@ paths:
                       project_type_id:
                         description: The ID for the project type
                         type: number
+                        nullable: true
                       fact_type:
                         description: The project fact type name
                         type: string
+                      description:
+                        description: Provides additional context about the fact typee
+                        type: string
+                        nullable: true
+                      data_type:
+                        description: The data type for the value
+                        type: string
+                        enum:
+                          - boolean
+                          - date
+                          - decimal
+                          - integer
+                          - string
+                          - timestamp
                       weight:
                         description: The weight of the fact type when computing a project score
                         type: number
@@ -2265,6 +1579,7 @@ paths:
                     required:
                       - project_type_id
                       - fact_type
+                      - data_type
                       - weight
                     additionalProperties: false
               examples:
@@ -2465,6 +1780,9 @@ paths:
                       value:
                         description: The option value
                         type: string
+                      icon_class:
+                        description: An icon that is specific to the fact type option
+                        type: string
                       score:
                         description: The score value for the option
                         type: number
@@ -2482,6 +1800,10 @@ paths:
                       value:
                         description: The option value
                         type: string
+                      icon_class:
+                        description: An icon that is specific to the fact type option
+                        type: string
+                        nullable: true
                       score:
                         description: The score value for the option
                         type: number
@@ -2540,6 +1862,9 @@ paths:
                       value:
                         description: The option value
                         type: string
+                      icon_class:
+                        description: An icon that is specific to the fact type option
+                        type: string
                       score:
                         description: The score value for the option
                         type: number
@@ -2557,6 +1882,10 @@ paths:
                       value:
                         description: The option value
                         type: string
+                      icon_class:
+                        description: An icon that is specific to the fact type option
+                        type: string
+                        nullable: true
                       score:
                         description: The score value for the option
                         type: number
@@ -3321,6 +2650,7 @@ paths:
                       type: number
                     namespace:
                       description: The namespace name
+                      type: string
                     project_type_id:
                       description: The project type ID
                       type: number
@@ -3342,23 +2672,6 @@ paths:
                       type: array
                       items:
                         type: string
-                      minLength: 1
-                      nullable: true
-                    data_center:
-                      description: The data center the project runs in
-                      type: string
-                      nullable: true
-                    configuration_system:
-                      description: 'The system used to configure the project (Ansible, Consul, etc)'
-                      type: string
-                      nullable: true
-                    deployment_type:
-                      description: 'How the project is deployed (Jenkins, GitLab-CI, etc)'
-                      type: string
-                      nullable: true
-                    orchestration_system:
-                      description: 'TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)'
-                      type: string
                       nullable: true
                   additionalProperties: false
               examples:
@@ -3405,6 +2718,7 @@ paths:
                       type: number
                     namespace:
                       description: The namespace name
+                      type: string
                     project_type_id:
                       description: The project type ID
                       type: number
@@ -3426,23 +2740,6 @@ paths:
                       type: array
                       items:
                         type: string
-                      minLength: 1
-                      nullable: true
-                    data_center:
-                      description: The data center the project runs in
-                      type: string
-                      nullable: true
-                    configuration_system:
-                      description: 'The system used to configure the project (Ansible, Consul, etc)'
-                      type: string
-                      nullable: true
-                    deployment_type:
-                      description: 'How the project is deployed (Jenkins, GitLab-CI, etc)'
-                      type: string
-                      nullable: true
-                    orchestration_system:
-                      description: 'TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)'
-                      type: string
                       nullable: true
                   additionalProperties: false
               examples:
@@ -3503,22 +2800,6 @@ paths:
                   items:
                     type: string
                   minLength: 1
-                  nullable: true
-                data_center:
-                  description: The data center the project runs in
-                  type: string
-                  nullable: true
-                configuration_system:
-                  description: 'The system used to configure the project (Ansible, Consul, etc)'
-                  type: string
-                  nullable: true
-                deployment_type:
-                  description: 'How the project is deployed (Jenkins, GitLab-CI, etc)'
-                  type: string
-                  nullable: true
-                orchestration_system:
-                  description: 'TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)'
-                  type: string
                   nullable: true
               required:
                 - namespace_id
@@ -4312,19 +3593,8 @@ paths:
               example:
                 $ref: '#/paths/~1status/get/responses/503/content/application~1json/example'
 tags:
-  - name: Configuration Systems
-    description: Endpoints used for the management of configuration systems
   - name: Cookie Cutters
     description: Endpoints used for the management of project creation cookie cutters
-  - name: Data Centers
-    description: |-
-      Endpoints used for the management of data centers
-
-      A data center is a large group of networked computer servers typically used
-      by organizations for the remote storage, processing, or distribution of
-      large amounts of data.
-  - name: Deployment Types
-    description: Endpoints used for the management different types of deployment systems.
   - name: Environments
     description: Endpoints used for the management different target environments for projects to run in.
   - name: Groups
@@ -4332,12 +3602,6 @@ tags:
       Endpoints used to manage the groups that Imbi users are able to be members of.
   - name: Namespaces
     description: Endpoints used for the management of organizational namespaces
-  - name: Orchestration Systems
-    description: |-
-      Endpoints for managing the systems used for orchestration systems.
-
-      Orchestration systems provide automated configuration, coordination and
-      management of complex computing networks, systems and services.
   - name: Project Fact Types
     description: |-
       Management of records that define types facts that may be collected for a project.
@@ -4370,13 +3634,9 @@ x-tagGroups:
       - Users
   - name: Metadata
     tags:
-      - Configuration Systems
       - Cookie Cutters
-      - Data Centers
-      - Deployment Types
       - Environments
       - Namespaces
-      - Orchestration Systems
       - Project Fact Types
       - Project Fact Type Options
       - Project Link Types

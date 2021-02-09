@@ -12,6 +12,7 @@ schemata/v1.sql
 
 -- Types
 types/v1/cookie_cutter_type.sql
+types/v1/data_type.sql
 types/v1/entity_type.sql
 
 -- Functions
@@ -20,12 +21,8 @@ functions/v1/insert_project_fact_history.sql
 functions/v1/maintain_group_membership_from_ldap_groups.sql
 
 -- Tables
-tables/v1/configuration_systems.sql
-tables/v1/data_centers.sql
-tables/v1/deployment_types.sql
 tables/v1/environments.sql
 tables/v1/namespaces.sql
-tables/v1/orchestration_systems.sql
 tables/v1/project_link_types.sql
 tables/v1/project_types.sql
 tables/v1/project_fact_types.sql

@@ -87,14 +87,6 @@ export default {
           settings: 'Settings',
           userManagement: 'User Management'
         },
-        configurationSystems: {
-          collectionName: 'Configuration Systems',
-          itemName: 'Configuration System',
-          errors: {
-            uniqueViolation:
-              'A configuration system with the same name already exists'
-          }
-        },
         cookieCutters: {
           collectionName: 'Cookie Cutters',
           itemName: 'Cookie Cutter',
@@ -103,21 +95,6 @@ export default {
           urlDescription: 'The Git URL to the cookie cutter',
           errors: {
             uniqueViolation: 'A cookie cutter with the same name already exists'
-          }
-        },
-        dataCenters: {
-          collectionName: 'Data Centers',
-          itemName: 'Data Center',
-          errors: {
-            uniqueViolation: 'A data center with the same name already exists'
-          }
-        },
-        deploymentTypes: {
-          collectionName: 'Deployment Types',
-          itemName: 'Deployment Type',
-          errors: {
-            uniqueViolation:
-              'A deployment type with the same name already exists'
           }
         },
         environments: {
@@ -137,19 +114,12 @@ export default {
             uniqueViolation: 'A namespace with the same name already exists'
           }
         },
-        orchestrationSystems: {
-          collectionName: 'Orchestration Systems',
-          itemName: 'Orchestration System',
-          errors: {
-            uniqueViolation:
-              'An orchestration system with the same name already exists'
-          }
-        },
         projectFactTypes: {
           collectionName: 'Project Fact Types',
           itemName: 'Project Fact Type',
           projectType: 'Project Type',
           factType: 'Fact Type',
+          dataType: 'Data Type',
           weight: 'Weight',
           weightDescription:
             'The weight from 0 to 100 against the total score for a project. Total weight should across all types for a project type should not exceed 100.',
@@ -205,11 +175,7 @@ export default {
         namespace: 'Namespace',
         selectNamespace: 'Select a Namespace',
         projectType: 'Project Type',
-        dataCenter: 'Data Center',
         environments: 'Environments',
-        configurationSystem: 'Configuration System',
-        deploymentType: 'Deployment Type',
-        orchestrationSystem: 'Orchestration System',
         descriptionDescription:
           'Provide a high-level purpose and context for the project',
         createGitLabRepository: 'Create GitLab Repository',

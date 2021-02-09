@@ -20,6 +20,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         record = {
             'project_type_id': self.project_type,
             'fact_type': str(uuid.uuid4()),
+            'description': 'Test description',
+            'data_type': 'string',
             'weight': 100
         }
 
@@ -119,3 +121,15 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             '/project-fact-types/99999', method='POST',
             allow_nonstandard_methods=True, headers=self.headers)
         self.assertEqual(result.code, 405)
+
+    def test_empty_project_type_id(self):
+        result = self.fetch(
+            '/project-fact-types', method='POST',
+            body=json.dumps({
+                'project_type_id': None,
+                'fact_type': str(uuid.uuid4()),
+                'description': 'Test description',
+                'data_type': 'string',
+                'weight': 100
+            }).encode('utf-8'), headers=self.headers)
+        self.assertEqual(result.code, 200)

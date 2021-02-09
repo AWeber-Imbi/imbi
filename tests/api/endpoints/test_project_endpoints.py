@@ -11,11 +11,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
     TRUNCATE_TABLES = [
-        'v1.configuration_systems',
-        'v1.data_centers',
-        'v1.deployment_types',
         'v1.environments',
-        'v1.orchestration_systems',
         'v1.project_link_types',
         'v1.project_types',
         'v1.namespaces'
@@ -23,48 +19,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def setUp(self):
         super().setUp()
-        self.configuration_system = self.create_configuration_system()
-        self.data_center = self.create_data_center()
-        self.deployment_type = self.create_deployment_type()
         self.environments = self.create_environments()
         self.namespace_name = str(uuid.uuid4())
         self.namespace = self.create_namespace()
-        self.orchestration_system = self.create_orchestration_system()
         self.project_link_type = self.create_project_link_type()
         self.project_type = self.create_project_type()
-
-    def create_configuration_system(self):
-        result = self.fetch(
-            '/configuration-systems', method='POST', headers=self.headers,
-            body=json.dumps({
-                'name': str(uuid.uuid4()),
-                'description': str(uuid.uuid4()),
-                'icon_class': 'fas fa-blind'
-            }).encode('utf-8'))
-        self.assertEqual(result.code, 200)
-        return json.loads(result.body.decode('utf-8'))['name']
-
-    def create_data_center(self):
-        result = self.fetch(
-            '/data-centers', method='POST', headers=self.headers,
-            body=json.dumps({
-                'name': str(uuid.uuid4()),
-                'description': str(uuid.uuid4()),
-                'icon_class': 'fas fa-blind'
-            }).encode('utf-8'))
-        self.assertEqual(result.code, 200)
-        return json.loads(result.body.decode('utf-8'))['name']
-
-    def create_deployment_type(self):
-        result = self.fetch(
-            '/deployment-types', method='POST', headers=self.headers,
-            body=json.dumps({
-                'name': str(uuid.uuid4()),
-                'description': str(uuid.uuid4()),
-                'icon_class': 'fas fa-blind'
-            }).encode('utf-8'))
-        self.assertEqual(result.code, 200)
-        return json.loads(result.body.decode('utf-8'))['name']
 
     def create_environments(self):
         environments = []
@@ -80,17 +39,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             environments.append(
                 json.loads(result.body.decode('utf-8'))['name'])
         return environments
-
-    def create_orchestration_system(self):
-        result = self.fetch(
-            '/orchestration-systems', method='POST', headers=self.headers,
-            body=json.dumps({
-                'name': str(uuid.uuid4()),
-                'description': str(uuid.uuid4()),
-                'icon_class': 'fas fa-blind'
-            }).encode('utf-8'))
-        self.assertEqual(result.code, 200)
-        return json.loads(result.body.decode('utf-8'))['name']
 
     def create_project_link_type(self):
         result = self.fetch(
@@ -121,10 +69,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'description': str(uuid.uuid4()),
-            'data_center': self.data_center,
-            'configuration_system': self.configuration_system,
-            'deployment_type': self.deployment_type,
-            'orchestration_system': self.orchestration_system,
             'environments': self.environments
         }
 
@@ -201,10 +145,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type_id': self.project_type,
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
-            'data_center': self.data_center,
-            'configuration_system': self.configuration_system,
-            'deployment_type': self.deployment_type,
-            'orchestration_system': self.orchestration_system,
             'environments': self.environments
         }
 
@@ -236,10 +176,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type_id': self.project_type,
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
-            'data_center': self.data_center,
-            'configuration_system': self.configuration_system,
-            'deployment_type': self.deployment_type,
-            'orchestration_system': self.orchestration_system,
             'environments': self.environments
         }
         result = self.fetch(
@@ -253,10 +189,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type_id': self.project_type,
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
-            'data_center': self.data_center,
-            'configuration_system': self.configuration_system,
-            'deployment_type': self.deployment_type,
-            'orchestration_system': self.orchestration_system,
             'environments': self.environments
         }
         result = self.fetch(
@@ -317,10 +249,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type_id': self.project_type,
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
-            'data_center': self.data_center,
-            'configuration_system': self.configuration_system,
-            'deployment_type': self.deployment_type,
-            'orchestration_system': self.orchestration_system,
             'environments': self.environments
         }
 

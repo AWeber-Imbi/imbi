@@ -1,39 +1,25 @@
 from tornado import web
 
 from imbi import constants
-from . import (authentication_tokens, configuration_systems, cookie_cutters,
-               dashboard, data_centers, deployment_types, environments, groups,
-               namespaces, openapi, orchestration_systems, permissions,
-               project_dependencies, project_fact_type_options,
-               project_fact_types, project_link_types, project_links,
-               project_types, projects, status, ui)
+from . import (authentication_tokens, cookie_cutters, dashboard, environments,
+               groups, namespaces, openapi, permissions, project_dependencies,
+               project_fact_type_options, project_fact_types,
+               project_link_types, project_links, project_types, projects,
+               status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
     web.url(r'^/api-docs/$', openapi.RequestHandler),
     web.url(r'^/api-docs/(openapi.yaml)$', openapi.RequestHandler),
     web.url(r'^/authentication-tokens$', authentication_tokens.RequestHandler),
-    web.url(r'^/authentication-tokens/(?P<token>{})$'.format(
-                constants.UUID_PATTERN),
-            authentication_tokens.RequestHandler),
-    web.url(r'^/configuration-systems$',
-            configuration_systems.CollectionRequestHandler),
-    web.url(r'^/configuration-systems/(?P<name>[\w_\-%\+]+)$',
-            configuration_systems.RecordRequestHandler,
-            name='configuration-system'),
+    web.url(
+        r'^/authentication-tokens/(?P<token>{})$'.format(
+            constants.UUID_PATTERN), authentication_tokens.RequestHandler),
     web.url(r'^/cookie-cutters$', cookie_cutters.CollectionRequestHandler),
     web.url(r'^/cookie-cutters/(?P<name>[\w_\-%\+]+)$',
             cookie_cutters.RecordRequestHandler,
             name='cookie-cutter'),
-    web.url(r'^/deployment-types$', deployment_types.CollectionRequestHandler),
-    web.url(r'^/deployment-types/(?P<name>[\w_\-%\+]+$)',
-            deployment_types.RecordRequestHandler,
-            name='deployment-type'),
     web.url(r'^/dashboard$', dashboard.RequestHandler),
-    web.url(r'^/data-centers$', data_centers.CollectionRequestHandler),
-    web.url(r'^/data-centers/(?P<name>[\w_\-%\+]+)$',
-            data_centers.RecordRequestHandler,
-            name='data-center'),
     web.url(r'^/environments$', environments.CollectionRequestHandler),
     web.url(r'^/environments/(?P<name>[\w_\-%\+]+)$',
             environments.RecordRequestHandler,
@@ -46,11 +32,6 @@ URLS = [
     web.url(r'^/namespaces/(?P<id>\d+)$',
             namespaces.RecordRequestHandler,
             name='namespace'),
-    web.url(r'^/orchestration-systems$',
-            orchestration_systems.CollectionRequestHandler),
-    web.url(r'^/orchestration-systems/(?P<name>[\w_\-%\+]+)$',
-            orchestration_systems.RecordRequestHandler,
-            name='orchestration-system'),
     web.url(r'^/permissions$', permissions.RequestHandler),
     web.url(r'^/project-fact-types$',
             project_fact_types.CollectionRequestHandler),

@@ -124,6 +124,7 @@ class TestCaseWithReset(TestCase):
             body=json.dumps({
                 'project_type_id': self.project_type,
                 'fact_type': str(uuid.uuid4()),
+                'data_type': 'string',
                 'weight': 100
             }).encode('utf-8'))
         self.assertEqual(result.code, 200)

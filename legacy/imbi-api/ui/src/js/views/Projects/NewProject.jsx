@@ -50,11 +50,7 @@ function NewProject() {
     name: null,
     slug: null,
     description: null,
-    data_center: null,
-    environments: null,
-    configuration_system: null,
-    deployment_type: null,
-    orchestration_system: null
+    environments: null
   }
   const [errors, setErrors] = useState(emptyErrors)
   const [errorMessage, setErrorMessage] = useState(null)
@@ -67,21 +63,13 @@ function NewProject() {
     name: null,
     slug: null,
     description: null,
-    data_center: null,
-    environments: null,
-    configuration_system: null,
-    deployment_type: null,
-    orchestration_system: null
+    environments: null
   })
   const history = useHistory()
   const [metadata, setMetadata] = useState({
-    configurationSystems: null,
     cookieCutters: null,
-    dataCenters: null,
-    deploymentTypes: null,
     environments: null,
     namespaces: null,
-    orchestrationSystems: null,
     projectLinkTypes: [],
     projectTypes: null,
     ready: false
@@ -322,14 +310,6 @@ function NewProject() {
             errorMessage={errors.description}
           />
           <Form.Field
-            title={t('project.dataCenter')}
-            name="data_center"
-            type="select"
-            options={metadata.dataCenters !== null ? metadata.dataCenters : []}
-            onChange={onValueChange}
-            errorMessage={errors.data_center}
-          />
-          <Form.Field
             title={t('project.environments')}
             name="environments"
             type="select"
@@ -339,40 +319,6 @@ function NewProject() {
             }
             onChange={onValueChange}
             errorMessage={errors.environments}
-          />
-          <Form.Field
-            title={t('project.configurationSystem')}
-            name="configuration_system"
-            type="select"
-            options={
-              metadata.configurationSystems !== null
-                ? metadata.configurationSystems
-                : []
-            }
-            onChange={onValueChange}
-            errorMessage={errors.configuration_system}
-          />
-          <Form.Field
-            title={t('project.deploymentType')}
-            name="deployment_type"
-            type="select"
-            options={
-              metadata.deploymentTypes !== null ? metadata.deploymentTypes : []
-            }
-            onChange={onValueChange}
-            errorMessage={errors.deployment_type}
-          />
-          <Form.Field
-            title={t('project.orchestrationSystem')}
-            name="orchestration_system"
-            type="select"
-            options={
-              metadata.orchestrationSystems !== null
-                ? metadata.orchestrationSystems
-                : []
-            }
-            onChange={onValueChange}
-            errorMessage={errors.orchestration_system}
           />
         </Form.Section>
         <Form.Section

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS project_fact_type_options (
   last_modified_at   TIMESTAMP WITH TIME ZONE,
   last_modified_by   TEXT,
   fact_type_id       INTEGER                   NOT NULL,
+  icon_class         TEXT                      NOT NULL  DEFAULT 'fas check',
   value              TEXT                      NOT NULL,
   score              INTEGER                   CONSTRAINT valid_score CHECK (score IS NOT NULL AND score BETWEEN 0 AND 100)  DEFAULT 0,
   FOREIGN KEY (fact_type_id) REFERENCES project_fact_types (id) ON UPDATE CASCADE ON DELETE RESTRICT

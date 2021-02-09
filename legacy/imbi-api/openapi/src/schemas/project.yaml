@@ -17,6 +17,7 @@ read:
       type: number
     namespace:
       description: The namespace name
+      type: string
     project_type_id:
       description: The project type ID
       type: number
@@ -38,23 +39,6 @@ read:
       type: array
       items:
         type: string
-      minLength: 1
-      nullable: true
-    data_center:
-      description: The data center the project runs in
-      type: string
-      nullable: true
-    configuration_system:
-      description: The system used to configure the project (Ansible, Consul, etc)
-      type: string
-      nullable: true
-    deployment_type:
-      description: How the project is deployed (Jenkins, GitLab-CI, etc)
-      type: string
-      nullable: true
-    orchestration_system:
-      description: TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)
-      type: string
       nullable: true
   additionalProperties: false
 
@@ -85,22 +69,6 @@ write:
       items:
         type: string
       minLength: 1
-      nullable: true
-    data_center:
-      description: The data center the project runs in
-      type: string
-      nullable: true
-    configuration_system:
-      description: The system used to configure the project (Ansible, Consul, etc)
-      type: string
-      nullable: true
-    deployment_type:
-      description: How the project is deployed (Jenkins, GitLab-CI, etc)
-      type: string
-      nullable: true
-    orchestration_system:
-      description: TThe system used to manage the runtime state of the project (Kubernetes, Nomad, etc)
-      type: string
       nullable: true
   required:
     - namespace_id
