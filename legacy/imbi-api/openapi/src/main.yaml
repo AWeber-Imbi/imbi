@@ -61,13 +61,18 @@ paths:
   /project-types/{id}: { $ref: 'endpoints/project_type.yaml#/paths/manage' }
   /projects: { '$ref': 'endpoints/projects.yaml#/paths/collection' }
   /projects/{id}: { '$ref': 'endpoints/project.yaml#/paths/manage' }
-  /projects/{id}/links: { '$ref': 'endpoints/links.yaml#/paths/collection' }
+  /projects/{id}/links:
+    { '$ref': 'endpoints/project_links.yaml#/paths/collection' }
   /projects/{id}/links/{link_type_id}:
-    { '$ref': 'endpoints/link.yaml#/paths/manage' }
+    { '$ref': 'endpoints/project_link.yaml#/paths/manage' }
   /projects/{id}/dependencies:
     { '$ref': 'endpoints/dependencies.yaml#/paths/collection' }
   /projects/{id}/dependencies/{dependency_id}:
     { '$ref': 'endpoints/dependency.yaml#/paths/manage' }
+  /projects/{id}/urls:
+    { '$ref': 'endpoints/project_urls.yaml#/paths/collection' }
+  /projects/{id}/urls/{environment}:
+    { '$ref': 'endpoints/project_url.yaml#/paths/manage' }
   /status: { $ref: 'status.yaml#/paths/status' }
 
 tags:

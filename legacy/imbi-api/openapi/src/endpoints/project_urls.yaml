@@ -1,8 +1,8 @@
 paths:
   collection:
     get:
-      description: Retrieve the collection of links for a project
-      summary: Get Links
+      description: Retrieve the collection of URLs for a project
+      summary: Get URLs
       tags: [Projects]
       responses:
         '200':
@@ -14,37 +14,38 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/project_link.yaml#/read'
+                  $ref: '../schemas/project_URL.yaml#/read'
               examples:
                 records:
                   summary: Multiple group records
                   value:
                     - project_id: 1
-                      link_type_id: 1
+                      environment: Production
                       created_by: test_user
                       last_modified_by: ~
-                      link_type: Documentation
-                      icon_class: fas book
-                      url: https://imbi.readthedocs.io
+                      url: https://imbi.service.production.consul
                     - project_id: 1
-                      link_type_id: 2
+                      environment: Staging
                       created_by: test_user
                       last_modified_by: ~
-                      link_type: Repository
-                      icon_class: fab gitlab
-                      url: https://gitlab.com/AWeber/Imbi
+                      url: https://imbi.service.staging.consul
+                    - project_id: 1
+                      environment: Testing
+                      created_by: test_user
+                      last_modified_by: ~
+                      url: https://imbi.service.testing.consul
             application/msgpack:
               <<: *responseContent
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
     post:
-      summary: Create Link
-      description: Create a new project link record
+      summary: Create URL
+      description: Create a new project URL record
       requestBody:
-        description: The project link record to create
+        description: The project URL record to create
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/project_link.yaml#/write'
+              $ref: '../schemas/project_url.yaml#/write'
             examples:
               record:
                 $ref: '#/components/examples/record'
@@ -52,7 +53,7 @@ paths:
             <<: *postContent
       tags: [Projects]
       responses:
-        '200': { $ref: './link.yaml#/components/responses/Success' }
+        '200': { $ref: './project_url.yaml#/components/responses/Success' }
         '400': { $ref: '../components/responses.yaml#/RequestError' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '409': { $ref: '../components/responses.yaml#/Conflict' }
@@ -67,8 +68,8 @@ paths:
 components:
   examples:
     record:
-      summary: A project link record
+      summary: A project URL record
       value:
         project_id: 1
-        link_type_id: 1
-        url: https://imbi.readthedocs.io
+        environment: Production
+        url: https://imbi.service.produciton.consul

@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 from tornado import web
@@ -154,6 +155,12 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
          WHERE a.project_id=%(id)s
          ORDER BY b.link_type""")
 
+    GET_URLS_SQL = re.sub(r'\s+', ' ', """\
+        SELECT environment, url
+          FROM v1.project_urls
+         WHERE project_id=%(id)s
+         ORDER BY environment""")
+
     PATCH_SQL = re.sub(r'\s+', ' ', """\
         UPDATE v1.projects
            SET namespace_id=%(namespace_id)s,
@@ -168,15 +175,25 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
 
     async def get(self, *args, **kwargs):
         if self.get_argument('full', 'false') == 'true':
-            result = await self.postgres_execute(
-                self.GET_FULL_SQL, self._get_query_kwargs(kwargs),
-                'get-{}'.format(self.NAME))
-            if not result.row_count or not result.row:
+            project_result, links_result, urls_result = await asyncio.gather(
+                self.postgres_execute(
+                    self.GET_FULL_SQL, self._get_query_kwargs(kwargs),
+                    'get-{}'.format(self.NAME)),
+                self.postgres_execute(
+                    self.GET_LINKS_SQL, self._get_query_kwargs(kwargs)),
+                self.postgres_execute(
+                    self.GET_URLS_SQL, self._get_query_kwargs(kwargs)))
+
+            if not project_result.row_count or not project_result.row:
                 raise web.HTTPError(404, reason='Item not found')
-            links_result = await self.postgres_execute(
-                self.GET_LINKS_SQL, self._get_query_kwargs(kwargs))
-            output = result.row
-            output['links'] = links_result.rows
+
+            output = project_result.row
+            output.update({
+                'facts': [],
+                'links': links_result.rows,
+                'urls': {row['environment']: row['url']
+                         for row in urls_result.rows}
+            })
             self.send_response(output)
         else:
             await self._get(kwargs)

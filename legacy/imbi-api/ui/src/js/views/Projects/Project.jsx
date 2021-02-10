@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react'
+import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -47,60 +47,31 @@ function Project() {
           {project.name}
         </h1>
         <div className="flex-auto ml-10 space-x-2 text-right">
-          {project.orchestration_system && (
-            <Tooltip value="Orchestration System">
-              <Badge color="blue">
-                <Icon
-                  icon={project.orchestration_system_icon}
-                  className="mr-1"
-                />
-                {project.orchestration_system}
-              </Badge>
-            </Tooltip>
-          )}
-          {project.deployment_type && (
-            <Tooltip value="Deployment Type">
-              <Badge color="green">
-                <Icon icon={project.deployment_type_icon} className="mr-1" />
-                {project.deployment_type}
-              </Badge>
-            </Tooltip>
-          )}
-          {project.configuration_system && (
-            <Tooltip
-              value="Configuration System"
-              arrowPosition="right"
-              className="ml-6">
-              <Badge color="red">
-                <Icon
-                  icon={project.configuration_system_icon}
-                  className="mr-1"
-                />
-                {project.configuration_system}
-              </Badge>
-            </Tooltip>
-          )}
-          {project.data_center && (
-            <Tooltip value="Data Center" arrowPosition="right">
-              <Badge color="purple" href="#" target="_new">
-                <Icon icon={project.data_center_icon} className="mr-1" />
-                {project.data_center}
-              </Badge>
-            </Tooltip>
-          )}
+          Badges from Facts
         </div>
       </div>
       <div className="my-2 flex flex-row">
         <div className="flex-1 text-gray-500 mx-3">
-          <span className="mr-2">{t('terms.links')}:</span>
-          <IconBar icons={project.links} />
+          {project.links.length === 0 && ' '}
+          {project.links.length > 0 && (
+            <Fragment>
+              <span className="mr-2">{t('terms.links')}:</span>
+              <IconBar icons={project.links} />
+            </Fragment>
+          )}
         </div>
         <div className="flex-1 space-x-2 text-right">
           {project.environments &&
             project.environments.map((environment) => {
               return (
-                <Badge color="gray" key={`environment-${environment}`}>
-                  <Icon icon="fas external-link-alt" className="mr-2" />
+                <Badge
+                  color="gray"
+                  key={`environment-${environment}`}
+                  href={project.urls[environment]}
+                  target="_new">
+                  {project.urls[environment] !== undefined && (
+                    <Icon icon="fas external-link-alt" className="mr-2" />
+                  )}
                   {environment}
                 </Badge>
               )

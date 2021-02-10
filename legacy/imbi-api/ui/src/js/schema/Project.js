@@ -24,9 +24,6 @@ export const jsonSchema = {
     description: {
       type: 'string'
     },
-    data_center: {
-      oneOf: [{ type: 'string' }, { type: 'null' }]
-    },
     environments: {
       oneOf: [
         {
@@ -37,15 +34,6 @@ export const jsonSchema = {
         },
         { type: 'null' }
       ]
-    },
-    configuration_system: {
-      oneOf: [{ type: 'string' }, { type: 'null' }]
-    },
-    deployment_type: {
-      oneOf: [{ type: 'string' }, { type: 'null' }]
-    },
-    orchestration_system: {
-      oneOf: [{ type: 'string' }, { type: 'null' }]
     }
   },
   additionalProperties: false,
@@ -58,9 +46,5 @@ export const propTypes = {
   project_type_id: PropTypes.number.isRequired,
   name: PropTypes.string.isRequired,
   slug: PropTypes.string.isRequired,
-  data_center: PropTypes.string,
-  environments: PropTypes.arrayOf(PropTypes.string),
-  configuration_system: PropTypes.string,
-  deployment_type: PropTypes.string,
-  orchestration_system: PropTypes.string
+  environments: PropTypes.arrayOf(PropTypes.string)
 }

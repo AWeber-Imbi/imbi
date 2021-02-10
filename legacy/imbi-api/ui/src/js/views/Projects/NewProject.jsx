@@ -77,11 +77,14 @@ function NewProject() {
   const [projectId, setProjectId] = useState(null)
   const [saveComplete, setSaveComplete] = useState({
     attributes: false,
+    dependencies: false,
     links: false,
-    dependencies: true
+    urls: false
   })
   const [saving, setSaving] = useState(false)
   const [savingSteps, setSavingSteps] = useState([])
+  const [urls, setURLs] = useState([])
+
   const { t } = useTranslation()
 
   function onAutomationChange(key, value) {
@@ -102,6 +105,24 @@ function NewProject() {
         setLinks({ ...links, [linkType]: value })
       } else {
         setErrors({ ...errors, [key]: t('common.invalidURL') })
+      }
+    }
+  }
+
+  function onURLChange(key, value) {
+    const environment = key.split('-')[1]
+    console.log('onURLChange', environment, value)
+    if (value === '') {
+      const newURLs = { ...urls }
+      if (newURLs[environment] !== undefined) delete newURLs[environment]
+      setURLs(newURLs)
+      setErrors({ ...errors, [`url-${environment}`]: null })
+    } else {
+      if (isURL(value) === true) {
+        setErrors({ ...errors, [`url-${environment}`]: null })
+        setURLs({ ...urls, [environment]: value })
+      } else {
+        setErrors({ ...errors, [`url-${environment}`]: t('common.invalidURL') })
       }
     }
   }
@@ -127,20 +148,46 @@ function NewProject() {
             setErrorMessage(result.data)
             setSaving(false)
           }
-        } else if (saveComplete.links === false && projectId !== null) {
-          for (const [linkTypeId, url] of Object.entries(links)) {
-            let linkURL = new URL(fetch.baseURL)
-            linkURL.pathname = '/projects/' + projectId.toString() + '/links'
-            let result = await httpPost(fetch.function, linkURL, {
-              project_id: projectId,
-              link_type_id: parseInt(linkTypeId),
-              url: url
-            })
-            if (result.success === false) {
-              setErrorMessage(result.data)
-              setSaving(false)
-              return
+        } else if (saveComplete.urls === false && projectId !== null) {
+          if (Object.values(urls).length > 0) {
+            for (const [environment, url] of Object.entries(urls)) {
+              let urlURL = new URL(fetch.baseURL)
+              urlURL.pathname = '/projects/' + projectId.toString() + '/urls'
+              let result = await httpPost(fetch.function, urlURL, {
+                project_id: projectId,
+                environment: environment,
+                url: url
+              })
+              if (result.success === false) {
+                setErrorMessage(result.data)
+                setSaving(false)
+                return
+              }
             }
+            setSaveComplete({ ...saveComplete, urls: true })
+          } else {
+            setSaveComplete({ ...saveComplete, urls: true })
+          }
+        } else if (saveComplete.dependencies === false && projectId !== null) {
+          setSaveComplete({ ...saveComplete, dependencies: true })
+        } else if (saveComplete.links === false && projectId !== null) {
+          if (Object.values(links).length > 0) {
+            for (const [linkTypeId, url] of Object.entries(links)) {
+              let linkURL = new URL(fetch.baseURL)
+              linkURL.pathname = '/projects/' + projectId.toString() + '/links'
+              let result = await httpPost(fetch.function, linkURL, {
+                project_id: projectId,
+                link_type_id: parseInt(linkTypeId),
+                url: url
+              })
+              if (result.success === false) {
+                setErrorMessage(result.data)
+                setSaving(false)
+                return
+              }
+              setSaveComplete({ ...saveComplete, links: true })
+            }
+          } else {
             setSaveComplete({ ...saveComplete, links: true })
           }
         }
@@ -179,9 +226,16 @@ function NewProject() {
         completedLabel: t('project.projectSaved')
       }
     ]
+    if (Object.values(urls).length > 0) {
+      steps.push({
+        isComplete: saveComplete.urls,
+        pendingLabel: t('project.savingURLs'),
+        completedLabel: t('project.urlsSaved')
+      })
+    }
     if (dependencies.length > 0) {
       steps.push({
-        isComplete: saveComplete.dependencies,
+        isComplete: false,
         pendingLabel: t('project.savingDependencies'),
         completedLabel: t('project.dependenciesSaved')
       })
@@ -247,6 +301,7 @@ function NewProject() {
         errorMessage={errorMessage}
         sideBarLinks={[
           { href: '#attributes', label: t('project.attributes') },
+          { href: '#urls', label: t('project.urls') },
           { href: '#automations', label: t('project.automations') },
           { href: '#links', label: t('project.links') },
           { href: '#dependencies', label: t('project.dependencies') }
@@ -320,6 +375,28 @@ function NewProject() {
             onChange={onValueChange}
             errorMessage={errors.environments}
           />
+        </Form.Section>
+        <Form.Section name="urls" title={t('project.projectURLs')}>
+          <Fragment>
+            {formValues.environments === null && (
+              <p className="text-center p-6 font-mono">
+                {t('project.specifyEnvironments')}
+              </p>
+            )}
+            {formValues.environments !== null &&
+              formValues.environments.map((environment) => {
+                return (
+                  <Form.Field
+                    title={`${environment} URL`}
+                    name={`url-${environment}`}
+                    key={`url-${environment}`}
+                    type="text"
+                    errorMessage={errors[`url-${environment}`]}
+                    onChange={onURLChange}
+                  />
+                )
+              })}
+          </Fragment>
         </Form.Section>
         <Form.Section
           name="automations"
