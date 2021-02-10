@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS project_types (
   slug               TEXT                      NOT NULL,
   plural_name        TEXT                      NOT NULL,
   description        TEXT,
-  icon_class         TEXT                                DEFAULT 'fas fa-box'
+  icon_class         TEXT                                DEFAULT 'fas fa-box',
+  environment_urls   BOOLEAN                   NOT NULL  DEFAULT false
 );
 
 CREATE UNIQUE INDEX project_types_name ON project_types (name);
@@ -26,6 +27,7 @@ COMMENT ON COLUMN project_types.plural_name IS 'Name to show when displaying plu
 COMMENT ON COLUMN project_types.slug IS 'Slug used when creating namespace URLs';
 COMMENT ON COLUMN project_types.description IS 'Project Type Description';
 COMMENT ON COLUMN project_types.icon_class IS 'Font Awesome UI icon class';
+COMMENT ON COLUMN project_types.environment_urls IS 'Indicates projects of this type have per-environment URLs';
 
 GRANT SELECT ON project_types TO reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON project_types TO admin;

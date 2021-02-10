@@ -7,6 +7,7 @@ export default {
         name: 'Name',
         description: 'Description',
         slug: 'Slug',
+        icon: 'Icon',
         iconClass: 'Icon Class',
         id: 'ID',
         edit: 'Edit',
@@ -141,6 +142,7 @@ export default {
           collectionName: 'Project Types',
           itemName: 'Project Type',
           pluralName: 'Pluralized Name',
+          environmentURLs: 'Per-Environment URLs',
           errors: {
             uniqueViolation: 'A project type with the same name already exists'
           }
@@ -187,7 +189,13 @@ export default {
         savingLinks: 'Saving Links',
         linksSaved: 'Links Saved',
         savingDependencies: 'Saving Dependencies',
-        dependenciesSaved: 'Dependencies Saved'
+        dependenciesSaved: 'Dependencies Saved',
+        projectURLs: 'Per-Environment URLs',
+        specifyEnvironments:
+          'Environments are required to enter per-environment URLs',
+        savingURLs: 'Saving Per-Environment URLs',
+        urls: 'URLs',
+        urlsSaved: 'Per-Environment URLs saved'
       },
       projects: {
         newProject: 'New Project',

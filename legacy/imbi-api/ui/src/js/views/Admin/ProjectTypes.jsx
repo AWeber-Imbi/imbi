@@ -23,6 +23,17 @@ export function ProjectTypes() {
           }
         },
         {
+          title: t('common.icon'),
+          name: 'icon_class',
+          type: 'icon',
+          placeholder: 'fas cubes',
+          default: 'fas cubes',
+          tableOptions: {
+            className: 'text-center',
+            headerClassName: 'w-1/12'
+          }
+        },
+        {
           title: t('common.name'),
           name: 'name',
           type: 'text',
@@ -55,18 +66,16 @@ export function ProjectTypes() {
           type: 'textarea',
           tableOptions: {
             className: 'truncate',
-            headerClassName: 'w-3/12'
+            headerClassName: 'w-4/12'
           }
         },
         {
-          title: t('common.iconClass'),
-          name: 'icon_class',
-          type: 'icon',
-          placeholder: 'fas cubes',
-          default: 'fas cubes',
+          title: t('admin.projectTypes.environmentURLs'),
+          name: 'environment_urls',
+          type: 'toggle',
+          default: false,
           tableOptions: {
-            className: 'truncate',
-            headerClassName: 'w-2/12'
+            hide: true
           }
         }
       ]}

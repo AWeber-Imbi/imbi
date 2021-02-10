@@ -2348,6 +2348,9 @@ paths:
                       icon_class:
                         description: Font Awesome UI icon class
                         type: string
+                      environment_urls:
+                        description: Indicates that projects of this type have per-environment URLs
+                        type: boolean
                     additionalProperties: false
                   write:
                     title: Project Type
@@ -2371,11 +2374,16 @@ paths:
                       icon_class:
                         description: Font Awesome UI icon class
                         type: string
+                      environment_urls:
+                        description: Indicates that projects of this type have per-environment URLs
+                        type: boolean
+                        default: false
                     required:
                       - name
                       - plural_name
                       - slug
                       - icon_class
+                      - environment_urls
                     additionalProperties: false
               examples:
                 records:
@@ -2426,6 +2434,9 @@ paths:
                       icon_class:
                         description: Font Awesome UI icon class
                         type: string
+                      environment_urls:
+                        description: Indicates that projects of this type have per-environment URLs
+                        type: boolean
                     additionalProperties: false
                   write:
                     title: Project Type
@@ -2449,11 +2460,16 @@ paths:
                       icon_class:
                         description: Font Awesome UI icon class
                         type: string
+                      environment_urls:
+                        description: Indicates that projects of this type have per-environment URLs
+                        type: boolean
+                        default: false
                     required:
                       - name
                       - plural_name
                       - slug
                       - icon_class
+                      - environment_urls
                     additionalProperties: false
               examples:
                 records:
