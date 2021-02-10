@@ -335,3 +335,90 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # Get 404
         result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 404)
+
+    def test_urls(self):
+        project_record = {
+            'namespace_id': self.namespace,
+            'project_type_id': self.project_type,
+            'name': str(uuid.uuid4()),
+            'slug': str(uuid.uuid4().hex),
+            'environments': self.environments
+        }
+
+        result = self.fetch(
+            '/projects', method='POST', headers=self.headers,
+            body=json.dumps(project_record).encode('utf-8'))
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+
+        record = {
+            'project_id': response['id'],
+            'environment': self.environments[0],
+            'url': 'https://imbi.service.testing.consul'
+        }
+
+        urls_url = self.get_url('/projects/{}/urls'.format(response['id']))
+        url = self.get_url('/projects/{}/urls/{}'.format(
+            response['id'], self.environments[0]))
+
+        # Create
+        result = self.fetch(
+            urls_url, headers=self.headers, method='POST',
+            body=json.dumps(record).encode('utf-8'))
+        self.assertEqual(result.code, 200)
+        url_record = json.loads(result.body.decode('utf-8'))
+        self.assert_link_header_equals(result, url)
+        self.assertEqual(
+            result.headers['Cache-Control'], 'public, max-age={}'.format(
+                project_links.RecordRequestHandler.TTL))
+        self.assertEqual(
+            url_record['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+        self.assertEqual(url_record['url'], record['url'])
+
+        # Get URLs
+        result = self.fetch(urls_url, headers=self.headers)
+        self.assertEqual(result.code, 200)
+        self.assert_link_header_equals(result, urls_url)
+        records = []
+        for row in json.loads(result.body.decode('utf-8')):
+            for field in {'created_at', 'last_modified_at'}:
+                del row[field]
+            records.append(row)
+        self.assertListEqual(records, [url_record])
+
+        # PATCH
+        updated = dict(record)
+        updated['url'] = 'https://gitlab.com/AWeber/Imbi'
+        patch = jsonpatch.make_patch(record, updated)
+        patch_value = patch.to_string().encode('utf-8')
+
+        result = self.fetch(
+            url, method='PATCH', body=patch_value, headers=self.headers)
+        self.assertEqual(result.code, 200)
+        self.assert_link_header_equals(result, url)
+        record = json.loads(result.body.decode('utf-8'))
+        for field in {'created_by', 'last_modified_by'}:
+            del record[field]
+        self.assertDictEqual(record, updated)
+
+        # Patch no change
+        result = self.fetch(
+            url, method='PATCH', body=patch_value, headers=self.headers)
+        self.assertEqual(result.code, 304)
+        self.assert_link_header_equals(result, url)
+
+        # Get
+        result = self.fetch(url, headers=self.headers)
+        self.assertEqual(result.code, 200)
+        record = json.loads(result.body.decode('utf-8'))
+        for field in {'created_by', 'last_modified_by'}:
+            del record[field]
+        self.assertDictEqual(record, updated)
+
+        # Delete
+        result = self.fetch(url, method='DELETE', headers=self.headers)
+        self.assertEqual(result.code, 204)
+
+        # Get 404
+        result = self.fetch(url, headers=self.headers)
+        self.assertEqual(result.code, 404)

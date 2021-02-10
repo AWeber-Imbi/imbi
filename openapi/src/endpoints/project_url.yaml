@@ -1,17 +1,17 @@
 paths:
   manage:
     get:
-      summary: Get Link
-      description: Retrieve a project link record
+      summary: Get URL
+      description: Retrieve a project URL record
       tags: [Projects]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     patch:
-      summary: Update Link
+      summary: Update URL
       description: >-
-        Update a project link, providing a JSON Patch (RFC-6209) payload of update
+        Update a project URL, providing a JSON Patch (RFC-6209) payload of update
         operations to apply.
       tags: [Projects]
       requestBody:
@@ -34,8 +34,8 @@ paths:
         '404': { $ref: '../components/responses.yaml#/NotFound' }
         '409': { $ref: '../components/responses.yaml#/Conflict' }
     delete:
-      summary: Delete Link
-      description: Remove a project link record
+      summary: Delete URL
+      description: Remove a project URL record
       tags: [Projects]
       responses:
         '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
@@ -44,32 +44,30 @@ paths:
     parameters:
       - name: id
         in: path
-        description: Project ID for the link
+        description: Project ID for the URL
         required: true
         schema:
           type: number
-      - name: link_type_id
+      - name: environment
         in: path
-        description: The link type
+        description: The environment the URL is for
         required: true
         schema:
-          type: number
+          type: string
 
 components:
   examples:
     record:
-      summary: A project link record
+      summary: A project URL record
       value:
-        link_type_id: 1
+        project_id: 1
         created_by: test_user
         last_modified_by: ~
-        link_type: Documentation
-        icon_class: fas book
-        url: https://imbi.readthedocs.io
+        url: https://imbi.service.produciton.consul
 
   responses:
     Success:
-      description: The request to create, update, or retrieve the project was successful
+      description: The request to create, update, or retrieve the project URL was successful
       headers:
         Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
         Last-Modified: { $ref: '../components/headers.yaml#/Last-Modified' }
@@ -77,7 +75,7 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/project_link.yaml#/read'
+            $ref: '../schemas/project_url.yaml#/read'
           examples:
             record:
               $ref: '#/components/examples/record'

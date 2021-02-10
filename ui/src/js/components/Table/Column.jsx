@@ -21,8 +21,8 @@ function Column({ definition, children }) {
       definition.tableOptions.lookupFunction !== undefined
         ? definition.tableOptions.lookupFunction(children)
         : definition.type !== 'icon'
-          ? children
-          : ''}
+        ? children
+        : ''}
     </td>
   )
 }

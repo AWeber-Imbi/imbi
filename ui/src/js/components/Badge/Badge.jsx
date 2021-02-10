@@ -19,7 +19,7 @@ function Badge({ color, children, href, target }) {
       <a
         href={href}
         target={target}
-        className={`inline-flex cursor-default items-center px-2.5 py-0.5 rounded-md text-sm font-medium ${colors[color]}`}>
+        className={`inline-flex cursor-pointer items-center px-2.5 py-0.5 rounded-md text-sm font-medium ${colors[color]}`}>
         {children}
       </a>
     )

@@ -4,8 +4,8 @@ from imbi import constants
 from . import (authentication_tokens, cookie_cutters, dashboard, environments,
                groups, namespaces, openapi, permissions, project_dependencies,
                project_fact_type_options, project_fact_types,
-               project_link_types, project_links, project_types, projects,
-               status, ui)
+               project_link_types, project_links, project_types, project_urls,
+               projects, status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -72,6 +72,13 @@ URLS = [
             r'(?P<link_type_id>\d+)$',
             project_links.RecordRequestHandler,
             name='project-link'),
+    web.url(r'^/projects/(?P<project_id>\d+)/urls$',
+            project_urls.CollectionRequestHandler,
+            name='project-urls'),
+    web.url(r'^/projects/(?P<project_id>\d+)/urls/'
+            r'(?P<environment>[\w_\-%\+]+)$',
+            project_urls.RecordRequestHandler,
+            name='project-url'),
     web.url(r'^/status$', status.RequestHandler),
     web.url(r'^/ui/login$', ui.LoginRequestHandler),
     web.url(r'^/ui/logout$', ui.LogoutRequestHandler),

@@ -1,0 +1,85 @@
+paths:
+  manage:
+    get:
+      summary: Get Link
+      description: Retrieve a project link record
+      tags: [Projects]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
+    patch:
+      summary: Update Link
+      description: >-
+        Update a project link, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags: [Projects]
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json: &patchContent
+            schema:
+              $ref: '../components/schemas.yaml#/jsonPatch'
+          application/msgpack:
+            <<: *patchContent
+          application/json-patch+json:
+            <<: *patchContent
+          application/json-patch+msgpack:
+            <<: *patchContent
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '304': { $ref: '../components/responses.yaml#/NoChanges' }
+        '400': { $ref: '../components/responses.yaml#/RequestError' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
+        '409': { $ref: '../components/responses.yaml#/Conflict' }
+    delete:
+      summary: Delete Link
+      description: Remove a project link record
+      tags: [Projects]
+      responses:
+        '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
+    parameters:
+      - name: id
+        in: path
+        description: Project ID for the link
+        required: true
+        schema:
+          type: number
+      - name: link_type_id
+        in: path
+        description: The link type
+        required: true
+        schema:
+          type: number
+
+components:
+  examples:
+    record:
+      summary: A project link record
+      value:
+        link_type_id: 1
+        created_by: test_user
+        last_modified_by: ~
+        link_type: Documentation
+        icon_class: fas book
+        url: https://imbi.readthedocs.io
+
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the project link was successful
+      headers:
+        Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+        Last-Modified: { $ref: '../components/headers.yaml#/Last-Modified' }
+        Link: { $ref: '../components/headers.yaml#/Link' }
+      content:
+        application/json: &responsesSuccess
+          schema:
+            $ref: '../schemas/project_link.yaml#/read'
+          examples:
+            record:
+              $ref: '#/components/examples/record'
+        application/msgpack:
+          <<: *responsesSuccess

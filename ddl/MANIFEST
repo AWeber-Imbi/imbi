@@ -33,6 +33,7 @@ tables/v1/project_dependencies.sql
 tables/v1/project_fact_history.sql
 tables/v1/project_facts.sql
 tables/v1/project_links.sql
+tables/v1/project_urls.sql
 tables/v1/users.sql
 tables/v1/authentication_tokens.sql
 tables/v1/groups.sql
