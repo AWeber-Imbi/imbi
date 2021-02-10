@@ -24,6 +24,9 @@ export const jsonSchema = {
     },
     icon_class: {
       oneOf: [{ type: 'string' }, { type: 'null' }]
+    },
+    environment_urls: {
+      type: 'boolean'
     }
   },
   additionalProperties: false,
@@ -36,5 +39,6 @@ export const propTypes = {
   plural_name: PropTypes.string.isRequired,
   slug: PropTypes.string.isRequired,
   description: PropTypes.string,
-  icon_class: PropTypes.string
+  icon_class: PropTypes.string,
+  environment_urls: PropTypes.bool
 }

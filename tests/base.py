@@ -139,7 +139,8 @@ class TestCaseWithReset(TestCase):
                 'plural_name': '{}s'.format(self.project_type_name),
                 'slug': str(uuid.uuid4()),
                 'description': str(uuid.uuid4()),
-                'icon_class': 'fas fa-blind'
+                'icon_class': 'fas fa-blind',
+                'environment_urls': False
             }).encode('utf-8'))
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))['id']
