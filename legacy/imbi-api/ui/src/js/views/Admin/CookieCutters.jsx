@@ -55,7 +55,7 @@ export function CookieCutters() {
               type: 'text',
               tableOptions: {
                 className: 'truncate',
-                headerClassName: 'w-3/12'
+                headerClassName: 'w-4/12'
               }
             },
             {
@@ -98,7 +98,7 @@ export function CookieCutters() {
               type: 'textarea',
               tableOptions: {
                 className: 'truncate',
-                headerClassName: 'w-3/12'
+                headerClassName: 'w-4/12'
               }
             },
             {
@@ -107,8 +107,7 @@ export function CookieCutters() {
               description: t('admin.cookieCutters.urlDescription'),
               type: 'text',
               tableOptions: {
-                className: 'truncate',
-                headerClassName: 'w-2/12'
+                hide: true
               }
             }
           ]}

@@ -94,12 +94,12 @@ export function ProjectFactTypes() {
               name: 'data_type',
               type: 'select',
               options: [
-                {label: 'Boolean',  value: 'boolean'},
-                {label: 'ISO-8601 Date',  value: 'date'},
-                {label: 'Decimal',  value: 'decimal'},
-                {label: 'Integer',  value: 'integer'},
-                {label: 'String',  value: 'string'},
-                {label: 'ISO-8601 Timestamp',  value: 'timestamp'}
+                { label: 'Boolean', value: 'boolean' },
+                { label: 'ISO-8601 Date', value: 'date' },
+                { label: 'Decimal', value: 'decimal' },
+                { label: 'Integer', value: 'integer' },
+                { label: 'String', value: 'string' },
+                { label: 'ISO-8601 Timestamp', value: 'timestamp' }
               ],
               tableOptions: {
                 className: 'truncate',

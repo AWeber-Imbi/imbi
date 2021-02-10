@@ -14,13 +14,15 @@ function Column({ definition, children }) {
   return (
     <td className={'px-5 py-1.5 whitespace-nowrap ' + clsName}>
       {definition !== undefined && definition.type === 'icon' && (
-        <Icon className="mr-2" icon={children} />
+        <Icon className="mr-2" icon={children} title={children} />
       )}
       {definition !== undefined &&
       definition.tableOptions !== undefined &&
       definition.tableOptions.lookupFunction !== undefined
         ? definition.tableOptions.lookupFunction(children)
-        : children}
+        : definition.type !== 'icon'
+          ? children
+          : ''}
     </td>
   )
 }

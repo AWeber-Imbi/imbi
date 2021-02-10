@@ -54,12 +54,23 @@ export function Namespaces() {
               }
             },
             {
+              title: t('common.icon'),
+              name: 'icon_class',
+              type: 'icon',
+              placeholder: 'fas boxes',
+              default: 'fas boxes',
+              tableOptions: {
+                className: 'text-center',
+                headerClassName: 'w-1/12'
+              }
+            },
+            {
               title: t('common.name'),
               name: 'name',
               type: 'text',
               tableOptions: {
                 className: 'truncate',
-                headerClassName: 'w-4/12'
+                headerClassName: 'w-5/12'
               }
             },
             {
@@ -69,18 +80,7 @@ export function Namespaces() {
               description: t('common.slugDescription'),
               tableOptions: {
                 className: 'font-mono font-gray-500',
-                headerClassName: 'w-3/12'
-              }
-            },
-            {
-              title: t('common.iconClass'),
-              name: 'icon_class',
-              type: 'icon',
-              placeholder: 'fas boxes',
-              default: 'fas boxes',
-              tableOptions: {
-                className: 'truncate',
-                headerClassName: 'w-3/12'
+                headerClassName: 'w-4/12'
               }
             },
             {
