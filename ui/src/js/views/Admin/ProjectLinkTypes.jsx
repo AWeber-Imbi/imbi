@@ -23,23 +23,23 @@ export function ProjectLinkTypes() {
           }
         },
         {
-          title: t('admin.projectLinkTypes.linkType'),
-          name: 'link_type',
-          type: 'text',
-          tableOptions: {
-            className: 'truncate',
-            headerClassName: 'w-5/12'
-          }
-        },
-        {
-          title: t('common.iconClass'),
+          title: t('common.icon'),
           name: 'icon_class',
           type: 'icon',
           placeholder: 'fas external-link-alt',
           default: 'fas external-link-alt',
           tableOptions: {
+            className: 'text-center',
+            headerClassName: 'w-1/12'
+          }
+        },
+        {
+          title: t('admin.projectLinkTypes.linkType'),
+          name: 'link_type',
+          type: 'text',
+          tableOptions: {
             className: 'truncate',
-            headerClassName: 'w-5/12'
+            headerClassName: 'w-10/12'
           }
         }
       ]}

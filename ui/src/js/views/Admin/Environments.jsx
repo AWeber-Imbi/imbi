@@ -14,6 +14,17 @@ export function Environments() {
       collectionPath="/environments"
       columns={[
         {
+          title: t('common.icon'),
+          name: 'icon_class',
+          type: 'icon',
+          placeholder: 'fas tree',
+          default: 'fas tree',
+          tableOptions: {
+            className: 'text-center',
+            headerClassName: 'w-1/12'
+          }
+        },
+        {
           title: t('common.name'),
           name: 'name',
           type: 'text',
@@ -28,18 +39,7 @@ export function Environments() {
           type: 'textarea',
           tableOptions: {
             className: 'truncate',
-            headerClassName: 'w-4/12'
-          }
-        },
-        {
-          title: t('common.iconClass'),
-          name: 'icon_class',
-          type: 'icon',
-          placeholder: 'fas tree',
-          default: 'fas tree',
-          tableOptions: {
-            className: 'truncate',
-            headerClassName: 'w-3/12'
+            headerClassName: 'w-7/12'
           }
         }
       ]}
