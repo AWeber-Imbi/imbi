@@ -20,14 +20,14 @@
     "husky": ">=4",
     "lint-staged": ">=10",
     "marked": "^0.7.0",
-    "mobx": "^5.15.4 || ^4.15.4",
+    "mobx": "^6.0.4",
     "openapi-types": ">=7",
     "prettier": "^2.2.1",
     "react": "^16.8.4",
     "react-dom": "^16.8.4",
     "react-is": ">= 16.8.0",
-    "redoc": "^2.0.0-rc.48",
-    "styled-components": "^4.1.1",
+    "redoc": "2.0.0-rc.50",
+    "styled-components": "^5.1.1",
     "swagger-cli": "^4.0.4"
   },
   "husky": {

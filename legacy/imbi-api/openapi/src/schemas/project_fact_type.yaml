@@ -16,9 +16,16 @@ read:
     project_type_id:
       description: The ID for the project type
       type: number
-    fact_type:
+    name:
       description: The project fact type name
       type: string
+    fact_type:
+      description: Indicates how a fact value is validated and scored
+      type: string
+      enum:
+        - enum
+        - free-form
+        - range
     description:
       description: Provides additional context about the fact typee
       type: string
@@ -33,6 +40,14 @@ read:
         - integer
         - string
         - timestamp
+    ui_options:
+      description: An array of values that are used in the UI for display purposes
+      type: array
+      items:
+        type: string
+        enum:
+          - display-as-badge
+          - hidden
     weight:
       description: The weight of the fact type when computing a project score
       type: number
@@ -49,9 +64,16 @@ write:
       description: The ID for the project type
       type: number
       nullable: true
-    fact_type:
+    name:
       description: The project fact type name
       type: string
+    fact_type:
+      description: Indicates how a fact value is validated and scored
+      type: string
+      enum:
+        - enum
+        - free-form
+        - range
     description:
       description: Provides additional context about the fact typee
       type: string
@@ -66,12 +88,22 @@ write:
         - integer
         - string
         - timestamp
+    ui_options:
+      description: An array of values that are used in the UI for display purposes
+      type: array
+      items:
+        type: string
+        enum:
+          - display-as-badge
+          - hidden
+      nullable: true
     weight:
       description: The weight of the fact type when computing a project score
       type: number
       default: 0
   required:
     - project_type_id
+    - name
     - fact_type
     - data_type
     - weight

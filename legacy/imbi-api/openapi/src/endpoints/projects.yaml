@@ -2,7 +2,7 @@ paths:
   collection:
     get:
       description: Retrieve the collection of projects
-      summary: Get Projects
+      summary: Get Collection
       tags: [Projects]
       responses:
         '200':
@@ -30,10 +30,6 @@ paths:
                       slug: user
                       description: |-
                         The user service is used to manage user specific data, including profiles and content.
-                      data_center: us-east-1
-                      configuration_system: SSM Parameter Store
-                      deployment_type: ecs-pipeline-deploy
-                      orchestration_system: ECS
                       environments:
                         - Testing
                         - Staging
@@ -43,8 +39,9 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
 
     post:
-      summary: Create Project
+      summary: Create Record
       description: Create a new project record
+      tags: [Projects]
       requestBody:
         description: The project record to create
         content:
@@ -56,15 +53,81 @@ paths:
                 $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
-      tags: [Projects]
       responses:
-        '200': { $ref: './project.yaml#/components/responses/Success' }
+        '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '../components/responses.yaml#/RequestError' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '409': { $ref: '../components/responses.yaml#/Conflict' }
+  manage:
+    get:
+      summary: Get Record
+      description: Retrieve a project record
+      tags: [Projects]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
+    patch:
+      summary: Update Record
+      description: >-
+        Update a project, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags: [Projects]
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json: &patchContent
+            schema:
+              $ref: '../components/schemas.yaml#/jsonPatch'
+          application/msgpack:
+            <<: *patchContent
+          application/json-patch+json:
+            <<: *patchContent
+          application/json-patch+msgpack:
+            <<: *patchContent
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '304': { $ref: '../components/responses.yaml#/NoChanges' }
+        '400': { $ref: '../components/responses.yaml#/RequestError' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
+        '409': { $ref: '../components/responses.yaml#/Conflict' }
+    delete:
+      summary: Delete Record
+      description: Remove a project record and all of its children
+      tags: [Projects]
+      responses:
+        '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: number
 
 components:
   examples:
+    read:
+      summary: An example of a project record
+      value:
+        id: 1
+        created_by: test_user
+        last_modified_by: ~
+        namespace_id: 1
+        namespace: User Experience
+        project_type_id: 1
+        project_type: HTTP API
+        name: User Service
+        slug: user
+        description: |-
+          The user service is used to manage user specific data, including profiles and content.
+        environments:
+          - Testing
+          - Staging
+          - Production
     write:
       summary: An example of the payload for creating a record
       value:
@@ -74,11 +137,23 @@ components:
         description: |-
           The user service is used to manage user specific data, including profiles and content.
         project_type_id: 1
-        data_center: us-east-1
-        configuration_system: SSM Parameter Store
-        deployment_type: ecs-pipeline-deploy
-        orchestration_system: ECS
         environments:
           - Testing
           - Staging
           - Production
+  responses:
+    Success:
+      description: The request to create, update, or retrieve the project was successful
+      headers:
+        Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
+        Last-Modified: { $ref: '../components/headers.yaml#/Last-Modified' }
+        Link: { $ref: '../components/headers.yaml#/Link' }
+      content:
+        application/json: &responsesSuccess
+          schema:
+            $ref: '../schemas/project.yaml#/read'
+          examples:
+            record:
+              $ref: '#/components/examples/read'
+        application/msgpack:
+          <<: *responsesSuccess

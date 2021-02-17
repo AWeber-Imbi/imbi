@@ -1,9 +1,9 @@
 paths:
   collection:
     get:
-      description: Retrieve the collection of project fact type options
-      summary: Get Project Fact Type Options
-      tags: [Settings]
+      description: Retrieve the collection of project fact type enums
+      summary: Get Collection
+      tags: [Project Fact Type Enums]
       responses:
         '200':
           description: Success
@@ -14,29 +14,34 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/project_fact_type_option.yaml'
+                  $ref: '../schemas/project_fact_type_enum.yaml'
               examples:
                 records:
-                  summary: Multiple project fact type option records
+                  summary: Multiple project fact type enum records
                   value:
-                    - project_type: HTTP API
-                      fact_type: Programming Language
+                    - id: 1
+                      fact_type_id: 1
+                      icon_class: fab python
                       value: Python 3.9
                       score: 100
-                    - project_type: HTTP API
-                      fact_type: Programming Language
+                    - id: 2
+                      fact_type_id: 1
+                      icon_class: fab python
                       value: Python 3.7
                       score: 75
-                    - project_type: HTTP API
-                      fact_type: Programming Language
+                    - id: 3
+                      fact_type_id: 1
+                      icon_class: fab python
                       value: Python 3.6
                       score: 50
-                    - project_type: HTTP API
-                      fact_type: Programming Language
+                    - id: 4
+                      fact_type_id: 1
+                      icon_class: fab python
                       value: Python 3.5
                       score: 50
-                    - project_type: HTTP API
-                      fact_type: Programming Language
+                    - id: 5
+                      fact_type_id: 1
+                      icon_class: fab python
                       value: Python 2.7
                       score: 0
             application/msgpack:
@@ -44,19 +49,19 @@ paths:
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
     post:
       summary: Create Record
-      description: Create a new project fact type option record
+      description: Create a new project fact type enum record
       requestBody:
-        description: The project fact type option record to create
+        description: The project fact type enum record to create
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/project_fact_type_option.yaml#/write'
+              $ref: '../schemas/project_fact_type_enum.yaml#/write'
             examples:
               record:
                 $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
-      tags: [Project Fact Type Options]
+      tags: [Project Fact Type Enums]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '../components/responses.yaml#/RequestError' }
@@ -66,8 +71,8 @@ paths:
   manage:
     get:
       summary: Get Record
-      description: Retrieve a project fact type option record
-      tags: [Project Fact Type Options]
+      description: Retrieve a project fact type enum record
+      tags: [Project Fact Type Enums]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
@@ -77,7 +82,7 @@ paths:
       description: >-
         Update a project fact type option, providing a JSON Patch (RFC-6209) payload of update
         operations to apply.
-      tags: [Project Fact Type Options]
+      tags: [Project Fact Type Enums]
       requestBody:
         description: JSON Patch Payload
         content:
@@ -99,8 +104,8 @@ paths:
         '409': { $ref: '../components/responses.yaml#/Conflict' }
     delete:
       summary: Delete Record
-      description: Remove a project fact type option record
-      tags: [Project Fact Type Options]
+      description: Remove a project fact type enum record
+      tags: [Project Fact Type Enums]
       responses:
         '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
@@ -116,20 +121,22 @@ paths:
 components:
   examples:
     read:
-      summary: A full project fact type option record
+      summary: A full project fact type enum record
       value:
         id: 1
         fact_type_id: 1
         created_by: test
         last_modified_by: ~
         value: Python 3.5
-        weight: 50
+        icon_class: fab python
+        score: 50
     write:
-      summary: A full project fact type option record
+      summary: A full project fact type enum record
       value:
         fact_type_id: 1
         value: Python 3.5
-        weight: 50
+        icon_class: fab python
+        score: 50
 
   responses:
     Success:
@@ -141,18 +148,9 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/project_fact_type_option.yaml#/read'
+            $ref: '../schemas/project_fact_type_enum.yaml#/read'
           examples:
             record:
               $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess
-
-tag:
-  name: Project Fact Type Options
-  description: |-
-    Management of records that define types facts that may be collected for a project.
-
-    Project facts options provide the possible values for project facts, and are
-    used to compute the score of that project fact. For more information on
-    project health score, see the compliance documentation.

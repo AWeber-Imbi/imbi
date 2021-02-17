@@ -1,7 +1,7 @@
 read:
-  title: Project Fact Type Option
+  title: Project Fact Type Enum Value
   description: |
-    Defines options that are available for a project fact type
+    Defines options that are available for an enum project fact type
   type: object
   properties:
     id:
@@ -29,7 +29,7 @@ read:
   additionalProperties: false
 
 write:
-  title: Project Fact Type Option
+  title: Project Fact Type Enum Value
   description: |
     Defines options that are available for a project fact type
   type: object

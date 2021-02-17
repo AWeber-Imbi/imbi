@@ -2,8 +2,8 @@ paths:
   collection:
     get:
       description: Retrieve the collection of project fact types
-      summary: Get Project Fact Types
-      tags: [Settings]
+      summary: Get Collection
+      tags: [Project Fact Types]
       responses:
         '200':
           description: Success
@@ -19,23 +19,52 @@ paths:
                 records:
                   summary: Multiple project fact type records
                   value:
-                    - project_type: Consumer
-                      fact_type: Programming Language
+                    - id: 1
+                      project_type_id: 1
+                      name: Programming Language
+                      fact_type: enum
+                      description: ~
+                      ui_options: []
                       weight: 25
-                    - project_type: Consumer
-                      fact_type: Test Coverage
+                    - id: 2
+                      project_type_id: 1
+                      name: Test Coverage
+                      data_type: boolean
+                      fact_type: range
+                      description: ~
+                      ui_options: []
                       weight: 25
-                    - project_type: Consumer
-                      fact_type: Deployed to all Environments
+                    - id: 3
+                      project_type_id: 1
+                      name: Deployed to all Environments
+                      fact_type: enum
+                      data_type: boolean
+                      description: ~
+                      ui_options: []
                       weight: 20
-                    - project_type: Consumer
-                      fact_type: Has Acceptance Tests
+                    - id: 4
+                      project_type_id: 1
+                      name: Has Acceptance Tests
+                      fact_type: enum
+                      data_type: boolean
+                      description: ~
+                      ui_options: []
                       weight: 10
-                    - project_type: Consumer
-                      fact_type: Meets Current Standards
+                    - id: 5
+                      project_type_id: 1
+                      name: Meets Current Standards
+                      fact_type: enum
+                      data_type: boolean
+                      description: ~
+                      ui_options: []
                       weight: 10
-                    - project_type: Consumer
-                      fact_type: Has working CI pipeline
+                    - id: 6
+                      project_type_id: 1
+                      name: Has working CI pipeline
+                      fact_type: enum
+                      data_type: boolean
+                      description: ~
+                      ui_options: []
                       weight: 10
             application/msgpack:
               <<: *responseContent
@@ -120,13 +149,21 @@ components:
         created_by: test_user
         last_modified_by: ~
         project_type_id: 1
-        fact_type: Programming Language
+        name: Programming Language
+        fact_type: enum
+        data_type: boolean
+        description: The programming language used in the project
+        ui_options: []
         weight: 25
     write:
       summary: A full project fact type record
       value:
         project_type_id: 1
-        fact_type: Programming Language
+        name: Programming Language
+        fact_type: enum
+        data_type: boolean
+        description: The programming language used in the project
+        ui_options: []
         weight: 25
 
   responses:
@@ -145,11 +182,3 @@ components:
               $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess
-
-tag:
-  name: Project Fact Types
-  description: |-
-    Management of records that define types facts that may be collected for a project.
-
-    Project facts may be used to calculate a current project health score. For more
-    information on project health score, see the compliance documentation.

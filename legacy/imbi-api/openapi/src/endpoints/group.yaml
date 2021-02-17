@@ -2,8 +2,8 @@ paths:
   collection:
     get:
       description: Retrieve the collection of groups
-      summary: Get Groups
-      tags: [Settings]
+      summary: Get Collection
+      tags: [Groups]
       responses:
         '200':
           description: Success
@@ -129,8 +129,3 @@ components:
               $ref: '#/components/examples/record'
         application/msgpack:
           <<: *responsesSuccess
-
-tag:
-  name: Groups
-  description: |
-    Endpoints used to manage the groups that Imbi users are able to be members of.
