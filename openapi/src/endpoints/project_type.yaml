@@ -2,8 +2,8 @@ paths:
   collection:
     get:
       description: Retrieve the collection of project types
-      summary: Get Project Types
-      tags: [Settings]
+      summary: Get Collection
+      tags: [Project Types]
       responses:
         '200':
           description: Success
@@ -35,6 +35,7 @@ paths:
     post:
       summary: Create Record
       description: Create a new project type record
+      tags: [Project Types]
       requestBody:
         description: The project type record to create
         content:
@@ -46,7 +47,6 @@ paths:
                 $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
-      tags: [Project Types]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '../components/responses.yaml#/RequestError' }
@@ -141,7 +141,3 @@ components:
               $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess
-
-tag:
-  name: Project Types
-  description: Endpoints used for the management different types of projects managed in Imbi (APIs, Databases, etc)

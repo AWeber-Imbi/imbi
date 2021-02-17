@@ -2,8 +2,8 @@ paths:
   collection:
     get:
       description: Retrieve the collection of environments
-      summary: Get Environments
-      tags: [Settings]
+      summary: Get Collection
+      tags: [Environments]
       responses:
         '200':
           description: Success
@@ -131,7 +131,3 @@ components:
               $ref: '#/components/examples/record'
         application/msgpack:
           <<: *responsesSuccess
-
-tag:
-  name: Environments
-  description: Endpoints used for the management different target environments for projects to run in.

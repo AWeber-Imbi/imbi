@@ -1,9 +1,9 @@
 paths:
   collection:
     get:
-      description: Retrieve the collection of cookie cutters
+      description: Retrieve the collection of project fact type ranges
       summary: Get Collection
-      tags: [Cookie Cutters]
+      tags: [Project Fact Type Ranges]
       responses:
         '200':
           description: Success
@@ -14,44 +14,49 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/cookie_cutter.yaml'
+                  $ref: '../schemas/project_fact_type_range.yaml'
               examples:
                 records:
-                  summary: Multiple cookie cutter records
+                  summary: Multiple project fact type range records
                   value:
-                    - cookiecutter: buzzops-project
-                      project_type_id: 1
-                      type: project
-                      description: A HTTP API that runs in Kubernetes
-                      url: https://github.com/aweber/k8s-api-cookiecutter.git
-                    - cookiecutter: buzzops-consumer
-                      project_type_id: 2
-                      type: project
-                      description: A rejected consumer application
-                      url: https://github.com/aweber/k8s-consumer-cookiecutter.git
-                    - cookiecutter: buzzops-consumer-dashboard
-                      project_type_id: 1
-                      type: dashboard
-                      description: A Grafana dashboard for a rejected consumer application
-                      url: https://github.com/aweber/grafana-consumer-cookiecutter.git
+                    - id: 1
+                      fact_type_id: 1
+                      min_value: 90
+                      max_value: 100
+                      score: 100
+                    - id: 2
+                      fact_type_id: 1
+                      min_value: 75
+                      max_value: 89
+                      score: 75
+                    - id: 3
+                      fact_type_id: 1
+                      min_value: 50
+                      max_value: 74
+                      score: 50
+                    - id: 4
+                      fact_type_id: 1
+                      min_value: 0
+                      max_value: 49
+                      score: 50
             application/msgpack:
               <<: *responseContent
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
     post:
       summary: Create Record
-      description: Create a new cookie cutter record
+      description: Create a new project fact type range record
       requestBody:
-        description: The cookie cutter record to create
+        description: The project fact type range record to create
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/cookie_cutter.yaml'
+              $ref: '../schemas/project_fact_type_range.yaml#/write'
             examples:
               record:
-                $ref: '#/components/examples/record'
+                $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
-      tags: [Cookie Cutters]
+      tags: [Project Fact Type Ranges]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '../components/responses.yaml#/RequestError' }
@@ -61,18 +66,18 @@ paths:
   manage:
     get:
       summary: Get Record
-      description: Retrieve a cookie cutter record
-      tags: [Cookie Cutters]
+      description: Retrieve a project fact type range record
+      tags: [Project Fact Type Ranges]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     patch:
       summary: Update Record
-      description: |-
-        Update a cookie cutter, providing a JSON Patch (RFC-6209) payload of update
+      description: >-
+        Update a project fact type option, providing a JSON Patch (RFC-6209) payload of update
         operations to apply.
-      tags: [Cookie Cutters]
+      tags: [Project Fact Type Ranges]
       requestBody:
         description: JSON Patch Payload
         content:
@@ -94,35 +99,43 @@ paths:
         '409': { $ref: '../components/responses.yaml#/Conflict' }
     delete:
       summary: Delete Record
-      description: Remove a cookie cutter record
-      tags: [Cookie Cutters]
+      description: Remove a project fact type range record
+      tags: [Project Fact Type Ranges]
       responses:
         '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
     parameters:
-      - name: name
+      - name: id
         in: path
-        description: Cookie Cutter Name
+        description: Fact Type Option ID
         required: true
         schema:
-          type: string
-          pattern: '[\w_]+'
+          type: number
 
 components:
   examples:
-    record:
-      summary: A full cookie cutter record
+    read:
+      summary: A full project fact type range record
       value:
-        name: k8s-rejected-consumer
-        type: project
-        project_type_id: 1
-        description: A rejected consumer that runs in Kubernetes
-        url: https://gitlab.com/aweber/cookiecutters/k8s-rejected-consumer.git
+        id: 1
+        fact_type_id: 1
+        created_by: test
+        last_modified_by: ~
+        min_value: 0
+        max_value: 49
+        score: 50
+    write:
+      summary: A full project fact type range record
+      value:
+        fact_type_id: 1
+        min_value: 10
+        max_value: 20
+        score: 50
 
   responses:
     Success:
-      description: The request to create, update, or retrieve the cookie cutter was successful
+      description: The request to create, update, or retrieve the project fact type range was successful
       headers:
         Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
         Last-Modified: { $ref: '../components/headers.yaml#/Last-Modified' }
@@ -130,9 +143,9 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/cookie_cutter.yaml'
+            $ref: '../schemas/project_fact_type_range.yaml#/read'
           examples:
             record:
-              $ref: '#/components/examples/record'
+              $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess

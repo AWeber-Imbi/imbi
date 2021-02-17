@@ -49,10 +49,14 @@ paths:
     { $ref: 'endpoints/project_fact_type.yaml#/paths/collection' }
   /project-fact-types/{fact_type_id}:
     { $ref: 'endpoints/project_fact_type.yaml#/paths/manage' }
-  /project-fact-type-options:
-    { $ref: 'endpoints/project_fact_type_option.yaml#/paths/collection' }
-  /project-fact-type-options/{id}:
-    { $ref: 'endpoints/project_fact_type_option.yaml#/paths/manage' }
+  /project-fact-type-enums:
+    { $ref: 'endpoints/project_fact_type_enum.yaml#/paths/collection' }
+  /project-fact-type-enums/{id}:
+    { $ref: 'endpoints/project_fact_type_enum.yaml#/paths/manage' }
+  /project-fact-type-ranges:
+    { $ref: 'endpoints/project_fact_type_range.yaml#/paths/collection' }
+  /project-fact-type-ranges/{id}:
+    { $ref: 'endpoints/project_fact_type_range.yaml#/paths/manage' }
   /project-link-types:
     { $ref: 'endpoints/project_link_type.yaml#/paths/collection' }
   /project-link-types/{id}:
@@ -60,35 +64,78 @@ paths:
   /project-types: { $ref: 'endpoints/project_type.yaml#/paths/collection' }
   /project-types/{id}: { $ref: 'endpoints/project_type.yaml#/paths/manage' }
   /projects: { '$ref': 'endpoints/projects.yaml#/paths/collection' }
-  /projects/{id}: { '$ref': 'endpoints/project.yaml#/paths/manage' }
+  /projects/{id}: { '$ref': 'endpoints/projects.yaml#/paths/manage' }
   /projects/{id}/links:
     { '$ref': 'endpoints/project_links.yaml#/paths/collection' }
   /projects/{id}/links/{link_type_id}:
-    { '$ref': 'endpoints/project_link.yaml#/paths/manage' }
+    { '$ref': 'endpoints/project_links.yaml#/paths/manage' }
   /projects/{id}/dependencies:
-    { '$ref': 'endpoints/dependencies.yaml#/paths/collection' }
+    { '$ref': 'endpoints/project_dependencies.yaml#/paths/collection' }
   /projects/{id}/dependencies/{dependency_id}:
-    { '$ref': 'endpoints/dependency.yaml#/paths/manage' }
+    { '$ref': 'endpoints/project_dependencies.yaml#/paths/manage' }
   /projects/{id}/urls:
     { '$ref': 'endpoints/project_urls.yaml#/paths/collection' }
   /projects/{id}/urls/{environment}:
-    { '$ref': 'endpoints/project_url.yaml#/paths/manage' }
+    { '$ref': 'endpoints/project_urls.yaml#/paths/manage' }
   /status: { $ref: 'status.yaml#/paths/status' }
 
 tags:
-  - { '$ref': 'endpoints/cookie_cutter.yaml#/tag' }
-  - { '$ref': 'endpoints/environment.yaml#/tag' }
-  - { '$ref': 'endpoints/group.yaml#/tag' }
-  - { '$ref': 'endpoints/namespace.yaml#/tag' }
-  - { '$ref': 'endpoints/project_fact_type.yaml#/tag' }
-  - { '$ref': 'endpoints/project_fact_type_option.yaml#/tag' }
-  - { '$ref': 'endpoints/project_link_type.yaml#/tag' }
-  - { '$ref': 'endpoints/project_type.yaml#/tag' }
+  - name: Cookie Cutters
+    description: Endpoints used for the management of project creation cookie cutters
+  - name: Environments
+    description: Endpoints used for the management different target environments for projects to run in.
+  - name: Groups
+    description: |-
+      Endpoints used to manage the groups that Imbi users are able to be members of.
+  - name: Namespaces
+    description: Endpoints used for the management of organizational namespaces
+
+  - name: Project Fact Types
+    description: |-
+      Management of records that define types facts that may be collected for a project.
+
+      Project facts may be used to calculate a current project health score. For more
+      information on project health score, see the compliance documentation.
+  - name: Project Fact Type Enums
+    description: |-
+      Management of records that define enum values for different fact types that may be collected for a project.
+
+      Project facts enums provide the possible values for project facts, and are
+      used to compute the score of that project fact. For more information on
+      project health score, see the compliance documentation.
+  - name: Project Fact Type Ranges
+    description: |-
+      Management of records that define range values for different fact types that
+      may be collected for a project.
+
+      Project facts ranges provide the possible range values for project facts, and
+      are used to compute the score of that project fact. For more information on
+      project health score, see the compliance documentation.
+  - name: Project Link Types
+    description: |-
+      Management of records that define types of links or URLs to associate with a project
+  - name: Project Types
+    description: Endpoints used for the management different types of projects managed in Imbi (APIs, Databases, etc)
+
   - name: Projects
     description: Endpoints used for the management of projects
+  - name: Project Dependencies
+    description: Endpoints used to manage the relationships of projects to other projects
+  - name: Project Facts
+    description: Endpoints for managing the current facts describing the project
+  - name: Project Links
+    description: Endpoints used to manage links to external resources for a project
+  - name: Project URLs
+    description: Endpoints used to manage urls to the project in each operational environment
+
   - name: Settings
     description: Endpoints used for retrieving settings for the Imbi UI
-  - { '$ref': 'status.yaml#/tag' }
+
+  - name: Health Check / Status
+    description: |-
+      The health check endpoint can be used by a load balancer to indicate
+      service health.
+
 
 x-tagGroups:
   - name: Administration
@@ -101,18 +148,24 @@ x-tagGroups:
       - Environments
       - Namespaces
       - Project Fact Types
-      - Project Fact Type Options
+      - Project Fact Type Enums
+      - Project Fact Type Ranges
       - Project Link Types
       - Project Types
   - name: Project Management
     tags:
       - Projects
-  - name: Settings
-    tags:
-      - Settings
-  - name: User Specific
+      - Project Dependencies
+      - Project Facts
+      - Project Links
+      - Project URLs
+  - name: Current User
     tags:
       - User
+  - name: UI Specific
+    tags:
+      - Dashboard
+      - Settings
   - name: Other
     tags:
-      - Health Check
+      - Health Check / Status

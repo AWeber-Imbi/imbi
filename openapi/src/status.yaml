@@ -18,7 +18,7 @@ paths:
               - 'true'
               - 'false'
       tags:
-        - Health Check
+        - Health Check / Status
       responses:
         '200':
           description: Service Available
@@ -131,9 +131,3 @@ components:
         version:
           type: string
           description: The version
-
-tag:
-  name: Health Check
-  description: |-
-    The health check endpoint can be used by a load balancer to indicate
-    service health.

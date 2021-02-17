@@ -8,7 +8,11 @@
     </style>
   </head>
   <body>
-    <redoc spec-url="/api-docs/openapi.yaml?{{ settings['version'] }}"></redoc>
+    <redoc spec-url="/api-docs/openapi.yaml?{{ settings['version'] }}"
+           expand-responses="200,204"
+           path-in-middle-panel="true"
+           required-props-first="true"
+           sort-props-alphabetically="true"></redoc>
     <script src="{{ static_url('redoc.standalone.js') }}"></script>
   </body>
 </html>

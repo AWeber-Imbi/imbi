@@ -1,9 +1,9 @@
 paths:
   collection:
     get:
-      description: Retrieve the collection of project link types
+      description: Retrieve the collection of dependencies for a project
       summary: Get Collection
-      tags: [Project Link Types]
+      tags: [Project Dependencies]
       responses:
         '200':
           description: Success
@@ -14,77 +14,60 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/project_link_type.yaml'
+                  $ref: '../schemas/project_dependency.yaml#/read'
               examples:
                 records:
-                  summary: Multiple project link type records
+                  summary: Multiple records
                   value:
-                    - project_link_type: documentation
-                      icon_class: fab fa-bool
-                    - project_link_type: grafana
-                      icon_class: fab fa-graph
+                    - project_id: 2
+                      created_by: test_user
+                      dependency_id: 1
+                    - project_id: 3
+                      created_by: test_user
+                      dependency_id: 1
             application/msgpack:
               <<: *responseContent
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
     post:
       summary: Create Record
-      description: Create a new link type record
+      description: Create a new project dependency record
+      tags: [Project Dependencies]
       requestBody:
-        description: The link type record to create
+        description: The project dependency record to create
         content:
           application/json: &postContent
             schema:
-              $ref: '../schemas/project_link_type.yaml#/write'
+              $ref: '../schemas/project_dependency.yaml#/write'
             examples:
               record:
                 $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
-      tags: [Project Link Types]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '../components/responses.yaml#/RequestError' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '409': { $ref: '../components/responses.yaml#/Conflict' }
-
+    parameters:
+      - name: id
+        in: path
+        description: The ID of the project for the dependencies
+        required: true
+        schema:
+          type: number
   manage:
     get:
       summary: Get Record
-      description: Retrieve an link type record
-      tags: [Project Link Types]
+      description: Retrieve a project dependency record
+      tags: [Project Dependencies]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
-    patch:
-      summary: Update Record
-      description: >-
-        Update an link type, providing a JSON Patch (RFC-6209) payload of update
-        operations to apply.
-      tags: [Project Link Types]
-      requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json: &patchContent
-            schema:
-              $ref: '../components/schemas.yaml#/jsonPatch'
-          application/msgpack:
-            <<: *patchContent
-          application/json-patch+json:
-            <<: *patchContent
-          application/json-patch+msgpack:
-            <<: *patchContent
-      responses:
-        '200': { $ref: '#/components/responses/Success' }
-        '304': { $ref: '../components/responses.yaml#/NoChanges' }
-        '400': { $ref: '../components/responses.yaml#/RequestError' }
-        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
-        '404': { $ref: '../components/responses.yaml#/NotFound' }
-        '409': { $ref: '../components/responses.yaml#/Conflict' }
     delete:
       summary: Delete Record
-      description: Remove an link type record
-      tags: [Project Link Types]
+      description: Remove a project dependency record
+      tags: [Project Dependencies]
       responses:
         '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
@@ -92,7 +75,13 @@ paths:
     parameters:
       - name: id
         in: path
-        description: Link Type Surrogate ID
+        description: The ID of the project with the dependency
+        required: true
+        schema:
+          type: number
+      - name: dependency_id
+        in: path
+        description: The ID of the project that is dependend upon
         required: true
         schema:
           type: number
@@ -100,22 +89,19 @@ paths:
 components:
   examples:
     read:
-      summary: The record when returned from the API
+      summary: A project dependency record
       value:
-        id: 1
-        created_by: test
-        last_modified_by: ~
-        link_type: documentation
-        icon_class: fab fa-bool
+        project_id: 2
+        created_by: test_user
+        dependency_id: 1
     write:
-      summary: A full link type record
+      summary: The payload used when creating a project dependency
       value:
-        link_type: documentation
-        icon_class: fab fa-bool
+        dependency_id: 1
 
   responses:
     Success:
-      description: The request to create, update, or retrieve the link type was successful
+      description: The request to create, update, or retrieve the project dependency was successful
       headers:
         Cache-Control: { $ref: '../components/headers.yaml#/Cache-Control' }
         Last-Modified: { $ref: '../components/headers.yaml#/Last-Modified' }
@@ -123,7 +109,7 @@ components:
       content:
         application/json: &responsesSuccess
           schema:
-            $ref: '../schemas/project_link_type.yaml#/read'
+            $ref: '../schemas/project_dependency.yaml#/read'
           examples:
             record:
               $ref: '#/components/examples/read'

@@ -2,8 +2,8 @@ paths:
   collection:
     get:
       description: Retrieve the collection of namespaces
-      summary: Get Namespaces
-      tags: [Settings]
+      summary: Get Collection
+      tags: [Namespaces]
       responses:
         '200':
           description: Success
@@ -147,7 +147,3 @@ components:
               $ref: '#/components/examples/read'
         application/msgpack:
           <<: *responsesSuccess
-
-tag:
-  name: Namespaces
-  description: Endpoints used for the management of organizational namespaces
