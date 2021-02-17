@@ -14,10 +14,11 @@ schemata/v1.sql
 types/v1/cookie_cutter_type.sql
 types/v1/data_type.sql
 types/v1/entity_type.sql
+types/v1/fact_type.sql
+types/v1/ui_options.sql
 
 -- Functions
 functions/v1/group_name_from_ldap_dn.sql
-functions/v1/insert_project_fact_history.sql
 functions/v1/maintain_group_membership_from_ldap_groups.sql
 
 -- Tables
@@ -26,7 +27,14 @@ tables/v1/namespaces.sql
 tables/v1/project_link_types.sql
 tables/v1/project_types.sql
 tables/v1/project_fact_types.sql
-tables/v1/project_fact_type_options.sql
+tables/v1/project_fact_type_enums.sql
+tables/v1/project_fact_type_ranges.sql
+
+-- References the previous tables
+functions/v1/insert_project_fact_history.sql
+functions/v1/validate_fact_value.sql
+
+-- Tables Continued
 tables/v1/cookie_cutters.sql
 tables/v1/projects.sql
 tables/v1/project_dependencies.sql

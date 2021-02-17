@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(17);
+SELECT plan(18);
 
 SELECT has_table('v1'::NAME, 'authentication_tokens'::NAME);
 SELECT has_table('v1'::NAME, 'cookie_cutters'::NAME);
@@ -9,7 +9,8 @@ SELECT has_table('v1'::NAME, 'groups'::NAME);
 SELECT has_table('v1'::NAME, 'namespaces'::NAME);
 SELECT has_table('v1'::NAME, 'project_dependencies'::NAME);
 SELECT has_table('v1'::NAME, 'project_fact_history'::NAME);
-SELECT has_table('v1'::NAME, 'project_fact_type_options'::NAME);
+SELECT has_table('v1'::NAME, 'project_fact_type_enums'::NAME);
+SELECT has_table('v1'::NAME, 'project_fact_type_ranges'::NAME);
 SELECT has_table('v1'::NAME, 'project_fact_types'::NAME);
 SELECT has_table('v1'::NAME, 'project_facts'::NAME);
 SELECT has_table('v1'::NAME, 'project_link_types'::NAME);

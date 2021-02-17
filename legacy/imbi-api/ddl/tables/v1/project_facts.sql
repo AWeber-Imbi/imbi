@@ -13,8 +13,11 @@ CREATE TABLE IF NOT EXISTS project_facts (
   FOREIGN KEY (fact_type_id) REFERENCES project_fact_types (id) ON UPDATE CASCADE ON DELETE CASCADE
 );
 
-CREATE TRIGGER project_facts_ins_project_history AFTER INSERT OR UPDATE ON project_facts
-    FOR EACH ROW EXECUTE PROCEDURE insert_project_fact_history();
+CREATE TRIGGER validate_project_fact_value BEFORE INSERT OR UPDATE ON project_facts
+    FOR EACH ROW EXECUTE PROCEDURE v1.validate_fact_value();
+
+CREATE TRIGGER maintain_project_fact_history AFTER INSERT OR UPDATE ON project_facts
+    FOR EACH ROW EXECUTE PROCEDURE v1.insert_project_fact_history();
 
 COMMENT ON TABLE project_facts IS 'Stores the current facts for a project';
 COMMENT ON COLUMN project_facts.project_id IS 'The project ID';
