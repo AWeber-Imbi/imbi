@@ -6,11 +6,34 @@ import { FetchContext } from '../../contexts'
 import { fetchMetadata } from '../../metadata'
 import { jsonSchema } from '../../schema/ProjectFactType'
 
+function displayLabelValue(value, options, defaultValue = null) {
+  let displayValue = defaultValue
+  options.forEach((item) => {
+    if (item.value === value) displayValue = item.label
+  })
+  return displayValue
+}
+
 export function ProjectFactTypes() {
   const fetch = useContext(FetchContext)
   const [errorMessage, setErrorMessage] = useState(null)
   const [projectTypes, setProjectTypes] = useState(null)
   const { t } = useTranslation()
+
+  const dataTypeOptions = [
+    { label: 'Boolean', value: 'boolean' },
+    { label: 'ISO-8601 Date', value: 'date' },
+    { label: 'Decimal', value: 'decimal' },
+    { label: 'Integer', value: 'integer' },
+    { label: 'String', value: 'string' },
+    { label: 'ISO-8601 Timestamp', value: 'timestamp' }
+  ]
+
+  const factTypeOptions = [
+    { label: 'Enum', value: 'enum' },
+    { label: 'Free-Form', value: 'free-form' },
+    { label: 'Range', value: 'range' }
+  ]
 
   useEffect(() => {
     if (projectTypes === null) {
@@ -54,31 +77,75 @@ export function ProjectFactTypes() {
               }
             },
             {
+              title: t('common.name'),
+              name: 'name',
+              type: 'text',
+              tableOptions: {
+                className: 'truncate',
+                headerClassName: 'w-3/12'
+              }
+            },
+            {
               title: t('admin.projectTypes.itemName'),
-              name: 'project_type_id',
+              name: 'project_type_ids',
               type: 'select',
               castTo: 'number',
               options: projectTypes,
-              description: 'Leave empty for all project types',
+              multiple: true,
               tableOptions: {
                 className: 'truncate',
-                headerClassName: 'w-3/12',
+                headerClassName: 'w-5/12',
                 lookupFunction: (value) => {
-                  let displayValue = null
-                  projectTypes.forEach((item) => {
-                    if (item.value === value) displayValue = item.label
+                  const displayValues = []
+                  value.map((projectTypeID) => {
+                    projectTypes.forEach((item) => {
+                      if (item.value === projectTypeID)
+                        displayValues.push(item.label)
+                    })
                   })
-                  return displayValue
+                  displayValues.sort()
+                  return displayValues.join(', ')
+                }
+              }
+            },
+            {
+              title: t('admin.projectFactTypes.dataType'),
+              name: 'data_type',
+              type: 'select',
+              options: dataTypeOptions,
+              tableOptions: {
+                className: 'text-center truncate',
+                headerClassName: 'text-center w-1/12',
+                lookupFunction: (value) => {
+                  return displayLabelValue(value, dataTypeOptions)
                 }
               }
             },
             {
               title: t('admin.projectFactTypes.factType'),
               name: 'fact_type',
-              type: 'text',
+              type: 'select',
+              options: factTypeOptions,
               tableOptions: {
-                className: 'truncate',
-                headerClassName: 'w-4/12'
+                className: 'text-center truncate',
+                headerClassName: 'text-center w-1/12',
+                lookupFunction: (value) => {
+                  return displayLabelValue(value, factTypeOptions)
+                }
+              }
+            },
+            {
+              title: t('admin.projectFactTypes.uiOptions'),
+              name: 'ui_options',
+              type: 'select',
+              default: [],
+              options: [
+                { label: 'Display as Badge', value: 'display-as-badge' },
+                { label: 'Hidden', value: 'hidden' }
+              ],
+              multiple: true,
+              tableOptions: {
+                hide: true
               }
             },
             {
@@ -90,23 +157,6 @@ export function ProjectFactTypes() {
               }
             },
             {
-              title: t('admin.projectFactTypes.dataType'),
-              name: 'data_type',
-              type: 'select',
-              options: [
-                { label: 'Boolean', value: 'boolean' },
-                { label: 'ISO-8601 Date', value: 'date' },
-                { label: 'Decimal', value: 'decimal' },
-                { label: 'Integer', value: 'integer' },
-                { label: 'String', value: 'string' },
-                { label: 'ISO-8601 Timestamp', value: 'timestamp' }
-              ],
-              tableOptions: {
-                className: 'truncate',
-                headerClassName: 'w-2/12'
-              }
-            },
-            {
               title: t('admin.projectFactTypes.weight'),
               name: 'weight',
               type: 'number',
@@ -115,7 +165,7 @@ export function ProjectFactTypes() {
               description: t('admin.projectFactTypes.weightDescription'),
               tableOptions: {
                 className: 'text-center',
-                headerClassName: 'w-2/12 text-center'
+                headerClassName: 'w-1/12 text-center'
               }
             }
           ]}
@@ -128,7 +178,7 @@ export function ProjectFactTypes() {
           itemKey="id"
           itemName={t('admin.projectFactTypes.itemName')}
           itemPath="/project-fact-types/{{value}}"
-          itemTitle="fact_type"
+          itemTitle="name"
           jsonSchema={jsonSchema}
         />
       )}

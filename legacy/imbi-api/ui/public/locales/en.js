@@ -2,6 +2,7 @@ export default {
   en: {
     translation: {
       common: {
+        all: 'All',
         initializing: 'Initializing',
         loading: 'Loading',
         name: 'Name',
@@ -124,6 +125,7 @@ export default {
           weight: 'Weight',
           weightDescription:
             'The weight from 0 to 100 against the total score for a project. Total weight should across all types for a project type should not exceed 100.',
+          uiOptions: 'Display Options',
           errors: {
             uniqueViolation:
               'A project fact type with the same name already exists'

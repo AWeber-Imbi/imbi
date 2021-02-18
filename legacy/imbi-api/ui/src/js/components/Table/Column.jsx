@@ -30,9 +30,12 @@ function Column({ definition, children }) {
 Column.propTypes = {
   definition: PropTypes.exact(ColumnPropTypes),
   children: PropTypes.oneOfType([
-    PropTypes.string,
+    PropTypes.element,
     PropTypes.number,
-    PropTypes.element
+    PropTypes.string,
+    PropTypes.arrayOf(PropTypes.element),
+    PropTypes.arrayOf(PropTypes.number),
+    PropTypes.arrayOf(PropTypes.string)
   ])
 }
 

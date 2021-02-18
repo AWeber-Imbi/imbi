@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types'
 
 export const Column = {
-  castTo: PropTypes.oneOf(['number']),
+  castTo: PropTypes.oneOf(['array', 'number']),
   default: PropTypes.oneOfType([
     PropTypes.array,
     PropTypes.number,
@@ -22,7 +22,7 @@ export const Column = {
         PropTypes.bool,
         PropTypes.number,
         PropTypes.string
-      ]).isRequired
+      ])
     })
   ),
   placeholder: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),

@@ -15,26 +15,39 @@ function Select({
   required,
   value
 }) {
+  function _defaultValue() {
+    if (multiple === true) {
+      return value === undefined || value === null ? [] : value
+    } else {
+      return value === undefined || value === null
+        ? ''
+        : castTo === 'number'
+        ? value.toString()
+        : value
+    }
+  }
+
   const [hasFocus, setHasFocus] = useState(false)
   const ref = useRef(null)
+  const [currentValue, setCurrentValue] = useState(_defaultValue())
+
   useEffect(() => {
     if (autoFocus === true) {
       ref.current.focus()
     }
   }, [])
+
+  useEffect(() => {
+    if (onChange !== undefined) onChange(name, currentValue)
+  }, [currentValue])
+
   return (
     <select
       className={
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
-      defaultValue={
-        value !== undefined && value !== null && value !== []
-          ? castTo === 'number'
-            ? value.toString()
-            : value
-          : value
-      }
+      defaultValue={currentValue === null ? '' : currentValue}
       id={'field-' + name}
       multiple={multiple}
       name={name}
@@ -44,16 +57,18 @@ function Select({
       }}
       onChange={(event) => {
         event.preventDefault()
-        let value = event.target.value
+        let targetValue = event.target.value
         if (multiple === true) {
-          value = Array.from(event.target.selectedOptions, (option) => {
+          targetValue = Array.from(event.target.selectedOptions, (option) => {
             return castTo === 'number' ? parseInt(option.value) : option.value
           })
-          if (value === null) value = []
+          targetValue.sort()
         } else {
-          if (castTo === 'number') value = parseInt(value)
+          if (castTo === 'number')
+            targetValue =
+              targetValue !== '' ? parseInt(targetValue) : targetValue
         }
-        if (onChange !== undefined) onChange(name, value)
+        setCurrentValue(targetValue === '' ? null : targetValue)
       }}
       onFocus={(event) => {
         event.preventDefault()
@@ -69,7 +84,9 @@ function Select({
         return (
           <option
             key={name + '-' + option.value}
-            value={option.value.toString()}>
+            value={
+              option.value !== null ? option.value.toString() : option.value
+            }>
             {option.label}
           </option>
         )
