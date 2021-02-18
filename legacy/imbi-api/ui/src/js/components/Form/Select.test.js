@@ -88,9 +88,9 @@ describe('Select', () => {
     const select = screen.getByTestId('select').children[0]
     fireEvent.change(select, { target: { value: 'bar' } })
     expect(select).toHaveValue('bar')
-    expect(mockCallback.mock.calls.length).toBe(1)
+    expect(mockCallback.mock.calls.length).toBe(2)
     fireEvent.change(select, { target: { value: 'baz' } })
     expect(select).toHaveValue('baz')
-    expect(mockCallback.mock.calls.length).toBe(2)
+    expect(mockCallback.mock.calls.length).toBe(3)
   })
 })
