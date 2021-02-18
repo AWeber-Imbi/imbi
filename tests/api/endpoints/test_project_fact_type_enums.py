@@ -13,7 +13,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
     TRUNCATE_TABLES = [
         'v1.project_types',
         'v1.project_fact_types',
-        'v1.project_fact_type_options'
+        'v1.project_fact_type_enums'
     ]
 
     def setUp(self) -> None:
@@ -31,13 +31,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         # Create
         result = self.fetch(
-            '/project-fact-type-options',
+            '/project-fact-type-enums',
             method='POST', body=json.dumps(record).encode('utf-8'),
             headers=self.headers)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url(
-            '/project-fact-type-options/{}'.format(response['id']))
+            '/project-fact-type-enums/{}'.format(response['id']))
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
@@ -86,7 +86,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(new_value, record)
 
         # Collection
-        result = self.fetch('/project-fact-type-options', headers=self.headers)
+        result = self.fetch('/project-fact-type-enums', headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assertListEqual(
             json.loads(result.body.decode('utf-8')),

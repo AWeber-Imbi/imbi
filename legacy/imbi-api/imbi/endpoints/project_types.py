@@ -6,7 +6,8 @@ from imbi.endpoints import base
 class _RequestHandlerMixin:
 
     ID_KEY = 'id'
-    FIELDS = ['id', 'name', 'plural_name', 'description', 'icon_class', 'environment_urls']
+    FIELDS = ['id', 'name', 'plural_name', 'description', 'icon_class',
+              'environment_urls']
     DEFAULTS = {'icon_class': 'fas fa-folder'}
 
     GET_SQL = re.sub(r'\s+', ' ', """\

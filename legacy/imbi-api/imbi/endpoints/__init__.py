@@ -3,9 +3,9 @@ from tornado import web
 from imbi import constants
 from . import (authentication_tokens, cookie_cutters, dashboard, environments,
                groups, namespaces, openapi, permissions, project_dependencies,
-               project_fact_type_options, project_fact_types,
-               project_link_types, project_links, project_types, project_urls,
-               projects, status, ui)
+               project_fact_type_enums, project_fact_type_ranges,
+               project_fact_types, project_link_types, project_links,
+               project_types, project_urls, projects, status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -38,11 +38,16 @@ URLS = [
     web.url(r'^/project-fact-types/(?P<id>\d+)$',
             project_fact_types.RecordRequestHandler,
             name='project-fact-type'),
-    web.url(r'^/project-fact-type-options$',
-            project_fact_type_options.CollectionRequestHandler),
-    web.url(r'^/project-fact-type-options/(?P<id>\d+)$',
-            project_fact_type_options.RecordRequestHandler,
-            name='project-fact-type-option'),
+    web.url(r'^/project-fact-type-enums$',
+            project_fact_type_enums.CollectionRequestHandler),
+    web.url(r'^/project-fact-type-enums/(?P<id>\d+)$',
+            project_fact_type_enums.RecordRequestHandler,
+            name='project-fact-type-enum'),
+    web.url(r'^/project-fact-type-ranges$',
+            project_fact_type_ranges.CollectionRequestHandler),
+    web.url(r'^/project-fact-type-ranges/(?P<id>\d+)$',
+            project_fact_type_ranges.RecordRequestHandler,
+            name='project-fact-type-range'),
     web.url(r'^/project-link-types$',
             project_link_types.CollectionRequestHandler),
     web.url(r'^/project-link-types/(?P<id>\d+)$',
