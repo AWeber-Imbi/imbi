@@ -153,7 +153,8 @@ Field.propTypes = {
   value: PropTypes.oneOfType([
     PropTypes.number,
     PropTypes.string,
-    PropTypes.arrayOf(PropTypes.string)
+    PropTypes.arrayOf(PropTypes.string),
+    PropTypes.arrayOf(PropTypes.number)
   ])
 }
 

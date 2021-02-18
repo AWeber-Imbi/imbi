@@ -6,6 +6,7 @@ import { validate } from 'jsonschema'
 import { Alert, Button, Modal } from '..'
 import { Columns } from '../../schema'
 import { Field } from './Field'
+import { isFunction } from '../../utils'
 
 function ModalForm({
   columns,
@@ -19,28 +20,29 @@ function ModalForm({
 }) {
   const { t } = useTranslation()
 
-  const emptyErrors = columns.reduce((result, column) => {
-    result[column.name] = null
-    return result
+  const emptyErrors = columns.reduce((value, column) => {
+    value[column.name] = null
+    return value
   }, {})
 
   const [errors, setErrors] = useState(emptyErrors)
   const [errorMessage, setErrorMessage] = useState(null)
+  const formColumns = useState(
+    columns.filter(
+      (column) => (formType === 'add' && column.omitOnAdd === true) !== true
+    )
+  )[0]
+
   const [formReady, setFormReady] = useState(false)
   const [formValues, setFormValues] = useState(
-    columns.reduce((result, column) => {
-      if ((formType === 'add' && column.omitOnAdd === true) === false)
-        result[column.name] =
-          values !== null
-            ? values[column.name] !== undefined
-              ? values[column.name]
-              : null
-            : column.default !== undefined
-            ? typeof column.default === 'function'
-              ? column.default()
-              : column.default
-            : null
-      return result
+    formColumns.reduce((accumulator, column) => {
+      let columnValue = values !== null ? values[column.name] : undefined
+      if (columnValue === undefined)
+        columnValue = isFunction(column.default)
+          ? column.default()
+          : column.default
+      accumulator[column.name] = columnValue !== undefined ? columnValue : null
+      return accumulator
     }, {})
   )
   const [ignoreErrors, setIgnoreErrors] = useState(false)
@@ -89,8 +91,7 @@ function ModalForm({
           </Alert>
         )}
         <form onSubmit={handleSubmit}>
-          {columns.map((column, index) => {
-            if (formType === 'add' && column.omitOnAdd === true) return null
+          {formColumns.map((column, index) => {
             return (
               <Field
                 autoFocus={index === 0}

@@ -7,16 +7,30 @@ export const jsonSchema = {
     id: {
       type: 'number'
     },
-    project_type_id: {
-      oneOf: [{ type: 'number' }, { type: 'null' }]
+    project_type_ids: {
+      type: 'array',
+      items: {
+        type: 'number'
+      }
+    },
+    name: {
+      type: 'string',
+      minLength: 3
     },
     fact_type: {
       type: 'string',
-      minLength: 3
+      enum: ['enum', 'free-form', 'range']
     },
     data_type: {
       type: 'string',
       enum: ['boolean', 'date', 'decimal', 'integer', 'string', 'timestamp']
+    },
+    ui_options: {
+      type: 'array',
+      items: {
+        type: 'string',
+        enum: ['display-as-badge', 'hidden']
+      }
     },
     description: {
       oneOf: [{ type: 'string' }, { type: 'null' }]
@@ -28,13 +42,20 @@ export const jsonSchema = {
     }
   },
   additionalProperties: false,
-  required: ['project_type_id', 'fact_type', 'data_type', 'weight']
+  required: [
+    'project_type_ids',
+    'fact_type',
+    'data_type',
+    'ui_options',
+    'weight'
+  ]
 }
 
 export const propTypes = {
   id: PropTypes.number,
-  project_type_id: PropTypes.number,
-  fact_type: PropTypes.string.isRequired,
+  project_type_ids: PropTypes.arrayOf(PropTypes.number),
+  name: PropTypes.string.isRequired,
+  fact_type: PropTypes.oneOf(['enum', 'free-form', 'range']).isRequired,
   data_type: PropTypes.oneOf([
     'boolean',
     'date',
@@ -43,6 +64,8 @@ export const propTypes = {
     'string',
     'timestamp'
   ]).isRequired,
+  ui_options: PropTypes.arrayOf(PropTypes.oneOf(['display-as-badge', 'hidden']))
+    .isRequired,
   description: PropTypes.string,
   weight: PropTypes.number.isRequired
 }

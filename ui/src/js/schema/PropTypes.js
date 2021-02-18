@@ -7,6 +7,6 @@ export const SelectOptions = PropTypes.arrayOf(
       PropTypes.bool,
       PropTypes.string,
       PropTypes.number
-    ]).isRequired
+    ])
   })
 )
