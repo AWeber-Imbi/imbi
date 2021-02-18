@@ -15,7 +15,6 @@ types/v1/cookie_cutter_type.sql
 types/v1/data_type.sql
 types/v1/entity_type.sql
 types/v1/fact_type.sql
-types/v1/ui_options.sql
 
 -- Functions
 functions/v1/group_name_from_ldap_dn.sql
