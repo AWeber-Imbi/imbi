@@ -1,5 +1,4 @@
 import json
-import uuid
 
 import jsonpatch
 
@@ -10,32 +9,34 @@ from tests import base
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
-    TRUNCATE_TABLES = ['v1.project_types', 'v1.project_fact_types']
+    TRUNCATE_TABLES = [
+        'v1.project_types',
+        'v1.project_fact_types',
+        'v1.project_fact_type_ranges'
+    ]
 
     def setUp(self) -> None:
         super().setUp()
         self.project_type = self.create_project_type()
+        self.project_fact_type = self.create_project_fact_type()
 
-    def test_project_fact_type_lifecycle(self):
+    def test_project_fact_type_option_lifecycle(self):
         record = {
-            'project_type_id': self.project_type,
-            'name': str(uuid.uuid4()),
-            'fact_type': 'free-form',
-            'data_type': 'string',
-            'description': 'Test description',
-            'ui_options': ['hidden'],
-            'weight': 100
+            'fact_type_id': self.project_fact_type,
+            'min_value': 75,
+            'max_value': 100,
+            'score': 50
         }
 
         # Create
         result = self.fetch(
-            '/project-fact-types', method='POST',
-            body=json.dumps(record).encode('utf-8'), headers=self.headers)
+            '/project-fact-type-ranges',
+            method='POST', body=json.dumps(record).encode('utf-8'),
+            headers=self.headers)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
-        record['id'] = response['id']
         url = self.get_url(
-            '/project-fact-types/{}'.format(response['id']))
+            '/project-fact-type-ranges/{}'.format(response['id']))
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
@@ -47,21 +48,22 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'created_by': self.USERNAME[self.ADMIN_ACCESS],
             'last_modified_by': None
         })
-        self.assertDictEqual(response, record)
+        self.assertDictEqual(record, response)
 
         # PATCH
         updated = dict(record)
-        updated['weight'] = 25
+        updated['score'] = 25
         patch = jsonpatch.make_patch(record, updated)
         patch_value = patch.to_string().encode('utf-8')
-        record.update({
-            'weight': updated['weight'],
-            'last_modified_by': self.USERNAME[self.ADMIN_ACCESS]
-        })
+
         result = self.fetch(
             url, method='PATCH', body=patch_value, headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
+        record.update({
+            'score': updated['score'],
+            'last_modified_by': self.USERNAME[self.ADMIN_ACCESS]
+        })
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(new_value, record)
 
@@ -83,7 +85,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(new_value, record)
 
         # Collection
-        result = self.fetch('/project-fact-types', headers=self.headers)
+        result = self.fetch('/project-fact-type-ranges', headers=self.headers)
         self.assertEqual(result.code, 200)
         self.assertListEqual(
             json.loads(result.body.decode('utf-8')),
@@ -101,39 +103,3 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # DELETE should fail as record should not exist
         result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 404)
-
-    def test_create_with_missing_fields(self):
-        record = {
-            'project_type_id': self.project_type,
-            'name': str(uuid.uuid4())
-        }
-        result = self.fetch(
-            '/project-fact-types', method='POST', headers=self.headers,
-            body=json.dumps(record).encode('utf-8'))
-        self.assertEqual(result.code, 400)
-
-    def test_method_not_implemented(self):
-        for method in {'DELETE', 'PATCH'}:
-            result = self.fetch(
-                '/project-fact-types', method=method,
-                allow_nonstandard_methods=True, headers=self.headers)
-            self.assertEqual(result.code, 405)
-
-        result = self.fetch(
-            '/project-fact-types/99999', method='POST',
-            allow_nonstandard_methods=True, headers=self.headers)
-        self.assertEqual(result.code, 405)
-
-    def test_empty_project_type_id(self):
-        result = self.fetch(
-            '/project-fact-types', method='POST',
-            body=json.dumps({
-                'project_type_id': None,
-                'name': str(uuid.uuid4()),
-                'fact_type': 'free-form',
-                'data_type': 'string',
-                'description': 'Test description',
-                'ui_options': ['hidden'],
-                'weight': 100
-            }).encode('utf-8'), headers=self.headers)
-        self.assertEqual(result.code, 200)

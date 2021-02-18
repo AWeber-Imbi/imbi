@@ -123,7 +123,8 @@ class TestCaseWithReset(TestCase):
             '/project-fact-types', method='POST', headers=self.headers,
             body=json.dumps({
                 'project_type_id': self.project_type,
-                'fact_type': str(uuid.uuid4()),
+                'name': str(uuid.uuid4()),
+                'fact_type': 'free-form',
                 'data_type': 'string',
                 'weight': 100
             }).encode('utf-8'))
