@@ -1417,12 +1417,15 @@ paths:
                       last_modified_by:
                         description: The user that last modified the record
                         type: string
-                      project_type_id:
-                        description: The ID for the project type
-                        type: number
                       name:
                         description: The project fact type name
                         type: string
+                      project_type_ids:
+                        description: An array of Project Type ids to associate the fact type with
+                        type: array
+                        items:
+                          type: number
+                        uniqueItems: true
                       fact_type:
                         description: Indicates how a fact value is validated and scored
                         type: string
@@ -1452,6 +1455,7 @@ paths:
                           enum:
                             - display-as-badge
                             - hidden
+                        uniqueItems: true
                       weight:
                         description: The weight of the fact type when computing a project score
                         type: number
@@ -1463,13 +1467,15 @@ paths:
                       Defines types of facts that can be recorded about a project
                     type: object
                     properties:
-                      project_type_id:
-                        description: The ID for the project type
-                        type: number
-                        nullable: true
                       name:
                         description: The project fact type name
                         type: string
+                      project_type_ids:
+                        description: An array of Project Type ids to associate the fact type with
+                        type: array
+                        items:
+                          type: number
+                        uniqueItems: true
                       fact_type:
                         description: Indicates how a fact value is validated and scored
                         type: string
@@ -1499,13 +1505,12 @@ paths:
                           enum:
                             - display-as-badge
                             - hidden
-                        nullable: true
+                        uniqueItems: true
                       weight:
                         description: The weight of the fact type when computing a project score
                         type: number
                         default: 0
                     required:
-                      - project_type_id
                       - name
                       - fact_type
                       - data_type
@@ -1516,14 +1521,26 @@ paths:
                   summary: Multiple project fact type records
                   value:
                     - id: 1
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
+                        - 3
+                        - 4
+                        - 5
+                        - 6
+                        - 7
                       name: Programming Language
                       fact_type: enum
                       description: null
                       ui_options: []
                       weight: 25
                     - id: 2
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
+                        - 3
+                        - 4
+                        - 5
                       name: Test Coverage
                       data_type: boolean
                       fact_type: range
@@ -1531,7 +1548,10 @@ paths:
                       ui_options: []
                       weight: 25
                     - id: 3
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
+                        - 3
                       name: Deployed to all Environments
                       fact_type: enum
                       data_type: boolean
@@ -1539,7 +1559,9 @@ paths:
                       ui_options: []
                       weight: 20
                     - id: 4
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
                       name: Has Acceptance Tests
                       fact_type: enum
                       data_type: boolean
@@ -1547,7 +1569,9 @@ paths:
                       ui_options: []
                       weight: 10
                     - id: 5
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
                       name: Meets Current Standards
                       fact_type: enum
                       data_type: boolean
@@ -1555,7 +1579,9 @@ paths:
                       ui_options: []
                       weight: 10
                     - id: 6
-                      project_type_id: 1
+                      project_type_ids:
+                        - 1
+                        - 2
                       name: Has working CI pipeline
                       fact_type: enum
                       data_type: boolean
@@ -1581,12 +1607,15 @@ paths:
                       last_modified_by:
                         description: The user that last modified the record
                         type: string
-                      project_type_id:
-                        description: The ID for the project type
-                        type: number
                       name:
                         description: The project fact type name
                         type: string
+                      project_type_ids:
+                        description: An array of Project Type ids to associate the fact type with
+                        type: array
+                        items:
+                          type: number
+                        uniqueItems: true
                       fact_type:
                         description: Indicates how a fact value is validated and scored
                         type: string
@@ -1616,6 +1645,7 @@ paths:
                           enum:
                             - display-as-badge
                             - hidden
+                        uniqueItems: true
                       weight:
                         description: The weight of the fact type when computing a project score
                         type: number
@@ -1627,13 +1657,15 @@ paths:
                       Defines types of facts that can be recorded about a project
                     type: object
                     properties:
-                      project_type_id:
-                        description: The ID for the project type
-                        type: number
-                        nullable: true
                       name:
                         description: The project fact type name
                         type: string
+                      project_type_ids:
+                        description: An array of Project Type ids to associate the fact type with
+                        type: array
+                        items:
+                          type: number
+                        uniqueItems: true
                       fact_type:
                         description: Indicates how a fact value is validated and scored
                         type: string
@@ -1663,13 +1695,12 @@ paths:
                           enum:
                             - display-as-badge
                             - hidden
-                        nullable: true
+                        uniqueItems: true
                       weight:
                         description: The weight of the fact type when computing a project score
                         type: number
                         default: 0
                     required:
-                      - project_type_id
                       - name
                       - fact_type
                       - data_type
@@ -1680,14 +1711,26 @@ paths:
                   summary: Multiple project fact type records
                   value:
                     - id: 1
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
+                        - 3
+                        - 4
+                        - 5
+                        - 6
+                        - 7
                       name: Programming Language
                       fact_type: enum
                       description: null
                       ui_options: []
                       weight: 25
                     - id: 2
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
+                        - 3
+                        - 4
+                        - 5
                       name: Test Coverage
                       data_type: boolean
                       fact_type: range
@@ -1695,7 +1738,10 @@ paths:
                       ui_options: []
                       weight: 25
                     - id: 3
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
+                        - 3
                       name: Deployed to all Environments
                       fact_type: enum
                       data_type: boolean
@@ -1703,7 +1749,9 @@ paths:
                       ui_options: []
                       weight: 20
                     - id: 4
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
                       name: Has Acceptance Tests
                       fact_type: enum
                       data_type: boolean
@@ -1711,7 +1759,9 @@ paths:
                       ui_options: []
                       weight: 10
                     - id: 5
-                      project_type_id: 1
+                      project_type_id:
+                        - 1
+                        - 2
                       name: Meets Current Standards
                       fact_type: enum
                       data_type: boolean
@@ -1719,7 +1769,9 @@ paths:
                       ui_options: []
                       weight: 10
                     - id: 6
-                      project_type_id: 1
+                      project_type_ids:
+                        - 1
+                        - 2
                       name: Has working CI pipeline
                       fact_type: enum
                       data_type: boolean
@@ -1741,7 +1793,8 @@ paths:
               record:
                 summary: A full project fact type record
                 value:
-                  project_type_id: 1
+                  project_type_ids:
+                    - 1
                   name: Programming Language
                   fact_type: enum
                   data_type: boolean
@@ -1755,7 +1808,8 @@ paths:
               record:
                 summary: A full project fact type record
                 value:
-                  project_type_id: 1
+                  project_type_ids:
+                    - 1
                   name: Programming Language
                   fact_type: enum
                   data_type: boolean
@@ -1785,7 +1839,8 @@ paths:
                     id: 1
                     created_by: test_user
                     last_modified_by: null
-                    project_type_id: 1
+                    project_type_ids:
+                      - 1
                     name: Programming Language
                     fact_type: enum
                     data_type: boolean
@@ -1802,7 +1857,8 @@ paths:
                     id: 1
                     created_by: test_user
                     last_modified_by: null
-                    project_type_id: 1
+                    project_type_ids:
+                      - 1
                     name: Programming Language
                     fact_type: enum
                     data_type: boolean

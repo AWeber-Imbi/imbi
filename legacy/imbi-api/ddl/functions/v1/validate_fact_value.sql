@@ -1,6 +1,6 @@
 SET search_path = v1;
 
-CREATE OR REPLACE FUNCTION validate_fact_value() RETURNS trigger
+CREATE FUNCTION validate_fact_value() RETURNS trigger
        LANGUAGE plpgsql
        SECURITY DEFINER AS $$
   DECLARE

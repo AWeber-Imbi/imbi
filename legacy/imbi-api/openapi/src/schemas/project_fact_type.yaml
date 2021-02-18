@@ -13,12 +13,15 @@ read:
     last_modified_by:
       description: The user that last modified the record
       type: string
-    project_type_id:
-      description: The ID for the project type
-      type: number
     name:
       description: The project fact type name
       type: string
+    project_type_ids:
+      description: An array of Project Type ids to associate the fact type with
+      type: array
+      items:
+        type: number
+      uniqueItems: true
     fact_type:
       description: Indicates how a fact value is validated and scored
       type: string
@@ -48,6 +51,7 @@ read:
         enum:
           - display-as-badge
           - hidden
+      uniqueItems: true
     weight:
       description: The weight of the fact type when computing a project score
       type: number
@@ -60,13 +64,15 @@ write:
     Defines types of facts that can be recorded about a project
   type: object
   properties:
-    project_type_id:
-      description: The ID for the project type
-      type: number
-      nullable: true
     name:
       description: The project fact type name
       type: string
+    project_type_ids:
+      description: An array of Project Type ids to associate the fact type with
+      type: array
+      items:
+        type: number
+      uniqueItems: true
     fact_type:
       description: Indicates how a fact value is validated and scored
       type: string
@@ -96,13 +102,12 @@ write:
         enum:
           - display-as-badge
           - hidden
-      nullable: true
+      uniqueItems: true
     weight:
       description: The weight of the fact type when computing a project score
       type: number
       default: 0
   required:
-    - project_type_id
     - name
     - fact_type
     - data_type

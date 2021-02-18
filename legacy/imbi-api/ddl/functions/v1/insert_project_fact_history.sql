@@ -1,6 +1,6 @@
 SET search_path = v1;
 
-CREATE OR REPLACE FUNCTION insert_project_fact_history() RETURNS trigger
+CREATE FUNCTION insert_project_fact_history() RETURNS trigger
        LANGUAGE plpgsql
        SECURITY DEFINER AS $$
   DECLARE

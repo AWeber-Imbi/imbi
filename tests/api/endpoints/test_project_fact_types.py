@@ -18,7 +18,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_project_fact_type_lifecycle(self):
         record = {
-            'project_type_id': self.project_type,
+            'project_type_ids': [self.project_type],
             'name': str(uuid.uuid4()),
             'fact_type': 'free-form',
             'data_type': 'string',
@@ -104,7 +104,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_create_with_missing_fields(self):
         record = {
-            'project_type_id': self.project_type,
+            'project_type_ids': [self.project_type],
             'name': str(uuid.uuid4())
         }
         result = self.fetch(
@@ -124,16 +124,29 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             allow_nonstandard_methods=True, headers=self.headers)
         self.assertEqual(result.code, 405)
 
-    def test_empty_project_type_id(self):
+    def test_missing_project_type_id(self):
         result = self.fetch(
             '/project-fact-types', method='POST',
             body=json.dumps({
-                'project_type_id': None,
                 'name': str(uuid.uuid4()),
                 'fact_type': 'free-form',
                 'data_type': 'string',
                 'description': 'Test description',
                 'ui_options': ['hidden'],
+                'weight': 100
+            }).encode('utf-8'), headers=self.headers)
+        self.assertEqual(result.code, 200)
+
+    def test_empty_ui_options(self):
+        result = self.fetch(
+            '/project-fact-types', method='POST',
+            body=json.dumps({
+                'project_type_ids': [],
+                'name': str(uuid.uuid4()),
+                'fact_type': 'free-form',
+                'data_type': 'string',
+                'description': 'Test description',
+                'ui_options': [],
                 'weight': 100
             }).encode('utf-8'), headers=self.headers)
         self.assertEqual(result.code, 200)

@@ -1,7 +1,9 @@
 SET search_path=v1, pg_catalog;
 
-CREATE OR REPLACE FUNCTION maintain_group_membership_from_ldap_groups(IN in_username TEXT, IN in_groups TEXT[])
-RETURNS TEXT[] AS $$
+CREATE FUNCTION maintain_group_membership_from_ldap_groups(IN in_username TEXT, IN in_groups TEXT[]) RETURNS TEXT[]
+       LANGUAGE plpgsql
+       SECURITY DEFINER
+AS $$
 DECLARE
   dn          TEXT;
   group_name  TEXT;
@@ -39,4 +41,4 @@ BEGIN
   -- Return the group names
   RETURN group_names;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;

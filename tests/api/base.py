@@ -122,7 +122,7 @@ class TestCaseWithReset(TestCase):
         result = self.fetch(
             '/project-fact-types', method='POST', headers=self.headers,
             body=json.dumps({
-                'project_type_id': self.project_type,
+                'project_type_ids': [self.project_type],
                 'name': str(uuid.uuid4()),
                 'fact_type': 'free-form',
                 'data_type': 'string',

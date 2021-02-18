@@ -13,7 +13,7 @@ BEGIN;
     'create project');
 
   SELECT lives_ok(
-    $$INSERT INTO v1.project_fact_types (id, project_type_id, name, fact_type, created_by, weight) VALUES (1, 1, 'enum_fact', 'enum', 'test_user', 25)$$,
+    $$INSERT INTO v1.project_fact_types (id, project_type_ids, name, fact_type, created_by, weight) VALUES (1, '{1}', 'enum_fact', 'enum', 'test_user', 25)$$,
     'create enum fact_type');
 
   SELECT lives_ok(
@@ -62,7 +62,7 @@ BEGIN;
     'throws when creating fact with invalid enum value');
 
   SELECT lives_ok(
-    $$INSERT INTO v1.project_fact_types (id, project_type_id, name, fact_type, created_by, weight) VALUES (2, 1, 'freeform_fact', 'free-form', 'test_user', 0)$$,
+    $$INSERT INTO v1.project_fact_types (id, project_type_ids, name, fact_type, created_by, weight) VALUES (2, '{1}', 'freeform_fact', 'free-form', 'test_user', 0)$$,
     'create free-form fact_type');
 
   SELECT lives_ok(
@@ -80,7 +80,7 @@ BEGIN;
     'the expected record is in the fact history table');
 
   SELECT lives_ok(
-    $$INSERT INTO v1.project_fact_types (id, project_type_id, name, fact_type, created_by, weight) VALUES (3, 1, 'range_fact', 'range', 'test_user', 25)$$,
+    $$INSERT INTO v1.project_fact_types (id, project_type_ids, name, fact_type, created_by, weight) VALUES (3, '{1}', 'range_fact', 'range', 'test_user', 25)$$,
     'create range fact_type');
 
   SELECT lives_ok(
