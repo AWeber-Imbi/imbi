@@ -38,13 +38,15 @@ function Select({
   }, [])
 
   useEffect(() => {
-    if (onChange !== undefined) onChange(name, currentValue)
+    if (onChange !== undefined)
+      onChange(name, currentValue === '' ? null : currentValue)
   }, [currentValue])
 
   return (
     <select
       className={
         'form-input' +
+        (multiple === false ? ' truncate pr-6' : '') +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
       defaultValue={currentValue === null ? '' : currentValue}
