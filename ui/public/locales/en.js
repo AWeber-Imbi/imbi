@@ -33,7 +33,9 @@ export default {
           'Showing {{startRecord}} to {{endRecord}} of {{totalRecords}} {{noun}}',
         pageSize: 'Page Size',
         previous: 'Previous',
-        next: 'Next'
+        next: 'Next',
+        value: 'Value',
+        score: 'Score'
       },
       terms: {
         description: 'Description',
@@ -130,6 +132,20 @@ export default {
             uniqueViolation:
               'A project fact type with the same name already exists'
           }
+        },
+        projectFactTypeEnums: {
+          collectionName: 'Fact Type Enums',
+          itemName: 'Fact Type Enum Value',
+          scoreDescription:
+            'The score for this value, with a maximum value of 100'
+        },
+        projectFactTypeRanges: {
+          collectionName: 'Fact Type Ranges',
+          itemName: 'Fact Type Range',
+          minValue: 'Minimum Value',
+          maxValue: 'Maximum Value',
+          scoreDescription:
+            'The score for this value, with a maximum value of 100'
         },
         projectLinkTypes: {
           linkType: 'Link Type',
