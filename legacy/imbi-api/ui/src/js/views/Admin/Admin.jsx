@@ -12,6 +12,8 @@ import { CookieCutters } from './CookieCutters'
 import { Environments } from './Environments'
 import { Namespaces } from './Namespaces'
 import { ProjectFactTypes } from './ProjectFactTypes'
+import { ProjectFactTypeEnums } from './ProjectFactTypeEnums'
+import { ProjectFactTypeRanges } from './ProjectFactTypeRanges'
 import { ProjectLinkTypes } from './ProjectLinkTypes'
 import { ProjectTypes } from './ProjectTypes'
 
@@ -45,6 +47,16 @@ function Admin({ user }) {
             icon="fas ruler"
           />
           <Sidebar.MenuItem
+            value={t('admin.projectFactTypeEnums.collectionName')}
+            to="/ui/admin/project-fact-type-enums"
+            icon="fas list-ol"
+          />
+          <Sidebar.MenuItem
+            value={t('admin.projectFactTypeRanges.collectionName')}
+            to="/ui/admin/project-fact-type-ranges"
+            icon="fas list-ol"
+          />
+          <Sidebar.MenuItem
             value={t('admin.projectLinkTypes.collectionName')}
             to="/ui/admin/project-link-types"
             icon="fas external-link-alt"
@@ -75,6 +87,14 @@ function Admin({ user }) {
         <Route
           path="/ui/admin/project-fact-types"
           component={ProjectFactTypes}
+        />
+        <Route
+          path="/ui/admin/project-fact-type-enums"
+          component={ProjectFactTypeEnums}
+        />
+        <Route
+          path="/ui/admin/project-fact-type-ranges"
+          component={ProjectFactTypeRanges}
         />
         <Route
           path="/ui/admin/project-link-types"

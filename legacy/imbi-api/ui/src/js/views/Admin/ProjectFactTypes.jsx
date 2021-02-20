@@ -2,20 +2,13 @@ import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CRUD, Error, Loading } from '../../components'
+import { displayLabelValue } from '../../utils'
 import { FetchContext } from '../../contexts'
 import { fetchMetadata } from '../../metadata'
 import { jsonSchema } from '../../schema/ProjectFactType'
 
-function displayLabelValue(value, options, defaultValue = null) {
-  let displayValue = defaultValue
-  options.forEach((item) => {
-    if (item.value === value) displayValue = item.label
-  })
-  return displayValue
-}
-
 export function ProjectFactTypes() {
-  const fetch = useContext(FetchContext)
+  const fetchContext = useContext(FetchContext)
   const [errorMessage, setErrorMessage] = useState(null)
   const [projectTypes, setProjectTypes] = useState(null)
   const { t } = useTranslation()
@@ -38,7 +31,7 @@ export function ProjectFactTypes() {
   useEffect(() => {
     if (projectTypes === null) {
       fetchMetadata(
-        fetch,
+        fetchContext,
         '/project-types',
         true,
         'name',

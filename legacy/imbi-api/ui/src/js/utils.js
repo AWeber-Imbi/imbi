@@ -1,3 +1,11 @@
+export function displayLabelValue(value, options = [], defaultValue = null) {
+  let displayValue = defaultValue
+  options.forEach((item) => {
+    if (item.value === value) displayValue = item.label
+  })
+  return displayValue
+}
+
 export function getErrorMessage(response, data) {
   return (data && data.title) || response.status + ': ' + response.statusText
 }
