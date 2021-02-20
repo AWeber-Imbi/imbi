@@ -34,7 +34,6 @@ function CRUD({
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [successMessage, setSuccessMessage] = useState(null)
-  const [timerHandle, setTimerHandle] = useState(null)
   const strings = {
     collectionName: collectionName,
     itemName: itemName
@@ -103,13 +102,12 @@ function CRUD({
   // Remove the error message after 30 seconds
   useEffect(() => {
     if (errorMessage !== null) {
-      if (timerHandle !== null) clearTimeout(timerHandle)
-      setTimerHandle(
-        setTimeout(() => {
-          setErrorMessage(null)
-          setTimerHandle(null)
-        }, 30000)
-      )
+      const timerHandle = setTimeout(() => {
+        setErrorMessage(null)
+      }, 30000)
+      return function cleanup() {
+        clearTimeout(timerHandle)
+      }
     }
   }, [errorMessage])
 
@@ -136,20 +134,14 @@ function CRUD({
   // Remove the success message after 30 seconds
   useEffect(() => {
     if (successMessage !== null) {
-      if (timerHandle !== null) clearTimeout(timerHandle)
-      setTimerHandle(
-        setTimeout(() => {
-          setSuccessMessage(null)
-          setTimerHandle(null)
-        }, 30000)
-      )
+      const timerHandle = setTimeout(() => {
+        setSuccessMessage(null)
+      }, 30000)
+      return function cleanup() {
+        clearTimeout(timerHandle)
+      }
     }
   }, [successMessage])
-
-  // Handle unmounting while timer is active
-  useEffect(() => {
-    if (timerHandle !== null) clearTimeout(timerHandle)
-  })
 
   setDocumentTitle(collectionName)
 
@@ -262,7 +254,7 @@ CRUD.propTypes = {
   ]),
   itemName: PropTypes.string.isRequired,
   itemPath: PropTypes.string.isRequired,
-  itemTitle: PropTypes.string,
+  itemTitle: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
   jsonSchema: PropTypes.object.isRequired,
   omitOnAdd: PropTypes.arrayOf(PropTypes.string)
 }
