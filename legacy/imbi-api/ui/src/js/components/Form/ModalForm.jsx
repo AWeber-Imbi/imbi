@@ -50,6 +50,7 @@ function ModalForm({
 
   useEffect(() => {
     const result = validate(formValues, jsonSchema)
+    //console.debug('Errors', result.errors)
     if (result.errors.length > 0) {
       const errors = { ...emptyErrors }
       result.errors.map((err) => {

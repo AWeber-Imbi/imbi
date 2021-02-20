@@ -5,7 +5,7 @@ import React, { useContext, useState } from 'react'
 import { Columns } from '../../schema'
 import { FetchContext } from '../../contexts'
 import { Form } from '..'
-import { httpPost, httpPatch } from '../../utils'
+import { httpPost, httpPatch, isFunction } from '../../utils'
 
 function CrudForm({
   columns,
@@ -35,7 +35,8 @@ function CrudForm({
       result = await httpPost(fetch.function, url, formValues)
     }
     if (result.success === true) {
-      onClose(formValues[itemTitle !== undefined ? itemTitle : itemKey])
+      if (isFunction(itemTitle)) onClose(itemTitle(formValues))
+      else onClose(formValues[itemTitle !== undefined ? itemTitle : itemKey])
     } else {
       return errorStrings[result.data] !== undefined
         ? errorStrings[result.data]
@@ -61,9 +62,12 @@ CrudForm.propTypes = {
   columns: Columns.isRequired,
   errorStrings: PropTypes.object.isRequired,
   isEdit: PropTypes.bool.isRequired,
-  itemKey: PropTypes.string.isRequired,
+  itemKey: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.arrayOf(PropTypes.String)
+  ]).isRequired,
   itemPath: PropTypes.string.isRequired,
-  itemTitle: PropTypes.string,
+  itemTitle: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
   jsonSchema: PropTypes.object.isRequired,
   onClose: PropTypes.func.isRequired,
   savingTitle: PropTypes.string.isRequired,
