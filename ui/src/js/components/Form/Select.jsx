@@ -16,15 +16,12 @@ function Select({
   value
 }) {
   function _defaultValue() {
-    if (multiple === true) {
-      return value === undefined || value === null ? [] : value
-    } else {
-      return value === undefined || value === null
-        ? ''
-        : castTo === 'number'
-        ? value.toString()
-        : value
-    }
+    if (multiple === true && (value === undefined || value === null)) return []
+    if (multiple === true && castTo === 'number')
+      return value.map((item) => parseInt(item))
+    if (value === undefined || value === null || value === '') return null
+    if (castTo === 'number') return parseInt(value)
+    return value
   }
 
   const [hasFocus, setHasFocus] = useState(false)
