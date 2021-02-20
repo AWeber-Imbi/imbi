@@ -54,7 +54,7 @@ function Admin({ user }) {
           <Sidebar.MenuItem
             value={t('admin.projectFactTypeRanges.collectionName')}
             to="/ui/admin/project-fact-type-ranges"
-            icon="fas list-ol"
+            icon="fas ruler-horizontal"
           />
           <Sidebar.MenuItem
             value={t('admin.projectLinkTypes.collectionName')}
