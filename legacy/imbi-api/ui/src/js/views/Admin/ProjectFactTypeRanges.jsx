@@ -85,7 +85,7 @@ export function ProjectFactTypeRanges() {
       )}
       {factTypes && (
         <CRUD
-          collectionIcon="fas external-link-alt"
+          collectionIcon="fas ruler-horizontal"
           collectionName={t('admin.projectFactTypeRanges.collectionName')}
           collectionPath="/project-fact-type-ranges"
           columns={[

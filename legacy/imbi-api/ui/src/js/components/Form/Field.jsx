@@ -151,6 +151,7 @@ Field.propTypes = {
     'url'
   ]).isRequired,
   value: PropTypes.oneOfType([
+    PropTypes.bool,
     PropTypes.number,
     PropTypes.string,
     PropTypes.arrayOf(PropTypes.string),

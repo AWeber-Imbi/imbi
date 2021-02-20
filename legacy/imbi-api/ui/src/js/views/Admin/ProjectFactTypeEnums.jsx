@@ -85,7 +85,7 @@ export function ProjectFactTypeEnums() {
       )}
       {factTypes && (
         <CRUD
-          collectionIcon="fas external-link-alt"
+          collectionIcon="fas list-ol"
           collectionName={t('admin.projectFactTypeEnums.collectionName')}
           collectionPath="/project-fact-type-enums"
           columns={[

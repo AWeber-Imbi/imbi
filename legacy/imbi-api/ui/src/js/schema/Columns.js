@@ -4,6 +4,7 @@ export const Column = {
   castTo: PropTypes.oneOf(['array', 'number']),
   default: PropTypes.oneOfType([
     PropTypes.array,
+    PropTypes.bool,
     PropTypes.number,
     PropTypes.string,
     PropTypes.func
@@ -43,7 +44,8 @@ export const Column = {
     'number',
     'select',
     'text',
-    'textarea'
+    'textarea',
+    'toggle'
   ]).isRequired
 }
 
