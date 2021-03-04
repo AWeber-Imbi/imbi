@@ -3,62 +3,33 @@ import re
 from imbi.endpoints import base
 
 
-class _RequestHandlerMixin:
-
-    ID_KEY = ['id']
-    FIELDS = ['id', 'project_type_ids', 'name', 'fact_type', 'data_type',
-              'description', 'ui_options', 'weight']
-    DEFAULTS = {
-        'data_type': 'string',
-        'fact_type': 'free-form',
-        'weight': 0
-    }
-
-    GET_SQL = re.sub(r'\s+', ' ', """\
-        SELECT id, created_at, created_by, last_modified_at, last_modified_by,
-               project_type_ids, name, fact_type, data_type, description,
-               ui_options, weight
-          FROM v1.project_fact_types
-         WHERE id=%(id)s""")
-
-
-class CollectionRequestHandler(_RequestHandlerMixin,
-                               base.CollectionRequestHandler):
+class CollectionRequestHandler(base.CollectionRequestHandler):
 
     NAME = 'project-fact-types'
-    ITEM_NAME = 'project-fact-type'
-
+    ID = 'project_id'
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
-        SELECT id, project_type_ids, name, fact_type, data_type, description,
-               ui_options, weight
-          FROM v1.project_fact_types
-         ORDER BY id""")
-
-    POST_SQL = re.sub(r'\s+', ' ', """\
-        INSERT INTO v1.project_fact_types
-                    (project_type_ids, created_by, name, fact_type, data_type,
-                     description, ui_options, weight)
-             VALUES (%(project_type_ids)s, %(username)s, %(name)s,
-                     %(fact_type)s, %(data_type)s, %(description)s,
-                     %(ui_options)s, %(weight)s)
-          RETURNING id""")
-
-
-class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
-
-    NAME = 'project-fact-type'
-
-    DELETE_SQL = 'DELETE FROM v1.project_fact_types WHERE id=%(id)s'
-
-    PATCH_SQL = re.sub(r'\s+', ' ', """\
-        UPDATE v1.project_fact_types
-           SET last_modified_at=CURRENT_TIMESTAMP,
-               last_modified_by=%(username)s,
-               project_type_ids=%(project_type_ids)s,
-               name=%(name)s,
-               fact_type=%(fact_type)s,
-               data_type=%(data_type)s,
-               description=%(description)s,
-               ui_options=%(ui_options)s,
-               weight=%(weight)s
-         WHERE id=%(id)s""")
+        SELECT c.id, c.name, c.fact_type, c.data_type, c.description,
+               c.ui_options, c.weight,
+               CASE WHEN c.fact_type = 'enum' THEN ARRAY(
+                         SELECT value
+                           FROM v1.project_fact_type_enums
+                          WHERE fact_type_id = c.id
+                       ORDER BY value ASC)
+                    ELSE NULL END AS enum_values,
+               CASE WHEN c.fact_type = 'range' THEN (
+                         SELECT min(min_value)
+                           FROM v1.project_fact_type_ranges
+                          WHERE fact_type_id = c.id)
+                  ELSE NULL END AS min_value,
+               CASE WHEN c.fact_type = 'range' THEN (
+                         SELECT max(max_value)
+                           FROM v1.project_fact_type_ranges
+                          WHERE fact_type_id = c.id)
+                  ELSE NULL END AS max_value
+          FROM v1.projects AS a
+          JOIN v1.project_types AS b
+            ON b.id = a.project_type_id
+          JOIN v1.project_fact_types AS c
+            ON b.id = ANY (c.project_type_ids)
+         WHERE a.id = %(project_id)s
+      ORDER BY c.name""")

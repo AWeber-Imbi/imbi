@@ -65,6 +65,10 @@ paths:
   /project-types/{id}: { $ref: 'endpoints/project_type.yaml#/paths/manage' }
   /projects: { '$ref': 'endpoints/projects.yaml#/paths/collection' }
   /projects/{id}: { '$ref': 'endpoints/projects.yaml#/paths/manage' }
+  /projects/{id}/facts:
+    { '$ref': 'endpoints/project_facts.yaml#/paths/collection' }
+  /projects/{id}/fact-types:
+    { '$ref': 'endpoints/project_fact_types.yaml#/paths/collection' }
   /projects/{id}/links:
     { '$ref': 'endpoints/project_links.yaml#/paths/collection' }
   /projects/{id}/links/{link_type_id}:
@@ -90,20 +94,23 @@ tags:
   - name: Namespaces
     description: Endpoints used for the management of organizational namespaces
 
-  - name: Project Fact Types
+  - name: Fact Types
     description: |-
       Management of records that define types facts that may be collected for a project.
 
       Project facts may be used to calculate a current project health score. For more
       information on project health score, see the compliance documentation.
-  - name: Project Fact Type Enums
+    x-displayName: Project Fact Types
+
+  - name: Fact Type Enums
     description: |-
       Management of records that define enum values for different fact types that may be collected for a project.
 
       Project facts enums provide the possible values for project facts, and are
       used to compute the score of that project fact. For more information on
       project health score, see the compliance documentation.
-  - name: Project Fact Type Ranges
+    x-displayName: Project Fact Type Enums
+  - name: Fact Type Ranges
     description: |-
       Management of records that define range values for different fact types that
       may be collected for a project.
@@ -111,6 +118,7 @@ tags:
       Project facts ranges provide the possible range values for project facts, and
       are used to compute the score of that project fact. For more information on
       project health score, see the compliance documentation.
+    x-displayName: Project Fact Type Ranges
   - name: Project Link Types
     description: |-
       Management of records that define types of links or URLs to associate with a project
@@ -123,6 +131,8 @@ tags:
     description: Endpoints used to manage the relationships of projects to other projects
   - name: Project Facts
     description: Endpoints for managing the current facts describing the project
+  - name: Project Fact Types
+    description: An endpoint for returning the project fact types for a specific project
   - name: Project Links
     description: Endpoints used to manage links to external resources for a project
   - name: Project URLs
@@ -147,9 +157,9 @@ x-tagGroups:
       - Cookie Cutters
       - Environments
       - Namespaces
-      - Project Fact Types
-      - Project Fact Type Enums
-      - Project Fact Type Ranges
+      - Fact Types
+      - Fact Type Enums
+      - Fact Type Ranges
       - Project Link Types
       - Project Types
   - name: Project Management
@@ -157,6 +167,7 @@ x-tagGroups:
       - Projects
       - Project Dependencies
       - Project Facts
+      - Project Fact Types
       - Project Links
       - Project URLs
   - name: Current User

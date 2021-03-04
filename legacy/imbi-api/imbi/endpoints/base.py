@@ -31,7 +31,7 @@ def require_permission(permission):
     """Decorator function for requiring a permission string for an endpoint
 
     :param str permission: The permission string to require
-    :raises: web.HTTPError(403)
+    :raises: problemdetails.Problem
 
     """
     def _require_permission(f):
@@ -43,7 +43,8 @@ def require_permission(permission):
                     return self.render('index.html')
                 LOGGER.info('%r does not have the "%s" permission',
                             self._current_user, permission)
-                raise web.HTTPError(403, 'Unauthorized')
+                raise problemdetails.Problem(
+                    status_code=403, title='Unauthorized')
             return f(self, *args, **kwargs)
         return wrapped
     return _require_permission
@@ -257,13 +258,15 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     async def delete(self, *args, **kwargs):
         if self.DELETE_SQL is None:
             self.logger.debug('DELETE_SQL not defined')
-            raise web.HTTPError(405)
+            raise problemdetails.Problem(
+                status_code=405, title='Not Implemented')
         await self._delete(kwargs)
 
     async def get(self, *args, **kwargs):
         if self.GET_SQL is None:
             self.logger.debug('GET_SQL not defined')
-            raise web.HTTPError(405)
+            raise problemdetails.Problem(
+                status_code=405, title='Not Implemented')
         if self._respond_with_html:
             return self.render('index.html')
         await self._get(kwargs)
@@ -271,13 +274,15 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     async def patch(self, *args, **kwargs):
         if self.PATCH_SQL is None:
             self.logger.debug('PATCH_SQL not defined')
-            raise web.HTTPError(405)
+            raise problemdetails.Problem(
+                status_code=405, title='Not Implemented')
         await self._patch(kwargs)
 
     async def post(self, *args, **kwargs):
         if self.POST_SQL is None:
             self.logger.debug('POST_SQL not defined')
-            raise web.HTTPError(405)
+            raise problemdetails.Problem(
+                status_code=405, title='Not Implemented')
         await self._post(kwargs)
 
     def send_response(self, value: typing.Union[dict, list]) -> None:
@@ -291,17 +296,18 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             for key in {'created_at', 'last_modified_at'}:
                 if key in value:
                     del value[key]
-            if isinstance(self.ID_KEY, list):
-                args = [str(value[k]) for k in self.ID_KEY]
-            else:
-                args = [str(value[self.ID_KEY])]
+            if self.ID_KEY:
+                if isinstance(self.ID_KEY, list):
+                    args = [str(value[k]) for k in self.ID_KEY]
+                else:
+                    args = [str(value[self.ID_KEY])]
 
-            try:
-                self._add_self_link(
-                    self.reverse_url(self.ITEM_NAME or self.NAME, *args))
-            except (AssertionError, KeyError):
-                self.logger.debug('Failed to reverse URL for %s %r',
-                                  self.NAME, args)
+                try:
+                    self._add_self_link(
+                        self.reverse_url(self.ITEM_NAME or self.NAME, *args))
+                except (AssertionError, KeyError):
+                    self.logger.debug('Failed to reverse URL for %s %r',
+                                      self.NAME, args)
             self._add_link_header()
         super().send_response(value)
 
@@ -310,7 +316,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             self.DELETE_SQL, self._get_query_kwargs(kwargs),
             'delete-{}'.format(self.NAME))
         if not result.row_count:
-            raise web.HTTPError(404, reason='Item not found')
+            raise problemdetails.Problem(
+                status_code=404, title='Item not found')
         self.set_status(204, reason='Item Deleted')
 
     async def _get(self, kwargs):
@@ -318,7 +325,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             self.GET_SQL, self._get_query_kwargs(kwargs),
             'get-{}'.format(self.NAME))
         if not result.row_count or not result.row:
-            raise web.HTTPError(404, reason='Item not found')
+            raise problemdetails.Problem(
+                status_code=404, title='Item not found')
         for key, value in result.row.items():
             if isinstance(value, uuid.UUID):
                 result.row[key] = str(value)
@@ -336,7 +344,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             self.GET_SQL, self._get_query_kwargs(kwargs),
             'get-{}'.format(self.NAME))
         if not result.row_count:
-            raise web.HTTPError(404, reason='Item not found')
+            raise problemdetails.Problem(
+                status_code=404, title='Item not found')
 
         original = dict(result.row)
         for key in {'created_at', 'created_by',
@@ -369,7 +378,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             self.PATCH_SQL, updated,
             'patch-{}'.format(self.NAME))
         if not result.row_count:
-            raise web.HTTPError(500, reason='Failed to update record')
+            raise problemdetails.Problem(
+                status_code=500, title='Failed to update record')
 
         # Send the new record as a response
         await self._get(self._get_query_kwargs(updated))
@@ -395,9 +405,10 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             self.POST_SQL, values, 'post-{}'.format(self.NAME))
         if not result.row_count:
             self.logger.debug('No rows returned')
-            raise web.HTTPError(500, reason='Failed to create record')
+            raise problemdetails.Problem(
+                status_code=500, title='Failed to create record')
 
-        # Return the record as if it were a GET
+            # Return the record as if it were a GET
         await self._get(self._get_query_kwargs(result.row))
 
 
