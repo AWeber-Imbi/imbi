@@ -19,6 +19,7 @@ types/v1/fact_type.sql
 -- Functions
 functions/v1/group_name_from_ldap_dn.sql
 functions/v1/maintain_group_membership_from_ldap_groups.sql
+functions/v1/project_score.sql
 
 -- Tables
 tables/v1/environments.sql
