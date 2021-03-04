@@ -24,7 +24,7 @@ BEGIN;
      'create enum fact_type value 2');
 
   SELECT lives_ok(
-    $$INSERT INTO v1.project_facts (project_id, fact_type_id, created_at, created_by, value) VALUES (1, 1, CURRENT_TIMESTAMP - interval '1 day', 'test_user', 'test_value 1')$$,
+    $$INSERT INTO v1.project_facts (project_id, fact_type_id, recorded_at, recorded_by, value) VALUES (1, 1, CURRENT_TIMESTAMP - interval '1 day', 'test_user', 'test_value 1')$$,
     'create an enum based fact, validating enum value');
 
   SELECT results_eq(
@@ -39,8 +39,8 @@ BEGIN;
 
   SELECT lives_ok(
     $$UPDATE v1.project_facts
-         SET last_modified_at = CURRENT_TIMESTAMP,
-             last_modified_by = 'test_user',
+         SET recorded_at = CURRENT_TIMESTAMP,
+             recorded_by = 'test_user',
              value = 'test_value 2'
        WHERE project_id = 1
          AND fact_type_id = 1$$,
@@ -57,8 +57,8 @@ BEGIN;
     'the expected record is in the fact history table');
 
   SELECT throws_ok(
-    $$INSERT INTO v1.project_facts (project_id, fact_type_id, created_at, created_by, value) VALUES (1, 1, CURRENT_TIMESTAMP - interval '1 day', 'test_user', 'ad-hoc value')$$,
-    'P0001', 'value not found in v1.project_fact_type_enums',
+    $$INSERT INTO v1.project_facts (project_id, fact_type_id, recorded_at, recorded_by, value) VALUES (1, 1, CURRENT_TIMESTAMP - interval '1 day', 'test_user', 'ad-hoc value')$$,
+    'P0001', 'Value "ad-hoc value" for enum_fact (1) not found in v1.project_fact_type_enums',
     'throws when creating fact with invalid enum value');
 
   SELECT lives_ok(
@@ -66,7 +66,7 @@ BEGIN;
     'create free-form fact_type');
 
   SELECT lives_ok(
-    $$INSERT INTO v1.project_facts (project_id, fact_type_id, created_at, created_by, value) VALUES (1, 2, CURRENT_TIMESTAMP - interval '1 day', 'test_user', 'free-form value here')$$,
+    $$INSERT INTO v1.project_facts (project_id, fact_type_id, recorded_at, recorded_by, value) VALUES (1, 2, CURRENT_TIMESTAMP - interval '1 day', 'test_user', 'free-form value here')$$,
     'create a free-form based fact');
 
   SELECT results_eq(
@@ -97,7 +97,7 @@ BEGIN;
      'create fact_type range 90-100');
 
   SELECT lives_ok(
-    $$INSERT INTO v1.project_facts (project_id, fact_type_id, created_at, created_by, value) VALUES (1, 3, CURRENT_TIMESTAMP - interval '1 day', 'test_user', '33.3')$$,
+    $$INSERT INTO v1.project_facts (project_id, fact_type_id, recorded_at, recorded_by, value) VALUES (1, 3, CURRENT_TIMESTAMP - interval '1 day', 'test_user', '33.3')$$,
     'create a range based fact');
 
   SELECT results_eq(
@@ -111,14 +111,14 @@ BEGIN;
     'the expected record is in the fact history table');
 
   SELECT throws_ok(
-    $$INSERT INTO v1.project_facts (project_id, fact_type_id, created_at, created_by, value) VALUES (1, 3, CURRENT_TIMESTAMP - interval '1 day', 'test_user', '256')$$,
-    'P0001', 'value not found in v1.project_fact_type_ranges',
+    $$INSERT INTO v1.project_facts (project_id, fact_type_id, recorded_at, recorded_by, value) VALUES (1, 3, CURRENT_TIMESTAMP - interval '1 day', 'test_user', '256')$$,
+    'P0001', '"256" for range_fact (3) not found in v1.project_fact_type_ranges',
     'throws when creating fact with invalid range value');
 
   SELECT lives_ok(
     $$UPDATE v1.project_facts
-         SET last_modified_at = CURRENT_TIMESTAMP,
-             last_modified_by = 'test_user',
+         SET recorded_at = CURRENT_TIMESTAMP,
+             recorded_by = 'test_user',
              value = '92.6'
        WHERE project_id = 1
          AND fact_type_id = 3$$,

@@ -5,8 +5,6 @@ CREATE FUNCTION insert_project_fact_history() RETURNS trigger
        SECURITY DEFINER AS $$
   DECLARE
     fact_type        v1.project_fact_types%ROWTYPE;
-    recorded_by      TEXT;
-    recorded_at      TIMESTAMP WITH TIME ZONE;
     fact_score       INTEGER := 0;
   BEGIN
     SELECT * INTO STRICT fact_type
@@ -25,16 +23,8 @@ CREATE FUNCTION insert_project_fact_history() RETURNS trigger
          AND NEW.value::NUMERIC(9,2) BETWEEN min_value AND max_value;
     END IF;
 
-    IF (TG_OP = 'INSERT') THEN
-      recorded_at := NEW.created_at;
-      recorded_by := NEW.created_by;
-    ELSIF (TG_OP = 'UPDATE') THEN
-      recorded_at := NEW.last_modified_at;
-      recorded_by := NEW.last_modified_by;
-    END IF;
-
     INSERT INTO v1.project_fact_history(project_id, fact_type_id, recorded_at, recorded_by, value, score, weight)
-         VALUES (NEW.project_id, NEW.fact_type_id, recorded_at, recorded_by, NEW.value, fact_score, fact_type.weight);
+         VALUES (NEW.project_id, NEW.fact_type_id, NEW.recorded_at, NEW.recorded_by, NEW.value, fact_score, fact_type.weight);
 
     RETURN NEW;
   END;
