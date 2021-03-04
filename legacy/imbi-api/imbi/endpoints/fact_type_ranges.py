@@ -18,8 +18,8 @@ class _RequestHandlerMixin:
 class CollectionRequestHandler(_RequestHandlerMixin,
                                base.CollectionRequestHandler):
 
-    NAME = 'project-fact-type-ranges'
-    ITEM_NAME = 'project-fact-type-range'
+    NAME = 'fact-type-ranges'
+    ITEM_NAME = 'fact-type-range'
 
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
         SELECT id, fact_type_id, min_value, max_value, score
@@ -36,7 +36,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
 
 class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
 
-    NAME = 'project-fact-type-range'
+    NAME = 'fact-type-range'
 
     DELETE_SQL = 'DELETE FROM v1.project_fact_type_ranges WHERE id=%(id)s'
 

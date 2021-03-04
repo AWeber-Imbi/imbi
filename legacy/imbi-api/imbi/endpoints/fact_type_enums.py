@@ -18,13 +18,15 @@ class _RequestHandlerMixin:
 class CollectionRequestHandler(_RequestHandlerMixin,
                                base.CollectionRequestHandler):
 
-    NAME = 'project-fact-type-enums'
-    ITEM_NAME = 'project-fact-type-enum'
+    NAME = 'fact-type-enums'
+    ITEM_NAME = 'fact-type-enum'
 
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
-        SELECT id, fact_type_id, value, icon_class, score
-          FROM v1.project_fact_type_enums
-      ORDER BY id""")
+        SELECT a.id, a.fact_type_id, a.value, a.icon_class, a.score
+          FROM v1.project_fact_type_enums AS a
+          JOIN v1.project_fact_types AS b
+           ON b.id = a.fact_type_id
+      ORDER BY b.name, b.id, a.value""")
 
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.project_fact_type_enums
@@ -36,7 +38,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
 
 class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
 
-    NAME = 'project-fact-type-enum'
+    NAME = 'fact-type-enum'
 
     DELETE_SQL = 'DELETE FROM v1.project_fact_type_enums WHERE id=%(id)s'
 

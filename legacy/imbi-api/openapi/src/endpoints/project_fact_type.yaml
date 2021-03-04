@@ -3,7 +3,7 @@ paths:
     get:
       description: Retrieve the collection of project fact types
       summary: Get Collection
-      tags: [Project Fact Types]
+      tags: [Fact Types]
       responses:
         '200':
           description: Success
@@ -83,7 +83,7 @@ paths:
                 $ref: '#/components/examples/write'
           application/msgpack:
             <<: *postContent
-      tags: [Project Fact Types]
+      tags: [Fact Types]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '../components/responses.yaml#/RequestError' }
@@ -94,7 +94,7 @@ paths:
     get:
       summary: Get Record
       description: Retrieve a project fact type record
-      tags: [Project Fact Types]
+      tags: [Fact Types]
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
@@ -104,7 +104,7 @@ paths:
       description: >-
         Update a project fact type, providing a JSON Patch (RFC-6209) payload of update
         operations to apply.
-      tags: [Project Fact Types]
+      tags: [Fact Types]
       requestBody:
         description: JSON Patch Payload
         content:
@@ -127,7 +127,7 @@ paths:
     delete:
       summary: Delete Record
       description: Remove a project fact type record
-      tags: [Project Fact Types]
+      tags: [Fact Types]
       responses:
         '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
