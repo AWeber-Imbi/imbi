@@ -1390,7 +1390,7 @@ paths:
       description: Retrieve the collection of project fact types
       summary: Get Collection
       tags:
-        - Project Fact Types
+        - Fact Types
       responses:
         '200':
           description: Success
@@ -1817,7 +1817,7 @@ paths:
                   ui_options: []
                   weight: 25
       tags:
-        - Project Fact Types
+        - Fact Types
       responses:
         '200':
           description: 'The request to create, update, or retrieve the project fact type was successful'
@@ -1876,7 +1876,7 @@ paths:
       summary: Get Record
       description: Retrieve a project fact type record
       tags:
-        - Project Fact Types
+        - Fact Types
       responses:
         '200':
           $ref: '#/paths/~1project-fact-types/post/responses/200'
@@ -1888,7 +1888,7 @@ paths:
       summary: Update Record
       description: 'Update a project fact type, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
       tags:
-        - Project Fact Types
+        - Fact Types
       requestBody:
         description: JSON Patch Payload
         content:
@@ -1921,7 +1921,7 @@ paths:
       summary: Delete Record
       description: Remove a project fact type record
       tags:
-        - Project Fact Types
+        - Fact Types
       responses:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
@@ -1941,7 +1941,7 @@ paths:
       description: Retrieve the collection of project fact type enums
       summary: Get Collection
       tags:
-        - Project Fact Type Enums
+        - Fact Type Enums
       responses:
         '200':
           description: Success
@@ -2154,7 +2154,7 @@ paths:
                   icon_class: fab python
                   score: 50
       tags:
-        - Project Fact Type Enums
+        - Fact Type Enums
       responses:
         '200':
           description: 'The request to create, update, or retrieve the project fact type option was successful'
@@ -2205,7 +2205,7 @@ paths:
       summary: Get Record
       description: Retrieve a project fact type enum record
       tags:
-        - Project Fact Type Enums
+        - Fact Type Enums
       responses:
         '200':
           $ref: '#/paths/~1project-fact-type-enums/post/responses/200'
@@ -2217,7 +2217,7 @@ paths:
       summary: Update Record
       description: 'Update a project fact type option, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
       tags:
-        - Project Fact Type Enums
+        - Fact Type Enums
       requestBody:
         description: JSON Patch Payload
         content:
@@ -2250,7 +2250,7 @@ paths:
       summary: Delete Record
       description: Remove a project fact type enum record
       tags:
-        - Project Fact Type Enums
+        - Fact Type Enums
       responses:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
@@ -2270,7 +2270,7 @@ paths:
       description: Retrieve the collection of project fact type ranges
       summary: Get Collection
       tags:
-        - Project Fact Type Ranges
+        - Fact Type Ranges
       responses:
         '200':
           description: Success
@@ -2473,7 +2473,7 @@ paths:
                   max_value: 20
                   score: 50
       tags:
-        - Project Fact Type Ranges
+        - Fact Type Ranges
       responses:
         '200':
           description: 'The request to create, update, or retrieve the project fact type range was successful'
@@ -2524,7 +2524,7 @@ paths:
       summary: Get Record
       description: Retrieve a project fact type range record
       tags:
-        - Project Fact Type Ranges
+        - Fact Type Ranges
       responses:
         '200':
           $ref: '#/paths/~1project-fact-type-ranges/post/responses/200'
@@ -2536,7 +2536,7 @@ paths:
       summary: Update Record
       description: 'Update a project fact type option, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
       tags:
-        - Project Fact Type Ranges
+        - Fact Type Ranges
       requestBody:
         description: JSON Patch Payload
         content:
@@ -2569,7 +2569,7 @@ paths:
       summary: Delete Record
       description: Remove a project fact type range record
       tags:
-        - Project Fact Type Ranges
+        - Fact Type Ranges
       responses:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
@@ -3497,6 +3497,532 @@ paths:
         required: true
         schema:
           type: number
+  '/projects/{id}/facts':
+    get:
+      description: Retrieve the current facts for a project
+      summary: Get Facts
+      tags:
+        - Project Facts
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  title: Project Fact
+                  description: Describes a fact about a project
+                  type: object
+                  properties:
+                    fact_type_id:
+                      description: The ID of the fact type that is being set
+                      type: integer
+                    fact_name:
+                      type: string
+                    recorded_at:
+                      description: When the fact was recorded
+                      type: string
+                      format: iso8601-timestamp
+                    recorded_by:
+                      description: The user that set the fact value
+                      type: string
+                    value:
+                      description: The fact value
+                      oneOf:
+                        - type: boolean
+                        - type: integer
+                        - type: number
+                          format: double
+                        - type: string
+                          format: date
+                        - type: string
+                          format: iso8601-timestamp
+                        - type: string
+                    score:
+                      description: The score for the value of the fact
+                      oneOf:
+                        - type: null
+                        - type: integer
+                    weight:
+                      description: The weight of the score against all the other project facts
+                      oneOf:
+                        - type: null
+                        - type: integer
+                  additionalProperties: false
+              examples:
+                facts:
+                  summary: All the current facts for a project
+                  value:
+                    - fact_type_id: 1
+                      fact_name: Programming Language
+                      recorded_at: 2021-03-01T12:00:00.000Z
+                      recorded_by: test_user
+                      value: Python 3.9
+                      score: 100
+                      weight: 25
+                    - fact_type_id: 2
+                      fact_name: Test Coverage
+                      recorded_at: 2021-03-01T12:00:01.000Z
+                      recorded_by: test_user
+                      value: 95.6
+                      score: 100
+                      weight: 15
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  title: Project Fact
+                  description: Describes a fact about a project
+                  type: object
+                  properties:
+                    fact_type_id:
+                      description: The ID of the fact type that is being set
+                      type: integer
+                    fact_name:
+                      type: string
+                    recorded_at:
+                      description: When the fact was recorded
+                      type: string
+                      format: iso8601-timestamp
+                    recorded_by:
+                      description: The user that set the fact value
+                      type: string
+                    value:
+                      description: The fact value
+                      oneOf:
+                        - type: boolean
+                        - type: integer
+                        - type: number
+                          format: double
+                        - type: string
+                          format: date
+                        - type: string
+                          format: iso8601-timestamp
+                        - type: string
+                    score:
+                      description: The score for the value of the fact
+                      oneOf:
+                        - type: null
+                        - type: integer
+                    weight:
+                      description: The weight of the score against all the other project facts
+                      oneOf:
+                        - type: null
+                        - type: integer
+                  additionalProperties: false
+              examples:
+                facts:
+                  summary: All the current facts for a project
+                  value:
+                    - fact_type_id: 1
+                      fact_name: Programming Language
+                      recorded_at: 2021-03-01T12:00:00.000Z
+                      recorded_by: test_user
+                      value: Python 3.9
+                      score: 100
+                      weight: 25
+                    - fact_type_id: 2
+                      fact_name: Test Coverage
+                      recorded_at: 2021-03-01T12:00:01.000Z
+                      recorded_by: test_user
+                      value: 95.6
+                      score: 100
+                      weight: 15
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+    post:
+      summary: Set Facts
+      description: Set one or more project facts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                title: Project Fact
+                description: Describes a fact about a project
+                type: object
+                properties:
+                  fact_type_id:
+                    description: The ID of the fact type that is being set
+                    type: integer
+                  value:
+                    description: The fact value
+                    oneOf:
+                      - type: boolean
+                      - type: integer
+                      - type: number
+                        format: double
+                      - type: string
+                        format: date
+                      - type: string
+                        format: iso8601-timestamp
+                      - type: string
+                required:
+                  - fact_type_id
+                  - value
+                additionalProperties: false
+            examples:
+              facts:
+                summary: A payload example for setting multiple project facts
+                value:
+                  - fact_type_id: 1
+                    value: Python 3.9
+                  - fact_type_id: 2
+                    value: 96.5
+          application/msgpack:
+            schema:
+              type: array
+              items:
+                title: Project Fact
+                description: Describes a fact about a project
+                type: object
+                properties:
+                  fact_type_id:
+                    description: The ID of the fact type that is being set
+                    type: integer
+                  value:
+                    description: The fact value
+                    oneOf:
+                      - type: boolean
+                      - type: integer
+                      - type: number
+                        format: double
+                      - type: string
+                        format: date
+                      - type: string
+                        format: iso8601-timestamp
+                      - type: string
+                required:
+                  - fact_type_id
+                  - value
+                additionalProperties: false
+            examples:
+              facts:
+                summary: A payload example for setting multiple project facts
+                value:
+                  - fact_type_id: 1
+                    value: Python 3.9
+                  - fact_type_id: 2
+                    value: 96.5
+      tags:
+        - Project Facts
+      responses:
+        '200':
+          description: The request to record the project fact was successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/read'
+              examples:
+                record:
+                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/read'
+              examples:
+                record:
+                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '409':
+          $ref: '#/paths/~1groups/post/responses/409'
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: integer
+  '/projects/{id}/fact-types':
+    get:
+      description: Retrieve the collection of project fact types for a specific project
+      summary: Get Collection
+      tags:
+        - Project Fact Types
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate ID
+                      type: number
+                    name:
+                      description: The project fact type name
+                      type: string
+                    fact_type:
+                      description: Indicates how a fact value is validated and scored
+                      type: string
+                      enum:
+                        - enum
+                        - free-form
+                        - range
+                    description:
+                      description: Provides additional context about the fact type
+                      type: string
+                      nullable: true
+                    data_type:
+                      description: The data type for the value
+                      type: string
+                      enum:
+                        - boolean
+                        - date
+                        - decimal
+                        - integer
+                        - string
+                        - timestamp
+                    ui_options:
+                      description: An array of values that are used in the UI for display purposes
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          - display-as-badge
+                          - hidden
+                      uniqueItems: true
+                    enum_values:
+                      description: An array of the possible values if the fact type is an enum
+                      items:
+                        type: string
+                      nullable: true
+                    min_value:
+                      description: The minimum value if this is a range fact type
+                      type: number
+                      nullable: true
+                    max_value:
+                      description: The maximim value if this is a range fact type
+                      type: number
+                      nullable: true
+                    weight:
+                      description: The weight of the fact type when computing a project score
+                      type: number
+                      default: 0
+              examples:
+                records:
+                  summary: Multiple project fact type records
+                  value:
+                    - id: 1
+                      name: Programming Language
+                      fact_type: enum
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - Python 3.9
+                        - Python 3.8
+                      min_value: 0
+                      max_value: 100
+                      weight: 25
+                    - id: 2
+                      name: Test Coverage
+                      data_type: boolean
+                      fact_type: range
+                      description: null
+                      ui_options: []
+                      enum_values: null
+                      min_value: 0
+                      max_value: 100
+                      weight: 25
+                    - id: 3
+                      name: Deployed to all Environments
+                      fact_type: enum
+                      data_type: boolean
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - true
+                        - false
+                      min_value: null
+                      max_value: null
+                      weight: 20
+                    - id: 4
+                      name: Has Acceptance Tests
+                      fact_type: enum
+                      data_type: boolean
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - true
+                        - false
+                      min_value: null
+                      max_value: null
+                      weight: 10
+                    - id: 5
+                      name: Meets Current Standards
+                      fact_type: enum
+                      data_type: boolean
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - true
+                        - false
+                      min_value: null
+                      max_value: null
+                      weight: 10
+                    - id: 6
+                      name: Has working CI pipeline
+                      fact_type: enum
+                      data_type: boolean
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - true
+                        - false
+                      min_value: null
+                      max_value: null
+                      weight: 10
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate ID
+                      type: number
+                    name:
+                      description: The project fact type name
+                      type: string
+                    fact_type:
+                      description: Indicates how a fact value is validated and scored
+                      type: string
+                      enum:
+                        - enum
+                        - free-form
+                        - range
+                    description:
+                      description: Provides additional context about the fact type
+                      type: string
+                      nullable: true
+                    data_type:
+                      description: The data type for the value
+                      type: string
+                      enum:
+                        - boolean
+                        - date
+                        - decimal
+                        - integer
+                        - string
+                        - timestamp
+                    ui_options:
+                      description: An array of values that are used in the UI for display purposes
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          - display-as-badge
+                          - hidden
+                      uniqueItems: true
+                    enum_values:
+                      description: An array of the possible values if the fact type is an enum
+                      items:
+                        type: string
+                      nullable: true
+                    min_value:
+                      description: The minimum value if this is a range fact type
+                      type: number
+                      nullable: true
+                    max_value:
+                      description: The maximim value if this is a range fact type
+                      type: number
+                      nullable: true
+                    weight:
+                      description: The weight of the fact type when computing a project score
+                      type: number
+                      default: 0
+              examples:
+                records:
+                  summary: Multiple project fact type records
+                  value:
+                    - id: 1
+                      name: Programming Language
+                      fact_type: enum
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - Python 3.9
+                        - Python 3.8
+                      min_value: 0
+                      max_value: 100
+                      weight: 25
+                    - id: 2
+                      name: Test Coverage
+                      data_type: boolean
+                      fact_type: range
+                      description: null
+                      ui_options: []
+                      enum_values: null
+                      min_value: 0
+                      max_value: 100
+                      weight: 25
+                    - id: 3
+                      name: Deployed to all Environments
+                      fact_type: enum
+                      data_type: boolean
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - true
+                        - false
+                      min_value: null
+                      max_value: null
+                      weight: 20
+                    - id: 4
+                      name: Has Acceptance Tests
+                      fact_type: enum
+                      data_type: boolean
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - true
+                        - false
+                      min_value: null
+                      max_value: null
+                      weight: 10
+                    - id: 5
+                      name: Meets Current Standards
+                      fact_type: enum
+                      data_type: boolean
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - true
+                        - false
+                      min_value: null
+                      max_value: null
+                      weight: 10
+                    - id: 6
+                      name: Has working CI pipeline
+                      fact_type: enum
+                      data_type: boolean
+                      description: null
+                      ui_options: []
+                      enum_values:
+                        - true
+                        - false
+                      min_value: null
+                      max_value: null
+                      weight: 10
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: integer
   '/projects/{id}/links':
     get:
       description: Retrieve the collection of links for a project
@@ -4406,20 +4932,22 @@ tags:
     description: Endpoints used to manage the groups that Imbi users are able to be members of.
   - name: Namespaces
     description: Endpoints used for the management of organizational namespaces
-  - name: Project Fact Types
+  - name: Fact Types
     description: |-
       Management of records that define types facts that may be collected for a project.
 
       Project facts may be used to calculate a current project health score. For more
       information on project health score, see the compliance documentation.
-  - name: Project Fact Type Enums
+    x-displayName: Project Fact Types
+  - name: Fact Type Enums
     description: |-
       Management of records that define enum values for different fact types that may be collected for a project.
 
       Project facts enums provide the possible values for project facts, and are
       used to compute the score of that project fact. For more information on
       project health score, see the compliance documentation.
-  - name: Project Fact Type Ranges
+    x-displayName: Project Fact Type Enums
+  - name: Fact Type Ranges
     description: |-
       Management of records that define range values for different fact types that
       may be collected for a project.
@@ -4427,6 +4955,7 @@ tags:
       Project facts ranges provide the possible range values for project facts, and
       are used to compute the score of that project fact. For more information on
       project health score, see the compliance documentation.
+    x-displayName: Project Fact Type Ranges
   - name: Project Link Types
     description: Management of records that define types of links or URLs to associate with a project
   - name: Project Types
@@ -4437,6 +4966,8 @@ tags:
     description: Endpoints used to manage the relationships of projects to other projects
   - name: Project Facts
     description: Endpoints for managing the current facts describing the project
+  - name: Project Fact Types
+    description: An endpoint for returning the project fact types for a specific project
   - name: Project Links
     description: Endpoints used to manage links to external resources for a project
   - name: Project URLs
@@ -4457,9 +4988,9 @@ x-tagGroups:
       - Cookie Cutters
       - Environments
       - Namespaces
-      - Project Fact Types
-      - Project Fact Type Enums
-      - Project Fact Type Ranges
+      - Fact Types
+      - Fact Type Enums
+      - Fact Type Ranges
       - Project Link Types
       - Project Types
   - name: Project Management
@@ -4467,6 +4998,7 @@ x-tagGroups:
       - Projects
       - Project Dependencies
       - Project Facts
+      - Project Fact Types
       - Project Links
       - Project URLs
   - name: Current User
