@@ -50,7 +50,6 @@ function App({ logo, service, ldap, sentry_dsn, url, version }) {
   const logout = () => {
     const logoutURL = new URL(url)
     logoutURL.pathname = '/ui/logout'
-    console.log(logoutURL)
     fetch(logoutURL.toString()).then(() => {
       resetState()
       history.push(`/ui/`)

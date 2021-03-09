@@ -35,7 +35,7 @@ export default {
         previous: 'Previous',
         next: 'Next',
         value: 'Value',
-        score: 'Score'
+        filter: 'Filter'
       },
       terms: {
         description: 'Description',
@@ -44,9 +44,12 @@ export default {
         projectType: 'Project Type',
         dataCenter: 'Data Center',
         deploymentType: 'Deployment Type',
+        healthScore: 'Health Score',
         links: 'Links',
         record: 'record',
-        records: 'records'
+        records: 'records',
+        reports: 'Reports',
+        score: 'Score'
       },
       error: {
         title: 'ERROR',

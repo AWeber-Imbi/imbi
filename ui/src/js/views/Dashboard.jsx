@@ -45,7 +45,7 @@ export function Dashboard() {
                   key={`stats-${row.name}`}
                   title={row.count === 1 ? row.name : row.plural}
                   icon={row.icon}
-                  url={`/ui/projects?project_type=${row.slug}`}
+                  url={`/ui/projects?project_type=${row.project_type_id}`}
                   value={row.count}
                 />
               )
