@@ -4,7 +4,6 @@ import React from 'react'
 
 function Icon({ icon, ...props }) {
   if (icon === undefined || icon === null) {
-    console.log('Using default icon')
     icon = 'fab empire'
   }
   return <FontAwesomeIcon icon={icon.split(' ')} {...props} />
