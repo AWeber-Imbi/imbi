@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Icon } from '../Icon/Icon'
@@ -12,99 +12,94 @@ export const disabledButton = `${buttonStyle} border-gray-300 bg-gray-50 text-sm
 export const selectedButton = `${buttonStyle} border-blue-400 bg-blue-500 text-white`
 
 export function Buttons() {
+  const context = useContext(Context)
   const { t } = useTranslation()
   return (
-    <Context.Consumer>
-      {(context) => (
-        <div className="flex-1 text-right">
-          <nav
-            className="relative z-0 inline-flex shadow-sm -space-x-px"
-            aria-label="Paginator">
-            {context.currentPage === 1 && (
-              <div className={`${disabledButton} rounded-l-md`}>
-                <span className="sr-only">{t('common.previous')}</span>
-                <Icon icon="fas chevron-left" />
+    <div className="flex-1 text-right">
+      <nav
+        className="relative z-0 inline-flex shadow-sm -space-x-px"
+        aria-label="Controls">
+        {context.itemCount > 0 && context.currentPage === 1 && (
+          <div className={`${disabledButton} rounded-l-md`}>
+            <span className="sr-only">{t('common.previous')}</span>
+            <Icon icon="fas chevron-left" />
+          </div>
+        )}
+        {context.itemCount > 0 && context.currentPage > 1 && (
+          <button
+            className={`${availableButton} rounded-l-md`}
+            onClick={(event) => {
+              event.preventDefault()
+              context.setCurrentPage(context.prevPage)
+            }}>
+            <span className="sr-only">{t('common.previous')}</span>
+            <Icon icon="fas chevron-left" />
+          </button>
+        )}
+        {context.currentPage - context.adjacentPages > 1 && (
+          <button
+            className={availableButton}
+            onClick={(event) => {
+              event.preventDefault()
+              context.setCurrentPage(1)
+            }}>
+            1
+          </button>
+        )}
+        {context.currentPage - context.adjacentPages > 1 && (
+          <div className={disabledButton}>&hellip;</div>
+        )}
+        {context.pages.map((page) => {
+          if (page === context.currentPage) {
+            return (
+              <div className={selectedButton} key={`pagination-page-${page}`}>
+                {page}
               </div>
-            )}
-            {context.currentPage > 1 && (
-              <button
-                className={`${availableButton} rounded-l-md`}
-                onClick={(event) => {
-                  event.preventDefault()
-                  context.setCurrentPage(context.prevPage)
-                }}>
-                <span className="sr-only">{t('common.previous')}</span>
-                <Icon icon="fas chevron-left" />
-              </button>
-            )}
-            {context.currentPage - context.adjacentPages > 1 && (
-              <button
-                className={availableButton}
-                onClick={(event) => {
-                  event.preventDefault()
-                  context.setCurrentPage(1)
-                }}>
-                1
-              </button>
-            )}
-            {context.currentPage - context.adjacentPages > 1 && (
-              <div className={disabledButton}>&hellip;</div>
-            )}
-            {context.pages.map((page) => {
-              if (page === context.currentPage) {
-                return (
-                  <div
-                    className={selectedButton}
-                    key={`pagination-page-${page}`}>
-                    {page}
-                  </div>
-                )
-              }
-              return (
-                <button
-                  className={availableButton}
-                  key={`pagination-page-${page}`}
-                  onClick={(event) => {
-                    event.preventDefault()
-                    context.setCurrentPage(page)
-                  }}>
-                  {page}
-                </button>
-              )
-            })}
-            {context.pageCount - context.lastPage > 1 && (
-              <div className={disabledButton}>&hellip;</div>
-            )}
-            {context.pageCount - context.lastPage > 0 && (
-              <button
-                className={availableButton}
-                onClick={(event) => {
-                  event.preventDefault()
-                  context.setCurrentPage(context.pageCount)
-                }}>
-                {context.pageCount}
-              </button>
-            )}
-            {context.currentPage === context.pageCount && (
-              <div className={`${disabledButton} rounded-r-md`}>
-                <span className="sr-only">{t('common.next')}</span>
-                <Icon icon="fas chevron-right" />
-              </div>
-            )}
-            {context.currentPage < context.pageCount && (
-              <button
-                className={`${availableButton} rounded-r-md`}
-                onClick={(event) => {
-                  event.preventDefault()
-                  context.setCurrentPage(context.nextPage)
-                }}>
-                <span className="sr-only">{t('common.next')}</span>
-                <Icon icon="fas chevron-right" />
-              </button>
-            )}
-          </nav>
-        </div>
-      )}
-    </Context.Consumer>
+            )
+          }
+          return (
+            <button
+              className={availableButton}
+              key={`pagination-page-${page}`}
+              onClick={(event) => {
+                event.preventDefault()
+                context.setCurrentPage(page)
+              }}>
+              {page}
+            </button>
+          )
+        })}
+        {context.pageCount - context.lastPage > 1 && (
+          <div className={disabledButton}>&hellip;</div>
+        )}
+        {context.pageCount - context.lastPage > 0 && (
+          <button
+            className={availableButton}
+            onClick={(event) => {
+              event.preventDefault()
+              context.setCurrentPage(context.pageCount)
+            }}>
+            {context.pageCount}
+          </button>
+        )}
+        {context.currentPage === context.pageCount && (
+          <div className={`${disabledButton} rounded-r-md`}>
+            <span className="sr-only">{t('common.next')}</span>
+            <Icon icon="fas chevron-right" />
+          </div>
+        )}
+        {context.currentPage < context.pageCount && (
+          <button
+            className={`${availableButton} rounded-r-md`}
+            onClick={(event) => {
+              event.preventDefault()
+              context.setCurrentPage(context.nextPage)
+            }}>
+            <span className="sr-only">{t('common.next')}</span>
+            <Icon icon="fas chevron-right" />
+          </button>
+        )}
+      </nav>
+    </div>
   )
 }
