@@ -10,32 +10,37 @@ const colors = {
   pink: 'border border-pink-300 bg-pink-100 text-pink-800',
   purple: 'border border-purple-300 bg-purple-100 text-purple-800',
   red: 'border border-red-300 bg-red-100 text-red-800',
-  yellow: 'border border-yellow-300 g-yellow-100 text-yellow-800'
+  yellow: 'border border-yellow-300 bg-yellow-100 text-yellow-800'
 }
 
-function Badge({ color, children, href, target }) {
+function Badge({ className, color, children, href, target }) {
   if (href !== undefined)
     return (
       <a
         href={href}
         target={target}
-        className={`inline-flex cursor-pointer items-center px-2.5 py-0.5 rounded-md text-sm font-medium ${colors[color]}`}>
+        className={
+          `inline-flex cursor-pointer items-center px-2.5 py-0.5 rounded-md text-sm font-medium ${colors[color]}` +
+          (className !== undefined ? ` ${className}` : '')
+        }>
         {children}
       </a>
     )
   return (
     <div
-      className={`inline-flex cursor-default items-center px-2.5 py-0.5 rounded-md text-sm font-medium ${colors[color]}`}>
+      className={
+        `inline-flex cursor-default items-center px-2.5 py-0.5 rounded-md text-sm font-medium ${colors[color]}` +
+        (className !== undefined ? ` ${className}` : '')
+      }>
       {children}
     </div>
   )
 }
-
 Badge.defaultProps = {
   color: 'gray'
 }
-
 Badge.propTypes = {
+  className: PropTypes.string,
   color: PropTypes.oneOf([
     'blue',
     'dark',
