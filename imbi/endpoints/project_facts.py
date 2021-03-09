@@ -15,7 +15,7 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
         WITH project_type_id AS (SELECT project_type_id AS id
-                                   FROM v1.projects 
+                                   FROM v1.projects
                                   WHERE id = %(project_id)s)
         SELECT a.id AS fact_type_id,
                a.name,
@@ -23,8 +23,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
                b.recorded_by,
                b.value,
                a.data_type,
-               a.ui_options,          
-               CASE WHEN b.value IS NULL THEN 0 
+               a.ui_options,
+               CASE WHEN b.value IS NULL THEN 0
                     ELSE CASE WHEN a.fact_type = 'enum' THEN (
                                           SELECT score::NUMERIC(9,2)
                                             FROM v1.project_fact_type_enums
@@ -34,16 +34,16 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
                                           SELECT score::NUMERIC(9,2)
                                             FROM v1.project_fact_type_ranges
                                            WHERE fact_type_id = b.fact_type_id
-                                             AND b.value::NUMERIC(9,2) 
+                                             AND b.value::NUMERIC(9,2)
                                          BETWEEN min_value AND max_value)
-                              ELSE 0 
+                              ELSE 0
                           END
                 END AS score,
                a.weight
           FROM v1.project_fact_types AS a
      LEFT JOIN v1.project_facts AS b
             ON b.fact_type_id = a.id
-           AND b.project_id = %(project_id)s     
+           AND b.project_id = %(project_id)s
          WHERE (SELECT id FROM project_type_id) = ANY(a.project_type_ids)
         ORDER BY a.name""")
 
