@@ -50,6 +50,7 @@ read:
         type: string
         enum:
           - display-as-badge
+          - display-as-percentage
           - hidden
       uniqueItems: true
     weight:
@@ -101,6 +102,7 @@ write:
         type: string
         enum:
           - display-as-badge
+          - display-as-percentage
           - hidden
       uniqueItems: true
     weight:
