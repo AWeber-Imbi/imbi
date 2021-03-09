@@ -12,6 +12,7 @@ imbi/static/fonts/
 imbi/static/*.js
 imbi/static/*.js.map
 openapi/node_modules/
+scaffolding/postgres/metadata.sql
 ui/.eslintcache
 ui/coverage/
 ui/node_modules/
