@@ -14,32 +14,38 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
     ID_KEY = 'project_id'
 
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
-        SELECT a.fact_type_id,
-               b.name,
-               a.recorded_at,
-               a.recorded_by,
-               a.value,
-               b.data_type,
-               CASE WHEN b.fact_type = 'enum' THEN (
-                        SELECT score
-                          FROM v1.project_fact_type_enums
-                         WHERE project_id = a.project_id
-                           AND fact_type_id = a.fact_type_id
-                           AND value = a.value)
-                    WHEN b.fact_type = 'range' THEN (
-                        SELECT score
-                          FROM v1.project_fact_type_ranges
-                         WHERE project_id = a.project_id
-                           AND fact_type_id = a.fact_type_id
-                           AND a.value::NUMERIC(9,2) BETWEEN min_value
-                                                         AND max_value)
-                    ELSE 0 END AS score,
-                b.weight
-          FROM v1.project_facts AS a
-          JOIN v1.project_fact_types AS b
-            ON b.id = a.fact_type_id
-         WHERE a.project_id = %(project_id)s
-        ORDER BY b.name""")
+        WITH project_type_id AS (SELECT project_type_id AS id
+                                   FROM v1.projects 
+                                  WHERE id = %(project_id)s)
+        SELECT a.id AS fact_type_id,
+               a.name,
+               b.recorded_at,
+               b.recorded_by,
+               b.value,
+               a.data_type,
+               a.ui_options,          
+               CASE WHEN b.value IS NULL THEN 0 
+                    ELSE CASE WHEN a.fact_type = 'enum' THEN (
+                                          SELECT score::NUMERIC(9,2)
+                                            FROM v1.project_fact_type_enums
+                                           WHERE fact_type_id = b.fact_type_id
+                                             AND value = b.value)
+                              WHEN a.fact_type = 'range' THEN (
+                                          SELECT score::NUMERIC(9,2)
+                                            FROM v1.project_fact_type_ranges
+                                           WHERE fact_type_id = b.fact_type_id
+                                             AND b.value::NUMERIC(9,2) 
+                                         BETWEEN min_value AND max_value)
+                              ELSE 0 
+                          END
+                END AS score,
+               a.weight
+          FROM v1.project_fact_types AS a
+     LEFT JOIN v1.project_facts AS b
+            ON b.fact_type_id = a.id
+           AND b.project_id = %(project_id)s     
+         WHERE (SELECT id FROM project_type_id) = ANY(a.project_type_ids)
+        ORDER BY a.name""")
 
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.project_facts

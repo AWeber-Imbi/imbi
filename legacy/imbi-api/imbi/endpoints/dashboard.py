@@ -8,7 +8,8 @@ class RequestHandler(base.AuthenticatedRequestHandler):
     NAME = 'dashboard'
 
     PROJECT_COUNTS = re.sub(r'\s+', ' ', """\
-        SELECT b.name AS name,
+        SELECT a.project_type_id,
+               b.name AS name,
                b.plural_name AS plural,
                b.icon_class AS icon,
                b.slug AS slug,
@@ -16,7 +17,7 @@ class RequestHandler(base.AuthenticatedRequestHandler):
           FROM v1.projects AS a
           JOIN v1.project_types AS b
             ON b.id = a.project_type_id
-         GROUP BY b.name, b.plural_name, b.icon_class, b.slug
+         GROUP BY a.project_type_id, b.name, b.plural_name, b.icon_class, b.slug
          ORDER BY count(a.*) DESC""")
 
     async def get(self):

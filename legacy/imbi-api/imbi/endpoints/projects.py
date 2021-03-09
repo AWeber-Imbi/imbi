@@ -1,7 +1,7 @@
 import asyncio
 import re
 
-from tornado import web
+import problemdetails
 
 from imbi.endpoints import base
 
@@ -54,7 +54,8 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                a.name,
                a.slug,
                a.description,
-               a.environments
+               a.environments,
+               v1.project_score(a.id) AS project_score
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
@@ -68,9 +69,8 @@ class CollectionRequestHandler(_RequestHandlerMixin,
           {{WHERE}}""")
 
     FILTER_CHUNKS = {
-        'namespace': '(b.name = %(namespace)s OR b.slug = %(namespace)s)',
-        'project_type': '(c.name = %(project_type)s '
-                        'OR c.slug = %(project_type)s)'
+        'namespace': 'b.id = %(namespace)s',
+        'project_type': 'c.id = %(project_type)s'
     }
 
     POST_SQL = re.sub(r'\s+', ' ', """\
@@ -140,11 +140,53 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                a.name,
                a.slug,
                a.description,
-               a.environments
+               a.environments,
+               v1.project_score(a.id)
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
          WHERE a.id=%(id)s""")
+
+    GET_FACTS_SQL = re.sub(r'\s+', ' ', """\
+        WITH project_type_id AS (SELECT project_type_id AS id
+                                   FROM v1.projects 
+                                  WHERE id = %(id)s)
+        SELECT a.id AS fact_type_id,
+               a.name,
+               b.recorded_at,
+               b.recorded_by,
+               b.value,
+               a.data_type,
+               a.fact_type,
+               a.ui_options,          
+               CASE WHEN b.value IS NULL THEN 0 
+                    ELSE CASE WHEN a.fact_type = 'enum' THEN (
+                                          SELECT score::NUMERIC(9,2)
+                                            FROM v1.project_fact_type_enums
+                                           WHERE fact_type_id = b.fact_type_id
+                                             AND value = b.value)
+                              WHEN a.fact_type = 'range' THEN (
+                                          SELECT score::NUMERIC(9,2)
+                                            FROM v1.project_fact_type_ranges
+                                           WHERE fact_type_id = b.fact_type_id
+                                             AND b.value::NUMERIC(9,2) 
+                                         BETWEEN min_value AND max_value)
+                              ELSE 0 
+                          END
+                END AS score,
+               CASE WHEN a.fact_type = 'enum' THEN (
+                              SELECT icon_class
+                                FROM v1.project_fact_type_enums
+                               WHERE fact_type_id = b.fact_type_id
+                                 AND value = b.value)
+                    ELSE NULL  
+                END AS icon_class
+          FROM v1.project_fact_types AS a
+     LEFT JOIN v1.project_facts AS b
+            ON b.fact_type_id = a.id
+           AND b.project_id = %(id)s     
+         WHERE (SELECT id FROM project_type_id) = ANY(a.project_type_ids)
+        ORDER BY a.name""")
 
     GET_LINKS_SQL = re.sub(r'\s+', ' ', """\
         SELECT b.link_type AS title,
@@ -175,24 +217,26 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
 
     async def get(self, *args, **kwargs):
         if self.get_argument('full', 'false') == 'true':
-            project_result, links_result, urls_result = await asyncio.gather(
+            query_args = self._get_query_kwargs(kwargs)
+            project, facts, links, urls = await asyncio.gather(
                 self.postgres_execute(
-                    self.GET_FULL_SQL, self._get_query_kwargs(kwargs),
-                    'get-{}'.format(self.NAME)),
+                    self.GET_FULL_SQL, query_args, 'get-{}'.format(self.NAME)),
                 self.postgres_execute(
-                    self.GET_LINKS_SQL, self._get_query_kwargs(kwargs)),
+                    self.GET_FACTS_SQL, query_args, 'get-project-facts'),
                 self.postgres_execute(
-                    self.GET_URLS_SQL, self._get_query_kwargs(kwargs)))
+                    self.GET_LINKS_SQL, query_args, 'get-project-links'),
+                self.postgres_execute(
+                    self.GET_URLS_SQL, query_args, 'get-project-urls'))
 
-            if not project_result.row_count or not project_result.row:
-                raise web.HTTPError(404, reason='Item not found')
+            if not project.row_count or not project.row:
+                raise problemdetails.Problem(
+                    status_code=404, title='Item not found')
 
-            output = project_result.row
+            output = project.row
             output.update({
-                'facts': [],
-                'links': links_result.rows,
-                'urls': {row['environment']: row['url']
-                         for row in urls_result.rows}
+                'facts': facts.rows,
+                'links': links.rows,
+                'urls': {row['environment']: row['url'] for row in urls.rows}
             })
             self.send_response(output)
         else:
