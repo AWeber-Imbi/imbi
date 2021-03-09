@@ -1,68 +1,42 @@
 import PropTypes from 'prop-types'
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 
 import { Context } from './Context'
 
 function Container({
   adjacentPages,
   children,
+  currentPage,
   itemCount,
   itemsPerPage,
-  offset,
-  onChange,
-  onPageSize
+  setCurrentPage,
+  setPageSize
 }) {
-  const [currentPage, setCurrentPage] = useState(1)
-  const [displayState, setDisplayState] = useState({
-    offset: offset,
-    startPage: 1,
-    lastPage: 0,
-    nextPage: 2,
-    prevPage: 1,
-    pages: []
-  })
-  const pages = [...Array(itemCount).keys()].map((p) => p + 1)
-  const [pageCount, setPageCount] = useState(
-    Math.ceil(itemCount / itemsPerPage)
+  const availablePages = [...Array(itemCount).keys()].map((p) => p + 1)
+  const pageCount = Math.ceil(itemCount / itemsPerPage)
+  const startPage = Math.max(currentPage - adjacentPages, 1)
+  const lastPage = Math.min(currentPage + adjacentPages, pageCount)
+  const nextPage = currentPage + 1
+  const prevPage = currentPage - 1
+  const pages = availablePages.slice(
+    startPage - 1,
+    startPage + (lastPage - startPage)
   )
-  const [pageSize, setPageSize] = useState(itemsPerPage)
-
-  useEffect(() => {
-    setPageCount(Math.ceil(itemCount / pageSize))
-    onPageSize(pageSize)
-  }, [pageSize])
-
-  useEffect(() => {
-    const currentOffset = (currentPage - 1) * pageSize
-    const startPage = Math.max(currentPage - adjacentPages, 1)
-    const lastPage = Math.min(currentPage + adjacentPages, pageCount)
-    setDisplayState({
-      offset: currentOffset,
-      startPage: startPage,
-      lastPage: lastPage,
-      nextPage: currentPage + 1,
-      prevPage: currentPage - 1,
-      pages: pages.slice(startPage - 1, startPage + (lastPage - startPage))
-    })
-    onChange(currentOffset)
-  }, [currentPage])
-
   return (
     <Context.Provider
       value={{
         adjacentPages: adjacentPages,
         currentPage: currentPage,
         itemCount: itemCount,
-        offset: displayState.offset,
-        lastPage: displayState.lastPage,
-        nextPage: displayState.nextPage,
-        pages: displayState.pages,
-        prevPage: displayState.prevPage,
+        lastPage: lastPage,
+        nextPage: nextPage,
+        pages: pages,
+        prevPage: prevPage,
         pageCount: pageCount,
-        pageSize: pageSize,
+        pageSize: itemsPerPage,
         setCurrentPage: setCurrentPage,
         setPageSize: setPageSize,
-        startPage: displayState.startPage
+        startPage: startPage
       }}>
       {children}
     </Context.Provider>
@@ -70,15 +44,16 @@ function Container({
 }
 Container.defaultProps = {
   adjacentPages: 2,
-  itemsPerPage: 25
+  itemsPerPage: 25,
+  offset: 0
 }
 Container.propTypes = {
   adjacentPages: PropTypes.number,
   children: PropTypes.arrayOf(PropTypes.element).isRequired,
+  currentPage: PropTypes.number.isRequired,
   itemCount: PropTypes.number.isRequired,
   itemsPerPage: PropTypes.number,
-  offset: PropTypes.number.isRequired,
-  onChange: PropTypes.func.isRequired,
-  onPageSize: PropTypes.func
+  setCurrentPage: PropTypes.func.isRequired,
+  setPageSize: PropTypes.func
 }
 export { Container }

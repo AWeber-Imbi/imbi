@@ -1,9 +1,7 @@
 import { Container } from './Container'
-import { Paginator as SPaginator } from './SyncedPaginator'
+import { Controls } from './Controls'
 
-export { Paginator } from './Paginator'
-
-export const SyncedPaginator = {
+export const Paginator = {
   Container: Container,
-  Paginator: SPaginator
+  Controls: Controls
 }
