@@ -39,6 +39,9 @@ function NavMenu({ user }) {
       <NavLink className="nav-menu-link" to="/ui/operations-log">
         {t('operationsLog.title')}
       </NavLink>
+      <NavLink className="nav-menu-link" to="/ui/reports">
+        {t('terms.reports')}
+      </NavLink>
       {user.permissions.includes('admin') && (
         <Tooltip value={t('headerNavItems.administration')}>
           <NavLink className="nav-menu-link" to="/ui/admin">

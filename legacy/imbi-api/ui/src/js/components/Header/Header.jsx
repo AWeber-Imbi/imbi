@@ -14,7 +14,7 @@ function Header({ logo, service, authenticated, user }) {
         'flex-shrink bg-blue-700 h-13' + (authenticated !== true ? ' pb-1' : '')
       }>
       <nav className="p-2 flex flex-row">
-        <Link to="/ui/" className="h-8 w-8 flex-shrink">
+        <Link to="/ui/" className="ml-2 h-8 w-8 flex-shrink">
           <img
             className={'h-8 w-8 mt-1' + (authenticated !== true ? ' mb-1' : '')}
             src={logo}
