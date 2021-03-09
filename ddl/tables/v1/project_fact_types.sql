@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS project_fact_types (
   fact_type            fact_type                 NOT NULL  DEFAULT 'free-form',
   data_type            data_type                 NOT NULL  DEFAULT 'string',
   description          TEXT,
-  ui_options           TEXT[]                    CONSTRAINT valid_ui_options CHECK (ui_options <@ ARRAY['display-as-badge', 'hidden']),
+  ui_options           TEXT[]                    CONSTRAINT valid_ui_options CHECK (ui_options <@ ARRAY['display-as-badge', 'display-as-percentage', 'hidden']),
   weight               INTEGER                   CONSTRAINT valid_weight CHECK (weight IS NOT NULL AND weight BETWEEN 0 AND 100)  DEFAULT 0
 );
 
