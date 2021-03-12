@@ -189,7 +189,8 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
         ORDER BY a.name""")
 
     GET_LINKS_SQL = re.sub(r'\s+', ' ', """\
-        SELECT b.link_type AS title,
+        SELECT a.link_type_id,
+               b.link_type AS title,
                b.icon_class AS icon,
                a.url AS url
           FROM v1.project_links AS a
