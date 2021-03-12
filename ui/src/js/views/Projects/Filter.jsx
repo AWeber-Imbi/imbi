@@ -85,5 +85,4 @@ Filter.propTypes = {
 }
 
 const PureFilter = onlyUpdateForKeys(['values'])(Filter)
-
 export { PureFilter as Filter }
