@@ -24,7 +24,7 @@ function Main({ user }) {
   return (
     <MetadataContext.Provider
       value={{ ...metadata, refresh: () => setRefreshMetadata(true) }}>
-      <main className="flex flex-row flex-grow max-w-full">
+      <main className="flex-grow flex flex-row">
         <Switch>
           {user.permissions.includes('admin') && (
             <Route path="/ui/admin">
