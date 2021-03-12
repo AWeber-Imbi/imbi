@@ -38,18 +38,22 @@ export default {
         filter: 'Filter'
       },
       terms: {
-        description: 'Description',
-        name: 'Name',
-        namespace: 'Namespace',
-        projectType: 'Project Type',
         dataCenter: 'Data Center',
         deploymentType: 'Deployment Type',
+        description: 'Description',
+        environments: 'Environments',
         healthScore: 'Health Score',
         links: 'Links',
+        name: 'Name',
+        namespace: 'Namespace',
+        projectInfo: 'Project Information',
+        projectFacts: 'Project Facts',
+        projectType: 'Project Type',
         record: 'record',
         records: 'records',
         reports: 'Reports',
-        score: 'Score'
+        score: 'Score',
+        slug: 'Slug'
       },
       error: {
         title: 'ERROR',
@@ -186,6 +190,7 @@ export default {
         title: 'Add Operations Log Entry'
       },
       project: {
+        editInfo: 'Edit Project Information',
         projectAttributes: 'Project Attributes',
         attributes: 'Attributes',
         projectLinks: 'Project Links',

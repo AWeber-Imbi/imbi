@@ -1,107 +1,141 @@
-import React, { useContext, useEffect, useState } from 'react'
+import PropTypes from 'prop-types'
+import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { Route, useParams } from 'react-router-dom'
+import { onlyUpdateForKeys } from 'recompose'
 import { useTranslation } from 'react-i18next'
+import { buildStyles, CircularProgressbar } from 'react-circular-progressbar'
+import 'react-circular-progressbar/dist/styles.css'
 
 import { FetchContext } from '../../contexts'
-import { httpGet, setDocumentTitle } from '../../utils'
-import { Icon, Loading, Tabs } from '../../components'
+import { httpRequest, requestOptions, setDocumentTitle } from '../../utils'
+import { Icon, IconBar, Loading, Tab, Tooltip } from '../../components'
 
 import { Overview } from './Overview'
-import { Edit } from './Edit'
 
-function Project() {
+function ProjectPage({ project, factTypes, refresh }) {
   const { t } = useTranslation()
-  const [errorMessage, setErrorMessage] = useState(null)
-  const fetch = useContext(FetchContext)
-  const { projectId } = useParams()
-  const [project, setProject] = useState({})
-  const [factTypes, setFactTypes] = useState(undefined)
-
-  useEffect(() => {
-    if (project.id === undefined) {
-      const url = new URL(fetch.baseURL)
-      url.pathname = `/projects/${projectId}`
-      url.searchParams.append('full', 'true')
-      httpGet(
-        fetch.function,
-        url,
-        (result) => {
-          setProject(result)
-        },
-        (error) => {
-          setErrorMessage(error)
-        }
-      )
-    }
-  }, [projectId, project])
-
-  useEffect(() => {
-    if (factTypes === undefined) {
-      const url = new URL(fetch.baseURL)
-      url.pathname = `/projects/${projectId}/fact-types`
-      httpGet(
-        fetch.function,
-        url,
-        (result) => {
-          setFactTypes(result)
-        },
-        (error) => {
-          setErrorMessage(error)
-        }
-      )
-    }
-  }, [projectId, factTypes])
-
-  if (project.name === undefined) {
-    setDocumentTitle(t('common.loading'))
-    return <Loading />
-  }
-
-  console.log(errorMessage)
-
+  const baseURL = `/ui/projects/${project.id}`
+  let color = '#cccccc'
+  if (project.project_score >= 0) color = 'red'
+  if (project.project_score > 69) color = 'gold'
+  if (project.project_score > 89) color = '#00c800'
   setDocumentTitle(project.name)
-
   return (
-    <div className="flex-auto px-6 py-4">
-      <h1 className="text-gray-600 text-xl">
-        <Icon icon={project.project_icon} className="ml-2 mr-2" />
-        {project.name}
-      </h1>
-
-      <div className="my-4 bg-white px-4 py-2 border-b border-gray-200 rounded-md">
-        <Tabs.TabBar>
-          <Tabs.Tab target={`/ui/projects/${projectId}`}>Overview</Tabs.Tab>
-          <Tabs.Tab target={`/ui/projects/${projectId}/dependencies`}>
-            Dependencies
-          </Tabs.Tab>
-          <Tabs.Tab target={`/ui/projects/${projectId}/logs`}>Logs</Tabs.Tab>
-          <Tabs.Tab target={`/ui/projects/${projectId}/operations-log`}>
-            Operations Log
-          </Tabs.Tab>
-          <Tabs.Tab target={`/ui/projects/${projectId}/configuration`}>
-            Configuration
-          </Tabs.Tab>
-          <Tabs.Tab target={`/ui/projects/${projectId}/fact-history`}>
-            Fact History
-          </Tabs.Tab>
-          <Tabs.Tab target={`/ui/projects/${projectId}/edit`}>Edit</Tabs.Tab>
-        </Tabs.TabBar>
-        <Tabs.Container>
-          <Route path={`/ui/projects/${projectId}`} exact>
-            <Overview project={project} />
-          </Route>
-          <Route path={`/ui/projects/${projectId}/logs`}>
-            <div>Logs</div>
-          </Route>
-          <Route path={`/ui/projects/${projectId}/edit`}>
-            <Edit project={project} />
-          </Route>
-        </Tabs.Container>
+    <div className="flex-auto px-6 py-4 space-y-3">
+      <div className="flex justify-between">
+        <div className="flex-shrink flex flex-col space-y-2 ml-2">
+          <h1 className="text-gray-600 text-2xl">
+            <Icon icon={project.project_icon} className="mr-2" />
+            {project.name}
+          </h1>
+          <div className="text-gray-500">
+            {project.links.length === 0 && ' '}
+            {project.links.length > 0 && (
+              <Fragment>
+                <span className="mr-2">{t('terms.links')}:</span>
+                <IconBar icons={project.links} />
+              </Fragment>
+            )}
+          </div>
+        </div>
+        <div
+          className="flex-shrink mr-2"
+          style={{ height: '60px', width: '60px' }}>
+          <Tooltip value="Project Health Score" arrowPosition="right">
+            <CircularProgressbar
+              value={project.project_score}
+              text={project.project_score}
+              styles={buildStyles({
+                pathColor: color,
+                textColor: color,
+                textSize: '1.5rem',
+                trailColor: '#ccc'
+              })}
+            />
+          </Tooltip>
+        </div>
       </div>
+      <p className="text-sm ml-2 text-gray-500">{project.description}</p>
+      <nav
+        className="relative z-0 rounded-lg shadow flex divide-x divide-gray-200"
+        aria-label="Tabs">
+        <Tab to={baseURL} isFirst={true}>
+          Overview
+        </Tab>
+        <Tab to={`${baseURL}/dependencies`}>Dependencies</Tab>
+        <Tab to={`${baseURL}/logs`}>Logs</Tab>
+        <Tab to={`${baseURL}/notes`}>Notes</Tab>
+        <Tab to={`${baseURL}/operations-log`}>Operations Log</Tab>
+        <Tab to={`${baseURL}/configuration`}>Configuration</Tab>
+        <Tab to={`${baseURL}/fact-history`} isLast={true}>
+          Fact History
+        </Tab>
+      </nav>
+      <Fragment>
+        <Route path={`/ui/projects/${project.id}`} exact>
+          <Overview project={project} factTypes={factTypes} refresh={refresh} />
+        </Route>
+        <Route path={`/ui/projects/${project.id}/logs`}>
+          <div>Logs</div>
+        </Route>
+      </Fragment>
     </div>
   )
 }
+ProjectPage.propTypes = {
+  factTypes: PropTypes.arrayOf(PropTypes.object).isRequired,
+  project: PropTypes.object.isRequired,
+  refresh: PropTypes.func
+}
+const PureProjectPage = onlyUpdateForKeys(['errorMessage', 'project'])(
+  ProjectPage
+)
 
+function Project() {
+  const fetchContext = useContext(FetchContext)
+  const { projectId } = useParams()
+  const [state, setState] = useState({
+    errorMessage: null,
+    project: null,
+    factTypes: null
+  })
+  const { t } = useTranslation()
+
+  function loadProject() {
+    const factTypeURL = new URL(fetchContext.baseURL)
+    const projectURL = new URL(fetchContext.baseURL)
+    factTypeURL.pathname = `/projects/${projectId}/fact-types`
+    projectURL.pathname = `/projects/${projectId}`
+    projectURL.searchParams.append('full', 'true')
+    Promise.all([
+      httpRequest(fetchContext.function, factTypeURL, requestOptions),
+      httpRequest(fetchContext.function, projectURL, requestOptions)
+    ]).then(([factTypes, project]) => {
+      const newState = { ...state, errorMessage: null }
+      if (factTypes.success) newState.factTypes = factTypes.data
+      else newState.errorMessage = factTypes.data
+      if (project.success) newState.project = project.data
+      else newState.errorMessage = project.data
+      setState(newState)
+    })
+  }
+
+  useEffect(() => {
+    if (state.project === null) loadProject()
+  }, [projectId, state])
+
+  if (state.project === null) {
+    setDocumentTitle(t('common.loading'))
+    return <Loading />
+  } else
+    return (
+      <PureProjectPage
+        errorMessage={state.errorMessage}
+        factTypes={state.factTypes}
+        project={state.project}
+        refresh={loadProject}
+      />
+    )
+}
 Project.propTypes = {}
-
 export { Project }
