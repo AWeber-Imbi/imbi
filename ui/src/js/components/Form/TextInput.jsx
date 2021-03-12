@@ -25,7 +25,6 @@ function TextInput({
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
-      defaultValue={value}
       id={'field-' + name}
       name={name}
       onBlur={(event) => {
@@ -45,6 +44,7 @@ function TextInput({
       ref={ref}
       required={required}
       type={type}
+      value={value}
     />
   )
 }
