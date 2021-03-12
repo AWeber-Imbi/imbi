@@ -63,7 +63,7 @@ function ProjectTable({
       type: 'text',
       tableOptions: {
         className: 'text-center',
-        headerClassName: 'w-1/12 text-center',
+        headerClassName: 'w-2/12 text-center',
         lookupFunction: (value) => {
           value = parseInt(value)
           let color = 'red'
