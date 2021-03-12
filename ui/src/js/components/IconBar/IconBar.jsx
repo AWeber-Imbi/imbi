@@ -38,6 +38,7 @@ function IconBar({ icons }) {
 IconBar.propTypes = {
   icons: PropTypes.arrayOf(
     PropTypes.exact({
+      link_type_id: PropTypes.number.isRequired,
       icon: PropTypes.string.isRequired,
       title: PropTypes.string,
       url: PropTypes.string
