@@ -17,7 +17,8 @@
          data-ldap="{{ str(handler.application.settings['ldap']['enabled']).lower() }}"
          data-sentry_dsn="{{ handler.application.settings['sentry_ui_dsn'] }}"
          data-url="{{ handler.request.protocol }}://{{ handler.request.host }}"
-         data-version="{{ handler.application.settings['version'] }}">
+         data-version="{{ handler.application.settings['version'] }}"
+         style="min-width: 735px">
       <h1>
         <img src="{{ static_url('images/logo.svg') }}" alt="Imbi" />
       </h1>
