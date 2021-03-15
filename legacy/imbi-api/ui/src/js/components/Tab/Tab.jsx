@@ -13,11 +13,21 @@ const spanInactive = 'bg-transparent absolute inset-x-0 bottom-0 h-0.5'
 const first = 'rounded-l-lg'
 const last = 'rounded-r-lg'
 
-function Tab({ to, isFirst, isLast, children }) {
+function Tab({ to, disabled, isFirst, isLast, children }) {
   let match = useRouteMatch({
     path: to,
     exact: true
   })
+  if (disabled)
+    return (
+      <div
+        className={`cursor-not-allowed ${match ? active : inactive} ${
+          isFirst ? first : ''
+        } ${isLast ? last : ''}`}
+        title="Not Implemented">
+        {children}
+      </div>
+    )
   return (
     <NavLink
       className={`${match ? active : inactive} ${isFirst ? first : ''} ${
@@ -30,11 +40,13 @@ function Tab({ to, isFirst, isLast, children }) {
   )
 }
 Tab.defaultProps = {
+  disabled: false,
   isFirst: false,
   isLast: false
 }
 Tab.propTypes = {
   children: PropTypes.string.isRequired,
+  disabled: PropTypes.bool,
   isFirst: PropTypes.bool,
   isLast: PropTypes.bool,
   to: PropTypes.string.isRequired
