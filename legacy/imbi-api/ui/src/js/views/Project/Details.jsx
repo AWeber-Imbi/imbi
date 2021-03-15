@@ -1,6 +1,5 @@
 import PropTypes from 'prop-types'
-import React, { useState } from 'react'
-import { onlyUpdateForKeys } from 'recompose'
+import React from 'react'
 
 import { Button, Card, Icon } from '../../components'
 import { useTranslation } from 'react-i18next'
@@ -32,10 +31,10 @@ Definition.propTypes = {
   className: PropTypes.string
 }
 
-function Display({ project, onEditClick }) {
+function Display({ project, onEditClick, shouldGrow }) {
   const { t } = useTranslation()
   return (
-    <Card className="flex flex-col h-full">
+    <Card className={`flex flex-col ${shouldGrow ? 'h-full' : ''}`}>
       <h2 className="font-medium mb-2">{t('terms.projectInfo')}</h2>
       <dl className="lg:ml-4 my-3 space-y-3 overflow-hidden">
         <Definition term={t('terms.namespace')} icon={project.namespace_icon}>
@@ -89,7 +88,7 @@ function Display({ project, onEditClick }) {
         <div className="flex-grow text-right mt-2">
           <Button className="btn-white text-xs" onClick={onEditClick}>
             <Icon icon="fas edit" className="mr-2" />
-            Edit Project
+            {t('project.editProject')}
           </Button>
         </div>
       </div>
@@ -98,26 +97,34 @@ function Display({ project, onEditClick }) {
 }
 Display.propTypes = {
   project: PropTypes.object.isRequired,
-  onEditClick: PropTypes.func.isRequired
+  onEditClick: PropTypes.func.isRequired,
+  shouldGrow: PropTypes.bool.isRequired
 }
-const PureDisplay = onlyUpdateForKeys(['project'])(Display)
 
-function Details({ project, refresh }) {
-  const [editing, setEditing] = useState(false)
+function Details({ project, editing, onEditing, refresh, shouldGrow }) {
   if (editing)
     return (
       <Edit
         project={project}
         onEditFinished={(refreshProject) => {
-          setEditing(false)
+          onEditing(false)
           if (refreshProject === true) refresh()
         }}
       />
     )
-  return <PureDisplay project={project} onEditClick={() => setEditing(true)} />
+  return (
+    <Display
+      project={project}
+      onEditClick={() => onEditing(true)}
+      shouldGrow={shouldGrow}
+    />
+  )
 }
 Details.propTypes = {
   project: PropTypes.object.isRequired,
-  refresh: PropTypes.func.isRequired
+  editing: PropTypes.bool.isRequired,
+  onEditing: PropTypes.func.isRequired,
+  refresh: PropTypes.func.isRequired,
+  shouldGrow: PropTypes.bool.isRequired
 }
 export { Details }

@@ -80,7 +80,6 @@ function ProjectTable({
     }
   ]
 
-  console.log('Rendering ProjectTable')
   return (
     <ContentArea
       buttonDestination="/ui/projects/create"

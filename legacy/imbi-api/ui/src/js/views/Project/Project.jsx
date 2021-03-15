@@ -3,7 +3,10 @@ import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { Route, useParams } from 'react-router-dom'
 import { onlyUpdateForKeys } from 'recompose'
 import { useTranslation } from 'react-i18next'
-import { buildStyles, CircularProgressbar } from 'react-circular-progressbar'
+import {
+  buildStyles,
+  CircularProgressbarWithChildren
+} from 'react-circular-progressbar'
 import 'react-circular-progressbar/dist/styles.css'
 
 import { FetchContext } from '../../contexts'
@@ -41,17 +44,19 @@ function ProjectPage({ project, factTypes, refresh }) {
         <div
           className="flex-shrink mr-2"
           style={{ height: '60px', width: '60px' }}>
-          <Tooltip value="Project Health Score" arrowPosition="right">
-            <CircularProgressbar
+          <Tooltip
+            value={t('project.projectHealthScore')}
+            arrowPosition="right">
+            <CircularProgressbarWithChildren
               value={project.project_score}
-              text={project.project_score}
               styles={buildStyles({
                 pathColor: color,
-                textColor: color,
-                textSize: '1.5rem',
                 trailColor: '#ccc'
-              })}
-            />
+              })}>
+              <div className="absolute text-gray-600 font-semibold text-lg">
+                {parseInt(project.project_score)}
+              </div>
+            </CircularProgressbarWithChildren>
           </Tooltip>
         </div>
       </div>
@@ -60,15 +65,25 @@ function ProjectPage({ project, factTypes, refresh }) {
         className="relative z-0 rounded-lg shadow flex divide-x divide-gray-200"
         aria-label="Tabs">
         <Tab to={baseURL} isFirst={true}>
-          Overview
+          {t('common.overview')}
         </Tab>
-        <Tab to={`${baseURL}/dependencies`}>Dependencies</Tab>
-        <Tab to={`${baseURL}/logs`}>Logs</Tab>
-        <Tab to={`${baseURL}/notes`}>Notes</Tab>
-        <Tab to={`${baseURL}/operations-log`}>Operations Log</Tab>
-        <Tab to={`${baseURL}/configuration`}>Configuration</Tab>
-        <Tab to={`${baseURL}/fact-history`} isLast={true}>
-          Fact History
+        <Tab disabled={true} to={`${baseURL}/configuration`}>
+          {t('common.configuration')}
+        </Tab>
+        <Tab disabled={true} to={`${baseURL}/dependencies`}>
+          {t('project.dependencies')}
+        </Tab>
+        <Tab disabled={true} to={`${baseURL}/fact-history`}>
+          {t('project.factHistory')}
+        </Tab>
+        <Tab disabled={true} to={`${baseURL}/logs`}>
+          {t('common.logs')}
+        </Tab>
+        <Tab disabled={true} to={`${baseURL}/notes`}>
+          {t('common.notes')}
+        </Tab>
+        <Tab disabled={true} to={`${baseURL}/operations-log`} isLast={true}>
+          {t('operationsLog.title')}
         </Tab>
       </nav>
       <Fragment>
