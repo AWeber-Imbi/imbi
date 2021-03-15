@@ -1,9 +1,10 @@
 import PropTypes from 'prop-types'
-import React, { useState } from 'react'
+import React from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Card, Icon, Tooltip } from '../../components'
-import { onlyUpdateForKeys } from 'recompose'
+
+import { EditFacts } from './EditFacts'
 
 function Fact({ fact, offset }) {
   const { t } = useTranslation()
@@ -20,19 +21,19 @@ function Fact({ fact, offset }) {
       <dt className="font-medium text-gray-500 w-5/12">{fact.name}</dt>
       <dd className="w-7/12 mt-1 items-start sm:mt-0 truncate">
         <Tooltip value={`${t('terms.score')}: ${fact.score}`}>
-          {fact.data_type === 'boolean' && (
-            <Icon
-              className={
-                fact.value === 'true' ? 'text-green-600' : 'text-red-600'
-              }
-              icon={`fas ${fact.value === 'true' ? 'check' : 'exclamation'}`}
-            />
-          )}
-          {fact.data_type === 'string' &&
-            fact.fact_type === 'enum' &&
-            fact.icon_class !== null && (
-              <Icon className="mr-2" icon={fact.icon_class} />
+          <span className="w-6 inline-block text-center">
+            {fact.data_type === 'boolean' && (
+              <Icon
+                className={
+                  fact.value === 'true' ? 'text-green-600' : 'text-red-600'
+                }
+                icon={`fas ${fact.value === 'true' ? 'check' : 'exclamation'}`}
+              />
             )}
+            {fact.data_type === 'string' &&
+              fact.fact_type === 'enum' &&
+              fact.icon_class !== null && <Icon icon={fact.icon_class} />}
+          </span>
           {fact.data_type !== 'boolean' && fact.value !== null && fact.value}
           {fact.value !== null &&
           fact.ui_options.includes('display-as-percentage')
@@ -40,7 +41,7 @@ function Fact({ fact, offset }) {
             : ''}
           {fact.value === null && fact.data_type !== 'boolean' && (
             <span className="italic text-red-800 text-xs font-light">
-              Not Set
+              {t('common.notSet')}
             </span>
           )}
         </Tooltip>
@@ -53,11 +54,12 @@ Fact.propTypes = {
   offset: PropTypes.number.isRequired
 }
 
-function Display({ project, onEditClick }) {
+function Display({ project, onEditClick, shouldGrow }) {
+  const { t } = useTranslation()
   let lastUpdated = 0
   return (
-    <Card className="flex flex-col h-full">
-      <h2 className="font-medium mb-2">Project Facts</h2>
+    <Card className={`flex flex-col ${shouldGrow ? 'h-full' : ''}`}>
+      <h2 className="font-medium mb-2">{t('project.projectFacts')}</h2>
       <dl className="lg:ml-4 my-3">
         {project.facts.map((fact, offset) => {
           const updated = Date.parse(fact.recorded_at)
@@ -75,14 +77,15 @@ function Display({ project, onEditClick }) {
         <div className="flex-grow flex items-center mt-2">
           {lastUpdated > 0 && (
             <div className="flex-1 text-xs italic">
-              Last Updated:{' '}
-              {new Intl.DateTimeFormat('en-US').format(lastUpdated)}
+              {t('common.lastUpdated', {
+                date: new Intl.DateTimeFormat('en-US').format(lastUpdated)
+              })}
             </div>
           )}
           <div className="flex-1 text-xs text-right">
             <Button onClick={onEditClick}>
               <Icon icon="fas edit" className="mr-2" />
-              Update Facts
+              {t('project.updateFacts')}
             </Button>
           </div>
         </div>
@@ -92,33 +95,44 @@ function Display({ project, onEditClick }) {
 }
 Display.propTypes = {
   project: PropTypes.object.isRequired,
-  onEditClick: PropTypes.func.isRequired
-}
-const PureDisplay = onlyUpdateForKeys(['project'])(Display)
-
-function Edit({ project, factTypes, refresh }) {
-  console.log(project, factTypes, refresh)
-  return (
-    <Card>
-      <h2>Editing Project Facts</h2>
-    </Card>
-  )
-}
-Edit.propTypes = {
-  project: PropTypes.object.isRequired,
-  factTypes: PropTypes.arrayOf(PropTypes.object).isRequired,
-  refresh: PropTypes.func.isRequired
+  onEditClick: PropTypes.func.isRequired,
+  shouldGrow: PropTypes.bool.isRequired
 }
 
-function Facts({ project, factTypes, refresh }) {
-  const [editing, setEditing] = useState(false)
+function Facts({
+  project,
+  factTypes,
+  editing,
+  onEditing,
+  refresh,
+  shouldGrow
+}) {
   if (editing)
-    return <Edit factTypes={factTypes} project={project} refresh={refresh} />
-  return <PureDisplay project={project} onEditClick={() => setEditing(true)} />
+    return (
+      <EditFacts
+        projectId={project.id}
+        facts={project.facts}
+        factTypes={factTypes}
+        onEditFinished={(refreshProject) => {
+          onEditing(false)
+          if (refreshProject === true) refresh()
+        }}
+      />
+    )
+  return (
+    <Display
+      project={project}
+      shouldGrow={shouldGrow}
+      onEditClick={() => onEditing(true)}
+    />
+  )
 }
 Facts.propTypes = {
   project: PropTypes.object.isRequired,
   factTypes: PropTypes.arrayOf(PropTypes.object).isRequired,
-  refresh: PropTypes.func.isRequired
+  editing: PropTypes.bool.isRequired,
+  onEditing: PropTypes.func.isRequired,
+  refresh: PropTypes.func.isRequired,
+  shouldGrow: PropTypes.bool.isRequired
 }
 export { Facts }
