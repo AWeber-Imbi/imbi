@@ -1,5 +1,4 @@
 import PropTypes from 'prop-types'
-import { pure } from 'recompose'
 import React, { useEffect, useRef, useState } from 'react'
 import SlimSelect from 'slim-select'
 import 'slim-select/dist/slimselect.min.css'
@@ -25,7 +24,9 @@ const Select = ({
           const newValue = options
             .map((o) => o.value)
             .filter((v) => v !== currentValue)
-          select.set(newValue)
+          if (newValue === '') {
+            setCurrentValue(null)
+          } else select.set(newValue)
         } else {
           setCurrentValue(options[0].value)
         }
@@ -50,7 +51,7 @@ const Select = ({
       multiple
       ref={ref}
       {...props}>
-      <option data-placeholder="true" />
+      {placeholder !== undefined && <option data-placeholder="true" />}
       {children}
     </select>
   )
@@ -66,7 +67,4 @@ Select.propTypes = {
   value: PropTypes.string,
   props: PropTypes.object
 }
-
-const PureSelect = pure(Select)
-
-export { PureSelect as SlimSelect }
+export { Select as SlimSelect }
