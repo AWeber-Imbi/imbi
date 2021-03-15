@@ -50,6 +50,7 @@
     "husky": ">=4",
     "i18next": "^19.3.4",
     "id128": "^1.6.3",
+    "identity-obj-proxy": "^3.0.0",
     "jest": "^26.6.3",
     "jsonschema": "^1.4.0",
     "lint-staged": ">=10",
@@ -83,7 +84,8 @@
   },
   "jest": {
     "moduleNameMapper": {
-      "\\.(svg)$": "<rootDir>/empty-module.js"
+      "\\.(svg)$": "<rootDir>/empty-module.js",
+      "\\.(css|less|scss|sass)$": "identity-obj-proxy"
     },
     "verbose": true
   },
