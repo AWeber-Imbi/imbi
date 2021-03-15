@@ -104,6 +104,15 @@ logging:
       level: DEBUG
       propagate: true
       handlers: [console]
+    imbi.ldap:
+      level: WARNING
+      handlers: [console]
+    imbi.session:
+      level: WARNING
+      handlers: [console]
+    imbi.user:
+      level: WARNING
+      handlers: [console]
     sprockets_postgres:
       level: DEBUG
       propagate: true
