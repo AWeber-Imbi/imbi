@@ -10,11 +10,10 @@ require('./icons')
 require('../css/imbi.css')
 require('typeface-inter')
 
-import { FetchContext, LogoutContext } from './contexts'
-
 import { httpGet, isURL } from './utils'
 import { Header, Footer } from './components'
 import { Error, Initializing, Login, Main } from './views'
+import State from './state'
 
 export const loggedOutUser = {
   username: null,
@@ -48,9 +47,7 @@ function App({ logo, service, ldap, sentry_dsn, url, version }) {
   }
 
   const logout = () => {
-    const logoutURL = new URL(url)
-    logoutURL.pathname = '/ui/logout'
-    fetch(logoutURL.toString()).then(() => {
+    fetch(new URL('/ui/logout', url).toString()).then(() => {
       resetState()
       history.push(`/ui/`)
     })
@@ -58,13 +55,13 @@ function App({ logo, service, ldap, sentry_dsn, url, version }) {
 
   const resetState = () => {
     setContent(<Initializing />)
-    setErrorMessage(null)
-    setUser({ ...loggedOutUser })
     setUserState({
       authenticated: false,
       fetching: false,
       initialized: false
     })
+    setErrorMessage(null)
+    setUser({ ...loggedOutUser })
   }
 
   const setUserData = (data) => {
@@ -101,7 +98,6 @@ function App({ logo, service, ldap, sentry_dsn, url, version }) {
         <Login onLoginCallback={setUserData} useLDAP={ldap === 'true'} />
       )
     } else if (userState.authenticated) {
-      // User is logged in, show main content
       setContent(<Main user={user} />)
     }
   }, [user, userState])
@@ -111,19 +107,20 @@ function App({ logo, service, ldap, sentry_dsn, url, version }) {
   }, [errorMessage])
 
   return (
-    <FetchContext.Provider
-      value={{ function: authenticatedFetch, baseURL: url }}>
-      <LogoutContext.Provider value={logout}>
-        <Header
-          authenticated={userState.authenticated}
-          logo={logo}
-          service={service}
-          user={user}
-        />
-        {content}
-        <Footer service={service} version={version} />
-      </LogoutContext.Provider>
-    </FetchContext.Provider>
+    <State
+      baseURL={new URL(url)}
+      fetchMethod={authenticatedFetch}
+      handleLogout={logout}
+      setErrorMessage={setErrorMessage}>
+      <Header
+        authenticated={userState.authenticated}
+        logo={logo}
+        service={service}
+        user={user}
+      />
+      {content}
+      <Footer service={service} version={version} />
+    </State>
   )
 }
 

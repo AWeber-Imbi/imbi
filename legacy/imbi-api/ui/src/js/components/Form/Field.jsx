@@ -22,6 +22,7 @@ function Field({
   options,
   placeholder,
   required,
+  step,
   title,
   type,
   value
@@ -60,6 +61,7 @@ function Field({
             onChange={onChange}
             placeholder={placeholder}
             required={required}
+            step={step}
             value={value}
           />
         )}
@@ -138,6 +140,7 @@ Field.propTypes = {
   options: SelectOptions,
   placeholder: PropTypes.string,
   required: PropTypes.bool,
+  step: PropTypes.string,
   title: PropTypes.oneOfType([PropTypes.string, PropTypes.element]).isRequired,
   type: PropTypes.oneOf([
     'email',

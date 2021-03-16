@@ -7,16 +7,19 @@ import { Icon } from '../'
 const Asc = 'asc'
 const Desc = 'desc'
 
-function HeadColumn({ column, children, className, srOnly }) {
-  const [sortDirection, setSortDirection] = useState(null)
-  const [sortIcon, setSortIcon] = useState('fas sort')
+const SortIcon = {
+  null: 'fas sort',
+  asc: 'fas sort-up',
+  desc: 'fas sort-down'
+}
+
+function HeadColumn({ column, children, className, sort, srOnly }) {
+  const [sortDirection, setSortDirection] = useState(sort)
 
   useEffect(() => {
-    if (sortDirection === Asc) setSortIcon('fas sort-up')
-    if (sortDirection === Desc) setSortIcon('fas sort-down')
-    if (sortDirection === null) setSortIcon('fas sort')
-    column.sortCallback !== undefined &&
+    if (column.sortCallback !== undefined && sortDirection !== sort) {
       column.sortCallback(column.name, sortDirection)
+    }
   }, [sortDirection])
 
   function onSortClick(event) {
@@ -58,7 +61,7 @@ function HeadColumn({ column, children, className, srOnly }) {
         <button
           className="border-0 mr-2 focus:outline-none"
           onClick={onSortClick}>
-          <Icon icon={sortIcon} />
+          <Icon icon={SortIcon[sortDirection]} />
         </button>
       )}
       {children !== undefined && children}
@@ -66,17 +69,16 @@ function HeadColumn({ column, children, className, srOnly }) {
     </th>
   )
 }
-
 HeadColumn.defaultProps = {
   column: { name: 'default', title: 'default', type: 'text' },
+  sort: null,
   srOnly: false
 }
-
 HeadColumn.propTypes = {
   column: PropTypes.exact(Column),
   children: PropTypes.string,
   className: PropTypes.string,
+  sort: PropTypes.oneOf([null, Asc, Desc]),
   srOnly: PropTypes.bool
 }
-
 export { HeadColumn }

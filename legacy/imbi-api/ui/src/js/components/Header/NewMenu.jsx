@@ -27,7 +27,7 @@ NewMenuItem.propTypes = {
 function NewMenu() {
   const { t } = useTranslation()
   return (
-    <Menu as="div" className="flex-shrink mr-3">
+    <Menu as="div" className="flex-shrink mr-3 z-50">
       <Menu.Button
         as="button"
         className="bg-blue-700 hover:bg-blue-600 border border-blue-200 text-white hover:text-white px-3 py-1.5 rounded-md mr-5">

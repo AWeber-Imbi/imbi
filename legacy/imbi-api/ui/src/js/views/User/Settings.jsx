@@ -3,18 +3,28 @@ import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Backdrop, Button, Form, Icon, Modal, Table } from '../../components'
-import { FetchContext } from '../../contexts'
-import { httpDelete, httpGet, httpPost, setDocumentTitle } from '../../utils'
+import { httpDelete, httpGet, httpPost } from '../../utils'
+import { Context } from '../../state'
 
 function Settings() {
   const { t } = useTranslation()
   const [errorMessage, setErrorMessage] = useState(null)
-  const fetch = useContext(FetchContext)
   const [refresh, setRefresh] = useState(false)
   const [showBackdrop, setShowBackdrop] = useState(false)
   const [newAuthToken, setNewAuthToken] = useState(null)
+  const [state, dispatch] = useContext(Context)
   const [showTokenForm, setShowTokenForm] = useState(false)
   const [tokens, setTokens] = useState(null)
+
+  useEffect(() => {
+    dispatch({
+      type: 'SET_PAGE',
+      payload: {
+        title: t('user.settings.title'),
+        url: new URL('/ui/user/settings', state.baseURL.toString())
+      }
+    })
+  }, [])
 
   function formatDate(value) {
     if (value === undefined) return ''
@@ -28,9 +38,8 @@ function Settings() {
   }
 
   function deleteToken(value) {
-    const url = new URL(fetch.baseURL)
-    url.pathname = `/authentication-tokens/${value}`
-    httpDelete(fetch.function, url).then(({ data, success }) => {
+    const url = new URL(`/authentication-tokens/${value}`, state.baseURL)
+    httpDelete(state.fetch, url).then(({ data, success }) => {
       if (success === true) {
         setRefresh(true)
       } else {
@@ -41,9 +50,8 @@ function Settings() {
 
   function generateToken(formValues) {
     setShowBackdrop(true)
-    const url = new URL(fetch.baseURL)
-    url.pathname = '/authentication-tokens'
-    httpPost(fetch.function, url, { name: formValues.name }).then(
+    const url = new URL('/authentication-tokens', state.baseURL)
+    httpPost(state.fetch, url, { name: formValues.name }).then(
       ({ data, success }) => {
         if (success === true) {
           setShowTokenForm(false)
@@ -60,10 +68,9 @@ function Settings() {
 
   useEffect(() => {
     if (tokens === null || refresh === true) {
-      const url = new URL(fetch.baseURL)
-      url.pathname = '/authentication-tokens'
+      const url = new URL('/authentication-tokens', state.baseURL)
       httpGet(
-        fetch.function,
+        state.fetch,
         url,
         (result) => {
           setRefresh(false)
@@ -76,20 +83,18 @@ function Settings() {
     }
   }, [refresh, tokens])
 
-  setDocumentTitle(t('user.settings.title'))
   return (
     <Fragment>
       <Form.MultiSectionForm
-        title={t('user.settings.title')}
         disabled={false}
         errorMessage={errorMessage}
-        icon="fas user-cog"
         sideBarLinks={[
           {
             href: '#tokens',
             label: t('user.settings.authenticationTokens.title')
           }
-        ]}>
+        ]}
+        sideBarTitle="Available Settings">
         <Form.Section
           name="api"
           title={t('user.settings.authenticationTokens.title')}
@@ -118,6 +123,7 @@ function Settings() {
               </div>
             </div>
             <Table
+              className="my-3"
               columns={[
                 {
                   title: t('common.name'),

@@ -21,7 +21,7 @@ export function Buttons() {
         aria-label="Controls">
         {context.itemCount > 0 && context.currentPage === 1 && (
           <div className={`${disabledButton} rounded-l-md`}>
-            <span className="sr-only">{t('common.previous')}</span>
+            <span className="sr-only">{t('paginator.previous')}</span>
             <Icon icon="fas chevron-left" />
           </div>
         )}
@@ -32,7 +32,7 @@ export function Buttons() {
               event.preventDefault()
               context.setCurrentPage(context.prevPage)
             }}>
-            <span className="sr-only">{t('common.previous')}</span>
+            <span className="sr-only">{t('paginator.previous')}</span>
             <Icon icon="fas chevron-left" />
           </button>
         )}
@@ -84,7 +84,7 @@ export function Buttons() {
         )}
         {context.currentPage === context.pageCount && (
           <div className={`${disabledButton} rounded-r-md`}>
-            <span className="sr-only">{t('common.next')}</span>
+            <span className="sr-only">{t('paginator.next')}</span>
             <Icon icon="fas chevron-right" />
           </div>
         )}
@@ -95,7 +95,7 @@ export function Buttons() {
               event.preventDefault()
               context.setCurrentPage(context.nextPage)
             }}>
-            <span className="sr-only">{t('common.next')}</span>
+            <span className="sr-only">{t('paginator.next')}</span>
             <Icon icon="fas chevron-right" />
           </button>
         )}

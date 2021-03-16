@@ -49,7 +49,7 @@ function Value({ title, icon, value, url }) {
               )}
             </div>
             <div className="flex items-baseline">
-              <div className="text-2xl font-semibold text-gray-900">
+              <div className="text-2xl font-semibold text-gray-700">
                 {value.toLocaleString()}
               </div>
             </div>

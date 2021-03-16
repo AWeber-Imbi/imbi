@@ -1,141 +1,23 @@
-import PropTypes from 'prop-types'
 import React, { useContext, useEffect, useState } from 'react'
-import { useHistory, useLocation } from 'react-router-dom'
+import { Link, useHistory, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Badge, ContentArea, Paginator, Table } from '../../components'
-import { FetchContext } from '../../contexts'
-import { asOptions, MetadataContext } from '../../metadata'
-import { httpGet, setDocumentTitle } from '../../utils'
+import { Alert, Icon, Loading } from '../../components'
+import { Context } from '../../state'
+import { httpGet } from '../../utils'
 
+import { DataTable } from './DataTable'
 import { Filter } from './Filter'
-
-function ProjectTable({
-  data,
-  errorMessage,
-  filter,
-  offset,
-  onRowClick,
-  onSortDirection,
-  pageSize,
-  rowCount,
-  setFilter,
-  setOffset,
-  setPageSize
-}) {
-  const metadata = useContext(MetadataContext)
-  const { t } = useTranslation()
-  setDocumentTitle(t('projects.title'))
-  const columns = [
-    {
-      title: t('terms.namespace'),
-      name: 'namespace',
-      sortCallback: onSortDirection,
-      type: 'text',
-      tableOptions: {
-        className: 'truncate',
-        headerClassName: 'w-3/12'
-      }
-    },
-    {
-      title: t('terms.name'),
-      name: 'name',
-      sortCallback: onSortDirection,
-      type: 'text',
-      tableOptions: {
-        className: 'truncate',
-        headerClassName: 'w-3/12'
-      }
-    },
-    {
-      title: t('terms.projectType'),
-      name: 'project_type',
-      sortCallback: onSortDirection,
-      type: 'text',
-      tableOptions: {
-        className: 'truncate',
-        headerClassName: 'w-3/12'
-      }
-    },
-    {
-      title: t('terms.healthScore'),
-      name: 'project_score',
-      type: 'text',
-      tableOptions: {
-        className: 'text-center',
-        headerClassName: 'w-2/12 text-center',
-        lookupFunction: (value) => {
-          value = parseInt(value)
-          let color = 'red'
-          if (value === 0) color = 'gray'
-          if (value > 69) color = 'yellow'
-          if (value > 89) color = 'green'
-          return (
-            <Badge className="text-sm" color={color}>
-              {value.toString()}
-            </Badge>
-          )
-        }
-      }
-    }
-  ]
-
-  return (
-    <ContentArea
-      buttonDestination="/ui/projects/create"
-      buttonTitle={t('projects.newProject')}
-      pageIcon="fas folder"
-      pageTitle={t('projects.title')}>
-      {errorMessage !== null && <Alert level="error">{errorMessage}</Alert>}
-      <Paginator.Container
-        currentPage={offset + 1}
-        itemCount={rowCount}
-        itemsPerPage={pageSize}
-        setCurrentPage={(currentPage) => setOffset(currentPage - 1)}
-        setPageSize={setPageSize}>
-        <Paginator.Controls
-          leftPanel={
-            <Filter
-              namespaces={asOptions(metadata.namespaces)}
-              projectTypes={asOptions(metadata.projectTypes)}
-              setFilterValues={setFilter}
-              values={filter}
-            />
-          }
-          positionNounSingular="projects.project"
-          positionNounPlural="projects.projects"
-        />
-        <Table columns={columns} data={data} onRowClick={onRowClick} />
-        <Paginator.Controls
-          showPageSizeSelector={true}
-          showStateDisplay={true}
-        />
-      </Paginator.Container>
-    </ContentArea>
-  )
-}
-ProjectTable.propTypes = {
-  data: PropTypes.arrayOf(PropTypes.object),
-  errorMessage: PropTypes.string,
-  filter: PropTypes.object,
-  offset: PropTypes.number,
-  onRowClick: PropTypes.func,
-  onSortDirection: PropTypes.func,
-  pageSize: PropTypes.number,
-  rowCount: PropTypes.number,
-  setFilter: PropTypes.func,
-  setOffset: PropTypes.func,
-  setPageSize: PropTypes.func
-}
+import { asOptions } from '../../metadata'
 
 function Projects() {
-  const fetchContext = useContext(FetchContext)
-  const query = new URLSearchParams(useLocation().search)
+  const [errorMessage, setErrorMessage] = useState(null)
+  const [globalState, dispatch] = useContext(Context)
   const history = useHistory()
-
+  const query = new URLSearchParams(useLocation().search)
   const [state, setState] = useState({
     data: [],
-    errorMessage: null,
+    fetching: false,
     filter: {
       namespace: query.get('namespace'),
       project_type: query.get('project_type')
@@ -146,10 +28,82 @@ function Projects() {
     rowCount: 0,
     sort: { name: 'asc' }
   })
+  const { t } = useTranslation()
+
+  useEffect(() => {
+    if (
+      globalState.breadcrumbs.length > 1 &&
+      globalState.breadcrumbs[0].pathname !== '/ui/projects'
+    )
+      dispatch({ type: 'RESET_BREADCRUMBS', payload: {} })
+    dispatch({
+      type: 'SET_PAGE',
+      payload: {
+        title: t('projects.title'),
+        url: buildStateURL()
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    const url = buildURL()
+    if (
+      state.fetching === false &&
+      (state.lastRequest === null || state.lastRequest.toString() !== url)
+    ) {
+      setState({ ...state, fetching: true })
+      httpGet(
+        globalState.fetch,
+        url,
+        (result) => {
+          const stateURL = buildStateURL()
+          history.push(
+            stateURL.pathname + '?' + stateURL.searchParams.toString()
+          )
+          setState({
+            ...state,
+            data: result.data,
+            fetching: false,
+            lastRequest: url,
+            rowCount: result.rows
+          })
+          url.pathname = '/ui/projects'
+          dispatch({
+            type: 'SET_PAGE',
+            payload: {
+              title: t('projects.title'),
+              url: stateURL
+            }
+          })
+        },
+        (error) => {
+          setErrorMessage(t('projects.requestError', { error: error }))
+          setState({
+            ...state,
+            fetching: false,
+            filter: {},
+            lastRequest: url,
+            sort: { name: 'asc' }
+          })
+        }
+      )
+    }
+  }, [state.filter, state.pageSize, state.offset, state.sort])
+
+  // Remove the error message after 30 seconds
+  useEffect(() => {
+    if (errorMessage !== null) {
+      const timerHandle = setTimeout(() => {
+        setErrorMessage(null)
+      }, 30000)
+      return () => {
+        clearTimeout(timerHandle)
+      }
+    }
+  }, [errorMessage])
 
   function buildURL() {
-    const url = new URL(fetchContext.baseURL)
-    url.pathname = '/projects'
+    const url = new URL('/projects', globalState.baseURL)
     Object.entries(state.sort).forEach(([key, value]) => {
       url.searchParams.append(`sort_${key}`, value)
     })
@@ -158,60 +112,89 @@ function Projects() {
     Object.entries(state.filter).forEach(([key, value]) => {
       if (value !== null) url.searchParams.append(`where_${key}`, value)
     })
-    return url.toString()
+    return url
   }
 
-  useEffect(() => {
-    let kwargs = {}
-    Object.keys(state.filter).map((key) => {
-      if (state.filter[key] !== null) kwargs[key] = state.filter[key]
+  function buildStateURL() {
+    const url = new URL('/ui/projects', globalState.baseURL)
+    Object.entries(state.sort).forEach(([key, value]) => {
+      url.searchParams.append(`sort_${key}`, value)
     })
-    history.push('/ui/projects?' + new URLSearchParams(kwargs).toString())
-  }, [state.filter])
-
-  useEffect(() => {
-    const url = buildURL()
-    if (state.lastRequest === null || state.lastRequest.toString() !== url) {
-      httpGet(
-        fetchContext.function,
-        url,
-        (result) => {
-          setState({
-            ...state,
-            data: result.data,
-            lastRequest: url,
-            rowCount: result.rows
-          })
-        },
-        (error) => {
-          setState({ ...state, errorMessage: error })
-        }
-      )
-    }
-  }, [state])
+    url.searchParams.append('limit', state.pageSize.toString())
+    url.searchParams.append('offset', state.offset.toString())
+    Object.entries(state.filter).forEach(([key, value]) => {
+      if (value !== null) url.searchParams.append(key, value)
+    })
+    return url
+  }
 
   function onSortDirection(column, direction) {
-    setState({ ...state, sort: { ...state.sort, [column]: direction } })
+    const sort = { ...state.sort }
+    if (direction === null) {
+      if (sort[column] !== undefined) delete sort[column]
+    } else if (state.sort[column] !== direction) {
+      sort[column] = direction
+    }
+    if (state.sort !== sort) {
+      setState({ ...state, sort: sort })
+    }
   }
 
+  if (state.lastRequest === null) return <Loading />
   return (
-    <ProjectTable
-      data={state.data}
-      errorMessage={state.errorMessage}
-      filter={state.filter}
-      offset={state.offset}
-      onRowClick={(data) => {
-        history.push(`/ui/projects/${data.id}`)
-      }}
-      onSortDirection={onSortDirection}
-      pageSize={state.pageSize}
-      rowCount={state.rowCount}
-      setFilter={(filter) => setState({ ...state, filter: filter })}
-      setOffset={(offset) => setState({ ...state, offset: offset })}
-      setPageSize={(pageSize) =>
-        setState({ ...state, offset: 0, pageSize: pageSize })
-      }
-    />
+    <div className="m-0 px-4 py-3 space-y-3">
+      {errorMessage !== null && (
+        <Alert className="mt-3" level="error">
+          {errorMessage}
+        </Alert>
+      )}
+      <div className="flex items-center">
+        <div className="w-6/12">
+          <Filter
+            namespaces={asOptions(globalState.metadata.namespaces)}
+            projectTypes={asOptions(globalState.metadata.projectTypes)}
+            setFilterValues={(values) => setState({ ...state, filter: values })}
+            values={state.filter}
+          />
+        </div>
+        <div className="w-6/12 text-right">
+          <Link to="/ui/projects/create">
+            <button className="btn-green">
+              <Icon className="mr-2" icon="fas plus-circle" />
+              {t('headerNavItems.newProject')}
+            </button>
+          </Link>
+        </div>
+      </div>
+      <DataTable
+        data={state.data}
+        errorMessage={errorMessage}
+        filter={state.filter}
+        offset={state.offset}
+        onRowClick={(data) => {
+          history.push(`/ui/projects/${data.id}`)
+        }}
+        onSortDirection={onSortDirection}
+        pageSize={state.pageSize}
+        rowCount={state.rowCount}
+        setFilter={(filter) => {
+          if (state.filter !== filter) {
+            setState({ ...state, filter: filter })
+          }
+        }}
+        setOffset={(offset) => {
+          if (state.offset !== offset) {
+            setState({ ...state, offset: offset })
+          }
+        }}
+        setPageSize={(pageSize) => {
+          if (state.pageSize !== pageSize) {
+            setState({ ...state, offset: 0, pageSize: pageSize })
+          }
+        }}
+        sort={state.sort}
+      />
+    </div>
   )
 }
 export { Projects }

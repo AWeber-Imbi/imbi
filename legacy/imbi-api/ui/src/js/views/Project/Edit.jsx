@@ -4,13 +4,13 @@ import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { default as slugify } from 'slugify'
 import { useTranslation } from 'react-i18next'
 
-import { asOptions, MetadataContext } from '../../metadata'
+import { asOptions } from '../../metadata'
 import { Card, Form, Icon } from '../../components'
-import { FetchContext } from '../../contexts'
+import { Context } from '../../state'
 import { jsonSchema } from '../../schema/Project'
 import { httpDelete, httpPost, httpPatch } from '../../utils'
 
-async function saveLinkChanges(fetchContext, project, originalLinks, links) {
+async function saveLinkChanges(globalState, project, originalLinks, links) {
   const errors = []
   const ops = {
     add: [],
@@ -47,11 +47,9 @@ async function saveLinkChanges(fetchContext, project, originalLinks, links) {
     }
   })
 
-  const linkURL = new URL(fetchContext.baseURL)
-  linkURL.pathname = `/projects/${project.id}/links`
-  let payload
-  for (payload of ops.add) {
-    const result = await httpPost(fetchContext.function, linkURL, payload)
+  const linkURL = new URL(`/projects/${project.id}/links`, globalState.baseURL)
+  for (let payload of ops.add) {
+    const result = await httpPost(globalState.fetch, linkURL, payload)
     if (result.success === false) {
       errors.push(result.data)
     }
@@ -60,7 +58,7 @@ async function saveLinkChanges(fetchContext, project, originalLinks, links) {
   let linkTypeID
   for (linkTypeID of ops.delete) {
     linkURL.pathname = `/projects/${project.id}/links/${linkTypeID}`
-    const result = await httpDelete(fetchContext.function, linkURL)
+    const result = await httpDelete(globalState.fetch, linkURL)
     if (result.success === false) {
       errors.push(result.data)
     }
@@ -69,7 +67,7 @@ async function saveLinkChanges(fetchContext, project, originalLinks, links) {
   let patch
   for (patch of ops.update) {
     linkURL.pathname = `/projects/${project.id}/links/${patch[0]}`
-    const result = await httpPatch(fetchContext.function, linkURL, patch[1])
+    const result = await httpPatch(globalState.fetch, linkURL, patch[1])
     if (result.success === false) {
       errors.push(result.data)
     }
@@ -77,7 +75,7 @@ async function saveLinkChanges(fetchContext, project, originalLinks, links) {
   return [errors.length === 0, errors]
 }
 
-async function saveProjectChanges(fetchContext, project, values) {
+async function saveProjectChanges(globalState, project, values) {
   const originalValues = {
     name: project.name,
     namespace_id: project.namespace_id,
@@ -88,13 +86,8 @@ async function saveProjectChanges(fetchContext, project, values) {
   }
   const patchValue = compare(originalValues, values)
   if (patchValue.length > 0) {
-    const projectURL = new URL(fetchContext.baseURL)
-    projectURL.pathname = `/projects/${project.id}`
-    const result = await httpPatch(
-      fetchContext.function,
-      projectURL,
-      patchValue
-    )
+    const projectURL = new URL(`/projects/${project.id}`, globalState.baseURL)
+    const result = await httpPatch(globalState.fetch, projectURL, patchValue)
     if (result.success === false) {
       return [false, result.data]
     }
@@ -102,7 +95,7 @@ async function saveProjectChanges(fetchContext, project, values) {
   return [true, null]
 }
 
-async function saveURLChanges(fetchContext, project, environments, urls) {
+async function saveURLChanges(globalState, project, environments, urls) {
   const errors = []
   const ops = {
     add: [],
@@ -140,29 +133,28 @@ async function saveURLChanges(fetchContext, project, environments, urls) {
     }
   })
 
-  const projectURL = new URL(fetchContext.baseURL)
-  projectURL.pathname = `/projects/${project.id}/urls`
-  let payload
-  for (payload of ops.add) {
-    const result = await httpPost(fetchContext.function, projectURL, payload)
+  const projectURL = new URL(
+    `/projects/${project.id}/urls`,
+    globalState.baseURL
+  )
+  for (let payload of ops.add) {
+    const result = await httpPost(globalState.fetch, projectURL, payload)
     if (result.success === false) {
       errors.push(result.data)
     }
   }
 
-  let environment
-  for (environment of ops.delete) {
+  for (let environment of ops.delete) {
     projectURL.pathname = `/projects/${project.id}/urls/${environment}`
-    const result = await httpDelete(fetchContext.function, projectURL)
+    const result = await httpDelete(globalState.fetch, projectURL)
     if (result.success === false) {
       errors.push(result.data)
     }
   }
 
-  let patch
-  for (patch of ops.update) {
+  for (let patch of ops.update) {
     projectURL.pathname = `/projects/${project.id}/urls/${patch[0]}`
-    const result = await httpPatch(fetchContext.function, projectURL, patch[1])
+    const result = await httpPatch(globalState.fetch, projectURL, patch[1])
     if (result.success === false) {
       errors.push(result.data)
     }
@@ -179,10 +171,9 @@ function Edit({ project, onEditFinished }) {
     description: null,
     environments: null
   }
-  const fetchContext = useContext(FetchContext)
-  const metadata = useContext(MetadataContext)
+  const [globalState] = useContext(Context)
   const environmentIcons = Object.fromEntries(
-    metadata.environments.map((environment) => [
+    globalState.metadata.environments.map((environment) => [
       environment.name,
       environment.icon_class
     ])
@@ -270,7 +261,7 @@ function Edit({ project, onEditFinished }) {
   async function onSubmit() {
     setState({ ...state, saving: true })
     const [projectResult, projectErrorMessage] = await saveProjectChanges(
-      fetchContext,
+      globalState,
       project,
       state.values
     )
@@ -279,7 +270,7 @@ function Edit({ project, onEditFinished }) {
       return
     }
     const [linksResult, linksErrors] = await saveLinkChanges(
-      fetchContext,
+      globalState,
       project,
       originalLinks,
       state.links
@@ -290,13 +281,13 @@ function Edit({ project, onEditFinished }) {
       return
     }
     const [urlsResult, urlsErrors] = await saveURLChanges(
-      fetchContext,
+      globalState,
       project,
       state.values.environments,
       state.urls
     )
     if (!urlsResult) {
-      console.log(urlsErrors)
+      console.error(urlsErrors)
       setState({ ...state, errorMessage: 'Error saving URLS', saving: false })
       return
     }
@@ -318,7 +309,7 @@ function Edit({ project, onEditFinished }) {
           type="select"
           autoFocus={true}
           castTo="number"
-          options={asOptions(metadata.namespaces)}
+          options={asOptions(globalState.metadata.namespaces)}
           onChange={onValueChange}
           errorMessage={state.projectErrors.namespace_id}
           required={true}
@@ -329,7 +320,7 @@ function Edit({ project, onEditFinished }) {
           name="project_type_id"
           type="select"
           castTo="number"
-          options={asOptions(metadata.projectTypes)}
+          options={asOptions(globalState.metadata.projectTypes)}
           onChange={onValueChange}
           errorMessage={state.projectErrors.project_type_id}
           required={true}
@@ -368,7 +359,7 @@ function Edit({ project, onEditFinished }) {
           name="environments"
           type="select"
           multiple={true}
-          options={asOptions(metadata.environments, 'name', 'name')}
+          options={asOptions(globalState.metadata.environments, 'name', 'name')}
           onChange={onValueChange}
           errorMessage={state.projectErrors.environments}
           value={state.values.environments}
@@ -399,7 +390,7 @@ function Edit({ project, onEditFinished }) {
               />
             )
           })}
-        {metadata.projectLinkTypes.map((linkType) => {
+        {globalState.metadata.projectLinkTypes.map((linkType) => {
           return (
             <Form.Field
               title={

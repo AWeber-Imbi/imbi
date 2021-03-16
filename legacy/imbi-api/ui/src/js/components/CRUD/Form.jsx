@@ -3,9 +3,9 @@ import PropTypes from 'prop-types'
 import React, { useContext, useState } from 'react'
 
 import { Columns } from '../../schema'
-import { FetchContext } from '../../contexts'
 import { Form } from '..'
 import { httpPost, httpPatch, isFunction } from '../../utils'
+import { Context } from '../../state'
 
 function CrudForm({
   columns,
@@ -20,19 +20,19 @@ function CrudForm({
   title,
   values
 }) {
-  const fetch = useContext(FetchContext)
+  const [state] = useContext(Context)
   const [originalValues, _] = useState(values) // eslint-disable-line
 
   async function handleSubmit(formValues) {
-    const url = new URL(fetch.baseURL)
+    const url = new URL(state.baseURL)
     let result = null
     if (isEdit === true) {
       const patchValue = compare(originalValues, formValues)
       url.pathname = itemPath.replace(/{{value}}/, originalValues[itemKey])
-      result = await httpPatch(fetch.function, url, patchValue)
+      result = await httpPatch(state.fetch, url, patchValue)
     } else {
       url.pathname = itemPath
-      result = await httpPost(fetch.function, url, formValues)
+      result = await httpPost(state.fetch, url, formValues)
     }
     if (result.success === true) {
       if (isFunction(itemTitle)) onClose(itemTitle(formValues))

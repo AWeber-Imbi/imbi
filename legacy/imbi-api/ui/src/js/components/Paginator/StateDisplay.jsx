@@ -9,7 +9,7 @@ function StateDisplay({ nounSingular, nounPlural }) {
   return (
     <Context.Consumer>
       {(context) =>
-        t('common.paginatorPosition', {
+        t('paginator.position', {
           startRecord: context.offset + 1,
           endRecord: Math.min(
             context.itemCount,

@@ -10,6 +10,7 @@ function NumericInput({
   onChange,
   placeholder,
   required,
+  step,
   value
 }) {
   const [hasFocus, setHasFocus] = useState(false)
@@ -26,9 +27,7 @@ function NumericInput({
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
-      defaultValue={
-        value !== undefined && value !== null ? value.toString() : value
-      }
+      value={value !== undefined && value !== null ? value.toString() : ''}
       id={'field-' + name}
       max={maximum}
       min={minimum}
@@ -57,6 +56,7 @@ function NumericInput({
       placeholder={placeholder}
       ref={ref}
       required={required}
+      step={step}
       type="number"
     />
   )
@@ -65,7 +65,8 @@ function NumericInput({
 NumericInput.defaultProps = {
   autoFocus: false,
   hasError: false,
-  required: false
+  required: false,
+  step: '1'
 }
 
 NumericInput.propTypes = {
@@ -77,6 +78,7 @@ NumericInput.propTypes = {
   onChange: PropTypes.func,
   placeholder: PropTypes.string,
   required: PropTypes.bool,
+  step: PropTypes.string,
   value: PropTypes.number
 }
 

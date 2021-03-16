@@ -6,17 +6,15 @@ import { PageSizeSelector } from './PageSizeSelector'
 import { StateDisplay } from './StateDisplay'
 
 function Controls({
-  leftPanel,
   positionNounSingular,
   positionNounPlural,
   showPageSizeSelector,
   showStateDisplay
 }) {
   return (
-    <div className="align-middle items-center flex flex-column mt-3">
+    <div className="align-middle items-center flex flex-column">
       <div className="align-middle flex-1 p-2 text-sm text-gray-700">
-        {leftPanel}
-        {leftPanel !== undefined && showStateDisplay && (
+        {showStateDisplay && (
           <StateDisplay
             display={showStateDisplay}
             nounPlural={positionNounPlural}
@@ -36,7 +34,6 @@ Controls.defaultProps = {
   showStateDisplay: false
 }
 Controls.propTypes = {
-  leftPanel: PropTypes.element,
   positionNounSingular: PropTypes.string,
   positionNounPlural: PropTypes.string,
   showPageSizeSelector: PropTypes.bool,

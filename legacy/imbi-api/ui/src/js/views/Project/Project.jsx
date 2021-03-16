@@ -9,27 +9,46 @@ import {
 } from 'react-circular-progressbar'
 import 'react-circular-progressbar/dist/styles.css'
 
-import { FetchContext } from '../../contexts'
+import { Context } from '../../state'
 import { httpRequest, requestOptions, setDocumentTitle } from '../../utils'
 import { Icon, IconBar, Loading, Tab, Tooltip } from '../../components'
 
 import { Overview } from './Overview'
 
 function ProjectPage({ project, factTypes, refresh }) {
+  const [state, dispatch] = useContext(Context)
   const { t } = useTranslation()
   const baseURL = `/ui/projects/${project.id}`
   let color = '#cccccc'
   if (project.project_score >= 0) color = 'red'
   if (project.project_score > 69) color = 'gold'
   if (project.project_score > 89) color = '#00c800'
-  setDocumentTitle(project.name)
+
+  useEffect(() => {
+    if (state.breadcrumbs.length === 1)
+      dispatch({
+        type: 'SET_PAGE',
+        payload: {
+          title: t('projects.title'),
+          url: new URL('/ui/projects', state.baseURL.toString())
+        }
+      })
+    dispatch({
+      type: 'SET_PAGE',
+      payload: {
+        title: project.name,
+        url: new URL(baseURL, state.baseURL.toString())
+      }
+    })
+  }, [])
+
   return (
     <div className="flex-auto px-6 py-4 space-y-3">
       <div className="flex justify-between">
         <div className="flex-shrink flex flex-col space-y-2 ml-2">
-          <h1 className="text-gray-600 text-2xl">
+          <h1 className="text-gray-600 text-xl">
             <Icon icon={project.project_icon} className="mr-2" />
-            {project.name}
+            {project.project_type}
           </h1>
           <div className="text-gray-500">
             {project.links.length === 0 && ' '}
@@ -107,7 +126,7 @@ const PureProjectPage = onlyUpdateForKeys(['errorMessage', 'project'])(
 )
 
 function Project() {
-  const fetchContext = useContext(FetchContext)
+  const [globalState] = useContext(Context)
   const { projectId } = useParams()
   const [state, setState] = useState({
     errorMessage: null,
@@ -117,14 +136,15 @@ function Project() {
   const { t } = useTranslation()
 
   function loadProject() {
-    const factTypeURL = new URL(fetchContext.baseURL)
-    const projectURL = new URL(fetchContext.baseURL)
-    factTypeURL.pathname = `/projects/${projectId}/fact-types`
-    projectURL.pathname = `/projects/${projectId}`
+    const factTypeURL = new URL(
+      `/projects/${projectId}/fact-types`,
+      globalState.baseURL
+    )
+    const projectURL = new URL(`/projects/${projectId}`, globalState.baseURL)
     projectURL.searchParams.append('full', 'true')
     Promise.all([
-      httpRequest(fetchContext.function, factTypeURL, requestOptions),
-      httpRequest(fetchContext.function, projectURL, requestOptions)
+      httpRequest(globalState.fetch, factTypeURL, requestOptions),
+      httpRequest(globalState.fetch, projectURL, requestOptions)
     ]).then(([factTypes, project]) => {
       const newState = { ...state, errorMessage: null }
       if (factTypes.success) newState.factTypes = factTypes.data
@@ -132,6 +152,7 @@ function Project() {
       if (project.success) newState.project = project.data
       else newState.errorMessage = project.data
       setState(newState)
+      window.scrollTo(0, 0)
     })
   }
 

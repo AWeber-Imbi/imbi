@@ -3,23 +3,23 @@ import { useTranslation } from 'react-i18next'
 
 import { jsonSchema } from '../../schema/ProjectFactTypeEnum'
 
+import { Context } from '../../state'
 import { CRUD } from '../../components'
 import { displayLabelValue } from '../../utils'
-import { MetadataContext } from '../../metadata'
 
 export function ProjectFactTypeEnums() {
-  const metadata = useContext(MetadataContext)
+  const [state] = useContext(Context)
   const [factTypes, setFactTypes] = useState(null)
   const { t } = useTranslation()
 
   useEffect(() => {
     let options = []
-    metadata.projectFactTypes
+    state.metadata.projectFactTypes
       .filter((factType) => factType.fact_type === 'enum')
       .map((factType) => {
         const displayValues = []
         factType.project_type_ids.map((projectTypeID) => {
-          metadata.projectTypes.forEach((item) => {
+          state.metadata.projectTypes.forEach((item) => {
             if (item.id === projectTypeID) displayValues.push(item.name)
           })
         })
@@ -31,7 +31,7 @@ export function ProjectFactTypeEnums() {
         options = [...options, option]
       })
     setFactTypes(options)
-  }, [metadata])
+  }, [state.metadata])
 
   return (
     <CRUD
@@ -56,7 +56,7 @@ export function ProjectFactTypeEnums() {
           options: factTypes,
           tableOptions: {
             className: 'truncate',
-            headerClassName: 'w-5/12',
+            headerClassName: 'w-6/12',
             lookupFunction: (value) => {
               return displayLabelValue(value, factTypes)
             }
@@ -78,7 +78,7 @@ export function ProjectFactTypeEnums() {
           name: 'value',
           type: 'text',
           tableOptions: {
-            headerClassName: 'w-4/12'
+            headerClassName: 'w-3/12'
           }
         },
         {

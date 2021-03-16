@@ -1,16 +1,15 @@
 import PropTypes from 'prop-types'
-import React, { Fragment, useContext, useEffect, useState } from 'react'
+import React, { useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert, Backdrop, ConfirmationDialog, Icon, Loading, Table } from '..'
 import { Columns } from '../../schema'
-import { FetchContext } from '../../contexts'
+import { Context } from '../../state'
 import { httpGet, httpDelete, setDocumentTitle } from '../../utils'
 
 import { Form } from './Form'
 
 function CRUD({
-  collectionIcon,
   collectionName,
   collectionPath,
   columns,
@@ -22,8 +21,7 @@ function CRUD({
   itemTitle,
   jsonSchema
 }) {
-  const fetch = useContext(FetchContext)
-
+  const [state, dispatch] = useContext(Context)
   const [data, setData] = useState([])
   const [errorMessage, setErrorMessage] = useState(null)
   const [fetchData, setFetchData] = useState(true)
@@ -41,9 +39,9 @@ function CRUD({
   const { t } = useTranslation()
 
   async function deleteItem() {
-    const url = new URL(fetch.baseURL)
-    url.pathname = itemPath.replace(/{{value}}/, itemToDelete)
-    const result = await httpDelete(fetch.function, url)
+    const path = itemPath.replace(/{{value}}/, itemToDelete)
+    const url = new URL(path, state.baseURL)
+    const result = await httpDelete(state.fetch, url)
     if (result.success === true) {
       setSuccessMessage(
         t('admin.crud.itemDeleted', { value: itemToDelete, ...strings })
@@ -67,10 +65,10 @@ function CRUD({
 
   async function onEditClick(value) {
     setFetching(true)
-    const url = new URL(fetch.baseURL)
-    url.pathname = itemPath.replace(/{{value}}/, value)
+    const path = itemPath.replace(/{{value}}/, value)
+    const url = new URL(path, state.baseURL)
     httpGet(
-      fetch.function,
+      state.fetch,
       url,
       (data) => {
         itemIgnore.map((key) => {
@@ -99,6 +97,16 @@ function CRUD({
     setShowForm(false)
   }
 
+  useEffect(() => {
+    dispatch({
+      type: 'SET_PAGE',
+      payload: {
+        title: collectionName,
+        url: new URL('/ui/admin/cookie-cutters', state.baseURL)
+      }
+    })
+  }, [])
+
   // Remove the error message after 30 seconds
   useEffect(() => {
     if (errorMessage !== null) {
@@ -115,10 +123,9 @@ function CRUD({
   useEffect(() => {
     if (fetchData === true) {
       setFetchData(false)
-      const url = new URL(fetch.baseURL)
-      url.pathname = collectionPath
+      const url = new URL(collectionPath, state.baseURL)
       httpGet(
-        fetch.function,
+        state.fetch,
         url,
         (result) => {
           setData(result)
@@ -144,40 +151,34 @@ function CRUD({
   }, [successMessage])
 
   setDocumentTitle(collectionName)
-
+  if (!ready) return <Loading />
+  if (errorMessage !== null)
+    return (
+      <Alert className="mb-3" level="error">
+        {errorMessage}
+      </Alert>
+    )
   return (
-    <Fragment>
-      {ready && (
-        <div className="grid grid-cols-2 mt-1 mb-3">
-          <h1 className="inline-block text-xl text-gray-600 pt-2">
-            <Icon icon={collectionIcon} className="ml-2 mr-2" />
-            {collectionName}
-          </h1>
-          <div className="text-right">
-            <button
-              className="btn-green"
-              onClick={() => {
-                setShowForm(true)
-              }}>
-              <Icon className="mr-3" icon="fas plus-circle" />
-              {t('admin.crud.newTitle', {
-                itemName: itemName,
-                ...strings
-              })}
-            </button>
-          </div>
-        </div>
-      )}
-      {errorMessage !== null && <Alert level="error">{errorMessage}</Alert>}
+    <div className="space-y-3">
+      <div className="text-right">
+        <button
+          className="btn-green"
+          onClick={() => {
+            setShowForm(true)
+          }}>
+          <Icon className="mr-2" icon="fas plus-circle" />
+          {t('admin.crud.newTitle', {
+            itemName: itemName,
+            ...strings
+          })}
+        </button>
+      </div>
       {successMessage !== null && (
-        <Alert level="success">{successMessage}</Alert>
+        <Alert className="mb-3" level="success">
+          {successMessage}
+        </Alert>
       )}
-      {!ready && (
-        <div className="min-h-full flex flex-column items-center">
-          <Loading className="flex-shrink" />
-        </div>
-      )}
-      {ready && showForm && (
+      {showForm && (
         <Form
           columns={columns}
           errorStrings={errorStrings}
@@ -200,15 +201,14 @@ function CRUD({
           values={itemToEdit}
         />
       )}
-      {ready && (
-        <Table
-          columns={columns}
-          data={data}
-          itemKey={itemKey}
-          onDeleteClick={onDeleteClick}
-          onEditClick={onEditClick}
-        />
-      )}
+      <Table
+        className="my-3"
+        columns={columns}
+        data={data}
+        itemKey={itemKey}
+        onDeleteClick={onDeleteClick}
+        onEditClick={onEditClick}
+      />
       {fetching && <Backdrop wait={true} />}
       {showDeleteConfirmation === true && (
         <ConfirmationDialog
@@ -232,7 +232,7 @@ function CRUD({
           })}
         </ConfirmationDialog>
       )}
-    </Fragment>
+    </div>
   )
 }
 
@@ -242,7 +242,6 @@ CRUD.defaultProps = {
 }
 
 CRUD.propTypes = {
-  collectionIcon: PropTypes.string.isRequired,
   collectionName: PropTypes.string.isRequired,
   collectionPath: PropTypes.string.isRequired,
   columns: Columns.isRequired,

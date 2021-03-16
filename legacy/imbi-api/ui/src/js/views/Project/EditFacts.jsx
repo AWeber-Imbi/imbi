@@ -3,11 +3,11 @@ import React, { useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Card, Form } from '../../components'
-import { FetchContext } from '../../contexts'
+import { Context } from '../../state'
 import { httpPost } from '../../utils'
 
 function EditFacts({ projectId, facts, factTypes, onEditFinished }) {
-  const fetchContext = useContext(FetchContext)
+  const [globalState] = useContext(Context)
   const originalValues = Object.fromEntries(
     facts.map((fact) => {
       return [fact.fact_type_id, fact.value]
@@ -47,23 +47,16 @@ function EditFacts({ projectId, facts, factTypes, onEditFinished }) {
   async function onSubmit() {
     setState({ ...state, saving: true })
     const payload = []
-    const url = new URL(fetchContext.baseURL)
-    url.pathname = `/projects/${projectId}/facts`
-
-    let factTypeId
-    let value
-    for ([factTypeId, value] of Object.entries(state.facts)) {
+    const url = new URL(`/projects/${projectId}/facts`, globalState.baseURL)
+    for (let [factTypeId, value] of Object.entries(state.facts)) {
       if (value !== originalValues[factTypeId]) {
-        console.log(
-          `Updating ${factTypeId} to ${value} from ${originalValues[factTypeId]}`
-        )
         payload.push({ fact_type_id: Number(factTypeId), value: value })
       }
     }
     if (payload.length > 0) {
-      const result = await httpPost(fetchContext.function, url, payload)
+      const result = await httpPost(globalState.fetch, url, payload)
       if (result.success === false) {
-        console.log(`Error: ${result.data}`)
+        console.error(`Error: ${result.data}`)
       }
     }
     onEditFinished(true)

@@ -44,7 +44,7 @@ function TextInput({
       ref={ref}
       required={required}
       type={type}
-      value={value}
+      value={value !== null ? value : ''}
     />
   )
 }

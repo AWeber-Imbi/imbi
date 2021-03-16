@@ -1,6 +1,6 @@
+import { onlyUpdateForKeys } from 'recompose'
 import PropTypes from 'prop-types'
 import React from 'react'
-import { onlyUpdateForKeys } from 'recompose'
 import { useTranslation } from 'react-i18next'
 
 import { Icon, SlimSelect } from '../../components'
@@ -30,15 +30,15 @@ function Filter({ namespaces, projectTypes, setFilterValues, values }) {
   }
 
   return (
-    <form className="flex items-center space-x-2">
+    <form className="flex items-center space-x-2 text-gray-600 ml-2">
       <Icon icon="fas filter" />
       <label className="flex-shrink">{t('common.filter')}</label>
       <SlimSelect
         className="flex-shrink formInput text-xs"
         onChange={(value) => onChange('namespace', value)}
+        placeholder={t('terms.namespace')}
         style={{ width: `${maxLength.namespaces}rem` }}
         value={values.namespace === null ? undefined : values.namespace}>
-        placeholder={t('terms.namespace')}
         {namespaces.map((option) => {
           return (
             <option
@@ -53,8 +53,8 @@ function Filter({ namespaces, projectTypes, setFilterValues, values }) {
         className="flex-shrink formInput text-xs"
         onChange={(value) => onChange('project_type', value)}
         style={{ width: `${maxLength.projectTypes}rem` }}
+        placeholder={t('terms.projectType')}
         value={values.project_type === null ? undefined : values.project_type}>
-        <option value="">{t('terms.projectType')}</option>
         {projectTypes &&
           projectTypes.map((option) => {
             return (
@@ -83,6 +83,5 @@ Filter.propTypes = {
   setFilterValues: PropTypes.func,
   values: PropTypes.object
 }
-
 const PureFilter = onlyUpdateForKeys(['values'])(Filter)
 export { PureFilter as Filter }

@@ -16,10 +16,6 @@ describe('TextInput', () => {
     expect(input).not.toHaveClass('border-red-700')
     expect(input).not.toHaveAttribute('placeholder')
     expect(input).toHaveValue('')
-    fireEvent.blur(input, { target: { value: 'bar' } })
-    expect(input).toHaveValue('bar')
-    fireEvent.change(input, { target: { value: 'baz' } })
-    expect(input).toHaveValue('baz')
   })
 
   it('should render successfully values passed in', () => {
@@ -68,10 +64,10 @@ describe('TextInput', () => {
     const input = screen.getByTestId('input').children[0]
     expect(input).toHaveValue('foo')
     fireEvent.blur(input, { target: { value: 'bar' } })
-    expect(input).toHaveValue('bar')
     expect(mockCallback.mock.calls.length).toBe(1)
+    expect(mockCallback).toHaveBeenCalledWith('test', 'bar')
     fireEvent.change(input, { target: { value: 'baz' } })
-    expect(input).toHaveValue('baz')
     expect(mockCallback.mock.calls.length).toBe(2)
+    expect(mockCallback).toHaveBeenCalledWith('test', 'baz')
   })
 })
