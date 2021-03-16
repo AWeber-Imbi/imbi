@@ -5,7 +5,7 @@ import React, { useContext } from 'react'
 import PropTypes from 'prop-types'
 import { useTranslation } from 'react-i18next'
 
-import { LogoutContext } from '../../contexts'
+import { Context } from '../../state'
 import { Icon } from '../'
 import { User } from '../../schema'
 
@@ -32,16 +32,10 @@ UserMenuItem.propTypes = {
 }
 
 function UserMenu({ user }) {
-  const logout = useContext(LogoutContext)
+  const [state] = useContext(Context)
   const { t } = useTranslation()
-
-  function onLogoutClick(event) {
-    event.preventDefault()
-    logout()
-  }
-
   return (
-    <Menu as="div" className="flex-shrink mr-3">
+    <Menu as="div" className="flex-shrink mr-3 z-50">
       <Menu.Button as={React.Fragment}>
         <button
           className="bg-gray-800 flex my-1 text-sm rounded-full focus:outline-none"
@@ -73,7 +67,10 @@ function UserMenu({ user }) {
           <a
             className="user-menu-link"
             href="/ui/logout"
-            onClick={onLogoutClick}>
+            onClick={(event) => {
+              event.preventDefault()
+              state.handleLogout()
+            }}>
             <div className="inline-block w-6 mr-2 text-center">
               <Icon icon="fas sign-out-alt" />
             </div>

@@ -1,10 +1,10 @@
 import PropTypes from 'prop-types'
-import React, { Fragment } from 'react'
+import React, { Fragment, useContext, useEffect } from 'react'
 import { Route } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
+import { Context } from '../../state'
 import { Error } from '../'
-import { setDocumentTitle } from '../../utils'
 import { Sidebar } from '../../components'
 import { User } from '../../schema'
 
@@ -18,13 +18,30 @@ import { ProjectLinkTypes } from './ProjectLinkTypes'
 import { ProjectTypes } from './ProjectTypes'
 
 function Admin({ user }) {
+  const [state, dispatch] = useContext(Context)
   const { t } = useTranslation()
-  setDocumentTitle(t('admin.title'))
+  useEffect(() => {
+    if (
+      state.breadcrumbs.length > 1 &&
+      state.breadcrumbs[1].url.pathname !== '/ui/admin'
+    )
+      dispatch({
+        type: 'RESET_BREADCRUMBS',
+        payload: null
+      })
+    dispatch({
+      type: 'SET_PAGE',
+      payload: {
+        title: t('admin.title'),
+        url: new URL('/ui/admin', state.baseURL)
+      }
+    })
+  }, [])
   if (user.permissions.includes('admin') !== true)
     return <Error>{t('common.accessDenied')}</Error>
   return (
     <Fragment>
-      <Sidebar title={t('admin.title')}>
+      <Sidebar>
         <Sidebar.Section name={t('admin.sidebar.settings')} open={true}>
           <Sidebar.MenuItem
             value={t('admin.cookieCutters.collectionName')}
@@ -80,7 +97,7 @@ function Admin({ user }) {
           />
         </Sidebar.Section>
       </Sidebar>
-      <div className="flex-1 py-2 px-4">
+      <div className="flex-1 py-3 px-4">
         <Route path="/ui/admin/cookie-cutters" component={CookieCutters} />
         <Route path="/ui/admin/environments" component={Environments} />
         <Route path="/ui/admin/namespaces" component={Namespaces} />

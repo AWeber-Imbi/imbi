@@ -27,12 +27,15 @@ function SimpleForm({
       )}
       {children}
       <div className="mt-5 sm:mt-6 text-right border-t border-gray-400 pt-5 mt-5 space-x-3">
-        <Button className={'btn-white'} disabled={saving} onClick={onCancel}>
+        <Button
+          className={'btn-white'}
+          disabled={saving === true}
+          onClick={onCancel}>
           {t('common.cancel')}
         </Button>
         <Button
           className={'btn-green'}
-          disabled={!ready && !saving}
+          disabled={ready === false || saving === true}
           type="submit">
           {saving ? t('common.saving') : t('common.save')}
         </Button>

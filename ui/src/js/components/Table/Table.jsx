@@ -14,7 +14,7 @@ function Table({
   onRowClick
 }) {
   return (
-    <div className="shadow bg-gray-50 overflow-hidden border-b border-gray-200 mt-3 pt-1 rounded-lg">
+    <div className="shadow bg-gray-50 overflow-hidden border-b border-gray-200 rounded-lg">
       <table className="bg-gray-50 divide-y divide-gray-200 table-fixed w-full">
         <Head
           columns={columns}

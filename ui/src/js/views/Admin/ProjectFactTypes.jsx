@@ -1,13 +1,14 @@
 import React, { useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Context } from '../../state'
 import { CRUD } from '../../components'
 import { displayLabelValue } from '../../utils'
-import { asOptions, MetadataContext } from '../../metadata'
+import { asOptions } from '../../metadata'
 import { jsonSchema } from '../../schema/ProjectFactType'
 
 export function ProjectFactTypes() {
-  const metadata = useContext(MetadataContext)
+  const [state] = useContext(Context)
   const { t } = useTranslation()
 
   const dataTypeOptions = [
@@ -54,7 +55,7 @@ export function ProjectFactTypes() {
           name: 'project_type_ids',
           type: 'select',
           castTo: 'number',
-          options: asOptions(metadata.projectTypes),
+          options: asOptions(state.metadata.projectTypes),
           multiple: true,
           tableOptions: {
             className: 'truncate',
@@ -62,7 +63,7 @@ export function ProjectFactTypes() {
             lookupFunction: (value) => {
               const displayValues = []
               value.map((projectTypeID) => {
-                metadata.projectTypes.forEach((item) => {
+                state.metadata.projectTypes.forEach((item) => {
                   if (item.id === projectTypeID) displayValues.push(item.name)
                 })
               })

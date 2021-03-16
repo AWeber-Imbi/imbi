@@ -1,6 +1,7 @@
 export { Alert } from './Alert/Alert'
 export { Backdrop } from './Backdrop/Backdrop'
 export { Badge } from './Badge/Badge'
+export { Breadcrumbs } from './Breadcrumbs/Breadcrumbs'
 export { Button } from './Button/Button'
 export { Card } from './Card/Card'
 export { ConfirmationDialog } from './ConfirmationDialog/ConfirmationDialog'

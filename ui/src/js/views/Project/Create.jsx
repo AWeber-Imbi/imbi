@@ -5,9 +5,9 @@ import { useHistory } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { validate } from 'jsonschema'
 
+import { asOptions } from '../../metadata'
+import { Context } from '../../state'
 import { Form, Icon, SavingModal } from '../../components'
-import { FetchContext } from '../../contexts'
-import { asOptions, MetadataContext } from '../../metadata'
 import { jsonSchema } from '../../schema/Project'
 import { User } from '../../schema'
 import { httpPost, isURL, setDocumentTitle } from '../../utils'
@@ -54,7 +54,6 @@ function Create() {
   const [errors, setErrors] = useState(emptyErrors)
   const [errorMessage, setErrorMessage] = useState(null)
   const [links, setLinks] = useState({})
-  const fetch = useContext(FetchContext)
   const [formReady, setFormReady] = useState(false)
   const [formValues, setFormValues] = useState({
     namespace_id: null,
@@ -65,7 +64,6 @@ function Create() {
     environments: null
   })
   const history = useHistory()
-  const metadata = useContext(MetadataContext)
   const [projectId, setProjectId] = useState(null)
   const [saveComplete, setSaveComplete] = useState({
     attributes: false,
@@ -74,6 +72,7 @@ function Create() {
   })
   const [saving, setSaving] = useState(false)
   const [savingSteps, setSavingSteps] = useState([])
+  const [state] = useContext(Context)
   const [urls, setURLs] = useState([])
 
   const { t } = useTranslation()
@@ -128,9 +127,11 @@ function Create() {
     async function saveProject() {
       if (saving === true) {
         if (saveComplete.attributes === false) {
-          let url = new URL(fetch.baseURL)
-          url.pathname = '/projects'
-          let result = await httpPost(fetch.function, url, formValues)
+          let result = await httpPost(
+            state.fetch,
+            new URL('/projects', state.baseURL),
+            formValues
+          )
           if (result.success === true) {
             setSaveComplete({ ...saveComplete, attributes: true })
             setProjectId(result.data.id)
@@ -141,13 +142,18 @@ function Create() {
         } else if (saveComplete.urls === false && projectId !== null) {
           if (Object.values(urls).length > 0) {
             for (const [environment, url] of Object.entries(urls)) {
-              let urlURL = new URL(fetch.baseURL)
-              urlURL.pathname = '/projects/' + projectId.toString() + '/urls'
-              let result = await httpPost(fetch.function, urlURL, {
-                project_id: projectId,
-                environment: environment,
-                url: url
-              })
+              let result = await httpPost(
+                state.fetch,
+                new URL(
+                  '/projects/' + projectId.toString() + '/urls',
+                  state.baseURL
+                ),
+                {
+                  project_id: projectId,
+                  environment: environment,
+                  url: url
+                }
+              )
               if (result.success === false) {
                 setErrorMessage(result.data)
                 setSaving(false)
@@ -161,13 +167,18 @@ function Create() {
         } else if (saveComplete.links === false && projectId !== null) {
           if (Object.values(links).length > 0) {
             for (const [linkTypeId, url] of Object.entries(links)) {
-              let linkURL = new URL(fetch.baseURL)
-              linkURL.pathname = '/projects/' + projectId.toString() + '/links'
-              let result = await httpPost(fetch.function, linkURL, {
-                project_id: projectId,
-                link_type_id: parseInt(linkTypeId),
-                url: url
-              })
+              let result = await httpPost(
+                state.fetch,
+                new URL(
+                  '/projects/' + projectId.toString() + '/links',
+                  state.baseURL
+                ),
+                {
+                  project_id: projectId,
+                  link_type_id: parseInt(linkTypeId),
+                  url: url
+                }
+              )
               if (result.success === false) {
                 setErrorMessage(result.data)
                 setSaving(false)
@@ -294,7 +305,7 @@ function Create() {
             type="select"
             autoFocus={true}
             castTo="number"
-            options={asOptions(metadata.namespaces)}
+            options={asOptions(state.metadata.namespaces)}
             onChange={onValueChange}
             errorMessage={errors.namespace_id}
             required={true}
@@ -304,7 +315,7 @@ function Create() {
             name="project_type_id"
             type="select"
             castTo="number"
-            options={asOptions(metadata.projectTypes)}
+            options={asOptions(state.metadata.projectTypes)}
             onChange={onValueChange}
             errorMessage={errors.project_type_id}
             required={true}
@@ -340,7 +351,7 @@ function Create() {
             name="environments"
             type="select"
             multiple={true}
-            options={asOptions(metadata.environments, 'name', 'name')}
+            options={asOptions(state.metadata.environments, 'name', 'name')}
             onChange={onValueChange}
             errorMessage={errors.environments}
           />
@@ -387,8 +398,8 @@ function Create() {
             name="projectCookieCutter"
             type="select"
             options={
-              metadata.cookieCutters !== null
-                ? metadata.cookieCutters
+              state.metadata.cookieCutters !== null
+                ? state.metadata.cookieCutters
                     .filter(
                       (cookieCutter) =>
                         cookieCutter.type === 'project' &&
@@ -410,8 +421,8 @@ function Create() {
             name="dashboardCookieCutter"
             type="select"
             options={
-              metadata.cookieCutters !== null
-                ? metadata.cookieCutters
+              state.metadata.cookieCutters !== null
+                ? state.metadata.cookieCutters
                     .filter(
                       (cookieCutter) =>
                         cookieCutter.type === 'dashboard' &&
@@ -430,7 +441,7 @@ function Create() {
           />
         </Form.Section>
         <Form.Section name="links" title={t('project.projectLinks')}>
-          {metadata.projectLinkTypes.map((linkType) => {
+          {state.metadata.projectLinkTypes.map((linkType) => {
             const key = 'link-' + linkType.id
             return (
               <Form.Field

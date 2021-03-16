@@ -3,49 +3,50 @@ import React, { useContext, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Alert } from '../components'
-import { FetchContext } from '../contexts'
+import { Context } from '../state'
 import { httpPost, setDocumentTitle } from '../utils'
 
 function Login({ onLoginCallback, useLDAP }) {
-  const { t } = useTranslation()
-  const fetch = useContext(FetchContext)
-  const [credentials, setCredentials] = useState({
-    username: null,
-    password: null
+  const [globalState] = useContext(Context)
+  const [state, setState] = useState({
+    credentials: {
+      username: null,
+      password: null
+    },
+    errorMessage: null,
+    submitting: false
   })
-  const [errorMessage, setErrorMessage] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
+  const { t } = useTranslation()
   const usernameRef = useRef()
 
   setDocumentTitle(t('login.signIn'))
 
   function onChange(e) {
     const { name, value } = e.target
-    setCredentials({ ...credentials, [name]: value })
+    setState({ ...state, credentials: { ...state.credentials, [name]: value } })
   }
 
   async function onSubmit(e) {
     e.preventDefault()
-    setSubmitting(true)
-    setErrorMessage(null)
-
-    const url = new URL(fetch.baseURL)
-    url.pathname = '/ui/login'
+    setState({ ...state, submitting: true, errorMessage: null })
     const response = await httpPost(
-      fetch.function,
-      url,
+      globalState.fetch,
+      new URL('/ui/login', globalState.baseURL),
       {
-        username: credentials.username,
-        password: credentials.password
+        username: state.credentials.username,
+        password: state.credentials.password
       },
       { credentials: 'include' }
     )
     if (response.success === true) {
       onLoginCallback(response.data)
     } else {
-      setCredentials({ ...credentials, password: null })
-      setErrorMessage(response.data)
-      setSubmitting(false)
+      setState({
+        ...state,
+        errorMessage: response.data,
+        submitting: false,
+        credentials: { ...state.credentials, password: null }
+      })
       usernameRef.current.focus()
     }
   }
@@ -57,9 +58,9 @@ function Login({ onLoginCallback, useLDAP }) {
           <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
             <form className="space-y-6" action="#" onSubmit={onSubmit}>
               <div className="rounded-md shadow-sm -space-y-px">
-                {errorMessage !== null && (
+                {state.errorMessage !== null && (
                   <div className="pb-4">
-                    <Alert level="error">{errorMessage}</Alert>
+                    <Alert level="error">{state.errorMessage}</Alert>
                   </div>
                 )}
                 <div className="mb-4">
@@ -70,8 +71,11 @@ function Login({ onLoginCallback, useLDAP }) {
                   </label>
                   <input
                     id="username"
+                    autoComplete="username"
                     className={
-                      errorMessage !== null ? 'form-input-error' : 'form-input'
+                      state.errorMessage !== null
+                        ? 'form-input-error'
+                        : 'form-input'
                     }
                     autoFocus
                     name="username"
@@ -80,7 +84,9 @@ function Login({ onLoginCallback, useLDAP }) {
                     required
                     type="text"
                     value={
-                      credentials.username !== null ? credentials.username : ''
+                      state.credentials.username !== null
+                        ? state.credentials.username
+                        : ''
                     }
                   />
                 </div>
@@ -94,14 +100,18 @@ function Login({ onLoginCallback, useLDAP }) {
                     id="password"
                     autoComplete="current-password"
                     className={
-                      errorMessage !== null ? 'form-input-error' : 'form-input'
+                      state.errorMessage !== null
+                        ? 'form-input-error'
+                        : 'form-input'
                     }
                     name="password"
                     onChange={onChange}
                     required
                     type="password"
                     value={
-                      credentials.password !== null ? credentials.password : ''
+                      state.credentials.password !== null
+                        ? state.credentials.password
+                        : ''
                     }
                   />
                 </div>
@@ -110,9 +120,9 @@ function Login({ onLoginCallback, useLDAP }) {
                     type="submit"
                     className="btn-blue w-full"
                     disabled={
-                      submitting ||
-                      credentials.username === null ||
-                      credentials.password === null
+                      state.submitting ||
+                      state.credentials.username === null ||
+                      state.credentials.password === null
                     }>
                     {t('login.signIn')}
                   </button>
@@ -125,10 +135,8 @@ function Login({ onLoginCallback, useLDAP }) {
     </main>
   )
 }
-
 Login.propTypes = {
   onLoginCallback: PropTypes.func,
   useLDAP: PropTypes.bool
 }
-
 export { Login }

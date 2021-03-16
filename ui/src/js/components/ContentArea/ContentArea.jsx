@@ -1,6 +1,8 @@
 import PropTypes from 'prop-types'
 import React from 'react'
 
+import { setDocumentTitle } from '../../utils'
+
 import { PageHeader } from './PageHeader'
 
 function ContentArea({
@@ -10,38 +12,47 @@ function ContentArea({
   buttonOnClick,
   buttonTitle,
   children,
+  className,
   pageIcon,
-  pageTitle
+  pageTitle,
+  showHeader
 }) {
+  setDocumentTitle(pageTitle)
   return (
-    <div className="flex-auto p-4">
-      <PageHeader
-        buttonClass={buttonClass}
-        buttonDestination={buttonDestination}
-        buttonIcon={buttonIcon}
-        buttonOnClick={buttonOnClick}
-        buttonTitle={buttonTitle}
-        pageIcon={pageIcon}
-        pageTitle={pageTitle}
-      />
+    <div
+      className={`p-4 space-y-3 ${className !== undefined ? className : ''}`}>
+      {showHeader && (
+        <PageHeader
+          buttonClass={buttonClass}
+          buttonDestination={buttonDestination}
+          buttonIcon={buttonIcon}
+          buttonOnClick={buttonOnClick}
+          buttonTitle={buttonTitle}
+          pageIcon={pageIcon}
+          pageTitle={pageTitle}
+        />
+      )}
       {children}
     </div>
   )
 }
-
+ContentArea.defaultProps = {
+  showHeader: true
+}
 ContentArea.propTypes = {
   children: PropTypes.oneOfType([
     PropTypes.arrayOf(PropTypes.node),
     PropTypes.node,
     PropTypes.func
   ]),
-  pageIcon: PropTypes.string.isRequired,
+  className: PropTypes.string,
+  pageIcon: PropTypes.string,
   pageTitle: PropTypes.string.isRequired,
   buttonClass: PropTypes.string,
   buttonDestination: PropTypes.string,
   buttonIcon: PropTypes.string,
   buttonOnClick: PropTypes.func,
-  buttonTitle: PropTypes.string
+  buttonTitle: PropTypes.string,
+  showHeader: PropTypes.bool
 }
-
 export { ContentArea }

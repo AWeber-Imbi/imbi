@@ -12,7 +12,7 @@ function PageSizeSelector({ display }) {
   if (!display) return <div className="flex-1" />
   return (
     <div className="align-middle flex-1 p-2 text-sm text-gray-700 space-x-2 text-center">
-      <span>{t('common.pageSize')}:</span>
+      <span>{t('paginator.pageSize')}:</span>
       {pageSizes.map((size) => {
         return (
           <Fragment key={`page-size-${size}`}>

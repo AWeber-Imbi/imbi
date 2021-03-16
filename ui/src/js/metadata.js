@@ -1,27 +1,16 @@
 import PropTypes from 'prop-types'
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 
 import { httpGet } from './utils'
-import { FetchContext } from './contexts'
+import { Context } from './state'
 
 const RefreshAfter = 300000
-
-const MetadataContext = createContext({
-  cookieCutters: null,
-  environments: null,
-  groups: null,
-  namespaces: null,
-  projectFactTypes: null,
-  projectLinkTypes: null,
-  projectTypes: null
-})
 
 function asOptions(data, value = 'id', label = 'name') {
   return data.map((item) => {
     return { label: item[label], value: item[value] }
   })
 }
-
 asOptions.propTypes = {
   data: PropTypes.arrayOf(PropTypes.object),
   id: PropTypes.string,
@@ -29,7 +18,7 @@ asOptions.propTypes = {
 }
 
 function useMetadata(refresh = false) {
-  const fetch = useContext(FetchContext)
+  const [state] = useContext(Context)
   const [cookieCutters, setCookieCutters] = useState(null)
   const [environments, setEnvironments] = useState(null)
   const [groups, setGroups] = useState(null)
@@ -50,13 +39,10 @@ function useMetadata(refresh = false) {
   const [values, setValues] = useState(undefined)
 
   function get(path, onSuccess, key) {
-    const url = new URL(fetch.baseURL)
-    url.pathname = path
-    httpGet(fetch.function, url, onSuccess, (error) => {
+    httpGet(state.fetch, new URL(path, state.baseURL), onSuccess, (error) => {
       setErrors({ ...errors, [key]: error })
     })
   }
-
   get.propTypes = {
     path: PropTypes.string.isRequired,
     onSuccess: PropTypes.func.isRequired,
@@ -86,8 +72,9 @@ function useMetadata(refresh = false) {
       environments !== null &&
       groups !== null &&
       namespaces !== null &&
-      projectTypes !== null &&
-      projectLinkTypes !== null
+      projectFactTypes !== null &&
+      projectLinkTypes !== null &&
+      projectTypes !== null
     ) {
       setValues({
         cookieCutters: cookieCutters,
@@ -108,23 +95,9 @@ function useMetadata(refresh = false) {
     projectTypes,
     projectLinkTypes
   ])
-
-  useEffect(() => {
-    // Refresh every RefreshAfter
-    if (lastUpdated !== null) {
-      const timerHandle = setTimeout(() => {
-        setLastUpdated(null)
-      }, RefreshAfter)
-      return function cleanup() {
-        clearTimeout(timerHandle)
-      }
-    }
-  }, [lastUpdated])
-
   return values
 }
 useMetadata.propTypes = {
   refresh: PropTypes.boolean
 }
-
-export { asOptions, MetadataContext, useMetadata }
+export { asOptions, useMetadata }

@@ -15,7 +15,7 @@ function PageHeader({
   return (
     <div className="grid grid-cols-2">
       <h1 className="inline-block text-gray-600 text-xl">
-        <Icon icon={pageIcon} className="ml-2 mr-2" />
+        {pageIcon && <Icon icon={pageIcon} className="ml-2 mr-2" />}
         {pageTitle}
       </h1>
       {buttonTitle && (
@@ -46,7 +46,7 @@ PageHeader.propTypes = {
   buttonIcon: PropTypes.string,
   buttonOnClick: PropTypes.func,
   buttonTitle: PropTypes.string,
-  pageIcon: PropTypes.string.isRequired,
+  pageIcon: PropTypes.string,
   pageTitle: PropTypes.string.isRequired
 }
 
