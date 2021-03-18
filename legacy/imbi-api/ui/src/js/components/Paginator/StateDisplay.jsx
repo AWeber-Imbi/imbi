@@ -10,7 +10,7 @@ function StateDisplay({ nounSingular, nounPlural }) {
     <Context.Consumer>
       {(context) =>
         t('paginator.position', {
-          startRecord: context.offset + 1,
+          startRecord: (context.currentPage - 1) * context.pageSize + 1,
           endRecord: Math.min(
             context.itemCount,
             context.currentPage * context.pageSize
