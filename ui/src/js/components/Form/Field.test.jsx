@@ -92,7 +92,7 @@ describe('Field', () => {
     const label = screen.getByTestId('field').children[0].children[0]
     expect(label).toHaveTextContent('Text Test')
     const desc = screen.getByTestId('field').children[0].children[1].children[1]
-    expect(desc).toBeInstanceOf(HTMLParagraphElement)
+    expect(desc).toBeInstanceOf(HTMLDivElement)
     expect(desc).toHaveTextContent('This is a test')
     expect(desc).toHaveClass('text-gray-500')
   })
