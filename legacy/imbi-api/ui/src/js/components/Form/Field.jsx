@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import React from 'react'
 
 import { IconSelect } from './IconSelect'
+import { Markdown } from '../'
 import { NumericInput } from './NumericInput'
 import { Select } from './Select'
 import { SelectOptions } from '../../schema/PropTypes'
@@ -122,9 +123,9 @@ function Field({
           </p>
         )}
         {errorMessage === null && description !== undefined && (
-          <p className="ml-2 mt-2 text-sm text-gray-500 col-span-2">
+          <Markdown className="ml-2 mt-2 text-sm text-gray-500 col-span-2">
             {description}
-          </p>
+          </Markdown>
         )}
       </div>
     </div>
