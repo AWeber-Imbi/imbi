@@ -14,7 +14,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/project_URL.yaml#/read'
+                  $ref: '../schemas/project_url.yaml#/read'
               examples:
                 records:
                   summary: Multiple group records

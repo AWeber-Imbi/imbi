@@ -4655,27 +4655,7 @@ paths:
           content:
             application/json:
               schema:
-                title: Project Link
-                description: Links related to the project
-                type: object
-                properties:
-                  project_id:
-                    description: The project ID
-                    type: number
-                  environment:
-                    description: The environment the URL is for
-                    type: string
-                  created_by:
-                    description: The user that created the record
-                    type: string
-                  last_modified_by:
-                    description: The user that last modified the record
-                    type: string
-                  url:
-                    description: The URL
-                    type: string
-                    format: uri
-                additionalProperties: false
+                $ref: '#/paths/~1projects~1%7Bid%7D~1urls/get/responses/200/content/application~1json/schema/items'
               examples:
                 record:
                   summary: A project URL record
@@ -4686,7 +4666,7 @@ paths:
                     url: 'https://imbi.service.produciton.consul'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1projects~1%7Bid%7D~1urls/post/responses/200/content/application~1json/schema'
+                $ref: '#/paths/~1projects~1%7Bid%7D~1urls/get/responses/200/content/application~1json/schema/items'
               examples:
                 record:
                   summary: A project URL record
