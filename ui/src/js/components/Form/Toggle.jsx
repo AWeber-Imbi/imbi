@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-function Toggle({ name, onChange, value }) {
+function Toggle({ name, disabled, onChange, value }) {
   const { t } = useTranslation()
   const [toggleOn, setToggleOn] = useState(value)
   return (
@@ -13,6 +13,7 @@ function Toggle({ name, onChange, value }) {
         ' mt-2 relative inline-flex flex-shrink-0 h-5 w-9 border-2 border-transparent rounded-full cursor-pointer transition-colors ease-in-out duration-200 focus:outline-none'
       }
       aria-pressed="false"
+      disabled={disabled}
       onClick={(event) => {
         event.preventDefault()
         setToggleOn(!toggleOn)
@@ -32,15 +33,14 @@ function Toggle({ name, onChange, value }) {
     </button>
   )
 }
-
 Toggle.defaultProps = {
+  disabled: false,
   value: false
 }
-
 Toggle.propTypes = {
   name: PropTypes.string.isRequired,
+  disabled: PropTypes.bool,
   onChange: PropTypes.func.isRequired,
   value: PropTypes.bool
 }
-
 export { Toggle }

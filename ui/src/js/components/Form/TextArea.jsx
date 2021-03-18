@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react'
 
 function TextArea({
   autoFocus,
+  disabled,
   hasError,
   name,
   onChange,
@@ -25,6 +26,7 @@ function TextArea({
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
       defaultValue={value}
+      disabled={disabled}
       id={'field-' + name}
       name={name}
       onBlur={(event) => {
@@ -47,16 +49,16 @@ function TextArea({
     />
   )
 }
-
 TextArea.defaultProps = {
   autoFocus: false,
+  disabled: false,
   hasError: false,
   required: false,
   rows: 3
 }
-
 TextArea.propTypes = {
   autoFocus: PropTypes.bool,
+  disabled: PropTypes.bool,
   hasError: PropTypes.bool,
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
@@ -65,5 +67,4 @@ TextArea.propTypes = {
   rows: PropTypes.number,
   value: PropTypes.string
 }
-
 export { TextArea }

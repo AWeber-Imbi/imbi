@@ -10,7 +10,7 @@ import { Context } from '../../state'
 import { Form, Icon, SavingModal } from '../../components'
 import { jsonSchema } from '../../schema/Project'
 import { User } from '../../schema'
-import { httpPost, isURL, setDocumentTitle } from '../../utils'
+import { httpPost, isURL } from '../../utils'
 
 function SideBar({ links }) {
   return (
@@ -126,7 +126,7 @@ function Create() {
     dispatch({
       type: 'SET_CURRENT_PAGE',
       payload: {
-        title: 'headerNavItems.newProject',
+        title: 'projects.newProject',
         url: new URL('/ui/projects/create', state.baseURL)
       }
     })
@@ -280,18 +280,13 @@ function Create() {
     setSavingSteps(steps)
   }, [saveComplete, links, automations])
 
-  setDocumentTitle(t('projects.newProject'))
-
   return (
     <Fragment>
       <Form.MultiSectionForm
-        title={t('projects.newProject')}
-        icon="fas folder-plus"
         disabled={!formReady}
+        icon="fas file"
         instructions={
-          <Fragment>
-            <sup className="mr-2">*</sup> {t('common.required')}
-          </Fragment>
+          <div className="ml-2 text-sm">* {t('common.required')}</div>
         }
         errorMessage={errorMessage}
         sideBarLinks={[
@@ -300,6 +295,7 @@ function Create() {
           { href: '#automations', label: t('project.automations') },
           { href: '#links', label: t('project.links') }
         ]}
+        sideBarTitle={t('projects.newProject')}
         onSubmit={(event) => {
           event.preventDefault()
           setSaving(true)
@@ -368,7 +364,8 @@ function Create() {
         </Form.Section>
         <Form.Section name="urls" title={t('project.projectURLs')}>
           <Fragment>
-            {formValues.environments === null && (
+            {(formValues.environments === null ||
+              formValues.environments.length) === 0 && (
               <p className="text-center p-6 font-mono">
                 {t('project.specifyEnvironments')}
               </p>
@@ -395,18 +392,21 @@ function Create() {
             title={t('project.createGitLabRepository')}
             name="createGitlabRepo"
             type="toggle"
+            disabled={true}
             onChange={onAutomationChange}
           />
           <Form.Field
             title={t('project.createSentryProject')}
             name="createSentryProject"
             type="toggle"
+            disabled={true}
             onChange={onAutomationChange}
           />
           <Form.Field
             title={t('project.projectCookieCutter')}
             name="projectCookieCutter"
             type="select"
+            disabled={true}
             options={
               state.metadata.cookieCutters !== null
                 ? state.metadata.cookieCutters
@@ -430,6 +430,7 @@ function Create() {
             title={t('project.dashboardCookieCutter')}
             name="dashboardCookieCutter"
             type="select"
+            disabled={true}
             options={
               state.metadata.cookieCutters !== null
                 ? state.metadata.cookieCutters

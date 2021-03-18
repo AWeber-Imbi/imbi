@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types'
 import React from 'react'
 
-import { Alert } from '..'
+import { Alert, Icon } from '..'
 import { Footer } from './Footer'
 import { SideBar } from './SideBar'
 
@@ -9,6 +9,7 @@ function MultiSectionForm({
   children,
   disabled,
   errorMessage,
+  icon,
   instructions,
   onSubmit,
   sideBarLinks,
@@ -19,7 +20,10 @@ function MultiSectionForm({
     <div className="flex-grow flex flex-row px-6 py-4 w-full">
       <div className="flex-shrink mt-2 pr-20 text-gray-600">
         {sideBarTitle && (
-          <h1 className="text-medium text-lg mb-2">{sideBarTitle}</h1>
+          <h1 className="text-medium text-lg mb-2">
+            {icon && <Icon icon={icon} className="mr-2" />}
+            {sideBarTitle}
+          </h1>
         )}
         <SideBar links={sideBarLinks} />
       </div>
@@ -53,7 +57,7 @@ MultiSectionForm.propTypes = {
   ]),
   disabled: PropTypes.bool,
   errorMessage: PropTypes.string,
-  footerButtonText: PropTypes.string,
+  icon: PropTypes.string,
   instructions: PropTypes.oneOfType([
     PropTypes.arrayOf(PropTypes.element),
     PropTypes.element,

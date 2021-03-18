@@ -13,6 +13,7 @@ function Field({
   autoFocus,
   castTo,
   description,
+  disabled,
   errorMessage,
   maximum,
   minimum,
@@ -43,6 +44,7 @@ function Field({
         {type === 'icon' && (
           <IconSelect
             autoFocus={autoFocus}
+            disabled={disabled}
             hasError={errorMessage !== null}
             name={name}
             onChange={onChange}
@@ -54,6 +56,7 @@ function Field({
         {type === 'number' && (
           <NumericInput
             autoFocus={autoFocus}
+            disabled={disabled}
             hasError={errorMessage !== null}
             maximum={maximum}
             minumum={minimum}
@@ -69,6 +72,7 @@ function Field({
           <Select
             autoFocus={autoFocus}
             castTo={castTo}
+            disabled={disabled}
             hasError={errorMessage !== null}
             multiple={multiple}
             name={name}
@@ -82,6 +86,7 @@ function Field({
         {(type === 'email' || type === 'text' || type === 'url') && (
           <TextInput
             autoFocus={autoFocus}
+            disabled={disabled}
             hasError={errorMessage !== null}
             name={name}
             onChange={onChange}
@@ -94,6 +99,7 @@ function Field({
         {type === 'textarea' && (
           <TextArea
             autoFocus={autoFocus}
+            disabled={disabled}
             hasError={errorMessage !== null}
             name={name}
             onChange={onChange}
@@ -103,7 +109,12 @@ function Field({
           />
         )}
         {type === 'toggle' && (
-          <Toggle name={name} onChange={onChange} value={value} />
+          <Toggle
+            name={name}
+            disabled={disabled}
+            onChange={onChange}
+            value={value}
+          />
         )}
         {errorMessage !== null && (
           <p className="ml-2 mt-2 text-sm text-red-700 col-span-2">
@@ -122,13 +133,14 @@ function Field({
 
 Field.defaultProps = {
   autoFocus: false,
+  disabled: false,
   errorMessage: null,
   multiple: false,
   required: false
 }
-
 Field.propTypes = {
   autoFocus: PropTypes.bool,
+  disabled: PropTypes.bool,
   castTo: PropTypes.oneOf(['number']),
   description: PropTypes.string,
   errorMessage: PropTypes.string,
@@ -161,5 +173,4 @@ Field.propTypes = {
     PropTypes.arrayOf(PropTypes.number)
   ])
 }
-
 export { Field }

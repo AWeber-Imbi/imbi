@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react'
 
 function NumericInput({
   autoFocus,
+  disabled,
   hasError,
   maximum,
   minimum,
@@ -27,6 +28,7 @@ function NumericInput({
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
+      disabled={disabled}
       value={value !== undefined && value !== null ? value.toString() : ''}
       id={'field-' + name}
       max={maximum}
@@ -61,16 +63,16 @@ function NumericInput({
     />
   )
 }
-
 NumericInput.defaultProps = {
   autoFocus: false,
+  disabled: false,
   hasError: false,
   required: false,
   step: '1'
 }
-
 NumericInput.propTypes = {
   autoFocus: PropTypes.bool,
+  disabled: PropTypes.bool,
   hasError: PropTypes.bool,
   maximum: PropTypes.number,
   minimum: PropTypes.number,
@@ -81,5 +83,4 @@ NumericInput.propTypes = {
   step: PropTypes.string,
   value: PropTypes.number
 }
-
 export { NumericInput }

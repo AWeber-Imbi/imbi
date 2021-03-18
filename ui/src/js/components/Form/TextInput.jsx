@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react'
 
 function TextInput({
   autoFocus,
+  disabled,
   hasError,
   name,
   onChange,
@@ -25,6 +26,7 @@ function TextInput({
         'form-input' +
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
+      disabled={disabled}
       id={'field-' + name}
       name={name}
       onBlur={(event) => {
@@ -48,15 +50,15 @@ function TextInput({
     />
   )
 }
-
 TextInput.defaultProps = {
   autoFocus: false,
+  disabled: false,
   hasError: false,
   required: false
 }
-
 TextInput.propTypes = {
   autoFocus: PropTypes.bool,
+  disabled: PropTypes.bool,
   hasError: PropTypes.bool,
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
@@ -65,5 +67,4 @@ TextInput.propTypes = {
   type: PropTypes.oneOf(['email', 'text', 'url']),
   value: PropTypes.string
 }
-
 export { TextInput }
