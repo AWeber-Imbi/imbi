@@ -9,7 +9,7 @@ endif
 all: setup scaffolding/postgres/ddl.sql build-openapi all-tests build-ui
 
 .PHONY: build-openapi
-build-openapi:
+build-openapi: openapi-setup
 	@ cd openapi && yarn run build && yarn run redoc
 
 .PHONY: build-ui
@@ -61,7 +61,7 @@ python-setup: .env env
 ui-setup: ui/node_modules
 
 .PHONY: dist
-dist: openapi-setup ui-setup
+dist: build-openapi ui-setup
 	@ rm -rf dist
 	@ cd openapi && yarn run build
 	@ cd ui && NODE_ENV=production yarn run build
