@@ -54,7 +54,7 @@ function ProjectPage({ project, factTypes, refresh }) {
           <h1 className="text-gray-600 text-xl">
             <Icon icon={project.project_icon} className="mr-2" />
             {project.name}
-            <span className="text-lg">{project.project_type}</span>
+            <span className="text-base ml-2">({project.project_type})</span>
           </h1>
           <div className="text-gray-500">
             {project.links.length === 0 && ' '}
