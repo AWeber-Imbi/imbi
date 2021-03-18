@@ -17,7 +17,7 @@ asOptions.propTypes = {
   label: PropTypes.string
 }
 
-function useMetadata(refresh = false) {
+function useMetadata(externalRefresh = false) {
   const [state] = useContext(Context)
   const [cookieCutters, setCookieCutters] = useState(null)
   const [environments, setEnvironments] = useState(null)
@@ -36,6 +36,8 @@ function useMetadata(refresh = false) {
     projectTypes: null
   })
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [timerHandle, setTimerHandle] = useState(null)
+  const [refresh, setRefresh] = useState(true)
   const [values, setValues] = useState(undefined)
 
   function get(path, onSuccess, key) {
@@ -50,11 +52,7 @@ function useMetadata(refresh = false) {
   }
 
   useEffect(() => {
-    if (
-      lastUpdated === null ||
-      refresh === true ||
-      lastUpdated <= Date.now() - RefreshAfter
-    ) {
+    if (lastUpdated === null || externalRefresh === true || refresh === true) {
       get('/cookie-cutters', setCookieCutters, 'cookieCutters')
       get('/environments', setEnvironments, 'environments')
       get('/groups', setGroups, 'groups')
@@ -63,8 +61,23 @@ function useMetadata(refresh = false) {
       get('/project-link-types', setProjectLinkTypes, 'projectLinkTypes')
       get('/project-types', setProjectTypes, 'projectTypes')
       setLastUpdated(Date.now())
+      setRefresh(false)
     }
-  }, [lastUpdated, refresh])
+  }, [externalRefresh, refresh])
+
+  useEffect(() => {
+    if (timerHandle !== null) {
+      clearTimeout(timerHandle)
+    }
+    const handle = setTimeout(() => {
+      setRefresh(true)
+      setTimerHandle(null)
+    }, RefreshAfter)
+    setTimerHandle(handle)
+    return function cleanup() {
+      clearTimeout(handle)
+    }
+  }, [lastUpdated])
 
   useEffect(() => {
     if (
