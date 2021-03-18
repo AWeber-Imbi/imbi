@@ -1,10 +1,21 @@
 import PropTypes from 'prop-types'
-import React, { Fragment, useState } from 'react'
+import React, { Fragment, useContext, useEffect, useState } from 'react'
 
 import { Details } from './Details'
 import { Facts } from './Facts'
+import { Context } from '../../state'
 
-function Overview({ project, factTypes, refresh }) {
+function Overview({ factTypes, project, refresh, urlPath }) {
+  const [state, dispatch] = useContext(Context)
+  useEffect(() => {
+    dispatch({
+      type: 'SET_CURRENT_PAGE',
+      payload: {
+        url: new URL(urlPath, state.baseURL),
+        title: project.name
+      }
+    })
+  }, [])
   const [editing, setEditing] = useState({ details: false, facts: false })
   return (
     <Fragment>
@@ -52,8 +63,9 @@ function Overview({ project, factTypes, refresh }) {
   )
 }
 Overview.propTypes = {
-  project: PropTypes.object.isRequired,
   factTypes: PropTypes.arrayOf(PropTypes.object).isRequired,
-  refresh: PropTypes.func.isRequired
+  project: PropTypes.object.isRequired,
+  refresh: PropTypes.func.isRequired,
+  urlPath: PropTypes.string.isRequired
 }
 export { Overview }

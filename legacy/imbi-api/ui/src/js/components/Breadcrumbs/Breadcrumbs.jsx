@@ -29,7 +29,7 @@ export function Breadcrumbs() {
                 hasParams ? '?' + crumb.url.searchParams.toString() : ''
               }`
               if (offset === state.breadcrumbs.crumbs.length - 1) {
-                setDocumentTitle(crumb.title)
+                setDocumentTitle(t(crumb.title))
                 return (
                   <li
                     className="space-x-2 text-gray-700"

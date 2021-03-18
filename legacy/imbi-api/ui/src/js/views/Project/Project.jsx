@@ -13,6 +13,12 @@ import { Context } from '../../state'
 import { httpRequest, requestOptions, setDocumentTitle } from '../../utils'
 import { Icon, IconBar, Loading, Tab, Tooltip } from '../../components'
 
+import { Configuration } from './Configuration'
+import { Dependencies } from './Dependencies'
+import { FactHistory } from './FactHistory'
+import { Logs } from './Logs'
+import { Notes } from './Notes'
+import { OpsLog } from './OpsLog'
 import { Overview } from './Overview'
 
 function ProjectPage({ project, factTypes, refresh }) {
@@ -78,31 +84,41 @@ function ProjectPage({ project, factTypes, refresh }) {
         <Tab to={baseURL} isFirst={true}>
           {t('common.overview')}
         </Tab>
-        <Tab disabled={true} to={`${baseURL}/configuration`}>
-          {t('common.configuration')}
-        </Tab>
-        <Tab disabled={true} to={`${baseURL}/dependencies`}>
-          {t('project.dependencies')}
-        </Tab>
-        <Tab disabled={true} to={`${baseURL}/fact-history`}>
-          {t('project.factHistory')}
-        </Tab>
-        <Tab disabled={true} to={`${baseURL}/logs`}>
-          {t('common.logs')}
-        </Tab>
-        <Tab disabled={true} to={`${baseURL}/notes`}>
-          {t('common.notes')}
-        </Tab>
-        <Tab disabled={true} to={`${baseURL}/operations-log`} isLast={true}>
+        <Tab to={`${baseURL}/configuration`}>{t('common.configuration')}</Tab>
+        <Tab to={`${baseURL}/dependencies`}>{t('project.dependencies')}</Tab>
+        <Tab to={`${baseURL}/fact-history`}>{t('project.factHistory')}</Tab>
+        <Tab to={`${baseURL}/logs`}>{t('common.logs')}</Tab>
+        <Tab to={`${baseURL}/notes`}>{t('common.notes')}</Tab>
+        <Tab to={`${baseURL}/operations-log`} isLast={true}>
           {t('operationsLog.title')}
         </Tab>
       </nav>
       <Fragment>
         <Route path={`/ui/projects/${project.id}`} exact>
-          <Overview project={project} factTypes={factTypes} refresh={refresh} />
+          <Overview
+            factTypes={factTypes}
+            project={project}
+            refresh={refresh}
+            urlPath={baseURL}
+          />
+        </Route>
+        <Route path={`/ui/projects/${project.id}/configuration`}>
+          <Configuration urlPath={baseURL} />
+        </Route>
+        <Route path={`/ui/projects/${project.id}/dependencies`}>
+          <Dependencies urlPath={baseURL} />
+        </Route>
+        <Route path={`/ui/projects/${project.id}/fact-history`}>
+          <FactHistory urlPath={baseURL} />
         </Route>
         <Route path={`/ui/projects/${project.id}/logs`}>
-          <div>Logs</div>
+          <Logs urlPath={baseURL} />
+        </Route>
+        <Route path={`/ui/projects/${project.id}/notes`}>
+          <Notes urlPath={baseURL} />
+        </Route>
+        <Route path={`/ui/projects/${project.id}/operations-log`}>
+          <OpsLog urlPath={baseURL} />
         </Route>
       </Fragment>
     </div>

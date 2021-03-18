@@ -43,7 +43,7 @@ function NavMenu({ user }) {
         {t('terms.reports')}
       </NavLink>
       {user.permissions.includes('admin') && (
-        <Tooltip value={t('headerNavItems.administration')}>
+        <Tooltip value={t('admin.title')}>
           <NavLink className="nav-menu-link" to="/ui/admin/">
             <Icon icon="fas wrench" className="p-0 m-0" />
           </NavLink>

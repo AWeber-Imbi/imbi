@@ -8,7 +8,7 @@ const rootBreadcrumbs = [
       icon: 'fas home'
     }
   },
-  { path: '/ui/admin/', crumb: { title: 'headerNavItems.admin' } },
+  { path: '/ui/admin/', crumb: { title: 'admin.title' } },
   { path: '/ui/operations-log/', crumb: { title: 'operationsLog.title' } },
   { path: '/ui/projects/', crumb: { title: 'projects.title' } },
   { path: '/ui/reports/', crumb: { title: 'terms.reports' } }
