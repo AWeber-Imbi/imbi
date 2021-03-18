@@ -46,7 +46,7 @@ function Display({ project, onEditClick, shouldGrow }) {
         <Definition term={t('terms.slug')} className="font-mono">
           {project.slug}
         </Definition>
-        {project.environments && (
+        {project.environments && project.environments.length > 0 && (
           <Definition term={t('terms.environments')}>
             {project.environments.join(', ')}
           </Definition>
