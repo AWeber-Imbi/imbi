@@ -96,7 +96,8 @@ class CollectionRequestHandler(_RequestHandlerMixin,
         sql = self.COLLECTION_SQL.replace('{{WHERE}}', where_sql)
         count_sql = self.COUNT_SQL.replace('{{WHERE}}', where_sql)
         order_by_chunks = []
-        for (kwarg, column) in [('namespace', 'b.name'),
+        for (kwarg, column) in [('project_score', 'project_score'),
+                                ('namespace', 'b.name'),
                                 ('project_type', 'c.name'),
                                 ('name', 'a.name')]:
             direction = self.get_query_argument(f'sort_{kwarg}', None)
