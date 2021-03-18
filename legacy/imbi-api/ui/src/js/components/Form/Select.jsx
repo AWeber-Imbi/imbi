@@ -6,6 +6,7 @@ import { SelectOptions } from '../../schema/PropTypes'
 function Select({
   autoFocus,
   castTo,
+  disabled,
   hasError,
   multiple,
   name,
@@ -47,6 +48,7 @@ function Select({
         (hasFocus === false && hasError === true ? ' border-red-700' : '')
       }
       defaultValue={currentValue === null ? '' : currentValue}
+      disabled={disabled}
       id={'field-' + name}
       multiple={multiple}
       name={name}
@@ -93,16 +95,16 @@ function Select({
     </select>
   )
 }
-
 Select.defaultProps = {
   autoFocus: false,
+  disabled: false,
   hasError: false,
   multiple: false,
   required: false
 }
-
 Select.propTypes = {
   autoFocus: PropTypes.bool,
+  disabled: PropTypes.bool,
   castTo: PropTypes.oneOf(['number']),
   hasError: PropTypes.bool,
   multiple: PropTypes.bool,
@@ -118,5 +120,4 @@ Select.propTypes = {
     PropTypes.string
   ])
 }
-
 export { Select }

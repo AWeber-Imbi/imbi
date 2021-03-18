@@ -6,6 +6,7 @@ import { icons } from '../../icons'
 
 function IconSelect({
   autoFocus,
+  disabled,
   hasError,
   name,
   onChange,
@@ -30,6 +31,7 @@ function IconSelect({
           (hasFocus === false && hasError === true ? ' border-red-700' : '')
         }
         defaultValue={value}
+        disabled={disabled}
         id={'field-' + name}
         onBlur={(event) => {
           event.preventDefault()
@@ -59,15 +61,15 @@ function IconSelect({
     </Fragment>
   )
 }
-
 IconSelect.defaultProps = {
   autoFocus: false,
+  disabled: false,
   hasError: false,
   required: false
 }
-
 IconSelect.propTypes = {
   autoFocus: PropTypes.bool,
+  disabled: PropTypes.bool,
   hasError: PropTypes.bool,
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func,
@@ -75,5 +77,4 @@ IconSelect.propTypes = {
   required: PropTypes.bool,
   value: PropTypes.string.isRequired
 }
-
 export { IconSelect }
