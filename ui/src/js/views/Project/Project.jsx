@@ -11,7 +11,14 @@ import 'react-circular-progressbar/dist/styles.css'
 
 import { Context } from '../../state'
 import { httpRequest, requestOptions, setDocumentTitle } from '../../utils'
-import { Icon, IconBar, Loading, Tab, Tooltip } from '../../components'
+import {
+  Icon,
+  IconBar,
+  Loading,
+  Markdown,
+  Tab,
+  Tooltip
+} from '../../components'
 
 import { Configuration } from './Configuration'
 import { Dependencies } from './Dependencies'
@@ -46,7 +53,8 @@ function ProjectPage({ project, factTypes, refresh }) {
         <div className="flex-shrink flex flex-col space-y-2 ml-2">
           <h1 className="text-gray-600 text-xl">
             <Icon icon={project.project_icon} className="mr-2" />
-            {project.project_type}
+            {project.name}
+            <span className="text-lg">{project.project_type}</span>
           </h1>
           <div className="text-gray-500">
             {project.links.length === 0 && ' '}
@@ -77,7 +85,9 @@ function ProjectPage({ project, factTypes, refresh }) {
           </Tooltip>
         </div>
       </div>
-      <p className="text-sm ml-2 text-gray-500">{project.description}</p>
+      <Markdown className="text-sm ml-2 text-gray-500">
+        {project.description}
+      </Markdown>
       <nav
         className="relative z-0 rounded-lg shadow flex divide-x divide-gray-200"
         aria-label="Tabs">
