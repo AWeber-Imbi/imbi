@@ -72,7 +72,7 @@ function Create() {
   })
   const [saving, setSaving] = useState(false)
   const [savingSteps, setSavingSteps] = useState([])
-  const [state] = useContext(Context)
+  const [state, dispatch] = useContext(Context)
   const [urls, setURLs] = useState([])
 
   const { t } = useTranslation()
@@ -121,6 +121,16 @@ function Create() {
     if (key === 'name') values.slug = slugify(value).toLowerCase()
     setFormValues(values)
   }
+
+  useEffect(() => {
+    dispatch({
+      type: 'SET_CURRENT_PAGE',
+      payload: {
+        title: 'headerNavItems.newProject',
+        url: new URL('/ui/projects/create', state.baseURL)
+      }
+    })
+  }, [])
 
   // Save Project, Links, Dependencies, and Perform Automations
   useEffect(() => {

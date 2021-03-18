@@ -1,26 +1,30 @@
+import PropTypes from 'prop-types'
 import React, { useContext, useEffect } from 'react'
 
 import { WishedFutureState } from '../../components'
 import { Context } from '../../state'
 
-function OperationsLog() {
+function OpsLog({ urlPath }) {
   const [state, dispatch] = useContext(Context)
   useEffect(() => {
     dispatch({
       type: 'SET_CURRENT_PAGE',
       payload: {
         title: 'operationsLog.title',
-        url: new URL('/ui/operations-log', state.baseURL)
+        url: new URL(`${urlPath}/operations-log`, state.baseURL)
       }
     })
   }, [])
   return (
-    <div className="flex-grow flex items-center justify-center">
+    <div className="pt-20 flex items-center justify-center">
       <WishedFutureState>
-        This page will a searchable table that indicates all changes in the
-        operational environment by project.
+        This tab will allow for a project specific view of the operations log
+        entries.
       </WishedFutureState>
     </div>
   )
 }
-export { OperationsLog }
+OpsLog.propTypes = {
+  urlPath: PropTypes.string.isRequired
+}
+export { OpsLog }

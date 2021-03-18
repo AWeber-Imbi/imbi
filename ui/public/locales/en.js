@@ -123,6 +123,8 @@ export default {
             uniqueViolation: 'An environment with the same name already exists'
           }
         },
+        manageGroups: 'Manage Groups',
+        manageUsers: 'Manage Users',
         namespaces: {
           collectionName: 'Namespaces',
           itemName: 'Namespace',

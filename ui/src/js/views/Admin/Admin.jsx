@@ -10,12 +10,14 @@ import { User } from '../../schema'
 import { CookieCutters } from './CookieCutters'
 import { Dashboard } from './Dashboard'
 import { Environments } from './Environments'
+import { Groups } from './Groups'
 import { Namespaces } from './Namespaces'
 import { ProjectFactTypes } from './ProjectFactTypes'
 import { ProjectFactTypeEnums } from './ProjectFactTypeEnums'
 import { ProjectFactTypeRanges } from './ProjectFactTypeRanges'
 import { ProjectLinkTypes } from './ProjectLinkTypes'
 import { ProjectTypes } from './ProjectTypes'
+import { Users } from './Users'
 
 function Admin({ user }) {
   const { t } = useTranslation()
@@ -68,21 +70,22 @@ function Admin({ user }) {
         </Sidebar.Section>
         <Sidebar.Section name={t('admin.sidebar.userManagement')}>
           <Sidebar.MenuItem
-            value="Users"
+            value={t('admin.manageUsers')}
             to="/ui/admin/users"
             icon="fas user-friends"
           />
           <Sidebar.MenuItem
-            value="Groups"
+            value={t('admin.manageGroups')}
             to="/ui/admin/groups"
             icon="fas users"
           />
         </Sidebar.Section>
       </Sidebar>
-      <div className="flex-1 py-3 px-4">
+      <div className="flex-grow py-3 px-4">
         <Route path="/ui/admin" exact={true} component={Dashboard} />
         <Route path="/ui/admin/cookie-cutters" component={CookieCutters} />
         <Route path="/ui/admin/environments" component={Environments} />
+        <Route path="/ui/admin/groups" component={Groups} />
         <Route path="/ui/admin/namespaces" component={Namespaces} />
         <Route
           path="/ui/admin/project-fact-types"
@@ -101,6 +104,7 @@ function Admin({ user }) {
           component={ProjectLinkTypes}
         />
         <Route path="/ui/admin/project-types" component={ProjectTypes} />
+        <Route path="/ui/admin/users" component={Users} />
       </div>
       <div className="hidden">{new Date().toISOString()}</div>
     </Fragment>

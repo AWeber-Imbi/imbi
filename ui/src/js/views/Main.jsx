@@ -8,6 +8,7 @@ import { Context } from '../state'
 import { NewEntry, OperationsLog } from './OperationsLog/'
 import { Project } from './Project/'
 import { Projects } from './Projects/'
+import { Reports } from './Reports'
 import { useMetadata } from '../metadata'
 import { User as UserSchema } from '../schema'
 
@@ -52,6 +53,9 @@ function Main({ user }) {
               </Route>
               <Route path="/ui/projects">
                 <Projects user={user} />
+              </Route>
+              <Route path="/ui/reports">
+                <Reports user={user} />
               </Route>
               <Route path="/ui/user">
                 <User user={user} />
