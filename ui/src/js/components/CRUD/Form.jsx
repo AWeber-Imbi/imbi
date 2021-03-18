@@ -35,6 +35,7 @@ function CrudForm({
       result = await httpPost(state.fetch, url, formValues)
     }
     if (result.success === true) {
+      state.refreshMetadata()
       if (isFunction(itemTitle)) onClose(itemTitle(formValues))
       else onClose(formValues[itemTitle !== undefined ? itemTitle : itemKey])
     } else {

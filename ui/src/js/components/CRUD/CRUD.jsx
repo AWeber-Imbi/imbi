@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Alert, Backdrop, ConfirmationDialog, Icon, Loading, Table } from '..'
 import { Columns } from '../../schema'
 import { Context } from '../../state'
-import { httpGet, httpDelete, setDocumentTitle } from '../../utils'
+import { httpGet, httpDelete } from '../../utils'
 
 import { Form } from './Form'
 
@@ -56,6 +56,7 @@ function CRUD({
       )
     }
     setShowDeleteConfirmation(false)
+    state.refreshMetadata()
   }
 
   function onDeleteClick(value) {
@@ -150,7 +151,6 @@ function CRUD({
     }
   }, [successMessage])
 
-  setDocumentTitle(collectionName)
   if (!ready) return <Loading />
   if (errorMessage !== null)
     return (
