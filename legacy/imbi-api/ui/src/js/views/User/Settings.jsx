@@ -100,7 +100,7 @@ function Settings() {
           title={t('user.settings.authenticationTokens.title')}
           firstSection={true}>
           <Fragment>
-            <div className="flex items-center justify-between mt-3">
+            <div className="flex items-center justify-between my-3">
               <div
                 dangerouslySetInnerHTML={{
                   __html: t('user.settings.authenticationTokens.description', {
@@ -123,7 +123,6 @@ function Settings() {
               </div>
             </div>
             <Table
-              className="my-3"
               columns={[
                 {
                   title: t('common.name'),
