@@ -1,17 +1,53 @@
-/*
 const rootBreadcrumbs = [
-  { path: '/ui/projects/', crumb: { title: 'Projects' } },
-  { path: '/ui/admin/', crumb: { title: 'Admin' } },
   {
     path: '/ui/',
-    crumbs: { display: false },
-    crumb: { title: 'Dashboard', showTitle: false, icon: 'fas house' }
-  }
-]*/
+    displayBreadcrumbs: false,
+    crumb: {
+      title: 'headerNavItems.dashboard',
+      hideTitle: true,
+      icon: 'fas home'
+    }
+  },
+  { path: '/ui/admin/', crumb: { title: 'headerNavItems.admin' } },
+  { path: '/ui/operations-log/', crumb: { title: 'operationsLog.title' } },
+  { path: '/ui/projects/', crumb: { title: 'projects.title' } },
+  { path: '/ui/reports/', crumb: { title: 'terms.reports' } }
+]
 
-export function processBreadcrumbs() {
+export function processBreadcrumbs(breadcrumbs, crumb) {
+  let crumbs = []
+  let display = true
+  let rootMatch = false
+
+  breadcrumbs.some((current) => {
+    if (
+      crumb.url.pathname === current.url.pathname ||
+      !crumb.url.pathname.startsWith(current.url.pathname)
+    )
+      return true
+    crumbs.push(current)
+  })
+  if (crumbs.length === 0)
+    rootBreadcrumbs.some((rb) => {
+      if (crumb.url.pathname === rb.path) return true
+      else if (crumb.url.pathname.startsWith(rb.path)) {
+        const parent = new URL(crumb.url)
+        parent.pathname = rb.path
+        crumbs.push({ ...rb.crumb, url: parent })
+      }
+    })
+  if (crumbs.length === 0) {
+    rootMatch = rootBreadcrumbs.some((rb) => {
+      if (crumb.url.pathname === rb.path) {
+        crumbs.push({ ...rb.crumb, url: crumb.url })
+        if (rb.displayBreadcrumbs !== undefined) display = rb.displayBreadcrumbs
+        return true
+      }
+    })
+  }
+  if (!rootMatch) crumbs.push(crumb)
   return {
-    display: false,
-    crumbs: []
+    display: display,
+    crumbs: crumbs
   }
 }

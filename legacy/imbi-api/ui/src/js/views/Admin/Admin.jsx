@@ -1,14 +1,14 @@
 import PropTypes from 'prop-types'
-import React, { Fragment, useContext, useEffect } from 'react'
+import React, { Fragment } from 'react'
 import { Route } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
-import { Context } from '../../state'
 import { Error } from '../'
 import { Sidebar } from '../../components'
 import { User } from '../../schema'
 
 import { CookieCutters } from './CookieCutters'
+import { Dashboard } from './Dashboard'
 import { Environments } from './Environments'
 import { Namespaces } from './Namespaces'
 import { ProjectFactTypes } from './ProjectFactTypes'
@@ -18,25 +18,7 @@ import { ProjectLinkTypes } from './ProjectLinkTypes'
 import { ProjectTypes } from './ProjectTypes'
 
 function Admin({ user }) {
-  const [state, dispatch] = useContext(Context)
   const { t } = useTranslation()
-  useEffect(() => {
-    if (
-      state.breadcrumbs.length > 1 &&
-      state.breadcrumbs[1].url.pathname !== '/ui/admin'
-    )
-      dispatch({
-        type: 'RESET_BREADCRUMBS',
-        payload: null
-      })
-    dispatch({
-      type: 'SET_PAGE',
-      payload: {
-        title: t('admin.title'),
-        url: new URL('/ui/admin', state.baseURL)
-      }
-    })
-  }, [])
   if (user.permissions.includes('admin') !== true)
     return <Error>{t('common.accessDenied')}</Error>
   return (
@@ -98,6 +80,7 @@ function Admin({ user }) {
         </Sidebar.Section>
       </Sidebar>
       <div className="flex-1 py-3 px-4">
+        <Route path="/ui/admin" exact={true} component={Dashboard} />
         <Route path="/ui/admin/cookie-cutters" component={CookieCutters} />
         <Route path="/ui/admin/environments" component={Environments} />
         <Route path="/ui/admin/namespaces" component={Namespaces} />
@@ -119,6 +102,7 @@ function Admin({ user }) {
         />
         <Route path="/ui/admin/project-types" component={ProjectTypes} />
       </div>
+      <div className="hidden">{new Date().toISOString()}</div>
     </Fragment>
   )
 }

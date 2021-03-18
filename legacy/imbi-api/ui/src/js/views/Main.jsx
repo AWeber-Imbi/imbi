@@ -1,7 +1,6 @@
 import PropTypes from 'prop-types'
 import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { Switch, Route } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
 
 import { Admin, Dashboard, NotFound, User } from '.'
 import { Breadcrumbs, Loading } from '../components'
@@ -17,19 +16,6 @@ function Main({ user }) {
   const [state, dispatch] = useContext(Context)
   const [refreshMetadata, setRefreshMetadata] = useState(false)
   const metadata = useMetadata(refreshMetadata)
-  const { t } = useTranslation()
-
-  useEffect(() => {
-    dispatch({
-      type: 'SET_PAGE',
-      payload: {
-        title: t('headerNavItems.dashboard'),
-        icon: 'fas home',
-        showTitle: false,
-        url: new URL('/ui', state.baseURL)
-      }
-    })
-  }, [])
 
   useEffect(() => {
     if (metadata !== undefined) {

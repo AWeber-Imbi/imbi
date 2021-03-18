@@ -8,8 +8,17 @@ import { Context } from '../state'
 export function Dashboard() {
   const [data, setData] = useState(null)
   const [errorMessage, setErrorMessage] = useState(null)
-  const [state] = useContext(Context)
+  const [state, dispatch] = useContext(Context)
   const { t } = useTranslation()
+
+  useEffect(() => {
+    dispatch({
+      type: 'SET_CURRENT_PAGE',
+      payload: {
+        url: new URL('/ui/', state.baseURL)
+      }
+    })
+  }, [])
 
   useEffect(() => {
     if (data === null) {

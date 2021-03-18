@@ -25,19 +25,11 @@ function ProjectPage({ project, factTypes, refresh }) {
   if (project.project_score > 89) color = '#00c800'
 
   useEffect(() => {
-    if (state.breadcrumbs.length === 1)
-      dispatch({
-        type: 'SET_PAGE',
-        payload: {
-          title: t('projects.title'),
-          url: new URL('/ui/projects', state.baseURL.toString())
-        }
-      })
     dispatch({
-      type: 'SET_PAGE',
+      type: 'SET_CURRENT_PAGE',
       payload: {
-        title: project.name,
-        url: new URL(baseURL, state.baseURL.toString())
+        url: new URL(baseURL, state.baseURL.toString()),
+        title: project.name
       }
     })
   }, [])

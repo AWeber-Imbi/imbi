@@ -232,7 +232,6 @@ function Edit({ project, onEditFinished }) {
 
   useEffect(() => {
     if (state.saveComplete === true) {
-      console.log('Editing finished, exiting')
       onEditFinished(true)
     }
   }, [state.saveComplete])

@@ -31,16 +31,11 @@ function Projects() {
   const { t } = useTranslation()
 
   useEffect(() => {
-    if (
-      globalState.breadcrumbs.length > 1 &&
-      globalState.breadcrumbs[0].pathname !== '/ui/projects'
-    )
-      dispatch({ type: 'RESET_BREADCRUMBS', payload: {} })
     dispatch({
-      type: 'SET_PAGE',
+      type: 'SET_CURRENT_PAGE',
       payload: {
-        title: t('projects.title'),
-        url: buildStateURL()
+        url: buildStateURL(),
+        title: 'projects.title'
       }
     })
   }, [])
@@ -60,20 +55,19 @@ function Projects() {
           history.push(
             stateURL.pathname + '?' + stateURL.searchParams.toString()
           )
+          dispatch({
+            type: 'SET_CURRENT_PAGE',
+            payload: {
+              url: stateURL,
+              title: 'projects.title'
+            }
+          })
           setState({
             ...state,
             data: result.data,
             fetching: false,
             lastRequest: url,
             rowCount: result.rows
-          })
-          url.pathname = '/ui/projects'
-          dispatch({
-            type: 'SET_PAGE',
-            payload: {
-              title: t('projects.title'),
-              url: stateURL
-            }
           })
         },
         (error) => {
