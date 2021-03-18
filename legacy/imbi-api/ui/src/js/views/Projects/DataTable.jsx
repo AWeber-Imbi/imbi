@@ -53,6 +53,9 @@ function DataTable({
     {
       title: t('terms.healthScore'),
       name: 'project_score',
+      sortCallback: onSortDirection,
+      sortDirection:
+        sort.project_score !== undefined ? sort.project_score : null,
       type: 'text',
       tableOptions: {
         className: 'text-center',
