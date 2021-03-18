@@ -5,10 +5,13 @@ import { processBreadcrumbs } from './components/Breadcrumbs'
 
 const Reducer = (state, action) => {
   switch (action.type) {
-    case 'ADD_BREADCRUMB':
+    case 'SET_CURRENT_PAGE':
       return {
         ...state,
-        breadcrumbs: processBreadcrumbs(state, action)
+        breadcrumbs: processBreadcrumbs(
+          state.breadcrumbs.crumbs,
+          action.payload
+        )
       }
     case 'HIDE_BREADCRUMBS':
       return {

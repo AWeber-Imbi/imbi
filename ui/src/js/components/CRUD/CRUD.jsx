@@ -99,10 +99,10 @@ function CRUD({
 
   useEffect(() => {
     dispatch({
-      type: 'SET_PAGE',
+      type: 'SET_CURRENT_PAGE',
       payload: {
         title: collectionName,
-        url: new URL('/ui/admin/cookie-cutters', state.baseURL)
+        url: new URL(window.location.pathname, state.baseURL)
       }
     })
   }, [])
@@ -235,12 +235,10 @@ function CRUD({
     </div>
   )
 }
-
 CRUD.defaultProps = {
   itemIgnore: [],
   omitOnAdd: []
 }
-
 CRUD.propTypes = {
   collectionName: PropTypes.string.isRequired,
   collectionPath: PropTypes.string.isRequired,
@@ -257,5 +255,4 @@ CRUD.propTypes = {
   jsonSchema: PropTypes.object.isRequired,
   omitOnAdd: PropTypes.arrayOf(PropTypes.string)
 }
-
 export { CRUD }
