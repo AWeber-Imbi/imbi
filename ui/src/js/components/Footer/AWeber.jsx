@@ -1,10 +1,11 @@
 import PropTypes from 'prop-types'
 import React from 'react'
 
-function Logo({ className }) {
+function Logo({ className, style }) {
   return (
     <svg
       className={className}
+      style={style}
       viewBox="5.604 12.058 488.7 477.8"
       xmlns="http://www.w3.org/2000/svg">
       <linearGradient
@@ -25,9 +26,8 @@ function Logo({ className }) {
     </svg>
   )
 }
-
 Logo.propTypes = {
-  className: PropTypes.string
+  className: PropTypes.string,
+  style: PropTypes.object
 }
-
 export { Logo }

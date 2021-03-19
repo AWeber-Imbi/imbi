@@ -24,7 +24,16 @@ export const loggedOutUser = {
   permissions: []
 }
 
-function App({ logo, service, ldap, sentry_dsn, url, version }) {
+function App({
+  footerText,
+  footerUrl,
+  ldap,
+  logo,
+  sentry_dsn,
+  service,
+  url,
+  version
+}) {
   if (isURL(sentry_dsn)) Sentry.init({ dsn: sentry_dsn })
   const [content, setContent] = useState(<Initializing />)
   const [errorMessage, setErrorMessage] = useState(null)
@@ -119,15 +128,22 @@ function App({ logo, service, ldap, sentry_dsn, url, version }) {
         user={user}
       />
       {content}
-      <Footer service={service} version={version} />
+      <Footer
+        service={service}
+        version={version}
+        linkText={footerText}
+        linkURL={footerUrl}
+      />
     </State>
   )
 }
 
 App.propTypes = {
+  footerText: PropTypes.string,
+  footerUrl: PropTypes.string,
+  ldap: PropTypes.string,
   logo: PropTypes.string,
   service: PropTypes.string,
-  ldap: PropTypes.string,
   sentry_dsn: PropTypes.string,
   url: PropTypes.string,
   version: PropTypes.string
