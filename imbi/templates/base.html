@@ -14,6 +14,7 @@
     <div id="app"
          data-logo="{{ static_url('images/logo.png') }}"
          data-service="Imbi"
+         data-footer-icon="{{ handler.application.settings['footer_link']['icon'] }}"
          data-footer-text="{{ handler.application.settings['footer_link']['text'] }}"
          data-footer-url="{{ handler.application.settings['footer_link']['url'] }}"
          data-ldap="{{ str(handler.application.settings['ldap']['enabled']).lower() }}"
