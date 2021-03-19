@@ -212,7 +212,7 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
         try:
             self.application.validate_request(self.request)
         except DeserializeError as err:
-            self.logger.debug('Request failed to deserialize: %s', err)
+            self.logger.warning('Request failed to deserialize: %s', err)
             raise problemdetails.Problem(
                 status_code=400, title='Bad Request', detail=str(err))
         except InvalidSecurity as err:
@@ -232,7 +232,7 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
             raise problemdetails.Problem(
                 status_code=500, title='OpenAPI Spec Error', detail=str(err))
         except ValidateError as err:
-            self.logger.debug('Request failed to validate: %s', err)
+            self.logger.warning('Request failed to validate: %s', err)
             raise problemdetails.Problem(
                 status_code=400, title='Bad Request',
                 detail='The request did not validate',
