@@ -82,6 +82,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'cookie_secret': http_settings.get('cookie_secret', 'imbi'),
         'debug': debug,
         'footer_link': {
+            'icon': footer_link.get('icon', ''),
             'text': footer_link.get('text', ''),
             'url': footer_link.get('url', '')
         },

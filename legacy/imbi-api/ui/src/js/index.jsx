@@ -25,6 +25,7 @@ export const loggedOutUser = {
 }
 
 function App({
+  footerIcon,
   footerText,
   footerUrl,
   ldap,
@@ -129,16 +130,18 @@ function App({
       />
       {content}
       <Footer
-        service={service}
-        version={version}
+        linkIcon={footerIcon}
         linkText={footerText}
         linkURL={footerUrl}
+        service={service}
+        version={version}
       />
     </State>
   )
 }
 
 App.propTypes = {
+  footerIcon: PropTypes.string,
   footerText: PropTypes.string,
   footerUrl: PropTypes.string,
   ldap: PropTypes.string,
