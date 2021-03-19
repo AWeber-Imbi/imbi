@@ -105,6 +105,8 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
     def log_request(self, handler: web.RequestHandler) -> None:
         """Writes a completed HTTP request to the logs"""
+        if handler.request.path == '/status':
+            return
         request_time = 1000.0 * handler.request.request_time()
         status_code = handler.get_status()
         if status_code < 400:
