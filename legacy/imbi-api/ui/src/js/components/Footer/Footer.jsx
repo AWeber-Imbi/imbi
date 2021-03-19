@@ -4,17 +4,25 @@ import { useTranslation } from 'react-i18next'
 
 import { Logo } from './AWeber'
 
-function Footer({ service, version }) {
+function Footer({ linkText, linkURL, service, version }) {
   const { t } = useTranslation()
   return (
-    <footer className="flex-shrink flex h-10 bg-white border-t border-gray-400 align-middle text-sm text-gray-500">
-      <div className="flex-auto p-2">
+    <footer className="flex-shrink flex flex-row h-10 bg-white border-t border-gray-400 align-middle text-sm text-gray-500">
+      <div className="ml-2 p-2 w-4/12">
         {service} v{version} &mdash;{' '}
         <a href="/api-docs/">{t('footer.apiDocumentation')}</a>
       </div>
-      <div className="flex-shrink h-8 w-8 p-1 mr-2">
-        <a href="https://aweber.com">
-          <Logo className="text-blue-700 h-8 w-8" />
+      <div className="p-2 text-center  w-4/12">
+        {linkURL !== '' && (
+          <a href={linkURL} rel="noreferrer" target="_blank">
+            {linkText}
+          </a>
+        )}
+        {linkText === '' && linkText !== '' && linkText}
+      </div>
+      <div className="flex mr-2 p-1 justify-end w-4/12">
+        <a href="https://aweber.com" style={{ width: '32px', height: '32px' }}>
+          <Logo className="text-blue-700" />
         </a>
       </div>
     </footer>
@@ -22,6 +30,8 @@ function Footer({ service, version }) {
 }
 
 Footer.propTypes = {
+  linkText: PropTypes.string,
+  linkURL: PropTypes.string,
   service: PropTypes.string,
   version: PropTypes.string
 }
