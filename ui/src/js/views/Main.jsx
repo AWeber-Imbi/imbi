@@ -8,7 +8,7 @@ import { Context } from '../state'
 import { NewEntry, OperationsLog } from './OperationsLog/'
 import { Project } from './Project/'
 import { Projects } from './Projects/'
-import { Reports } from './Reports'
+import { Reports } from './Reports/Reports'
 import { useMetadata } from '../metadata'
 import { User as UserSchema } from '../schema'
 

@@ -29,12 +29,12 @@ function Value({ title, icon, value, url }) {
           <div
             className={
               (hovering
-                ? 'bg-blue-700 text-blue-300'
-                : 'bg-gray-300 text-gray-400') + ' flex-shrink-0 rounded-md p-3'
+                ? 'bg-blue-200 text-blue-600'
+                : 'bg-gray-200 text-blue-400') + ' flex-shrink-0 rounded-md p-3'
             }>
             <Icon icon={icon} />
           </div>
-          <div className="ml-5 mt-1 w-0 flex-1">
+          <div className="ml-3 mt-1 w-0 flex-1">
             <div
               className={
                 (hovering ? 'text-blue-700' : 'text-gray-500') +

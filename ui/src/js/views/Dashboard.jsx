@@ -22,8 +22,7 @@ export function Dashboard() {
 
   useEffect(() => {
     if (data === null) {
-      const url = new URL(state.baseURL)
-      url.pathname = `/dashboard`
+      const url = new URL('/dashboard', state.baseURL)
       httpGet(
         state.fetch,
         url,
@@ -41,23 +40,44 @@ export function Dashboard() {
   if (data === null) return <Loading />
 
   return (
-    <ContentArea
-      className="flex-grow"
-      pageIcon="fas chart-line"
-      pageTitle={t('dashboard.projectTypes')}>
-      <Stats.Container>
-        {data.project_types.map((row) => {
-          return (
-            <Stats.Value
-              key={`stats-${row.name}`}
-              title={row.count === 1 ? row.name : row.plural}
-              icon={row.icon}
-              url={`/ui/projects?project_type=${row.project_type_id}`}
-              value={row.count}
-            />
-          )
-        })}
-      </Stats.Container>
-    </ContentArea>
+    <div className="flex-grow mt-2 space-y-3">
+      <ContentArea
+        className="flex-grow"
+        pageIcon="fas chart-line"
+        pageTitle={t('dashboard.namespaces')}>
+        <Stats.Container>
+          {data.namespaces.map((row) => {
+            if (row.count <= 1) return null
+            return (
+              <Stats.Value
+                key={`stats-${row.name}`}
+                title={row.name}
+                icon={row.icon}
+                url={`/ui/projects?namespace=${row.namespace_id}`}
+                value={row.count}
+              />
+            )
+          })}
+        </Stats.Container>
+      </ContentArea>
+      <ContentArea
+        className="flex-grow"
+        pageIcon="fas chart-line"
+        pageTitle={t('dashboard.projectTypes')}>
+        <Stats.Container>
+          {data.project_types.map((row) => {
+            return (
+              <Stats.Value
+                key={`stats-${row.name}`}
+                title={row.count === 1 ? row.name : row.plural}
+                icon={row.icon}
+                url={`/ui/projects?project_type=${row.project_type_id}`}
+                value={row.count}
+              />
+            )
+          })}
+        </Stats.Container>
+      </ContentArea>
+    </div>
   )
 }
