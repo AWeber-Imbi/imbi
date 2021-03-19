@@ -13,6 +13,9 @@ const SortIcon = {
   desc: 'fas sort-down'
 }
 
+const ColClassName =
+  'align-middle px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap'
+
 function HeadColumn({ column, children, className, sort, srOnly }) {
   const [sortDirection, setSortDirection] = useState(sort)
 
@@ -39,7 +42,8 @@ function HeadColumn({ column, children, className, sort, srOnly }) {
       ? column.tableOptions.headerClassName
       : ''
 
-  if (className !== undefined) clsName += ' ' + className
+  if (className !== undefined) clsName = `${clsName} ${className}`
+
   if (srOnly === true) {
     return (
       <th scope="col" className={'relative px-6 py-2 ' + clsName}>
@@ -53,16 +57,12 @@ function HeadColumn({ column, children, className, sort, srOnly }) {
   return (
     <th
       scope="col"
-      className={
-        'align-middle px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap ' +
-        clsName
-      }>
+      className={`${ColClassName} ${clsName} ${
+        column.sortCallback !== undefined ? 'cursor-pointer' : ''
+      }`}
+      onClick={onSortClick}>
       {column.sortCallback !== undefined && (
-        <button
-          className="border-0 mr-2 focus:outline-none"
-          onClick={onSortClick}>
-          <Icon icon={SortIcon[sortDirection]} />
-        </button>
+        <Icon icon={SortIcon[sortDirection]} className="mr-2" />
       )}
       {children !== undefined && children}
       {column.title !== undefined && column.title}
