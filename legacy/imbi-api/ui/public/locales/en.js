@@ -190,6 +190,7 @@ export default {
       },
       dashboard: {
         title: 'Dashboard',
+        namespaces: 'Projects by Namespace',
         projectTypes: 'Projects by Type'
       },
       operationsLog: {
@@ -250,6 +251,18 @@ export default {
         requestError:
           'Error making API request for Projects, resetting filters and sort ({{error}}).',
         title: 'Projects'
+      },
+      reports: {
+        available: 'Available Reports',
+        lastUpdated: 'Last Updated: {{lastUpdated}}',
+        namespaceKPIs: {
+          title: 'Namespace KPIs',
+          projects: 'Projects',
+          stackHealthScore: 'Stack Health Score',
+          totalProjectScore: 'Total Project Score',
+          totalPossibleProjectScore: 'Total Possible Score',
+          totalProjectScorePercentage: 'TPS %'
+        }
       },
       user: {
         profile: {

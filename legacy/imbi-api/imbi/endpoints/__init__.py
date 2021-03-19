@@ -5,8 +5,8 @@ from . import (authentication_tokens, cookie_cutters, dashboard, environments,
                fact_type_enums, fact_type_ranges, fact_types, groups,
                namespaces, openapi, permissions, project_dependencies,
                project_fact_types, project_facts, project_link_types,
-               project_links, project_types, project_urls, projects, status,
-               ui)
+               project_links, project_types, project_urls, projects, reports,
+               status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -94,4 +94,4 @@ URLS = [
     web.url(r'^/ui/logout$', ui.LogoutRequestHandler),
     web.url(r'^/ui/user$', ui.UserRequestHandler),
     web.url(r'^/ui/.*$', ui.IndexRequestHandler)
-]
+] + reports.URLS
