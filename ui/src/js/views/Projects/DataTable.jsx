@@ -78,10 +78,13 @@ function DataTable({
 
   return (
     <Paginator.Container
-      currentPage={offset + 1}
+      currentPage={offset / pageSize + 1}
       itemCount={rowCount}
       itemsPerPage={pageSize}
-      setCurrentPage={(currentPage) => setOffset(currentPage - 1)}
+      setCurrentPage={(currentPage) => {
+        const value = (currentPage - 1) * pageSize
+        setOffset(value)
+      }}
       setPageSize={setPageSize}>
       <Table columns={columns} data={data} onRowClick={onRowClick} />
       <Paginator.Controls showPageSizeSelector={true} showStateDisplay={true} />
