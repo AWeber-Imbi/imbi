@@ -8,6 +8,20 @@ to existing functionality **include test coverage**.
 *Pull requests that add or change code without coverage have a much lower chance
 of being accepted.*
 
+## Prerequisites
+
+Imbi requires the following in the development environment:
+
+- Docker (local)
+- Make
+- Node
+  - yarn
+- Python 3.9
+    - pip
+    - setuptools
+
+It expects to be run in a Unix like environment (Primary development is in MacOS).
+
 ## Running in Development
 
 Perform the following steps to run Imbi in the foreground in your development
