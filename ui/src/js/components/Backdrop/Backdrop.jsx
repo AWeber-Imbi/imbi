@@ -3,7 +3,7 @@ import React from 'react'
 
 function Backdrop({ children, wait }) {
   return (
-    <div className="fixed z-10 inset-0 overflow-y-auto">
+    <div className="fixed inset-0 overflow-y-auto z-50 cursor-not-allowed">
       <div
         className={
           (wait ? 'cursor-wait ' : '') +
@@ -23,7 +23,11 @@ Backdrop.defaultProps = {
 }
 
 Backdrop.propTypes = {
-  children: PropTypes.oneOfType([PropTypes.string, PropTypes.element]),
+  children: PropTypes.oneOfType([
+    PropTypes.arrayOf(PropTypes.element),
+    PropTypes.string,
+    PropTypes.element
+  ]),
   wait: PropTypes.bool
 }
 

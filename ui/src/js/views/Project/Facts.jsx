@@ -82,12 +82,14 @@ function Display({ project, onEditClick, shouldGrow }) {
               })}
             </div>
           )}
-          <div className="flex-1 text-xs text-right">
-            <Button onClick={onEditClick}>
-              <Icon icon="fas edit" className="mr-2" />
-              {t('project.updateFacts')}
-            </Button>
-          </div>
+          {project.archived === false && (
+            <div className="flex-1 text-xs text-right">
+              <Button onClick={onEditClick}>
+                <Icon icon="fas edit" className="mr-2" />
+                {t('project.updateFacts')}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </Card>

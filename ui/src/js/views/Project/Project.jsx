@@ -1,7 +1,6 @@
 import PropTypes from 'prop-types'
 import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { Route, useParams } from 'react-router-dom'
-import { onlyUpdateForKeys } from 'recompose'
 import { useTranslation } from 'react-i18next'
 import {
   buildStyles,
@@ -12,6 +11,8 @@ import 'react-circular-progressbar/dist/styles.css'
 import { Context } from '../../state'
 import { httpRequest, requestOptions, setDocumentTitle } from '../../utils'
 import {
+  Alert,
+  Error,
   Icon,
   IconBar,
   Loading,
@@ -27,6 +28,7 @@ import { Logs } from './Logs'
 import { Notes } from './Notes'
 import { OpsLog } from './OpsLog'
 import { Overview } from './Overview'
+import { Settings } from './Settings'
 
 function ProjectPage({ project, factTypes, refresh }) {
   const [state, dispatch] = useContext(Context)
@@ -49,8 +51,8 @@ function ProjectPage({ project, factTypes, refresh }) {
 
   return (
     <div className="flex-auto px-6 py-4 space-y-3">
-      <div className="flex justify-between">
-        <div className="flex-shrink flex flex-col space-y-2 ml-2">
+      <div className="flex items-center">
+        <div className="flex-1 flex flex-col space-y-2 ml-2">
           <h1 className="text-gray-600 text-xl">
             <Icon icon={project.project_icon} className="mr-2" />
             {project.name}
@@ -66,26 +68,35 @@ function ProjectPage({ project, factTypes, refresh }) {
             )}
           </div>
         </div>
-        <div
-          className="flex-shrink mr-2"
-          style={{ height: '60px', width: '60px' }}>
-          <Tooltip
-            value={t('project.projectHealthScore')}
-            arrowPosition="right">
-            <CircularProgressbarWithChildren
-              value={project.project_score}
-              styles={buildStyles({
-                pathColor: color,
-                trailColor: '#ccc'
-              })}>
-              <div className="absolute text-gray-600 font-semibold text-lg">
-                {parseInt(project.project_score)}
-              </div>
-            </CircularProgressbarWithChildren>
-          </Tooltip>
+        {project.archived === true && (
+          <div className="flex-1 flex justify-center">
+            <Alert level="warning" className="flex-shrink">
+              {t('project.archived')}
+            </Alert>
+          </div>
+        )}
+        <div className="flex-1 flex justify-end">
+          <div
+            className="flex-shrink mr-2"
+            style={{ height: '60px', width: '60px' }}>
+            <Tooltip
+              value={t('project.projectHealthScore')}
+              arrowPosition="right">
+              <CircularProgressbarWithChildren
+                value={project.project_score}
+                styles={buildStyles({
+                  pathColor: color,
+                  trailColor: '#ccc'
+                })}>
+                <div className="absolute text-gray-600 font-semibold text-lg">
+                  {parseInt(project.project_score)}
+                </div>
+              </CircularProgressbarWithChildren>
+            </Tooltip>
+          </div>
         </div>
       </div>
-      <Markdown className="text-sm ml-2 text-gray-500">
+      <Markdown className="mx-2 text-sm text-gray-500">
         {project.description}
       </Markdown>
       <nav
@@ -99,9 +110,14 @@ function ProjectPage({ project, factTypes, refresh }) {
         <Tab to={`${baseURL}/fact-history`}>{t('project.factHistory')}</Tab>
         <Tab to={`${baseURL}/logs`}>{t('common.logs')}</Tab>
         <Tab to={`${baseURL}/notes`}>{t('common.notes')}</Tab>
-        <Tab to={`${baseURL}/operations-log`} isLast={true}>
+        <Tab to={`${baseURL}/operations-log`} isLast={project.archived}>
           {t('operationsLog.title')}
         </Tab>
+        {project.archived !== true && (
+          <Tab to={`${baseURL}/settings`} isLast={true} shrink={true}>
+            <Icon icon="fas cog" />
+          </Tab>
+        )}
       </nav>
       <Fragment>
         <Route path={`/ui/projects/${project.id}`} exact>
@@ -130,6 +146,9 @@ function ProjectPage({ project, factTypes, refresh }) {
         <Route path={`/ui/projects/${project.id}/operations-log`}>
           <OpsLog urlPath={baseURL} />
         </Route>
+        <Route path={`/ui/projects/${project.id}/settings`}>
+          <Settings project={project} refresh={refresh} urlPath={baseURL} />
+        </Route>
       </Fragment>
     </div>
   )
@@ -139,21 +158,21 @@ ProjectPage.propTypes = {
   project: PropTypes.object.isRequired,
   refresh: PropTypes.func
 }
-const PureProjectPage = onlyUpdateForKeys(['errorMessage', 'project'])(
-  ProjectPage
-)
 
 function Project() {
   const [globalState] = useContext(Context)
   const { projectId } = useParams()
   const [state, setState] = useState({
     errorMessage: null,
+    loading: false,
+    notFound: false,
     project: null,
     factTypes: null
   })
   const { t } = useTranslation()
 
   function loadProject() {
+    setState({ ...state, loading: true })
     const factTypeURL = new URL(
       `/projects/${projectId}/fact-types`,
       globalState.baseURL
@@ -168,22 +187,28 @@ function Project() {
       if (factTypes.success) newState.factTypes = factTypes.data
       else newState.errorMessage = factTypes.data
       if (project.success) newState.project = project.data
-      else newState.errorMessage = project.data
-      setState(newState)
+      else {
+        if (project.status === 404) newState.notFound = true
+        newState.errorMessage = project.data
+      }
+      setState({ ...newState, loading: false })
       window.scrollTo(0, 0)
     })
   }
 
   useEffect(() => {
     if (state.project === null) loadProject()
-  }, [projectId, state])
+  }, [projectId, state.project])
 
-  if (state.project === null) {
+  if (state.notFound) {
+    setDocumentTitle(t('common.notFound'))
+    return <Error>{t('error.notFound')}</Error>
+  } else if (state.project === null || state.loading) {
     setDocumentTitle(t('common.loading'))
     return <Loading />
   } else
     return (
-      <PureProjectPage
+      <ProjectPage
         errorMessage={state.errorMessage}
         factTypes={state.factTypes}
         project={state.project}
