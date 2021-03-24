@@ -154,8 +154,8 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         try:
             pool = aioredis.Redis(
                 await aioredis.create_pool(
-                    self.settings['session_redis_url'],
-                    maxsize=self.settings['session_pool_size']))
+                    self.settings['stats_redis_url'],
+                    maxsize=self.settings['stats_pool_size']))
         except (OSError, ConnectionRefusedError) as error:
             LOGGER.info('Error connecting to Stats redis: %r', error)
             self.stop(self.loop)
