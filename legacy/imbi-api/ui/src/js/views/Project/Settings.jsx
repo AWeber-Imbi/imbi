@@ -103,7 +103,7 @@ function Settings({ project, refresh, urlPath }) {
               This action will immediately and permanently delete the project,
               all associated data, including facts, operation logs, and notes.
             </p>
-            <p className="font-medium">
+            <p className="font-semibold">
               Are you ABSOLUTELY SURE you wish to delete this project?
             </p>
           </div>
@@ -137,7 +137,7 @@ function Settings({ project, refresh, urlPath }) {
           <div className="ml-2 space-y-3">
             <p>
               This action will{' '}
-              <span className="font-medium">
+              <span className="font-semibold">
                 permanently delete{' '}
                 <span className="border border-gray-400 font-normal font-mono mx-1 px-1.5 py-1">
                   {project.name}
@@ -147,7 +147,7 @@ function Settings({ project, refresh, urlPath }) {
               , removing the project and all associated data, including facts,
               operation logs, and notes.
             </p>
-            <p className="font-medium">
+            <p className="font-semibold">
               Are you ABSOLUTELY SURE you wish to delete this project?
             </p>
           </div>
