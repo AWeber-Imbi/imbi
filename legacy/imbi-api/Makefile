@@ -105,7 +105,7 @@ eslint: ui/node_modules
 .PHONY: flake8
 flake8: env
 	@ printf "\nRunning Flake8 Tests\n\n"
-	@ flake8 --tee --output-file=build/flake8.txt
+	@ env/bin/flake8 --tee --output-file=build/flake8.txt
 
 .PHONY: jest
 jest: ui/node_modules
