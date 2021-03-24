@@ -61,7 +61,11 @@ export async function httpRequest(fetchMethod, path, options = requestOptions) {
   const data = text && JSON.parse(text)
   if (response.status >= 200 && response.status < 300)
     return { success: true, data: data }
-  return { success: false, data: getErrorMessage(response, data) }
+  return {
+    success: false,
+    data: getErrorMessage(response, data),
+    status: response.status
+  }
 }
 
 export function isFunction(func) {

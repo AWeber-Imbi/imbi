@@ -35,7 +35,7 @@ function UserMenu({ user }) {
   const [state] = useContext(Context)
   const { t } = useTranslation()
   return (
-    <Menu as="div" className="flex-shrink mr-3 z-50">
+    <Menu as="div" className="flex-shrink mr-3 z-49">
       <Menu.Button as={React.Fragment}>
         <button
           className="bg-gray-800 flex my-1 text-sm rounded-full focus:outline-none"

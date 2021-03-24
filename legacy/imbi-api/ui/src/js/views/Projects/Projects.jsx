@@ -48,6 +48,7 @@ function Projects() {
     rowCount: 0,
     sort: buildSortDefault(query.get('sort') || '')
   })
+  const [successMessage, setSuccessMessage] = useState(query.get('message'))
   const { t } = useTranslation()
 
   useEffect(() => {
@@ -118,6 +119,18 @@ function Projects() {
     }
   }, [errorMessage])
 
+  // Remove the message after 30 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timerHandle = setTimeout(() => {
+        setSuccessMessage(null)
+      }, 30000)
+      return () => {
+        clearTimeout(timerHandle)
+      }
+    }
+  }, [successMessage])
+
   function buildURL(path = '/projects') {
     const url = new URL(path, globalState.baseURL)
     Object.entries(state.filter).forEach(([key, value]) => {
@@ -150,6 +163,11 @@ function Projects() {
   if (state.lastRequest === null) return <Loading />
   return (
     <div className="m-0 px-4 py-3 space-y-3">
+      {successMessage !== null && (
+        <Alert className="mt-3" level="success">
+          {successMessage}
+        </Alert>
+      )}
       {errorMessage !== null && (
         <Alert className="mt-3" level="error">
           {errorMessage}

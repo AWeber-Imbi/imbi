@@ -29,6 +29,7 @@ export default {
         required: 'Required Field',
         save: 'Save',
         saving: 'Saving ...',
+        settings: 'Settings',
         slug: 'Slug',
         slugDescription:
           'A slug is the part of a URL which identifies a particular page on a website in an easy to read form.',
@@ -201,6 +202,7 @@ export default {
         title: 'Add Operations Log Entry'
       },
       project: {
+        archived: 'This project is archived and is read-only.',
         attributes: 'Attributes',
         automations: 'Automations',
         createGitLabRepository: 'Create GitLab Repository',

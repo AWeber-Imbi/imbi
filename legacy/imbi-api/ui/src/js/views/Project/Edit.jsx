@@ -82,7 +82,8 @@ async function saveProjectChanges(globalState, project, values) {
     project_type_id: project.project_type_id,
     slug: project.slug,
     description: project.description,
-    environments: project.environments
+    environments: project.environments,
+    archived: project.archived
   }
   const patchValue = compare(originalValues, values)
   if (patchValue.length > 0) {
