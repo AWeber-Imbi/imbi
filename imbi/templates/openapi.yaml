@@ -3197,7 +3197,7 @@ paths:
           description: |-
             A comma delimited filter of column and sort direction.
 
-            **Valid Sort Columns:**
+            **Valid Sort Columns**
 
               - `namespace`
               - `project_type`
@@ -3209,7 +3209,7 @@ paths:
               - `asc`
               - `desc`
 
-            **Example Value:**
+            **Example Value**
 
               `namespace asc, name desc`
         - name: limit
@@ -3261,7 +3261,6 @@ paths:
                     name:
                       description: The project name
                       type: string
-                      pattern: '^[\w ]+$'
                     slug:
                       description: The project URL slug (In GitLab and other projects)
                       type: string
@@ -3298,6 +3297,7 @@ paths:
                         - Testing
                         - Staging
                         - Production
+                      archived: false
             application/msgpack:
               schema:
                 type: array
@@ -3330,7 +3330,6 @@ paths:
                     name:
                       description: The project name
                       type: string
-                      pattern: '^[\w ]+$'
                     slug:
                       description: The project URL slug (In GitLab and other projects)
                       type: string
@@ -3367,6 +3366,7 @@ paths:
                         - Testing
                         - Staging
                         - Production
+                      archived: false
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
     post:
@@ -3392,7 +3392,6 @@ paths:
                 name:
                   description: The project name
                   type: string
-                  pattern: '^[\w ]+$'
                 slug:
                   description: The project URL slug (In GitLab and other projects)
                   type: string

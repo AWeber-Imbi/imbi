@@ -27,7 +27,6 @@ read:
     name:
       description: The project name
       type: string
-      pattern: ^[\w ]+$
     slug:
       description: The project URL slug (In GitLab and other projects)
       type: string
@@ -61,7 +60,6 @@ write:
     name:
       description: The project name
       type: string
-      pattern: ^[\w ]+$
     slug:
       description: The project URL slug (In GitLab and other projects)
       type: string
