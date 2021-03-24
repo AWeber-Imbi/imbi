@@ -37,7 +37,7 @@ wait_for_healthy_containers() {
     if [ "$( docker-compose ps | grep -c healthy | grep -v unhealthy)" -eq "${1}" ]; then
       break
     fi
-    counter=$((++counter))
+    counter=$((counter+1))
     if [ "${counter}" -eq 60 ]; then
       echo " ERROR: containers failed to start"
       exit 1
