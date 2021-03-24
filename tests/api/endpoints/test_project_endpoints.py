@@ -90,7 +90,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'namespace': self.namespace_name,
             'project_type': self.project_type_name,
             'created_by': self.USERNAME[self.ADMIN_ACCESS],
-            'last_modified_by': None
+            'last_modified_by': None,
+            'archived': False
         })
         self.assertDictEqual(record, response)
 
@@ -166,7 +167,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type': self.project_type_name,
             'created_by': self.USERNAME[self.ADMIN_ACCESS],
             'description': None,
-            'last_modified_by': None
+            'last_modified_by': None,
+            'archived': False
         })
         self.assertDictEqual(record, response)
 

@@ -157,6 +157,7 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                a.slug,
                a.description,
                a.environments,
+               a.archived,
                v1.project_score(a.id)
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
@@ -229,7 +230,8 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                "name"=%(name)s,
                slug=%(slug)s,
                description=%(description)s,
-               environments=%(environments)s
+               environments=%(environments)s,
+               archived=%(archived)s
          WHERE id=%(id)s""")
 
     async def get(self, *args, **kwargs):
