@@ -17,7 +17,8 @@ class RequestHandler(base.RequestHandler):
                    v1.project_score(a.id)
               FROM v1.projects AS a
               JOIN v1.namespaces AS b
-                ON b.id = a.namespace_id)
+                ON b.id = a.namespace_id
+             WHERE a.archived IS FALSE)
         SELECT namespace_id,
                namespace,
                count(*) AS projects,

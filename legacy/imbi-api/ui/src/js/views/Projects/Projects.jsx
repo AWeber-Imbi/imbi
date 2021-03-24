@@ -10,23 +10,43 @@ import { DataTable } from './DataTable'
 import { Filter } from './Filter'
 import { asOptions } from '../../metadata'
 
+function buildSortDefault(sort) {
+  const value = {}
+  const sortMatches = sort.match(
+    /(?:(name|namespace|project_score|project_type) (asc|desc))/g
+  )
+  if (sortMatches !== null) {
+    sortMatches.map((match) => {
+      const [column, direction] = match.split(' ')
+      value[column] = direction
+    })
+  }
+  if (Object.keys(value).length === 0) {
+    value.namespace = 'asc'
+    value.name = 'asc'
+  }
+  return value
+}
+
 function Projects() {
   const [errorMessage, setErrorMessage] = useState(null)
   const [globalState, dispatch] = useContext(Context)
   const history = useHistory()
   const query = new URLSearchParams(useLocation().search)
+  const sortOrder = ['namespace', 'project_type', 'name', 'project_score']
   const [state, setState] = useState({
     data: [],
     fetching: false,
     filter: {
+      archived: query.get('archived'),
       namespace: query.get('namespace'),
       project_type: query.get('project_type')
     },
     lastRequest: null,
-    offset: 0,
-    pageSize: 25,
+    offset: parseInt(query.get('offset') || '0'),
+    pageSize: parseInt(query.get('limit') || '25'),
     rowCount: 0,
-    sort: { name: 'asc' }
+    sort: buildSortDefault(query.get('sort') || '')
   })
   const { t } = useTranslation()
 
@@ -34,7 +54,7 @@ function Projects() {
     dispatch({
       type: 'SET_CURRENT_PAGE',
       payload: {
-        url: buildStateURL(),
+        url: buildURL('/ui/projects'),
         title: 'projects.title'
       }
     })
@@ -51,7 +71,7 @@ function Projects() {
         globalState.fetch,
         url,
         (result) => {
-          const stateURL = buildStateURL()
+          const stateURL = buildURL('/ui/projects')
           history.push(
             stateURL.pathname + '?' + stateURL.searchParams.toString()
           )
@@ -75,7 +95,9 @@ function Projects() {
           setState({
             ...state,
             fetching: false,
-            filter: {},
+            filter: {
+              archived: false
+            },
             lastRequest: url,
             sort: { name: 'asc' }
           })
@@ -96,29 +118,20 @@ function Projects() {
     }
   }, [errorMessage])
 
-  function buildURL() {
-    const url = new URL('/projects', globalState.baseURL)
-    Object.entries(state.sort).forEach(([key, value]) => {
-      url.searchParams.append(`sort_${key}`, value)
-    })
-    url.searchParams.append('limit', state.pageSize.toString())
-    url.searchParams.append('offset', state.offset.toString())
-    Object.entries(state.filter).forEach(([key, value]) => {
-      if (value !== null) url.searchParams.append(`where_${key}`, value)
-    })
-    return url
-  }
-
-  function buildStateURL() {
-    const url = new URL('/ui/projects', globalState.baseURL)
-    Object.entries(state.sort).forEach(([key, value]) => {
-      url.searchParams.append(`sort_${key}`, value)
-    })
-    url.searchParams.append('limit', state.pageSize.toString())
-    url.searchParams.append('offset', state.offset.toString())
+  function buildURL(path = '/projects') {
+    const url = new URL(path, globalState.baseURL)
     Object.entries(state.filter).forEach(([key, value]) => {
       if (value !== null) url.searchParams.append(key, value)
     })
+    const sortValues = []
+    sortOrder.map((key) => {
+      if (['asc', 'desc'].includes(state.sort[key]))
+        sortValues.push(`${key} ${state.sort[key]}`)
+    })
+    if (sortValues.length > 0)
+      url.searchParams.append('sort', sortValues.join(','))
+    url.searchParams.append('limit', state.pageSize.toString())
+    url.searchParams.append('offset', state.offset.toString())
     return url
   }
 

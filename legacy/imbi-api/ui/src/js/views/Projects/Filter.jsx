@@ -35,7 +35,7 @@ function Filter({ namespaces, projectTypes, setFilterValues, values }) {
       <label className="flex-shrink">{t('common.filter')}</label>
       <SlimSelect
         className="flex-shrink formInput text-xs"
-        onChange={(value) => onChange('namespace', value)}
+        onChange={(value) => onChange('namespace_id', value)}
         placeholder={t('terms.namespace')}
         style={{ width: `${maxLength.namespaces}rem` }}
         value={values.namespace === null ? undefined : values.namespace}>
@@ -51,7 +51,7 @@ function Filter({ namespaces, projectTypes, setFilterValues, values }) {
       </SlimSelect>
       <SlimSelect
         className="flex-shrink formInput text-xs"
-        onChange={(value) => onChange('project_type', value)}
+        onChange={(value) => onChange('project_type_id', value)}
         style={{ width: `${maxLength.projectTypes}rem` }}
         placeholder={t('terms.projectType')}
         value={values.project_type === null ? undefined : values.project_type}>
