@@ -11,7 +11,7 @@ class _RequestHandlerMixin:
     ITEM_NAME = 'project'
     ID_KEY = ['id']
     FIELDS = ['id', 'namespace_id', 'project_type_id', 'name', 'slug',
-              'description', 'environments']
+              'description', 'environments', 'archived']
     TTL = 300
 
     GET_SQL = re.sub(r'\s+', ' ', """\
@@ -27,7 +27,8 @@ class _RequestHandlerMixin:
                a.name,
                a.slug,
                a.description,
-               a.environments
+               a.environments,
+               a.archived
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
@@ -55,6 +56,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                a.slug,
                a.description,
                a.environments,
+               a.archived,
                v1.project_score(a.id) AS project_score
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
@@ -69,9 +71,21 @@ class CollectionRequestHandler(_RequestHandlerMixin,
           {{WHERE}}""")
 
     FILTER_CHUNKS = {
-        'namespace': 'b.id = %(namespace)s',
-        'project_type': 'c.id = %(project_type)s'
+        'name': 'to_tsvector(lower(a.name)) @@ %(name)s::tsquery',
+        'namespace_id': 'b.id = %(namespace_id)s',
+        'project_type_id': 'c.id = %(project_type_id)s'
     }
+
+    SORT_MAP = {
+        'project_score': 'project_score',
+        'namespace': 'b.name',
+        'project_type': 'c.name',
+        'name': 'a.name'
+    }
+
+    SORT_PATTERN = re.compile(
+        r'(?:(?P<column>name|namespace|project_score|project_type) '
+        r'(?P<direction>asc|desc))')
 
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.projects
@@ -84,31 +98,32 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     async def get(self, *args, **kwargs):
         kwargs['limit'] = int(self.get_query_argument('limit', '10'))
         kwargs['offset'] = int(self.get_query_argument('offset', '20'))
-        where_chunks = []
-        for kwarg in ['namespace', 'project_type', 'name']:
-            value = self.get_query_argument(f'where_{kwarg}', None)
+        kwargs['archived'] = self.get_query_argument(
+            'archived', 'false') == 'true'
+        where_chunks = ['a.archived = %(archived)s']
+        for kwarg in ['namespace_id', 'project_type_id', 'name']:
+            value = self.get_query_argument(kwarg, None)
             if value is not None:
                 kwargs[kwarg] = value
                 where_chunks.append(self.FILTER_CHUNKS[kwarg])
+        if 'name' in kwargs:
+            kwargs['name'] = f'{kwargs["name"]}%'
         where_sql = ''
         if where_chunks:
             where_sql = ' WHERE {}'.format(' AND '.join(where_chunks))
         sql = self.COLLECTION_SQL.replace('{{WHERE}}', where_sql)
         count_sql = self.COUNT_SQL.replace('{{WHERE}}', where_sql)
-        order_by_chunks = []
-        for (kwarg, column) in [('project_score', 'project_score'),
-                                ('namespace', 'b.name'),
-                                ('project_type', 'c.name'),
-                                ('name', 'a.name')]:
-            direction = self.get_query_argument(f'sort_{kwarg}', None)
-            if direction in ['asc', 'desc']:
-                order_by_chunks.append(
-                    '{} {}'.format(column, direction.upper()))
+
         order_sql = 'ORDER BY a.name ASC'
+        order_by_chunks = []
+        for match in self.SORT_PATTERN.finditer(
+                self.get_query_argument('sort', '')):
+            order_by_chunks.append(
+                f'{match.group("column")} {match.group("direction").upper()}')
         if order_by_chunks:
             order_sql = ' ORDER BY {}'.format(', '.join(order_by_chunks))
         sql = sql.replace('{{ORDER_BY}}', order_sql)
-        count_sql = count_sql.replace('{{ORDER_BY}}', order_sql)
+
         count = await self.postgres_execute(
             count_sql, kwargs, metric_name='count-{}'.format(self.NAME))
         result = await self.postgres_execute(

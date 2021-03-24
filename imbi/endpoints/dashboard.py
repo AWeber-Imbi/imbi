@@ -15,6 +15,7 @@ class RequestHandler(base.AuthenticatedRequestHandler):
           FROM v1.projects AS a
           JOIN v1.namespaces AS b
             ON b.id = a.namespace_id
+         WHERE archived IS FALSE
          GROUP BY a.namespace_id, b.name, b.icon_class
          ORDER BY b.name ASC""")
 
@@ -28,6 +29,7 @@ class RequestHandler(base.AuthenticatedRequestHandler):
           FROM v1.projects AS a
           JOIN v1.project_types AS b
             ON b.id = a.project_type_id
+         WHERE archived IS FALSE
          GROUP BY a.project_type_id, b.name, b.plural_name, b.icon_class,
                   b.slug
          ORDER BY count(a.*) DESC""")

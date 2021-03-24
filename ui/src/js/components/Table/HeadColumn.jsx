@@ -16,11 +16,13 @@ const SortIcon = {
 const ColClassName =
   'align-middle px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap'
 
-function HeadColumn({ column, children, className, sort, srOnly }) {
-  const [sortDirection, setSortDirection] = useState(sort)
-
+function HeadColumn({ column, children, className, srOnly }) {
+  const [sortDirection, setSortDirection] = useState(column.sortDirection)
   useEffect(() => {
-    if (column.sortCallback !== undefined && sortDirection !== sort) {
+    if (
+      column.sortCallback !== undefined &&
+      sortDirection !== column.sortDirection
+    ) {
       column.sortCallback(column.name, sortDirection)
     }
   }, [sortDirection])
@@ -78,7 +80,6 @@ HeadColumn.propTypes = {
   column: PropTypes.exact(Column),
   children: PropTypes.string,
   className: PropTypes.string,
-  sort: PropTypes.oneOf([null, Asc, Desc]),
   srOnly: PropTypes.bool
 }
 export { HeadColumn }

@@ -27,9 +27,11 @@ read:
     name:
       description: The project name
       type: string
+      pattern: ^[\w ]+$
     slug:
       description: The project URL slug (In GitLab and other projects)
       type: string
+      pattern: ^[\w-]+$
     description:
       description: Long for description of the project
       type: string
@@ -40,6 +42,9 @@ read:
       items:
         type: string
       nullable: true
+    archived:
+      description: Indicates that the project is archived
+      type: boolean
   additionalProperties: false
 
 write:
@@ -56,9 +61,11 @@ write:
     name:
       description: The project name
       type: string
+      pattern: ^[\w ]+$
     slug:
       description: The project URL slug (In GitLab and other projects)
       type: string
+      pattern: ^[\w-]+$
     description:
       description: Long for description of the project
       type: string

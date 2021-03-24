@@ -3168,6 +3168,60 @@ paths:
       summary: Get Collection
       tags:
         - Projects
+      parameters:
+        - name: namespace_id
+          in: query
+          description: Filter by Namespace ID
+          schema:
+            type: integer
+        - name: project_type_id
+          in: query
+          description: Filter by Namespace ID
+          schema:
+            type: integer
+        - name: name
+          in: query
+          description: Filter by Name
+          schema:
+            type: string
+        - name: archived
+          in: query
+          description: Set to `true` to include archived values
+          schema:
+            type: string
+            enum:
+              - true
+              - false
+        - name: sort
+          in: query
+          description: |-
+            A comma delimited filter of column and sort direction.
+
+            **Valid Sort Columns:**
+
+              - `namespace`
+              - `project_type`
+              - `name`
+              - `project_score`
+
+            **Valid Directions**
+
+              - `asc`
+              - `desc`
+
+            **Example Value:**
+
+              `namespace asc, name desc`
+        - name: limit
+          in: query
+          description: Limit the number of records returned
+          schema:
+            type: number
+        - name: offset
+          in: query
+          description: The starting offset for the records returned
+          schema:
+            type: number
       responses:
         '200':
           description: Success
@@ -3207,9 +3261,11 @@ paths:
                     name:
                       description: The project name
                       type: string
+                      pattern: '^[\w ]+$'
                     slug:
                       description: The project URL slug (In GitLab and other projects)
                       type: string
+                      pattern: '^[\w-]+$'
                     description:
                       description: Long for description of the project
                       type: string
@@ -3220,6 +3276,9 @@ paths:
                       items:
                         type: string
                       nullable: true
+                    archived:
+                      description: Indicates that the project is archived
+                      type: boolean
                   additionalProperties: false
               examples:
                 records:
@@ -3271,9 +3330,11 @@ paths:
                     name:
                       description: The project name
                       type: string
+                      pattern: '^[\w ]+$'
                     slug:
                       description: The project URL slug (In GitLab and other projects)
                       type: string
+                      pattern: '^[\w-]+$'
                     description:
                       description: Long for description of the project
                       type: string
@@ -3284,6 +3345,9 @@ paths:
                       items:
                         type: string
                       nullable: true
+                    archived:
+                      description: Indicates that the project is archived
+                      type: boolean
                   additionalProperties: false
               examples:
                 records:
@@ -3328,9 +3392,11 @@ paths:
                 name:
                   description: The project name
                   type: string
+                  pattern: '^[\w ]+$'
                 slug:
                   description: The project URL slug (In GitLab and other projects)
                   type: string
+                  pattern: '^[\w-]+$'
                 description:
                   description: Long for description of the project
                   type: string
@@ -3409,6 +3475,7 @@ paths:
                       - Testing
                       - Staging
                       - Production
+                    archived: false
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/items'
@@ -3430,6 +3497,7 @@ paths:
                       - Testing
                       - Staging
                       - Production
+                    archived: false
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
