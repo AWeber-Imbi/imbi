@@ -30,7 +30,10 @@ CREATE OR REPLACE FUNCTION project_score(IN in_project_id INTEGER) RETURNS NUMER
                                                      FROM v1.project_fact_type_ranges
                                                     WHERE fact_type_id = b.fact_type_id
                                                       AND b.value::NUMERIC(9,2) BETWEEN min_value AND max_value)
-                                      ELSE 0 END END AS score,
+                                             WHEN a.data_type = 'boolean' AND b.value = 'true' THEN 100
+                                             ELSE 0
+                                         END
+                               END AS score,
                               a.name,
                               b.value,
                               a.weight
