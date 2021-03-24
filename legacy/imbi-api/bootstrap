@@ -9,7 +9,7 @@ set -e
 # Common constants
 COLOR_RESET='\033[0m'
 COLOR_GREEN='\033[0;32m'
-TEST_HOST="${TEST_HOST:-localhost}"
+TEST_HOST="${TEST_HOST:-127.0.0.1}"
 
 echo "Integration test host: ${TEST_HOST}"
 
