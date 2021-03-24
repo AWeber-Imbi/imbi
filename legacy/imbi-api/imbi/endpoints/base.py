@@ -67,6 +67,7 @@ class RequestHandler(postgres.RequestHandlerMixin,
                  request: httputil.HTTPServerRequest,
                  **kwargs):
         super().__init__(application, request, **kwargs)
+        self.logger = logging.getLogger(f'imbi.endpoints.{self.NAME}')
         self.session: typing.Optional[session.Session] = None
         self._current_user: typing.Optional[user.User] = None
         self._links = {}
