@@ -193,6 +193,7 @@ function Projects() {
       </div>
       <DataTable
         data={state.data}
+        disabled={state.fetching}
         errorMessage={errorMessage}
         filter={state.filter}
         offset={state.offset}
