@@ -84,6 +84,9 @@ class RequestHandler(postgres.RequestHandlerMixin,
         the current user and cookie is cleared.
 
         """
+        if self.application.settings.get('javascript_url'):
+            self.set_header('Access-Control-Allow-Origin', '*')
+
         if not self.application.ready_to_serve:
             return self.send_error(503, reason='Application not ready')
         self.session = session.Session(self)

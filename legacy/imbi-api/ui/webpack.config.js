@@ -3,12 +3,21 @@ const process = require('process')
 
 const dev = process.env.NODE_ENV !== 'production'
 
+let publicPath = '/static/'
+if (dev) publicPath = 'http://0.0.0.0:8080/static/'
+
 module.exports = {
   entry: ['babel-polyfill', __dirname + '/src/js/index.jsx'],
   output: {
     path: path.resolve(__dirname, '../imbi/static/'),
-    publicPath: '/static/',
+    publicPath: publicPath,
     filename: 'imbi.js'
+  },
+  devServer: {
+    hot: true,
+    inline: true,
+    lazy: false,
+    headers: {"Access-Control-Allow-Origin": "*"},
   },
   devtool: dev ? 'eval-cheap-module-source-map' : 'source-map',
   performance: { hints: false },
