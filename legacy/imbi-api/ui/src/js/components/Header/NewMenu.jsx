@@ -27,7 +27,7 @@ NewMenuItem.propTypes = {
 function NewMenu() {
   const { t } = useTranslation()
   return (
-    <Menu as="div" className="flex-shrink mr-3 z-49">
+    <Menu as="div" className="flex-shrink mr-3">
       <Menu.Button
         as="button"
         className="bg-blue-700 hover:bg-blue-600 border border-blue-200 text-white hover:text-white px-3 py-1.5 rounded-md mr-5">
@@ -37,7 +37,7 @@ function NewMenu() {
       <Menu.Items
         aria-labelledby="user-menu"
         aria-orientation="vertical"
-        className="origin-top-right absolute right-20 mt-1 w-48 rounded-md shadow-lg py-1 focus:outline-none bg-white ring-1 ring-gray-300 ring-opacity-5">
+        className="origin-top-right absolute right-20 mt-1 w-48 rounded-md shadow-lg py-1 focus:outline-none bg-white ring-1 ring-gray-300 ring-opacity-5 z-40">
         <NewMenuItem
           to="/ui/operations-log/create"
           value={t('headerNavItems.newOperationsLogEntry')}
