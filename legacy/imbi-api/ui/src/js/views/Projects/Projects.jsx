@@ -73,9 +73,6 @@ function Projects() {
         url,
         (result) => {
           const stateURL = buildURL('/ui/projects')
-          history.push(
-            stateURL.pathname + '?' + stateURL.searchParams.toString()
-          )
           dispatch({
             type: 'SET_CURRENT_PAGE',
             payload: {
@@ -83,6 +80,9 @@ function Projects() {
               title: 'projects.title'
             }
           })
+          history.push(
+            `${stateURL.pathname}?${stateURL.searchParams.toString()}`
+          )
           setState({
             ...state,
             data: result.data,
