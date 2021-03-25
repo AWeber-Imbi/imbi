@@ -22,24 +22,25 @@ function Fact({ fact, offset }) {
       <dd className="w-7/12 mt-1 items-start sm:mt-0 truncate">
         <Tooltip value={`${t('terms.score')}: ${fact.score}`}>
           <span className="w-6 inline-block text-center">
-            {fact.data_type === 'boolean' && (
+            {fact.value !== null && fact.data_type === 'boolean' && (
               <Icon
-                className={
+                className={`${
                   fact.value === 'true' ? 'text-green-600' : 'text-red-600'
-                }
-                icon={`fas ${fact.value === 'true' ? 'check' : 'exclamation'}`}
+                } ml-6`}
+                icon={`fas ${fact.value === 'true' ? 'check' : 'times-circle'}`}
               />
             )}
-            {fact.data_type === 'string' &&
+            {fact.value !== null &&
+              fact.data_type === 'string' &&
               fact.fact_type === 'enum' &&
               fact.icon_class !== null && <Icon icon={fact.icon_class} />}
           </span>
-          {fact.data_type !== 'boolean' && fact.value !== null && fact.value}
+          {fact.value !== null && fact.data_type !== 'boolean' && fact.value}
           {fact.value !== null &&
           fact.ui_options.includes('display-as-percentage')
             ? '%'
             : ''}
-          {fact.value === null && fact.data_type !== 'boolean' && (
+          {fact.value === null && (
             <span className="italic text-red-800 text-xs font-light">
               {t('common.notSet')}
             </span>
