@@ -5,7 +5,7 @@ import { default as slugify } from 'slugify'
 import { useTranslation } from 'react-i18next'
 
 import { asOptions } from '../../metadata'
-import { Card, Form, Icon } from '../../components'
+import { Card, ErrorBoundary, Form, Icon } from '../../components'
 import { Context } from '../../state'
 import { jsonSchema } from '../../schema/Project'
 import { httpDelete, httpPost, httpPatch } from '../../utils'
@@ -295,125 +295,131 @@ function Edit({ project, onEditFinished }) {
   }
 
   return (
-    <Card className="flex flex-col h-full">
-      <h2 className="font-medium mb-2">{t('project.editInfo')}</h2>
-      <Form.SimpleForm
-        errorMessage={state.errorMessage}
-        onCancel={onEditFinished}
-        onSubmit={onSubmit}
-        ready={state.linksReady && state.projectReady && state.urlsReady}
-        saving={state.saving}>
-        <Form.Field
-          title={t('project.namespace')}
-          name="namespace_id"
-          type="select"
-          autoFocus={true}
-          castTo="number"
-          options={asOptions(globalState.metadata.namespaces)}
-          onChange={onValueChange}
-          errorMessage={state.projectErrors.namespace_id}
-          required={true}
-          value={state.values.namespace_id}
-        />
-        <Form.Field
-          title={t('project.projectType')}
-          name="project_type_id"
-          type="select"
-          castTo="number"
-          options={asOptions(globalState.metadata.projectTypes)}
-          onChange={onValueChange}
-          errorMessage={state.projectErrors.project_type_id}
-          required={true}
-          value={state.values.project_type_id}
-        />
-        <Form.Field
-          title={t('project.name')}
-          name="name"
-          type="text"
-          errorMessage={state.projectErrors.name}
-          onChange={onValueChange}
-          required={true}
-          value={state.values.name}
-        />
-        <Form.Field
-          title={t('common.slug')}
-          name="slug"
-          type="text"
-          description={t('common.slugDescription')}
-          errorMessage={state.projectErrors.slug}
-          onChange={onValueChange}
-          required={true}
-          value={state.values.slug}
-        />
-        <Form.Field
-          title={t('common.description')}
-          name="description"
-          description={t('project.descriptionDescription')}
-          type="textarea"
-          onChange={onValueChange}
-          errorMessage={state.projectErrors.description}
-          value={state.values.description}
-        />
-        <Form.Field
-          title={t('project.environments')}
-          name="environments"
-          type="select"
-          multiple={true}
-          options={asOptions(globalState.metadata.environments, 'name', 'name')}
-          onChange={onValueChange}
-          errorMessage={state.projectErrors.environments}
-          value={state.values.environments}
-        />
-        {state.values.environments !== null &&
-          state.values.environments.map((environment) => {
+    <ErrorBoundary>
+      <Card className="flex flex-col h-full">
+        <h2 className="font-medium mb-2">{t('project.editInfo')}</h2>
+        <Form.SimpleForm
+          errorMessage={state.errorMessage}
+          onCancel={onEditFinished}
+          onSubmit={onSubmit}
+          ready={state.linksReady && state.projectReady && state.urlsReady}
+          saving={state.saving}>
+          <Form.Field
+            title={t('project.namespace')}
+            name="namespace_id"
+            type="select"
+            autoFocus={true}
+            castTo="number"
+            options={asOptions(globalState.metadata.namespaces)}
+            onChange={onValueChange}
+            errorMessage={state.projectErrors.namespace_id}
+            required={true}
+            value={state.values.namespace_id}
+          />
+          <Form.Field
+            title={t('project.projectType')}
+            name="project_type_id"
+            type="select"
+            castTo="number"
+            options={asOptions(globalState.metadata.projectTypes)}
+            onChange={onValueChange}
+            errorMessage={state.projectErrors.project_type_id}
+            required={true}
+            value={state.values.project_type_id}
+          />
+          <Form.Field
+            title={t('project.name')}
+            name="name"
+            type="text"
+            errorMessage={state.projectErrors.name}
+            onChange={onValueChange}
+            required={true}
+            value={state.values.name}
+          />
+          <Form.Field
+            title={t('common.slug')}
+            name="slug"
+            type="text"
+            description={t('common.slugDescription')}
+            errorMessage={state.projectErrors.slug}
+            onChange={onValueChange}
+            required={true}
+            value={state.values.slug}
+          />
+          <Form.Field
+            title={t('common.description')}
+            name="description"
+            description={t('project.descriptionDescription')}
+            type="textarea"
+            onChange={onValueChange}
+            errorMessage={state.projectErrors.description}
+            value={state.values.description}
+          />
+          <Form.Field
+            title={t('project.environments')}
+            name="environments"
+            type="select"
+            multiple={true}
+            options={asOptions(
+              globalState.metadata.environments,
+              'name',
+              'name'
+            )}
+            onChange={onValueChange}
+            errorMessage={state.projectErrors.environments}
+            value={state.values.environments}
+          />
+          {state.values.environments !== null &&
+            state.values.environments.map((environment) => {
+              return (
+                <Form.Field
+                  title={
+                    <Fragment>
+                      <Icon
+                        className="mr-2"
+                        icon={environmentIcons[environment]}
+                      />
+                      {environment} URL
+                    </Fragment>
+                  }
+                  name={`url-${environment}`}
+                  key={`url-${environment}`}
+                  type="text"
+                  errorMessage={state.urlErrors[environment]}
+                  onChange={onURLChange}
+                  value={
+                    state.urls[environment] !== undefined
+                      ? state.urls[environment]
+                      : ''
+                  }
+                />
+              )
+            })}
+          {globalState.metadata.projectLinkTypes.map((linkType) => {
             return (
               <Form.Field
                 title={
                   <Fragment>
-                    <Icon
-                      className="mr-2"
-                      icon={environmentIcons[environment]}
-                    />
-                    {environment} URL
+                    <Icon className="mr-2" icon={linkType.icon_class} />
+                    {linkType.link_type} URL
                   </Fragment>
                 }
-                name={`url-${environment}`}
-                key={`url-${environment}`}
-                type="text"
-                errorMessage={state.urlErrors[environment]}
-                onChange={onURLChange}
+                key={`link-${linkType.id}`}
+                name={`link-${linkType.id}`}
+                type="url"
+                onChange={onLinkChange}
+                errorMessage={state.linkErrors[linkType.id]}
                 value={
-                  state.urls[environment] !== undefined
-                    ? state.urls[environment]
+                  state.links[linkType.id] !== undefined
+                    ? state.links[linkType.id]
                     : ''
                 }
               />
             )
           })}
-        {globalState.metadata.projectLinkTypes.map((linkType) => {
-          return (
-            <Form.Field
-              title={
-                <Fragment>
-                  <Icon className="mr-2" icon={linkType.icon_class} />
-                  {linkType.link_type} URL
-                </Fragment>
-              }
-              key={`link-${linkType.id}`}
-              name={`link-${linkType.id}`}
-              type="url"
-              onChange={onLinkChange}
-              errorMessage={state.linkErrors[linkType.id]}
-              value={
-                state.links[linkType.id] !== undefined
-                  ? state.links[linkType.id]
-                  : ''
-              }
-            />
-          )
-        })}
-      </Form.SimpleForm>
-    </Card>
+        </Form.SimpleForm>
+      </Card>
+    </ErrorBoundary>
   )
 }
 Edit.propTypes = {

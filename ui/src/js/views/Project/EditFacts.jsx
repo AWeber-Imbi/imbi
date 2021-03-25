@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 import React, { useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Card, Form } from '../../components'
+import { Card, ErrorBoundary, Form } from '../../components'
 import { Context } from '../../state'
 import { httpPost } from '../../utils'
 
@@ -41,7 +41,13 @@ function EditFacts({ projectId, facts, factTypes, onEditFinished }) {
   function onChange(name, value) {
     const key = parseInt(name.split('-')[1])
     if (state.facts[key] !== value)
-      setState({ ...state, facts: { ...state.facts, [key]: value.toString() } })
+      setState({
+        ...state,
+        facts: {
+          ...state.facts,
+          [key]: value !== null ? value.toString() : null
+        }
+      })
   }
 
   async function onSubmit() {
@@ -63,52 +69,54 @@ function EditFacts({ projectId, facts, factTypes, onEditFinished }) {
   }
 
   return (
-    <Card className="flex flex-col h-full">
-      <h2 className="font-medium mb-2">{t('project.editFacts')}</h2>
-      <Form.SimpleForm
-        errorMessage={state.errorMessage}
-        onCancel={onEditFinished}
-        onSubmit={onSubmit}
-        ready={state.ready}
-        saving={state.saving}>
-        {factTypes.map((factType) => {
-          let step = undefined
-          let fieldType = 'text'
-          let value = state.facts[factType.id]
-          if (factType.data_type === 'boolean') {
-            fieldType = 'toggle'
-            value = value === 'true'
-          } else if (factType.data_type === 'decimal') {
-            fieldType = 'number'
-            step = '0.01'
-            value = Number(value)
-          } else if (factType.fact_type === 'enum') fieldType = 'select'
-          const name = `fact-${factType.id}`
-          return (
-            <Form.Field
-              key={name}
-              name={name}
-              title={factType.name}
-              type={fieldType}
-              description={factType.description}
-              errorMessage={state.errors[factType.id]}
-              options={
-                factType.enum_values === null
-                  ? undefined
-                  : factType.enum_values.map((value) => {
-                      return { label: value, value: value }
-                    })
-              }
-              maximum={factType.max_value}
-              minimum={factType.min_value}
-              onChange={onChange}
-              step={step}
-              value={value}
-            />
-          )
-        })}
-      </Form.SimpleForm>
-    </Card>
+    <ErrorBoundary>
+      <Card className="flex flex-col h-full">
+        <h2 className="font-medium mb-2">{t('project.editFacts')}</h2>
+        <Form.SimpleForm
+          errorMessage={state.errorMessage}
+          onCancel={onEditFinished}
+          onSubmit={onSubmit}
+          ready={state.ready}
+          saving={state.saving}>
+          {factTypes.map((factType) => {
+            let step = undefined
+            let fieldType = 'text'
+            let value = state.facts[factType.id]
+            if (factType.data_type === 'boolean') {
+              fieldType = 'toggle'
+              value = value === 'true'
+            } else if (factType.data_type === 'decimal') {
+              fieldType = 'number'
+              step = '0.01'
+              value = Number(value)
+            } else if (factType.fact_type === 'enum') fieldType = 'select'
+            const name = `fact-${factType.id}`
+            return (
+              <Form.Field
+                key={name}
+                name={name}
+                title={factType.name}
+                type={fieldType}
+                description={factType.description}
+                errorMessage={state.errors[factType.id]}
+                options={
+                  factType.enum_values === null
+                    ? undefined
+                    : factType.enum_values.map((value) => {
+                        return { label: value, value: value }
+                      })
+                }
+                maximum={factType.max_value}
+                minimum={factType.min_value}
+                onChange={onChange}
+                step={step}
+                value={value}
+              />
+            )
+          })}
+        </Form.SimpleForm>
+      </Card>
+    </ErrorBoundary>
   )
 }
 EditFacts.propTypes = {

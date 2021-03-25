@@ -35,7 +35,12 @@ function App({
   url,
   version
 }) {
-  if (isURL(sentry_dsn)) Sentry.init({ dsn: sentry_dsn })
+  if (isURL(sentry_dsn))
+    Sentry.init({
+      dsn: sentry_dsn,
+      release: `imbi@${version}`,
+      maxBreadcrumbs: 50
+    })
   const [content, setContent] = useState(<Initializing />)
   const [errorMessage, setErrorMessage] = useState(null)
   const history = useHistory()
