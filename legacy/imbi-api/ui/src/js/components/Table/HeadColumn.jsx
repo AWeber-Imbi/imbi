@@ -45,6 +45,10 @@ function HeadColumn({ column, children, className, srOnly }) {
       : ''
 
   if (className !== undefined) clsName = `${clsName} ${className}`
+  clsName = `${clsName} ${
+    column.sortCallback !== undefined ? 'cursor-pointer' : ''
+  }`
+  clsName = `${clsName} `
 
   if (srOnly === true) {
     return (
@@ -59,12 +63,13 @@ function HeadColumn({ column, children, className, srOnly }) {
   return (
     <th
       scope="col"
-      className={`${ColClassName} ${clsName} ${
-        column.sortCallback !== undefined ? 'cursor-pointer' : ''
-      }`}
+      className={`${ColClassName} ${clsName}`}
       onClick={onSortClick}>
       {column.sortCallback !== undefined && (
-        <Icon icon={SortIcon[sortDirection]} className="mr-2" />
+        <Icon
+          icon={SortIcon[sortDirection]}
+          className={`mr-2 ${sortDirection !== null ? 'text-blue-600' : ''}`}
+        />
       )}
       {children !== undefined && children}
       {column.title !== undefined && column.title}
