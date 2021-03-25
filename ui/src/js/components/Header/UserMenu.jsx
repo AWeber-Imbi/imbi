@@ -35,7 +35,7 @@ function UserMenu({ user }) {
   const [state] = useContext(Context)
   const { t } = useTranslation()
   return (
-    <Menu as="div" className="flex-shrink mr-3 z-49">
+    <Menu as="div" className="flex-shrink mr-3">
       <Menu.Button as={React.Fragment}>
         <button
           className="bg-gray-800 flex my-1 text-sm rounded-full focus:outline-none"
@@ -52,7 +52,7 @@ function UserMenu({ user }) {
       <Menu.Items
         aria-labelledby="user-menu"
         aria-orientation="vertical"
-        className="origin-top-right absolute right-3 mt-1 w-48 rounded-md shadow-lg py-1 focus:outline-none bg-white ring-1 ring-gray-300 ring-opacity-5">
+        className="origin-top-right absolute right-3 mt-1 w-48 rounded-md shadow-lg py-1 focus:outline-none bg-white ring-1 ring-gray-300 ring-opacity-5 z-40">
         <UserMenuItem
           to="/ui/user/profile"
           icon="fas id-card"
