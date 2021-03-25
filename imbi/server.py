@@ -89,6 +89,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'gitlab_application_id': gitlab.get('application_id'),
         'gitlab_secret': gitlab.get('secret'),
         'gitlab_url': gitlab.get('url', 'https://gitlab.com'),
+        'javascript_url': config.get('javascript_url', None),
         'ldap': {
             'enabled': ldap.get('enabled'),
             'host': ldap.get('host', 'localhost'),
