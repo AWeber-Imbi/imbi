@@ -40,7 +40,10 @@ def require_permission(permission):
             if not self._current_user or \
                     not self._current_user.has_permission(permission):
                 if self._respond_with_html:
-                    return self.render('index.html')
+                    return self.render(
+                        'index.html',
+                        javascript_url=self.application.settings.get(
+                            'javascript_url'))
                 LOGGER.info('%r does not have the "%s" permission',
                             self._current_user, permission)
                 raise problemdetails.Problem(
@@ -146,7 +149,10 @@ class RequestHandler(postgres.RequestHandlerMixin,
 
     def write_error(self, status_code, **kwargs):
         if self._respond_with_html:
-            return self.render('error.html', status_code=status_code, **kwargs)
+            return self.render(
+                'error.html',
+                javascript_url=self.application.settings.get('javascript_url'),
+                status_code=status_code, **kwargs)
         super().write_error(status_code, **kwargs)
 
     def _add_last_modified_header(self, value: datetime.datetime) -> None:
@@ -201,7 +207,10 @@ class AuthenticatedRequestHandler(RequestHandler):
         await super().prepare()
         if not self._current_user:
             if self._respond_with_html:
-                return await self.render('index.html')
+                return await self.render(
+                    'index.html',
+                    javascript_url=self.application.settings.get(
+                        'javascript_url'))
             self.set_status(401)
             await self.finish()
 
@@ -269,7 +278,9 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             raise problemdetails.Problem(
                 status_code=405, title='Not Implemented')
         if self._respond_with_html:
-            return self.render('index.html')
+            return self.render(
+                'index.html',
+                javascript_url=self.application.settings.get('javascript_url'))
         await self._get(kwargs)
 
     async def patch(self, *args, **kwargs):

@@ -31,6 +31,6 @@
         {% end %}
       </div>
     </div>
-    {% block ui_js %}<script src="{{ static_url('imbi.js') }}"></script>{% end %}
+    {% block ui_js %}<script src="{% if javascript_url is not None %}{{javascript_url}}imbi.js{% else %}{{ static_url('imbi.js') }}{% end if %}"></script>{% end %}
   </body>
 </html>

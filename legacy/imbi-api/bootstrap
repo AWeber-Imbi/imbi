@@ -75,6 +75,7 @@ cat > build/debug.yaml <<EOF
 ---
 http:
   processes: 1
+javascript_url: http://localhost:8080/static/
 ldap:
   enabled: true
   host: ${TEST_HOST}

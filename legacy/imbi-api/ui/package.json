@@ -9,6 +9,7 @@
     "eslint": "eslint src/js/**",
     "prettier": "prettier -w src public",
     "prettier-check": "prettier -c src public",
+    "serve": "webpack serve --hot --inline --progress --mode=development --config webpack.config.js",
     "watch": "webpack --progress --mode=development --config webpack.config.js --watch"
   },
   "repository": {
@@ -65,6 +66,7 @@
     "react-circular-progressbar": "^2.0.3",
     "react-dom": "17.0.1",
     "react-gravatar": "^2.6.3",
+    "react-hot-loader": "^4.13.0",
     "react-i18next": "^11.3.4",
     "react-markdown": "^5.0.3",
     "react-router-dom": "^5.2.0",
@@ -77,7 +79,8 @@
     "typeface-inter": "^3.15.1",
     "typescript": ">= 3.7.0-beta",
     "webpack": "^4.27.1",
-    "webpack-cli": "^4.4.0"
+    "webpack-cli": "^4.4.0",
+    "webpack-dev-server": "^3.11.2"
   },
   "husky": {
     "hooks": {

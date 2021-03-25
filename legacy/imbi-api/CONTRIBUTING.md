@@ -44,7 +44,7 @@ in development mode, `make watch` is useful.
 
 ## Makefile Targets
 
-The following generic targers are available in the [Makefile]().
+The following generic targets are available in the [Makefile]().
 
 - `all` - Setup the development environment, DDL and DML, OpenAPI document, the UI, and run tests
 - `bootstrap` - Bootstrap the docker-compose dependencies for development
@@ -55,6 +55,7 @@ The following generic targers are available in the [Makefile]().
 - `dist` - Create the release packages
 - `env` - Setup a Python virtual environment and install the API dependencies (including testing)
 - `setup` - Setup the development environment for the API, OpenAPI docs, and UI
+- `serve` - Run a JavaScript webserver that watches UI files and rebuilds the development versions on change, pushing changes to the browser
 - `watch` - Watches UI files and rebuilds the development versions on change
 
 ### Testing Targets

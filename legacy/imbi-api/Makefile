@@ -74,6 +74,10 @@ openapi/node_modules:
 ui/node_modules:
 	@ cd ui && yarn install
 
+.PHONY: serve
+serve: ui/node_modules
+	@ cd ui && yarn run serve
+
 .PHONY: watch
 watch: ui/node_modules
 	@ cd ui && yarn run watch
