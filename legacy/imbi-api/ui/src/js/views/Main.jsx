@@ -1,9 +1,9 @@
 import PropTypes from 'prop-types'
-import React, { Fragment, useContext, useEffect, useState } from 'react'
+import React, { useContext, useEffect, useState } from 'react'
 import { Switch, Route } from 'react-router-dom'
 
 import { Admin, Dashboard, NotFound, User } from '.'
-import { Breadcrumbs, Loading } from '../components'
+import { Breadcrumbs, ErrorBoundary, Loading } from '../components'
 import { Context } from '../state'
 import { NewEntry, OperationsLog } from './OperationsLog/'
 import { Project } from './Project/'
@@ -35,9 +35,9 @@ function Main({ user }) {
       setState({
         ...state,
         content: (
-          <Fragment>
+          <ErrorBoundary>
             <Breadcrumbs />
-            <main className="flex-grow flex flex-row z-0">
+            <main className="flex-grow flex flex-row z-10">
               <Switch>
                 {user.permissions.includes('admin') && (
                   <Route path="/ui/admin">
@@ -73,7 +73,7 @@ function Main({ user }) {
                 </Route>
               </Switch>
             </main>
-          </Fragment>
+          </ErrorBoundary>
         )
       })
   }, [globalState.metadata])

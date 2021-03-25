@@ -7,7 +7,7 @@ import { validate } from 'jsonschema'
 
 import { asOptions } from '../../metadata'
 import { Context } from '../../state'
-import { Form, Icon, SavingModal } from '../../components'
+import { ErrorBoundary, Form, Icon, SavingModal } from '../../components'
 import { jsonSchema } from '../../schema/Project'
 import { User } from '../../schema'
 import { httpPost, isURL } from '../../utils'
@@ -281,7 +281,7 @@ function Create() {
   }, [saveComplete, links, automations])
 
   return (
-    <Fragment>
+    <ErrorBoundary>
       <Form.MultiSectionForm
         disabled={!formReady}
         icon="fas file"
@@ -365,7 +365,7 @@ function Create() {
         <Form.Section name="urls" title={t('project.projectURLs')}>
           <Fragment>
             {(formValues.environments === null ||
-              formValues.environments.length) === 0 && (
+              formValues.environments.length === 0) && (
               <p className="text-center p-6 font-mono">
                 {t('project.specifyEnvironments')}
               </p>
@@ -484,7 +484,7 @@ function Create() {
           }}
         />
       )}
-    </Fragment>
+    </ErrorBoundary>
   )
 }
 

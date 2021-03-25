@@ -2,7 +2,15 @@ import PropTypes from 'prop-types'
 import React, { useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Backdrop, ConfirmationDialog, Icon, Loading, Table } from '..'
+import {
+  Alert,
+  Backdrop,
+  ConfirmationDialog,
+  ErrorBoundary,
+  Icon,
+  Loading,
+  Table
+} from '..'
 import { Columns } from '../../schema'
 import { Context } from '../../state'
 import { httpGet, httpDelete } from '../../utils'
@@ -159,80 +167,82 @@ function CRUD({
       </Alert>
     )
   return (
-    <div className="space-y-3">
-      <div className="text-right">
-        <button
-          className="btn-green"
-          onClick={() => {
-            setShowForm(true)
-          }}>
-          <Icon className="mr-2" icon="fas plus-circle" />
-          {t('admin.crud.newTitle', {
-            itemName: itemName,
-            ...strings
-          })}
-        </button>
-      </div>
-      {successMessage !== null && (
-        <Alert className="mb-3" level="success">
-          {successMessage}
-        </Alert>
-      )}
-      {showForm && (
-        <Form
+    <ErrorBoundary>
+      <div className="space-y-3">
+        <div className="text-right">
+          <button
+            className="btn-green"
+            onClick={() => {
+              setShowForm(true)
+            }}>
+            <Icon className="mr-2" icon="fas plus-circle" />
+            {t('admin.crud.newTitle', {
+              itemName: itemName,
+              ...strings
+            })}
+          </button>
+        </div>
+        {successMessage !== null && (
+          <Alert className="mb-3" level="success">
+            {successMessage}
+          </Alert>
+        )}
+        {showForm && (
+          <Form
+            columns={columns}
+            errorStrings={errorStrings}
+            isEdit={itemToEdit !== null}
+            itemKey={itemKey}
+            itemPath={itemToEdit === null ? collectionPath : itemPath}
+            itemTitle={itemTitle}
+            jsonSchema={jsonSchema}
+            onClose={onFormClosed}
+            onEditClick={onEditClick}
+            savingTitle={t('admin.crud.savingTitle', {
+              itemName: itemName
+            })}
+            title={t(
+              itemToEdit === null
+                ? 'admin.crud.newTitle'
+                : 'admin.crud.updateTitle',
+              { itemName: itemName }
+            )}
+            values={itemToEdit}
+          />
+        )}
+        <Table
+          className="my-3"
           columns={columns}
-          errorStrings={errorStrings}
-          isEdit={itemToEdit !== null}
+          data={data}
           itemKey={itemKey}
-          itemPath={itemToEdit === null ? collectionPath : itemPath}
-          itemTitle={itemTitle}
-          jsonSchema={jsonSchema}
-          onClose={onFormClosed}
+          onDeleteClick={onDeleteClick}
           onEditClick={onEditClick}
-          savingTitle={t('admin.crud.savingTitle', {
-            itemName: itemName
-          })}
-          title={t(
-            itemToEdit === null
-              ? 'admin.crud.newTitle'
-              : 'admin.crud.updateTitle',
-            { itemName: itemName }
-          )}
-          values={itemToEdit}
         />
-      )}
-      <Table
-        className="my-3"
-        columns={columns}
-        data={data}
-        itemKey={itemKey}
-        onDeleteClick={onDeleteClick}
-        onEditClick={onEditClick}
-      />
-      {fetching && <Backdrop wait={true} />}
-      {showDeleteConfirmation === true && (
-        <ConfirmationDialog
-          mode="error"
-          title={t('admin.crud.deleteConfirmation.title', {
-            value: itemToDelete,
-            ...strings
-          })}
-          confirmationButtonText={t('admin.crud.deleteConfirmation.button', {
-            value: itemToDelete,
-            ...strings
-          })}
-          onCancel={() => {
-            setItemToDelete(null)
-            setShowDeleteConfirmation(null)
-          }}
-          onConfirm={deleteItem}>
-          {t('admin.crud.deleteConfirmation.text', {
-            value: itemToDelete,
-            ...strings
-          })}
-        </ConfirmationDialog>
-      )}
-    </div>
+        {fetching && <Backdrop wait={true} />}
+        {showDeleteConfirmation === true && (
+          <ConfirmationDialog
+            mode="error"
+            title={t('admin.crud.deleteConfirmation.title', {
+              value: itemToDelete,
+              ...strings
+            })}
+            confirmationButtonText={t('admin.crud.deleteConfirmation.button', {
+              value: itemToDelete,
+              ...strings
+            })}
+            onCancel={() => {
+              setItemToDelete(null)
+              setShowDeleteConfirmation(null)
+            }}
+            onConfirm={deleteItem}>
+            {t('admin.crud.deleteConfirmation.text', {
+              value: itemToDelete,
+              ...strings
+            })}
+          </ConfirmationDialog>
+        )}
+      </div>
+    </ErrorBoundary>
   )
 }
 CRUD.defaultProps = {
