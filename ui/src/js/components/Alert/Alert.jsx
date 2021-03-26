@@ -13,7 +13,11 @@ const icons = {
 function Alert({ level, children, className, ...props }) {
   return (
     <div
-      className={`alert-${level} ${className !== undefined ? className : ''}`}
+      className={`${level === 'error' ? 'alert-error' : ''} ${
+        level === 'info' ? 'alert-info' : ''
+      } ${level === 'success' ? 'alert-success' : ''} ${
+        level === 'warning' ? 'alert-warning' : ''
+      } ${className !== undefined ? className : ''}`}
       {...props}>
       <div className="flex">
         <div className="flex-shrink-0">
