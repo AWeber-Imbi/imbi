@@ -53,7 +53,7 @@ export function Dashboard() {
                 key={`stats-${row.name}`}
                 title={row.name}
                 icon={row.icon}
-                url={`/ui/projects?namespace=${row.namespace_id}`}
+                url={`/ui/projects?namespace_id=${row.namespace_id}`}
                 value={row.count}
               />
             )
@@ -71,7 +71,7 @@ export function Dashboard() {
                 key={`stats-${row.name}`}
                 title={row.count === 1 ? row.name : row.plural}
                 icon={row.icon}
-                url={`/ui/projects?project_type=${row.project_type_id}`}
+                url={`/ui/projects?project_type_id=${row.project_type_id}`}
                 value={row.count}
               />
             )
