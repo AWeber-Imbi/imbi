@@ -73,7 +73,7 @@ function NamespaceKPIs() {
       type: 'text',
       tableOptions: {
         className: 'text-right',
-        headerClassName: 'w-1/12 text-right',
+        headerClassName: 'pl-2 text-right',
         lookupFunction: formatNumber
       }
     },
@@ -83,7 +83,17 @@ function NamespaceKPIs() {
       type: 'text',
       tableOptions: {
         className: 'text-center',
-        headerClassName: 'w-2/12 text-center',
+        headerClassName: 'pl-2 text-center',
+        lookupFunction: colorizeValue
+      }
+    },
+    {
+      title: t('reports.namespaceKPIs.avgProjectScore'),
+      name: 'avg_project_score',
+      type: 'text',
+      tableOptions: {
+        className: 'text-center',
+        headerClassName: 'pl-2 text-right',
         lookupFunction: colorizeValue
       }
     },
@@ -93,7 +103,7 @@ function NamespaceKPIs() {
       type: 'text',
       tableOptions: {
         className: 'text-right',
-        headerClassName: 'w-2/12 text-right',
+        headerClassName: 'pl-2 text-right',
         lookupFunction: formatNumber
       }
     },
@@ -103,7 +113,7 @@ function NamespaceKPIs() {
       type: 'text',
       tableOptions: {
         className: 'text-right',
-        headerClassName: 'w-2/12 text-right',
+        headerClassName: 'pl-2 text-right',
         lookupFunction: formatNumber
       }
     },
@@ -113,7 +123,7 @@ function NamespaceKPIs() {
       type: 'text',
       tableOptions: {
         className: 'text-right',
-        headerClassName: 'w-2/12 text-right'
+        headerClassName: 'pl-2 text-right'
       }
     }
   ]
@@ -127,8 +137,32 @@ function NamespaceKPIs() {
       pageIcon="fas chart-line"
       pageTitle="Namespace KPIs">
       <Table columns={columns} data={state.data} />
-      <div className="text-right mt-2 text-xs text-gray-600 italic">
+      <div className="italic text-gray-600 text-right text-xs">
         {t('reports.lastUpdated', { lastUpdated: new Date().toString() })}
+      </div>
+      <div className="ml-4 text-gray-600">
+        <h1 className="font-medium my-2">Definitions</h1>
+        <dl className="ml-2 text-sm">
+          <dt className="font-medium">Stack Health Score</dt>
+          <dd>
+            The 95th Percentile of scores for all projects in the namespace
+          </dd>
+          <dt className="font-medium mt-2">Avg Project Score</dt>
+          <dd>The average project score for all projects in the namespace</dd>
+          <dt className="font-medium mt-2">Total Project Score</dt>
+          <dd>
+            The sum of the project scores for all projects in the namespace
+          </dd>
+          <dt className="font-medium mt-2">Total Possible Score</dt>
+          <dd>
+            The sum of the maximum possible project score for all projects in
+            the namespace
+          </dd>
+          <dt className="font-medium mt-2">TPS %</dt>
+          <dd>
+            The Total Project Score percentage of the Total Possible Score
+          </dd>
+        </dl>
       </div>
     </ContentArea>
   )
