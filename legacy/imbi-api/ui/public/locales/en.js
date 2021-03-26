@@ -260,6 +260,7 @@ export default {
         namespaceKPIs: {
           title: 'Namespace KPIs',
           projects: 'Projects',
+          avgProjectScore: 'Avg Project Score',
           stackHealthScore: 'Stack Health Score',
           totalProjectScore: 'Total Project Score',
           totalPossibleProjectScore: 'Total Possible Score',

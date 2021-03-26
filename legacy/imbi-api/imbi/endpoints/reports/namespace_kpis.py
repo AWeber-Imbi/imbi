@@ -22,7 +22,8 @@ class RequestHandler(base.RequestHandler):
         SELECT namespace_id,
                namespace,
                count(*) AS projects,
-               percentile_disc(0.75)
+               avg(project_score) AS avg_project_score,
+               percentile_disc(0.95)
                  WITHIN GROUP (ORDER BY project_score) AS stack_health_score,
                sum(project_score)::INT AS total_project_score,
                count(*) * 100 AS total_possible_project_score,
