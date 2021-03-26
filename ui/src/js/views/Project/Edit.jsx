@@ -20,27 +20,27 @@ async function saveLinkChanges(globalState, project, originalLinks, links) {
   // Build arrays of operations for syncing individual records
   Object.entries(links).forEach(([key, url]) => {
     const linkTypeID = parseInt(key)
-    if (url === '' && originalLinks[linkTypeID] !== undefined) {
+    if (url.trim() === '' && originalLinks[linkTypeID] !== undefined) {
       ops.delete.push(linkTypeID)
     } else if (originalLinks[linkTypeID] === undefined) {
       ops.add.push({
         project_id: project.id,
         link_type_id: linkTypeID,
-        url: url
+        url: url.trim()
       })
-    } else if (originalLinks[linkTypeID] !== url) {
+    } else if (originalLinks[linkTypeID] !== url.trim()) {
       ops.update.push([
         linkTypeID,
         compare(
           {
             project_id: project.id,
             link_type_id: linkTypeID,
-            url: 'doesnt-matter'
+            url: originalLinks[linkTypeID]
           },
           {
             project_id: project.id,
             link_type_id: linkTypeID,
-            url: url
+            url: url.trim()
           }
         )
       ])
@@ -82,8 +82,7 @@ async function saveProjectChanges(globalState, project, values) {
     project_type_id: project.project_type_id,
     slug: project.slug,
     description: project.description,
-    environments: project.environments,
-    archived: project.archived
+    environments: project.environments
   }
   const patchValue = compare(originalValues, values)
   if (patchValue.length > 0) {
@@ -105,27 +104,27 @@ async function saveURLChanges(globalState, project, environments, urls) {
   }
   // Build arrays of operations for syncing individual records
   Object.entries(urls).forEach(([key, url]) => {
-    if (url === '' && project.urls[key] !== undefined) {
+    if (url.trim() === '' && project.urls[key] !== undefined) {
       ops.delete.push(key)
     } else if (project.urls[key] === undefined) {
       ops.add.push({
         project_id: project.id,
         environment: key,
-        url: url
+        url: url.trim()
       })
-    } else if (project.urls[key] !== url) {
+    } else if (project.urls[key] !== url.trim()) {
       ops.update.push([
         key,
         compare(
           {
             project_id: project.id,
             environment: key,
-            url: 'doesnt-matter'
+            url: project.urls[key]
           },
           {
             project_id: project.id,
             environment: key,
-            url: url
+            url: url.trim()
           }
         )
       ])
