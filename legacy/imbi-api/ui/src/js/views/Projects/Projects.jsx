@@ -165,7 +165,6 @@ function Projects() {
   if (state.lastRequest === null) return <Loading />
   return (
     <div className="m-0 px-4 py-3 space-y-3">
-      {state.fetching && <div>Fetching ...</div>}
       {successMessage !== null && (
         <Alert className="mt-3" level="success">
           {successMessage}

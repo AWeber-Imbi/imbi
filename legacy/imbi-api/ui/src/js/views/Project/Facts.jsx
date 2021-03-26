@@ -12,6 +12,9 @@ function Fact({ fact, offset }) {
   if (fact.score >= 0) color = 'border-red-600'
   if (fact.score > 69) color = 'border-yellow-600'
   if (fact.score > 89) color = 'border-green-600'
+  if (fact.data_type === 'boolean' && fact.value === 'true')
+    color = 'border-green-600'
+
   return (
     <div
       key={`fact-${fact.fact_type_id}`}
@@ -26,7 +29,7 @@ function Fact({ fact, offset }) {
               <Icon
                 className={`${
                   fact.value === 'true' ? 'text-green-600' : 'text-red-600'
-                } ml-6`}
+                }`}
                 icon={`fas ${fact.value === 'true' ? 'check' : 'times-circle'}`}
               />
             )}

@@ -26,7 +26,9 @@ function Overview({ factTypes, project, refresh, urlPath }) {
             : ''
         }`}>
         <div
-          className={`flex-1 lg:w-6/12 w-full ${
+          className={`flex-1 ${
+            factTypes.length > 0 ? 'lg:w-6/12' : ''
+          } w-full ${
             editing.details === false && editing.facts === false
               ? 'lg:flex-grow'
               : ''
@@ -41,23 +43,25 @@ function Overview({ factTypes, project, refresh, urlPath }) {
             shouldGrow={editing.details === false && editing.facts === false}
           />
         </div>
-        <div
-          className={`flex-1 lg:w-6/12 w-full ${
-            editing.details === false && editing.facts === false
-              ? 'lg:flex-grow'
-              : ''
-          }`}>
-          <Facts
-            project={project}
-            factTypes={factTypes}
-            editing={editing.facts}
-            refresh={refresh}
-            onEditing={(isEditing) =>
-              setEditing({ ...editing, facts: isEditing })
-            }
-            shouldGrow={editing.details === false && editing.facts === false}
-          />
-        </div>
+        {factTypes.length > 0 && (
+          <div
+            className={`flex-1 lg:w-6/12 w-full ${
+              editing.details === false && editing.facts === false
+                ? 'lg:flex-grow'
+                : ''
+            }`}>
+            <Facts
+              project={project}
+              factTypes={factTypes}
+              editing={editing.facts}
+              refresh={refresh}
+              onEditing={(isEditing) =>
+                setEditing({ ...editing, facts: isEditing })
+              }
+              shouldGrow={editing.details === false && editing.facts === false}
+            />
+          </div>
+        )}
       </div>
     </Fragment>
   )
