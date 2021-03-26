@@ -6,6 +6,7 @@ import { Badge, Paginator, Table } from '../../components'
 
 function DataTable({
   data,
+  disabled,
   offset,
   onRowClick,
   onSortDirection,
@@ -86,13 +87,23 @@ function DataTable({
         setOffset(value)
       }}
       setPageSize={setPageSize}>
-      <Table columns={columns} data={data} onRowClick={onRowClick} />
-      <Paginator.Controls showPageSizeSelector={true} showStateDisplay={true} />
+      <Table
+        columns={columns}
+        data={data}
+        disabled={disabled}
+        onRowClick={onRowClick}
+      />
+      <Paginator.Controls
+        disabled={disabled}
+        showPageSizeSelector={true}
+        showStateDisplay={true}
+      />
     </Paginator.Container>
   )
 }
 DataTable.propTypes = {
   data: PropTypes.arrayOf(PropTypes.object),
+  disabled: PropTypes.bool,
   offset: PropTypes.number,
   onRowClick: PropTypes.func,
   onSortDirection: PropTypes.func,

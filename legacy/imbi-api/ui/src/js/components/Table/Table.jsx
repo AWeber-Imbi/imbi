@@ -8,6 +8,7 @@ import { Head, Body, Footer } from '.'
 function Table({
   columns,
   data,
+  disabled,
   itemKey,
   onDeleteClick,
   onEditClick,
@@ -18,11 +19,13 @@ function Table({
       <table className="bg-gray-50 divide-y divide-gray-200 table-fixed w-full">
         <Head
           columns={columns}
+          disabled={disabled}
           includeEdit={onEditClick !== undefined || onDeleteClick !== undefined}
         />
         <Body
           columns={columns}
           data={data}
+          disabled={disabled}
           itemKey={itemKey}
           onDeleteClick={onDeleteClick}
           onEditClick={onEditClick}
@@ -39,6 +42,7 @@ function Table({
 Table.propTypes = {
   columns: Columns,
   data: PropTypes.arrayOf(PropTypes.object),
+  disabled: PropTypes.bool,
   itemKey: PropTypes.string,
   onDeleteClick: PropTypes.func,
   onEditClick: PropTypes.func,

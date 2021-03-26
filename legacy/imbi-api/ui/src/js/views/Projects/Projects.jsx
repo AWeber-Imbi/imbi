@@ -39,8 +39,8 @@ function Projects() {
     fetching: false,
     filter: {
       archived: query.get('archived'),
-      namespace: query.get('namespace'),
-      project_type: query.get('project_type')
+      namespace_id: query.get('namespace_id'),
+      project_type_id: query.get('project_type_id')
     },
     lastRequest: null,
     offset: parseInt(query.get('offset') || '0'),
@@ -97,7 +97,9 @@ function Projects() {
             ...state,
             fetching: false,
             filter: {
-              archived: false
+              archived: false,
+              namespace_id: null,
+              project_type_id: null
             },
             lastRequest: url,
             sort: { name: 'asc' }
@@ -163,6 +165,7 @@ function Projects() {
   if (state.lastRequest === null) return <Loading />
   return (
     <div className="m-0 px-4 py-3 space-y-3">
+      {state.fetching && <div>Fetching ...</div>}
       {successMessage !== null && (
         <Alert className="mt-3" level="success">
           {successMessage}
@@ -176,9 +179,13 @@ function Projects() {
       <div className="flex items-center">
         <div className="w-6/12">
           <Filter
+            disabled={state.fetching}
             namespaces={asOptions(globalState.metadata.namespaces)}
             projectTypes={asOptions(globalState.metadata.projectTypes)}
-            setFilterValues={(values) => setState({ ...state, filter: values })}
+            setFilterValues={(values) => {
+              // console.log('Setting filter', values)
+              setState({ ...state, filter: values })
+            }}
             values={state.filter}
           />
         </div>
@@ -203,11 +210,6 @@ function Projects() {
         onSortDirection={onSortDirection}
         pageSize={state.pageSize}
         rowCount={state.rowCount}
-        setFilter={(filter) => {
-          if (state.filter !== filter) {
-            setState({ ...state, filter: filter })
-          }
-        }}
         setOffset={(offset) => {
           if (state.offset !== offset) {
             setState({ ...state, offset: offset })

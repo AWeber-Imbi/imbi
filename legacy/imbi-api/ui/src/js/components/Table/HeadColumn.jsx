@@ -16,7 +16,7 @@ const SortIcon = {
 const ColClassName =
   'align-middle px-6 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap'
 
-function HeadColumn({ column, children, className, srOnly }) {
+function HeadColumn({ column, children, className, disabled, srOnly }) {
   const [sortDirection, setSortDirection] = useState(column.sortDirection)
   useEffect(() => {
     if (
@@ -29,6 +29,7 @@ function HeadColumn({ column, children, className, srOnly }) {
 
   function onSortClick(event) {
     event.preventDefault()
+    if (disabled) return
     if (sortDirection === null) {
       setSortDirection(Asc)
     } else if (sortDirection === Asc) {
@@ -48,7 +49,7 @@ function HeadColumn({ column, children, className, srOnly }) {
   clsName = `${clsName} ${
     column.sortCallback !== undefined ? 'cursor-pointer' : ''
   }`
-  clsName = `${clsName} `
+  if (disabled) clsName = `${clsName} disabled cursor-wait`
 
   if (srOnly === true) {
     return (
@@ -85,6 +86,7 @@ HeadColumn.propTypes = {
   column: PropTypes.exact(Column),
   children: PropTypes.string,
   className: PropTypes.string,
+  disabled: PropTypes.bool,
   srOnly: PropTypes.bool
 }
 export { HeadColumn }
