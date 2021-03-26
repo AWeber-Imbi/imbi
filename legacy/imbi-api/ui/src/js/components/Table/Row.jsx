@@ -3,7 +3,6 @@ import React, { Fragment } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Columns } from '../../schema'
-
 import { Column } from '.'
 
 function Row({
@@ -13,7 +12,8 @@ function Row({
   itemKey,
   onClick,
   onDeleteClick,
-  onEditClick
+  onEditClick,
+  rowURL
 }) {
   const { t } = useTranslation()
   const toRender = columns
@@ -46,10 +46,17 @@ function Row({
       }}>
       {toRender.map((column) => {
         colOffset += 1
+        let to =
+          rowURL === undefined
+            ? undefined
+            : typeof rowURL == 'function'
+            ? rowURL(data)
+            : rowURL
         return (
           <Column
             definition={column}
-            key={'table-row-' + index + '-col-' + colOffset}>
+            key={'table-row-' + index + '-col-' + colOffset}
+            linkTo={to}>
             {data[column.name]}
           </Column>
         )
@@ -95,7 +102,7 @@ Row.propTypes = {
   itemKey: PropTypes.string,
   onClick: PropTypes.func,
   onDeleteClick: PropTypes.func,
-  onEditClick: PropTypes.func
+  onEditClick: PropTypes.func,
+  rowURL: PropTypes.oneOfType([PropTypes.func, PropTypes.string])
 }
-
 export { Row }

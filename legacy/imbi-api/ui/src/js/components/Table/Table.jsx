@@ -12,7 +12,8 @@ function Table({
   itemKey,
   onDeleteClick,
   onEditClick,
-  onRowClick
+  onRowClick,
+  rowURL
 }) {
   return (
     <div className="shadow bg-gray-50 overflow-hidden border-b border-gray-200 rounded-lg">
@@ -30,6 +31,7 @@ function Table({
           onDeleteClick={onDeleteClick}
           onEditClick={onEditClick}
           onRowClick={onRowClick}
+          rowURL={rowURL}
         />
         <Footer
           columns={columns.length + (onEditClick !== undefined ? 1 : 0)}
@@ -46,7 +48,8 @@ Table.propTypes = {
   itemKey: PropTypes.string,
   onDeleteClick: PropTypes.func,
   onEditClick: PropTypes.func,
-  onRowClick: PropTypes.func
+  onRowClick: PropTypes.func,
+  rowURL: PropTypes.oneOfType([PropTypes.func, PropTypes.string])
 }
 
 export { Table }

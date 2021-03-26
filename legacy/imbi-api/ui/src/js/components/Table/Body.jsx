@@ -11,7 +11,8 @@ function Body({
   itemKey,
   onDeleteClick,
   onEditClick,
-  onRowClick
+  onRowClick,
+  rowURL
 }) {
   let rowOffset = -1
   return (
@@ -28,6 +29,7 @@ function Body({
             onClick={onRowClick}
             onDeleteClick={onDeleteClick}
             onEditClick={onEditClick}
+            rowURL={rowURL}
           />
         )
       })}
@@ -43,7 +45,7 @@ Body.propTypes = {
   itemKey: PropTypes.string,
   onDeleteClick: PropTypes.func,
   onEditClick: PropTypes.func,
-  onRowClick: PropTypes.func
+  onRowClick: PropTypes.func,
+  rowURL: PropTypes.oneOfType([PropTypes.func, PropTypes.string])
 }
-
 export { Body }
