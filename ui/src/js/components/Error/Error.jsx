@@ -8,7 +8,7 @@ function Error({ children, className }) {
   const { t } = useTranslation()
   return (
     <div
-      className={`container mx-auto my-auto max-w-2xl bg-red-50 shadow rounded-lg p-5 text-red-700 ${
+      className={`container font-normal font-sans mx-auto my-auto max-w-2xl bg-red-50 shadow rounded-lg p-5 text-base text-red-700 ${
         className !== undefined ? className : ''
       }`}>
       <Icon icon="fas exclamation-circle" />

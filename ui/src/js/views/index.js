@@ -1,5 +1,4 @@
 export { Admin } from './Admin'
-export { Dashboard } from './Dashboard'
 export { Error } from './Error'
 export { Initializing } from './Initializing'
 export { Login } from './Login'

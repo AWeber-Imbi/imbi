@@ -1,9 +1,10 @@
 import React, { useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ContentArea, Error, Loading, Stats } from '../components/'
-import { httpGet } from '../utils'
-import { Context } from '../state'
+import { ContentArea, Error, Loading } from '../../components/'
+import { Context } from '../../state'
+import { httpGet } from '../../utils'
+import { Stats } from './Stats/'
 
 export function Dashboard() {
   const [data, setData] = useState(null)
