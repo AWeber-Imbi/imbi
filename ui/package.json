@@ -71,7 +71,6 @@
     "react-markdown": "^5.0.3",
     "react-router-dom": "^5.2.0",
     "react-select": "^4.3.0",
-    "recompose": "^0.30.0",
     "resolve-url-loader": "^3.1.2",
     "slugify": "^1.4.6",
     "style-loader": "^2.0.0",
