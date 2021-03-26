@@ -9,12 +9,13 @@ import { EditFacts } from './EditFacts'
 function Fact({ fact, offset }) {
   const { t } = useTranslation()
   let color = 'border-gray-300'
-  if (fact.score >= 0) color = 'border-red-600'
+  if (fact.score > 0) color = 'border-red-600'
   if (fact.score > 69) color = 'border-yellow-600'
   if (fact.score > 89) color = 'border-green-600'
   if (fact.data_type === 'boolean' && fact.value === 'true')
     color = 'border-green-600'
-
+  if (fact.data_type === 'boolean' && fact.value === 'false')
+    color = 'border-red-600'
   return (
     <div
       key={`fact-${fact.fact_type_id}`}
