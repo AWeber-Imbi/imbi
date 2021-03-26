@@ -13,10 +13,8 @@ function Container({ children, title }) {
     </Fragment>
   )
 }
-
 Container.propTypes = {
   children: PropTypes.arrayOf(PropTypes.element).isRequired,
   title: PropTypes.string
 }
-
 export { Container }

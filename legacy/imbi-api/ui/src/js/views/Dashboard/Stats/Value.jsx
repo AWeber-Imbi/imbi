@@ -1,49 +1,32 @@
+import { Link } from 'react-router-dom'
 import PropTypes from 'prop-types'
 import React, { useState } from 'react'
-import { useHistory } from 'react-router-dom'
 
-import { Icon } from '..'
+import { Icon } from '../../../components'
 
 function Value({ title, icon, value, url }) {
-  const history = useHistory()
   const [hovering, setHovering] = useState(false)
-  function onClick(event) {
-    event.preventDefault()
-    history.push(url)
-  }
   return (
-    <div
-      className={
-        (url !== undefined ? 'cursor-pointer ' : '') +
-        'flex flex-col bg-white overflow-hidden shadow rounded-lg'
-      }
-      onClick={url !== undefined ? onClick : undefined}
+    <Link
+      className="flex flex-col bg-white overflow-hidden shadow rounded-lg hover:bg-blue-100 hover:text-blue-700"
       onMouseEnter={() => {
         setHovering(true)
       }}
       onMouseLeave={() => {
         setHovering(false)
-      }}>
+      }}
+      to={url}>
       <div className="flex-grow px-4 py-5 sm:p-6">
         <div className="flex items-center">
-          <div
-            className={
-              (hovering
-                ? 'bg-blue-200 text-blue-600'
-                : 'bg-gray-200 text-blue-400') + ' flex-shrink-0 rounded-md p-3'
-            }>
+          <div className="bg-gray-200 flex-shrink-0 rounded-md p-3 text-blue-600">
             <Icon icon={icon} />
           </div>
           <div className="ml-3 mt-1 w-0 flex-1">
-            <div
-              className={
-                (hovering ? 'text-blue-700' : 'text-gray-500') +
-                ' text-sm font-medium truncate'
-              }>
+            <div className="font-medium text-sm text-gray-600 truncate">
               {title}
               {hovering && (
                 <Icon
-                  className="ml-3 text-gray-400"
+                  className="ml-3 text-gray-600"
                   icon="fas external-link-alt"
                 />
               )}
@@ -56,19 +39,17 @@ function Value({ title, icon, value, url }) {
           </div>
         </div>
       </div>
-    </div>
+    </Link>
   )
 }
-
 Value.propTypes = {
   title: PropTypes.oneOfType([
     PropTypes.arrayOf(PropTypes.element),
     PropTypes.element,
     PropTypes.string
   ]).isRequired,
-  icon: PropTypes.string,
-  url: PropTypes.string,
+  icon: PropTypes.string.isRequired,
+  url: PropTypes.string.isRequired,
   value: PropTypes.number.isRequired
 }
-
 export { Value }
