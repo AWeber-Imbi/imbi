@@ -8,16 +8,16 @@ import { Edit } from './Edit'
 
 function Definition({ term, icon, children, className }) {
   return (
-    <div className="flex flex-row text-gray-900 space-x-2">
-      <dt className="font-medium text-gray-500 w-4/12">{term}</dt>
+    <Fragment>
+      <dt className="font-medium text-gray-500 w-48">{term}</dt>
       <dd
-        className={`w-8/12 mt-1 items-start sm:mt-0 truncate ${
+        className={`mt-1 items-start sm:mt-0 truncate ${
           className !== undefined ? className : ''
         }`}>
         {icon && <Icon icon={icon} className="mr-2 " />}
         {children}
       </dd>
-    </div>
+    </Fragment>
   )
 }
 Definition.propTypes = {
@@ -37,7 +37,7 @@ function Display({ project, onEditClick, shouldGrow }) {
     <Card className={`flex flex-col ${shouldGrow ? 'h-full' : ''}`}>
       <Fragment>
         <h2 className="font-medium mb-2">{t('terms.projectInfo')}</h2>
-        <dl className="lg:ml-4 my-3 space-y-3 overflow-hidden">
+        <dl className="lg:ml-4 my-3 space-y-3 overflow-hidden text-gray-900">
           <Definition term={t('terms.namespace')} icon={project.namespace_icon}>
             {project.namespace}
           </Definition>
