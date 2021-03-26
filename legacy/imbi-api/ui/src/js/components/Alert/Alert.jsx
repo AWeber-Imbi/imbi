@@ -3,21 +3,26 @@ import React from 'react'
 
 import { Icon } from '..'
 
+const alertClass = {
+  error: 'alert-error',
+  info: 'alert-info',
+  success: 'alert-success',
+  warning: 'alert-warning'
+}
+
 const icons = {
-  info: 'fas info-circle',
-  warning: 'fas exclamation-triangle',
   error: 'fas exclamation-circle',
-  success: 'fas check-circle'
+  info: 'fas info-circle',
+  success: 'fas check-circle',
+  warning: 'fas exclamation-triangle'
 }
 
 function Alert({ level, children, className, ...props }) {
   return (
     <div
-      className={`${level === 'error' ? 'alert-error' : ''} ${
-        level === 'info' ? 'alert-info' : ''
-      } ${level === 'success' ? 'alert-success' : ''} ${
-        level === 'warning' ? 'alert-warning' : ''
-      } ${className !== undefined ? className : ''}`}
+      className={`${alertClass[level]} ${
+        className !== undefined ? className : ''
+      }`}
       {...props}>
       <div className="flex">
         <div className="flex-shrink-0">
@@ -34,11 +39,12 @@ function Alert({ level, children, className, ...props }) {
     </div>
   )
 }
-
+Alert.defaultProps = {
+  level: 'info'
+}
 Alert.propTypes = {
   className: PropTypes.string,
   children: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
   level: PropTypes.oneOf(['info', 'warning', 'error', 'success']).isRequired
 }
-
 export { Alert }
