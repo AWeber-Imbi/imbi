@@ -19,6 +19,10 @@ CREATE OR REPLACE FUNCTION project_score(IN in_project_id INTEGER) RETURNS NUMER
       FROM v1.project_fact_types
      WHERE project_type_id = ANY(project_type_ids);
 
+    IF total_weight IS NULL THEN
+      RETURN 100.00;
+    END IF;
+
     FOR fact_record IN SELECT CASE WHEN b.value IS NULL THEN 0
                                    ELSE CASE WHEN a.fact_type = 'enum' THEN (
                                                    SELECT project_fact_type_enums.score::NUMERIC(9,2)
