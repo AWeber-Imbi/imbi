@@ -182,7 +182,6 @@ function Projects() {
             namespaces={asOptions(globalState.metadata.namespaces)}
             projectTypes={asOptions(globalState.metadata.projectTypes)}
             setFilterValues={(values) => {
-              // console.log('Setting filter', values)
               setState({ ...state, filter: values })
             }}
             values={state.filter}
@@ -203,12 +202,10 @@ function Projects() {
         errorMessage={errorMessage}
         filter={state.filter}
         offset={state.offset}
-        onRowClick={(data) => {
-          history.push(`/ui/projects/${data.id}`)
-        }}
         onSortDirection={onSortDirection}
         pageSize={state.pageSize}
         rowCount={state.rowCount}
+        rowURL={(data) => `/ui/projects/${data.id}`}
         setOffset={(offset) => {
           if (state.offset !== offset) {
             setState({ ...state, offset: offset })

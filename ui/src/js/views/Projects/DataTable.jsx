@@ -8,10 +8,10 @@ function DataTable({
   data,
   disabled,
   offset,
-  onRowClick,
   onSortDirection,
   pageSize,
   rowCount,
+  rowURL,
   setOffset,
   setPageSize,
   sort
@@ -91,7 +91,7 @@ function DataTable({
         columns={columns}
         data={data}
         disabled={disabled}
-        onRowClick={onRowClick}
+        rowURL={rowURL}
       />
       <Paginator.Controls
         disabled={disabled}
@@ -105,10 +105,10 @@ DataTable.propTypes = {
   data: PropTypes.arrayOf(PropTypes.object),
   disabled: PropTypes.bool,
   offset: PropTypes.number,
-  onRowClick: PropTypes.func,
   onSortDirection: PropTypes.func,
   pageSize: PropTypes.number,
   rowCount: PropTypes.number,
+  rowURL: PropTypes.func,
   setOffset: PropTypes.func,
   setPageSize: PropTypes.func,
   sort: PropTypes.object
