@@ -24,8 +24,7 @@ class ErrorBoundary extends React.Component {
   }
 
   render() {
-    if (this.state.error !== null)
-      return <Error className="flex-grow">{this.state.error}</Error>
+    if (this.state.error !== null) return <Error>{this.state.error}</Error>
     return this.props.children
   }
 }
