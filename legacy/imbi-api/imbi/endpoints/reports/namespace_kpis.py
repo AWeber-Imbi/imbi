@@ -10,21 +10,25 @@ class RequestHandler(base.RequestHandler):
     NAME = 'reports-kpis'
 
     SQL = re.sub(r'\s+', ' ', """\
-        WITH project_scores AS (
+        WITH projects_with_facts AS (
+            SELECT a.id, a.namespace_id
+              FROM v1.projects AS a
+         LEFT JOIN v1.project_fact_types AS b
+                ON a.project_type_id = ANY(b.project_type_ids)
+          GROUP BY a.id, a.namespace_id
+            HAVING count(b.*) > 0),
+        project_scores AS (
             SELECT a.namespace_id,
                    b.name AS namespace,
                    a.id,
                    v1.project_score(a.id)
-              FROM v1.projects AS a
+              FROM projects_with_facts AS a
               JOIN v1.namespaces AS b
-                ON b.id = a.namespace_id
-             WHERE a.archived IS FALSE)
+                ON b.id = a.namespace_id)
         SELECT namespace_id,
                namespace,
                count(*) AS projects,
-               avg(project_score) AS avg_project_score,
-               percentile_disc(0.95)
-                 WITHIN GROUP (ORDER BY project_score) AS stack_health_score,
+               avg(project_score) AS stack_health_score,
                sum(project_score)::INT AS total_project_score,
                count(*) * 100 AS total_possible_project_score,
                (((sum(project_score)::NUMERIC(9,2)
