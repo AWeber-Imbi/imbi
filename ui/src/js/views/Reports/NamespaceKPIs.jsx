@@ -88,16 +88,6 @@ function NamespaceKPIs() {
       }
     },
     {
-      title: t('reports.namespaceKPIs.avgProjectScore'),
-      name: 'avg_project_score',
-      type: 'text',
-      tableOptions: {
-        className: 'text-center',
-        headerClassName: 'pl-2 text-right',
-        lookupFunction: colorizeValue
-      }
-    },
-    {
       title: t('reports.namespaceKPIs.totalProjectScore'),
       name: 'total_project_score',
       type: 'text',
@@ -145,10 +135,9 @@ function NamespaceKPIs() {
         <dl className="ml-2 text-sm">
           <dt className="font-medium">Stack Health Score</dt>
           <dd>
-            The 95th Percentile of scores for all projects in the namespace
+            The calculated score indicating the overall health of projects in
+            the namespace
           </dd>
-          <dt className="font-medium mt-2">Avg Project Score</dt>
-          <dd>The average project score for all projects in the namespace</dd>
           <dt className="font-medium mt-2">Total Project Score</dt>
           <dd>
             The sum of the project scores for all projects in the namespace
