@@ -8,7 +8,7 @@ import { Context } from '../state'
 import { Dashboard } from './Dashboard/Dashboard'
 import { NewEntry, OperationsLog } from './OperationsLog/'
 import { Project } from './Project/'
-import { Projects } from './Projects/'
+import { Projects, ProjectTypeDefinitions } from './Projects/'
 import { Reports } from './Reports/Reports'
 import { useMetadata } from '../metadata'
 import { User as UserSchema } from '../schema'
@@ -53,6 +53,9 @@ function Main({ user }) {
                 </Route>
                 <Route path="/ui/projects/create">
                   <Project.Create user={user} />
+                </Route>
+                <Route path="/ui/projects/type-definitions">
+                  <ProjectTypeDefinitions />
                 </Route>
                 <Route path="/ui/projects/:projectId">
                   <Project.Detail user={user} />

@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useState } from 'react'
 import { Link, useHistory, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Icon, Loading } from '../../components'
+import { Alert, Icon, Loading, Tooltip } from '../../components'
 import { Context } from '../../state'
 import { httpGet } from '../../utils'
 
@@ -186,6 +186,15 @@ function Projects() {
             }}
             values={state.filter}
           />
+        </div>
+        <div className="flex-shrink ml-3">
+          <Tooltip value={t('projects.typeDefinitions')}>
+            <Link
+              to="/ui/projects/type-definitions"
+              className="text-gray-400 hover:text-blue-600">
+              <Icon icon="fas book-open" />
+            </Link>
+          </Tooltip>
         </div>
         <div className="w-6/12 text-right">
           <Link to="/ui/projects/create">

@@ -1,7 +1,8 @@
+import { Link } from 'react-router-dom'
 import React, { useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ContentArea, Error, Loading } from '../../components/'
+import { ContentArea, Error, Icon, Loading } from '../../components/'
 import { Context } from '../../state'
 import { httpGet } from '../../utils'
 import { Stats } from './Stats/'
@@ -78,6 +79,14 @@ export function Dashboard() {
             )
           })}
         </Stats.Container>
+        <div className="mr-2 text-right">
+          <Link
+            to="/ui/projects/type-definitions"
+            className="italic text-sm text-gray-600 hover:text-blue-600">
+            <Icon icon="fas book-open" className="mr-2" />
+            {t('projects.typeDefinitions')}
+          </Link>
+        </div>
       </ContentArea>
     </div>
   )
