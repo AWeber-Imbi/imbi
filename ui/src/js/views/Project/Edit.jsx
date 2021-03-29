@@ -22,13 +22,13 @@ async function saveLinkChanges(globalState, project, originalLinks, links) {
     const linkTypeID = parseInt(key)
     if (url.trim() === '' && originalLinks[linkTypeID] !== undefined) {
       ops.delete.push(linkTypeID)
-    } else if (originalLinks[linkTypeID] === undefined) {
+    } else if (url.trim() !== '' && originalLinks[linkTypeID] === undefined) {
       ops.add.push({
         project_id: project.id,
         link_type_id: linkTypeID,
         url: url.trim()
       })
-    } else if (originalLinks[linkTypeID] !== url.trim()) {
+    } else if (url.trim() !== '' && originalLinks[linkTypeID] !== url.trim()) {
       ops.update.push([
         linkTypeID,
         compare(
