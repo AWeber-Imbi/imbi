@@ -252,6 +252,7 @@ export default {
           'Showing {{startRecord}} to {{endRecord}} of {{totalRecords}} {{noun}}',
         requestError:
           'Error making API request for Projects, resetting filters and sort ({{error}}).',
+        typeDefinitions: 'Project Type Definitions',
         title: 'Projects'
       },
       reports: {
