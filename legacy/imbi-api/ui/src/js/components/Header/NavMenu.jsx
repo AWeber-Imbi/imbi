@@ -33,7 +33,7 @@ function NavMenu({ user }) {
       <Link className={'nav-menu-link' + (match ? ' active' : '')} to="/ui/">
         {t('dashboard.title')}
       </Link>
-      <NavLink className="nav-menu-link" to="/ui/projects/">
+      <NavLink className="nav-menu-link" to="/ui/projects">
         {t('projects.title')}
       </NavLink>
       <NavLink className="nav-menu-link" to="/ui/operations-log">
@@ -44,7 +44,7 @@ function NavMenu({ user }) {
       </NavLink>
       {user.permissions.includes('admin') && (
         <Tooltip value={t('admin.title')}>
-          <NavLink className="nav-menu-link" to="/ui/admin/">
+          <NavLink className="nav-menu-link" to="/ui/admin">
             <Icon icon="fas wrench" className="p-0 m-0" />
           </NavLink>
         </Tooltip>
