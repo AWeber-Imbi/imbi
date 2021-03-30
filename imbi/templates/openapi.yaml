@@ -3188,10 +3188,7 @@ paths:
           in: query
           description: Set to `true` to include archived values
           schema:
-            type: string
-            enum:
-              - true
-              - false
+            type: boolean
         - name: sort
           in: query
           description: |-
