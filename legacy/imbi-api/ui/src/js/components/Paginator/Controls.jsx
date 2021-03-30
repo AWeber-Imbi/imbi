@@ -12,8 +12,8 @@ function Controls({
   showStateDisplay
 }) {
   return (
-    <div className="align-middle items-center flex flex-column">
-      <div className="align-middle flex-1 p-2 text-sm text-gray-700">
+    <div className="flex items-center text-sm text-gray-700">
+      <div className="hidden md:inline-block p-2 whitespace-nowrap">
         {showStateDisplay && (
           <StateDisplay
             display={showStateDisplay}
@@ -22,8 +22,12 @@ function Controls({
           />
         )}
       </div>
-      <PageSizeSelector display={showPageSizeSelector} />
-      <Buttons />
+      <div className="p-2 space-x-2 text-left md:text-right w-1/2 md:1-/3">
+        <PageSizeSelector display={showPageSizeSelector} />
+      </div>
+      <div className="text-right w-1/2 md:1-/3">
+        <Buttons />
+      </div>
     </div>
   )
 }

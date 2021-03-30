@@ -48,7 +48,7 @@ function Filter({
       //console.log(provided)
       return {
         ...provided,
-        borderRadius: theme.borderRadius.md,
+        borderRadius: 0,
         fontFamily: theme.fontFamily.sans.join(','),
         fontSize: theme.fontSize.sm
       }
@@ -78,13 +78,13 @@ function Filter({
   }
 
   return (
-    <form className="flex-grow flex flex-row items-center md:space-x-2 text-gray-500 sm:w-full md:w-full">
+    <form className="flex flex-row items-center md:space-x-2 text-gray-500 sm:w-full md:w-full">
       <Icon icon="fas filter" className="hidden md:inline-block ml-2" />
       <label className="hidden lg:inline-block pr-2">
         {t('common.filter')}
       </label>
       <Select
-        className="border-gray-200 flex-auto sm:mr-2 shadow text-gray-600 sm:w-full md:w-1/3 w-60"
+        className="border-gray-200 flex-auto sm:mr-2 shadow text-gray-600"
         isClearable
         isDisabled={disabled}
         isSearchable={false}
@@ -98,7 +98,7 @@ function Filter({
         value={namespace}
       />
       <Select
-        className="border-gray-200 flex-auto shadow text-gray-600 sm:w-full md:w-1/3 w-60"
+        className="border-gray-200 flex-auto shadow text-gray-600"
         isClearable
         isDisabled={disabled}
         isSearchable={false}
@@ -128,7 +128,7 @@ function Filter({
           value={includeArchived}
         />
       </div>
-      <label className="hidden xl:inline-block whitespace-nowrap">
+      <label className="hidden lg:inline-block whitespace-nowrap">
         {t('projects.includeArchived')}
       </label>
     </form>

@@ -11,7 +11,7 @@ function PageSizeSelector({ display }) {
   const { t } = useTranslation()
   if (!display) return <div className="flex-1" />
   return (
-    <div className="align-middle flex-1 p-2 text-sm text-gray-700 space-x-2 text-center">
+    <Fragment>
       <span>{t('paginator.pageSize')}:</span>
       {pageSizes.map((size) => {
         return (
@@ -34,7 +34,7 @@ function PageSizeSelector({ display }) {
           </Fragment>
         )
       })}
-    </div>
+    </Fragment>
   )
 }
 PageSizeSelector.defaultProps = {
