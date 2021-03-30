@@ -246,6 +246,7 @@ export default {
       },
       projects: {
         newProject: 'New Project',
+        includeArchived: 'Include archived projects',
         project: 'project',
         projects: 'projects',
         paginationState:

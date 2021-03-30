@@ -175,37 +175,22 @@ function Projects() {
           {errorMessage}
         </Alert>
       )}
-      <div className="flex items-center">
-        <div className="w-6/12">
-          <Filter
-            disabled={state.fetching}
-            namespaces={asOptions(globalState.metadata.namespaces)}
-            projectTypes={asOptions(globalState.metadata.projectTypes)}
-            setFilterValues={(values) => {
-              setState({ ...state, filter: values })
-            }}
-            values={state.filter}
-          />
-        </div>
-        <div className="flex-shrink pl-5">
-          <Link
-            to="/ui/reports/project-type-definitions"
-            className="text-gray-400 hover:text-blue-600 whitespace-nowrap"
-            title={t('reports.projectTypeDefinitions.title')}>
-            <Icon icon="fas book-open" />
-            <span className="hidden ml-2 text-sm xl:inline-block">
-              {t('reports.projectTypeDefinitions.title')}
-            </span>
-          </Link>
-        </div>
-        <div className="w-6/12 text-right">
-          <Link to="/ui/projects/create">
-            <button className="btn-green">
-              <Icon className="mr-2" icon="fas plus-circle" />
-              {t('headerNavItems.newProject')}
-            </button>
-          </Link>
-        </div>
+      <div className="flex items-center space-x-10">
+        <Filter
+          disabled={state.fetching}
+          namespaces={asOptions(globalState.metadata.namespaces)}
+          projectTypes={asOptions(globalState.metadata.projectTypes)}
+          setFilterValues={(values) => {
+            setState({ ...state, filter: values })
+          }}
+          values={state.filter}
+        />
+        <Link to="/ui/projects/create" className="flex-auto text-right text-sm">
+          <button className="btn-green whitespace-nowrap">
+            <Icon className="mr-2" icon="fas plus-circle" />
+            {t('headerNavItems.newProject')}
+          </button>
+        </Link>
       </div>
       <DataTable
         data={state.data}
