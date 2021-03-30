@@ -49,7 +49,6 @@ export function Dashboard() {
         pageTitle={t('dashboard.namespaces')}>
         <Stats.Container>
           {data.namespaces.map((row) => {
-            if (row.count <= 1) return null
             return (
               <Stats.Value
                 key={`stats-${row.name}`}
