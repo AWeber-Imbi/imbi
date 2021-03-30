@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import React, { useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -26,6 +27,7 @@ function NamespaceKPIs() {
   const [globalState, dispatch] = useContext(Context)
   const [state, setState] = useState({
     data: [],
+    lookup: {},
     fetched: false,
     errorMessage: null
   })
@@ -48,10 +50,18 @@ function NamespaceKPIs() {
         globalState.fetch,
         url,
         (result) => {
-          setState({ data: result, fetched: true, errorMessage: null })
+          const lookup = Object.fromEntries(
+            result.map((row) => [row.namespace, row.namespace_id])
+          )
+          setState({
+            data: result,
+            fetched: true,
+            lookup: lookup,
+            errorMessage: null
+          })
         },
         (error) => {
-          setState({ data: [], fetched: true, errorMessage: error })
+          setState({ data: [], fetched: true, lookup: {}, errorMessage: error })
         }
       )
     }
@@ -64,7 +74,14 @@ function NamespaceKPIs() {
       type: 'text',
       tableOptions: {
         className: 'truncate',
-        headerClassName: 'w-3/12'
+        headerClassName: 'w-3/12',
+        lookupFunction: (namespace) => {
+          return (
+            <Link to={`/ui/projects?namespace_id=${state.lookup[namespace]}`}>
+              {namespace}
+            </Link>
+          )
+        }
       }
     },
     {
