@@ -11,14 +11,14 @@ function ProjectTypeDefinitions() {
     dispatch({
       type: 'SET_CURRENT_PAGE',
       payload: {
-        url: new URL('/ui/projects/type-definitions', state.baseURL),
-        title: 'projects.typeDefinitions'
+        url: new URL('/ui/reports/project-type-definitions', state.baseURL),
+        title: 'reports.projectTypeDefinitions.title'
       }
     })
   }, [])
   return (
     <ContentArea
-      pageTitle={t('projects.typeDefinitions')}
+      pageTitle={t('reports.projectTypeDefinitions.title')}
       pageIcon="fas book-open">
       <Card className="font-normal px-4 text-gray-600">
         <dl className="space-y-3">

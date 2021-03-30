@@ -81,10 +81,10 @@ export function Dashboard() {
         </Stats.Container>
         <div className="mr-2 text-right">
           <Link
-            to="/ui/projects/type-definitions"
+            to="/ui/reports/project-type-definitions"
             className="italic text-sm text-gray-600 hover:text-blue-600">
             <Icon icon="fas book-open" className="mr-2" />
-            {t('projects.typeDefinitions')}
+            {t('reports.projectTypeDefinitions.title')}
           </Link>
         </div>
       </ContentArea>
