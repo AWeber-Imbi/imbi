@@ -3,7 +3,7 @@ import React from 'react'
 import Select from 'react-select'
 import { useTranslation } from 'react-i18next'
 
-import { Icon } from '../../components'
+import { Form, Icon } from '../../components'
 import theme from '../../theme'
 
 function Filter({
@@ -14,6 +14,7 @@ function Filter({
   values
 }) {
   const { t } = useTranslation()
+  const includeArchived = values.include_archived
   const namespace = namespaces.filter(
     (v) => v.value.toString() === values.namespace_id
   )
@@ -105,6 +106,22 @@ function Filter({
         styles={styles}
         value={projectType}
       />
+      <div className="flex-shrink flex items-center px-4">
+        <Form.Toggle
+          name="archived"
+          className="flex-shrink"
+          disabled={disabled}
+          onChange={(name, value) => {
+            setFilterValues({ ...values, include_archived: value })
+          }}
+          value={includeArchived}
+        />
+        <label
+          htmlFor="archived"
+          className="flex-shrink text-sm font-medium ml-2 text-gray-700 whitespace-nowrap">
+          Include archived projects
+        </label>
+      </div>
     </form>
   )
 }

@@ -252,7 +252,6 @@ export default {
           'Showing {{startRecord}} to {{endRecord}} of {{totalRecords}} {{noun}}',
         requestError:
           'Error making API request for Projects, resetting filters and sort ({{error}}).',
-        typeDefinitions: 'Project Type Definitions',
         title: 'Projects'
       },
       reports: {
@@ -266,6 +265,9 @@ export default {
           totalProjectScore: 'Total Project Score',
           totalPossibleProjectScore: 'Total Possible Score',
           totalProjectScorePercentage: 'TPS %'
+        },
+        projectTypeDefinitions: {
+          title: 'Project Type Definitions'
         }
       },
       user: {

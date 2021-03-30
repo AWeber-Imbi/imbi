@@ -3184,7 +3184,7 @@ paths:
           description: Filter by Name
           schema:
             type: string
-        - name: archived
+        - name: include_archived
           in: query
           description: Set to `true` to include archived values
           schema:

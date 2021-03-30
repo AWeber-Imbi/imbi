@@ -112,6 +112,7 @@ function Field({
         {type === 'toggle' && (
           <Toggle
             name={name}
+            className="mt-2"
             disabled={disabled}
             onChange={onChange}
             value={value}

@@ -98,9 +98,9 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     async def get(self, *args, **kwargs):
         kwargs['limit'] = int(self.get_query_argument('limit', '10'))
         kwargs['offset'] = int(self.get_query_argument('offset', '20'))
-        kwargs['archived'] = self.get_query_argument(
-            'archived', 'false') == 'true'
-        where_chunks = ['a.archived = %(archived)s']
+        where_chunks = []
+        if self.get_query_argument('include_archived', 'false') == 'false':
+            where_chunks.append('a.archived IS FALSE')
         for kwarg in ['namespace_id', 'project_type_id', 'name']:
             value = self.get_query_argument(kwarg, None)
             if value is not None:

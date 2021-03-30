@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useState } from 'react'
 import { Link, useHistory, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Icon, Loading, Tooltip } from '../../components'
+import { Alert, Icon, Loading } from '../../components'
 import { Context } from '../../state'
 import { httpGet } from '../../utils'
 
@@ -38,7 +38,7 @@ function Projects() {
     data: [],
     fetching: false,
     filter: {
-      archived: query.get('archived'),
+      include_archived: query.get('include_archived') === 'true',
       namespace_id: query.get('namespace_id'),
       project_type_id: query.get('project_type_id')
     },
@@ -97,7 +97,7 @@ function Projects() {
             ...state,
             fetching: false,
             filter: {
-              archived: false,
+              include_archived: false,
               namespace_id: null,
               project_type_id: null
             },
@@ -187,14 +187,16 @@ function Projects() {
             values={state.filter}
           />
         </div>
-        <div className="flex-shrink ml-3">
-          <Tooltip value={t('projects.typeDefinitions')}>
-            <Link
-              to="/ui/projects/type-definitions"
-              className="text-gray-400 hover:text-blue-600">
-              <Icon icon="fas book-open" />
-            </Link>
-          </Tooltip>
+        <div className="flex-shrink pl-5">
+          <Link
+            to="/ui/reports/project-type-definitions"
+            className="text-gray-400 hover:text-blue-600 whitespace-nowrap"
+            title={t('reports.projectTypeDefinitions.title')}>
+            <Icon icon="fas book-open" />
+            <span className="hidden ml-2 text-sm xl:inline-block">
+              {t('reports.projectTypeDefinitions.title')}
+            </span>
+          </Link>
         </div>
         <div className="w-6/12 text-right">
           <Link to="/ui/projects/create">
