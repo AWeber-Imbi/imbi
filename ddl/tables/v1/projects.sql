@@ -14,10 +14,11 @@ CREATE TABLE IF NOT EXISTS projects (
   environments           TEXT[],
   archived               BOOLEAN                   NOT NULL  DEFAULT FALSE,
   UNIQUE (namespace_id, project_type_id, name),
-  UNIQUE (namespace_id, project_type_id, slug),
   FOREIGN KEY (namespace_id) REFERENCES namespaces (id) ON UPDATE CASCADE ON DELETE RESTRICT,
   FOREIGN KEY (project_type_id) REFERENCES project_types (id) ON UPDATE CASCADE ON DELETE RESTRICT
 );
+
+CREATE UNIQUE INDEX projects_namespace_id_project_type_id_slug_key ON v1.projects (namespace_id, project_type_id, slug) WHERE archived IS FALSE;
 
 COMMENT ON TABLE projects IS 'Projects';
 COMMENT ON COLUMN projects.id IS 'Surrogate key for URLs and linking';
