@@ -175,7 +175,7 @@ function Projects() {
           {errorMessage}
         </Alert>
       )}
-      <div className="flex items-center space-x-10">
+      <div className="flex items-center space-x-2 md:space-x-10">
         <Filter
           disabled={state.fetching}
           namespaces={asOptions(globalState.metadata.namespaces)}
