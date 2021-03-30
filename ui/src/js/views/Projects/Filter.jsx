@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Form, Icon } from '../../components'
 import theme from '../../theme'
+import { Link } from 'react-router-dom'
 
 function Filter({
   disabled,
@@ -29,7 +30,8 @@ function Filter({
         fontFamily: theme.fontFamily.sans.join(','),
         fontSize: theme.fontSize.sm,
         borderColor: theme.colors.gray['300'],
-        borderWidth: theme.borderWidth['1'],
+        borderRadius: theme.borderRadius.md,
+        borderWidth: theme.borderWidth['2xl'],
         outline: 'none',
         boxShadow: 'none'
       }
@@ -46,6 +48,7 @@ function Filter({
       //console.log(provided)
       return {
         ...provided,
+        borderRadius: theme.borderRadius.md,
         fontFamily: theme.fontFamily.sans.join(','),
         fontSize: theme.fontSize.sm
       }
@@ -75,11 +78,13 @@ function Filter({
   }
 
   return (
-    <form className="flex items-center space-x-2 text-gray-600 ml-2">
-      <Icon icon="fas filter" />
-      <label className="flex-shrink">{t('common.filter')}</label>
+    <form className="flex-grow flex flex-row items-center md:space-x-2 text-gray-500 sm:w-full md:w-full">
+      <Icon icon="fas filter" className="hidden md:inline-block ml-2" />
+      <label className="hidden lg:inline-block pr-2">
+        {t('common.filter')}
+      </label>
       <Select
-        className="flex-1"
+        className="border-gray-200 flex-auto sm:mr-2 shadow text-gray-600 sm:w-full md:w-1/3 w-60"
         isClearable
         isDisabled={disabled}
         isSearchable={false}
@@ -93,7 +98,7 @@ function Filter({
         value={namespace}
       />
       <Select
-        className="flex-1"
+        className="border-gray-200 flex-auto shadow text-gray-600 sm:w-full md:w-1/3 w-60"
         isClearable
         isDisabled={disabled}
         isSearchable={false}
@@ -106,22 +111,26 @@ function Filter({
         styles={styles}
         value={projectType}
       />
-      <div className="flex-shrink flex items-center px-4">
+      <Link
+        to="/ui/reports/project-type-definitions"
+        className="hidden md:inline-block pl-2 hover:text-blue-600"
+        title={t('reports.projectTypeDefinitions.title')}>
+        <Icon icon="fas book-open" />
+      </Link>
+      <div className="hidden md:inline-block pl-2 pt-1">
         <Form.Toggle
           name="archived"
-          className="flex-shrink"
           disabled={disabled}
           onChange={(name, value) => {
             setFilterValues({ ...values, include_archived: value })
           }}
+          title={t('projects.includeArchived')}
           value={includeArchived}
         />
-        <label
-          htmlFor="archived"
-          className="flex-shrink text-sm font-medium ml-2 text-gray-700 whitespace-nowrap">
-          Include archived projects
-        </label>
       </div>
+      <label className="hidden xl:inline-block whitespace-nowrap">
+        {t('projects.includeArchived')}
+      </label>
     </form>
   )
 }

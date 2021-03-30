@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-function Toggle({ name, className, disabled, onChange, value }) {
+function Toggle({ name, className, disabled, onChange, title, value }) {
   const { t } = useTranslation()
   const [toggleOn, setToggleOn] = useState(value)
   return (
@@ -18,7 +18,13 @@ function Toggle({ name, className, disabled, onChange, value }) {
         setToggleOn(!toggleOn)
         onChange(name, !toggleOn)
       }}
-      title={toggleOn ? t('common.turnOff') : t('common.turnOn')}>
+      title={
+        title !== undefined
+          ? title
+          : toggleOn
+          ? t('common.turnOff')
+          : t('common.turnOn')
+      }>
       <span className="sr-only">
         Toggle {toggleOn ? t('common.off') : t('common.on')}
       </span>
@@ -41,6 +47,7 @@ Toggle.propTypes = {
   className: PropTypes.string,
   disabled: PropTypes.bool,
   onChange: PropTypes.func.isRequired,
+  title: PropTypes.string,
   value: PropTypes.bool
 }
 export { Toggle }
