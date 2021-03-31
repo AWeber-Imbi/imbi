@@ -19,7 +19,7 @@ services:
       test: /usr/bin/ldapsearch -x -h localhost -b dc=example,dc=org cn=test,ou=users,dc=example,dc=org
     command: --loglevel debug --copy-service
   postgres:
-    image: gavinmroy/alpine-postgres:13.1-1
+    image: gavinmroy/alpine-postgres:13.2-0
     ports:
       - 5432
     volumes:

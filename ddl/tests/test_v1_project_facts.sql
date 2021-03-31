@@ -1,5 +1,5 @@
 BEGIN;
-  SELECT PLAN(24);
+  SELECT PLAN(25);
 
   SELECT lives_ok(
     $$INSERT INTO v1.namespaces (id, name, created_by, slug, icon_class) VALUES (1, 'test_namespace', 'test_user', 'test_slug', 'test_icon_class')$$,
@@ -133,5 +133,14 @@ BEGIN;
        LIMIT 1$$,
     $$VALUES ('92.6', 25, 100)$$,
     'the expected record is in the fact history table');
+
+  SELECT results_eq(
+     $$SELECT score
+         FROM v1.project_score_history
+        WHERE project_id = 1
+     ORDER BY changed_at DESC
+        LIMIT 1$$,
+     $$SELECT v1.project_score(1) AS score$$,
+     'most recent score from history matches current score');
 
 ROLLBACK;
