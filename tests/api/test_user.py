@@ -179,6 +179,11 @@ class InternalTestCase(base.TestCase):
         self.assertFalse(await obj.authenticate())
 
     @testing.gen_test
+    async def test_garbage_token_fails(self):
+        obj = user.User(self._app, 'foo', None, 'ohno')
+        self.assertFalse(await obj.authenticate())
+
+    @testing.gen_test
     async def test_should_refresh_false(self):
         user_value = await self.setup_user()
         obj = user.User(
