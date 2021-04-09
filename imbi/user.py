@@ -7,6 +7,7 @@ import logging
 import typing
 from itertools import chain
 
+import psycopg2.errors
 from tornado import web
 
 from imbi import ldap, timestamp
@@ -171,6 +172,13 @@ class User:
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
         raise web.HTTPError(500, 'System error')
 
+    @classmethod
+    def on_token_postgres_error(cls, metric_name: str, exc: Exception) -> None:
+        """Pass InvalidTextRepresentation exceptions through."""
+        if isinstance(exc, psycopg2.errors.InvalidTextRepresentation):
+            raise exc
+        return cls.on_postgres_error(metric_name, exc)
+
     async def refresh(self) -> None:
         """Update the attributes from LDAP"""
         if self.external_id and self._ldap.is_enabled:
@@ -320,10 +328,13 @@ class User:
         """Validate via v1.authentication_tokens table"""
         LOGGER.debug('Authenticating with token: %s', self.token)
         async with self._application.postgres_connector(
-                on_error=self.on_postgres_error) as conn:
-            result = await conn.execute(
-                self.SQL_AUTHENTICATE_TOKEN, {'token': self.token},
-                'user-token-auth')
+                on_error=self.on_token_postgres_error) as conn:
+            try:
+                result = await conn.execute(
+                    self.SQL_AUTHENTICATE_TOKEN, {'token': self.token},
+                    'user-token-auth')
+            except psycopg2.errors.InvalidTextRepresentation:
+                return False
             if not result.row_count:
                 return False
             self._assign_values(result.row)
