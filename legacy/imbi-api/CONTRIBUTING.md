@@ -75,5 +75,8 @@ The following [Makefile]() targets are for running the various tests for the var
 
 ## Code Formatting
 
-For the Python project, please format your code using [yapf](http://pypi.python.org/pypi/yapf)
-with ``pep8`` style prior to issuing your pull request.
+Please ensure your code-style passes the lint tests for the code you are modifying. Code that does not pass lint tests, unit tests, or acceptance tests will not be merged.
+
+Python code is expected to be strict PEP-8 and the `make flake8` command will check the formatting along with other code style preferences.
+
+You should always run prettier for the JavaScript/JSX code. It will reformat the code to the preferred style.
