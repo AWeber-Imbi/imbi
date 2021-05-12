@@ -1,0 +1,27 @@
+paths:
+  collection:
+    get:
+      description: Retrieve the collection of integrations
+      summary: Get integrations
+      tags: [Integrations]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '../schemas/integration.yaml#/read'
+  manage:
+    get:
+      description: Retrieve a specific integration by name
+      summary: Fetch a single integration
+      tags: [Integrations]
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/integration.yaml#/read'

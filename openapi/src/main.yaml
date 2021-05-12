@@ -47,6 +47,8 @@ paths:
   /metrics: { $ref: 'endpoints/metrics.yaml#/paths/metrics' }
   /namespaces: { $ref: 'endpoints/namespace.yaml#/paths/collection' }
   /namespaces/{id}: { $ref: 'endpoints/namespace.yaml#/paths/manage' }
+  /integrations: { $ref: 'endpoints/integrations.yaml#/paths/collection' }
+  /integrations/{name}: { $ref: 'endpoints/integrations.yaml#/paths/manage' }
   /operations-log: { '$ref': 'endpoints/operations_log.yaml#/paths/collection' }
   /operations-log/{id}: { '$ref': 'endpoints/operations_log.yaml#/paths/manage' }
   /permissions: { $ref: 'endpoints/permissions.yaml#/paths/collection' }
@@ -159,6 +161,8 @@ tags:
     description: Endpoints used to report on the state of various objects in Imbi
   - name: Settings
     description: Endpoints used for retrieving settings for the Imbi UI
+  - name: Integrations
+    description: Endpoints used to retrieve information about applications that Imbi is integrated with
   - name: Monitoring & Metrics
     description: |-
       Endpoints used for health checking, service status, and service metrics
@@ -176,6 +180,7 @@ x-tagGroups:
     tags:
       - Cookie Cutters
       - Environments
+      - Integrations
       - Namespaces
       - Fact Types
       - Fact Type Enums

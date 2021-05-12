@@ -22,6 +22,7 @@ types/v1/fact_type.sql
 tables/v1/environments.sql
 tables/v1/namespaces.sql
 tables/v1/namespace_kpi_history.sql
+tables/v1/oauth_integrations.sql
 tables/v1/project_types.sql
 tables/v1/cookie_cutters.sql
 tables/v1/projects.sql
@@ -40,6 +41,7 @@ tables/v1/users.sql
 tables/v1/authentication_tokens.sql
 tables/v1/groups.sql
 tables/v1/group_members.sql
+tables/v1/user_oauth2_tokens.sql
 
 -- Functions
 functions/v1/group_name_from_ldap_dn.sql

@@ -3,7 +3,7 @@ from tornado import web
 from imbi import constants
 from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                environments, fact_type_enums, fact_type_ranges, fact_types,
-               groups, metrics, namespaces, openapi, permissions,
+               groups, integrations, metrics, namespaces, openapi, permissions,
                project_activity_feed, project_dependencies, project_fact_types,
                project_facts, project_link_types, project_links,
                project_score_history, project_types, project_urls, projects,
@@ -31,6 +31,9 @@ URLS = [
     web.url(r'^/groups/(?P<name>[\w_\-%\+]+)$',
             groups.RecordRequestHandler,
             name='group'),
+    web.url(r'^/integrations$', integrations.CollectionRequestHandler),
+    web.url(r'^/integrations/(?P<name>[\w_\-%\+]+)$',
+            integrations.RecordRequestHandler),
     web.url(r'^/metrics$', metrics.RequestHandler),
     web.url(r'^/namespaces$', namespaces.CollectionRequestHandler),
     web.url(r'^/namespaces/(?P<id>\d+)$',

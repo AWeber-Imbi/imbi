@@ -1558,6 +1558,58 @@ paths:
         required: true
         schema:
           type: number
+  /integrations:
+    get:
+      description: Retrieve the collection of integrations
+      summary: Get integrations
+      tags:
+        - Integrations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1integrations~1%7Bname%7D/get/responses/200/content/application~1json/schema'
+  '/integrations/{name}':
+    get:
+      description: Retrieve a specific integration by name
+      summary: Fetch a single integration
+      tags:
+        - Integrations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  api_endpoint:
+                    type: string
+                  callback_url:
+                    type: string
+                  authorization_endpoint:
+                    type: string
+                  token_endpoint:
+                    type: string
+                  revoke_endpoint:
+                    type: string
+                  client_id:
+                    type: string
+                required:
+                  - name
+                  - api_endpoint
+                  - callback_url
+                  - authorization_endpoint
+                  - token_endpoint
+                  - revoke_endpoint
+                  - client_id
+                additionalProperties: false
   /operations-log:
     get:
       description: |-
@@ -1623,6 +1675,7 @@ paths:
           schema:
             type: string
             pattern: ^\d+$
+
       responses:
         '200':
           description: Success
@@ -1631,6 +1684,7 @@ paths:
               schema:
                 type: array
                 items:
+
                   title: Operations Log Entry
                   description: Describes an audit log entry for entity operational changes
                   type: object
@@ -5753,8 +5807,11 @@ tags:
     description: Endpoints used to report on the state of various objects in Imbi
   - name: Settings
     description: Endpoints used for retrieving settings for the Imbi UI
+  - name: Integrations
+    description: Endpoints used to retrieve information about applications that Imbi is integrated with
   - name: Monitoring & Metrics
     description: 'Endpoints used for health checking, service status, and service metrics'
+
 x-tagGroups:
   - name: Activity Feed
     tags:
@@ -5768,6 +5825,7 @@ x-tagGroups:
     tags:
       - Cookie Cutters
       - Environments
+      - Integrations
       - Namespaces
       - Fact Types
       - Fact Type Enums
