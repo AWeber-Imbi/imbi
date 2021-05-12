@@ -97,7 +97,8 @@ class InternalTestCase(base.TestCase):
             'display_name': user_value['display_name'],
             'email_address': user_value['email_address'],
             'groups': [group_value['name']],
-            'permissions': sorted(set(group_value['permissions']))
+            'permissions': sorted(set(group_value['permissions'])),
+            'integrations': [],
         }
         self.assertDictEqual(values, expectation)
 
@@ -147,7 +148,8 @@ class InternalTestCase(base.TestCase):
             'display_name': display_name,
             'email_address': user_value['email_address'],
             'groups': [group_value['name']],
-            'permissions': sorted(set(group_value['permissions']))
+            'permissions': sorted(set(group_value['permissions'])),
+            'integrations': [],
         }
         self.assertDictEqual(values, expectation)
 
@@ -242,7 +244,8 @@ class LDAPTestCase(base.TestCase):
             'display_name': 'Its Imbi',
             'email_address': 'imbi@example.org',
             'groups': ['admin', 'imbi'],
-            'permissions': ['admin', 'reader']
+            'permissions': ['admin', 'reader'],
+            'integrations': [],
         }
         self.assertDictEqual(values, expectation)
         self.assertTrue(obj.has_permission('admin'))
