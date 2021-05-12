@@ -3,11 +3,11 @@ from tornado import web
 from imbi import constants
 from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                environments, fact_type_enums, fact_type_ranges, fact_types,
-               groups, integrations, metrics, namespaces, openapi, permissions,
-               project_activity_feed, project_dependencies, project_fact_types,
-               project_facts, project_link_types, project_links,
-               project_score_history, project_types, project_urls, projects,
-               reports, status, ui)
+               gitlab, groups, integrations, metrics, namespaces, openapi,
+               permissions, project_activity_feed, project_dependencies,
+               project_fact_types, project_facts, project_link_types,
+               project_links, project_score_history, project_types,
+               project_urls, projects, reports, status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -27,6 +27,9 @@ URLS = [
     web.url(r'^/environments/(?P<name>[\w_\-%\+]+)$',
             environments.RecordRequestHandler,
             name='environment'),
+    web.url(r'^/gitlab/auth', gitlab.RedirectHandler),
+    web.url(r'^/gitlab/namespaces', gitlab.UserNamespacesHandler),
+    web.url(r'^/gitlab/projects', gitlab.ProjectsHandler),
     web.url(r'^/groups$', groups.CollectionRequestHandler),
     web.url(r'^/groups/(?P<name>[\w_\-%\+]+)$',
             groups.RecordRequestHandler,

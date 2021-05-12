@@ -51,7 +51,16 @@ function Profile({ user }) {
   const [state, dispatch] = useContext(Context)
   const { t } = useTranslation()
 
-  function redirectToGitlab() {}
+  function redirectToGitlab(e) {
+    e.preventDefault()
+    document.location =
+      `${state.metadata.gitlabDetails.authorizationEndpoint}` +
+      `?client_id=${state.metadata.gitlabDetails.clientId}` +
+      `&redirect_uri=${state.metadata.gitlabDetails.redirectURI}` +
+      `&response_type=code` +
+      `&state=${user.username}` +
+      `&scope=api`
+  }
 
   useEffect(() => {
     dispatch({

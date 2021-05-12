@@ -297,7 +297,8 @@ export default {
           userType: 'User Type',
           externalId: 'External ID',
           emailAddress: 'Email Address',
-          groups: 'Groups'
+          groups: 'Groups',
+          integrations: 'Integrated Applications'
         },
         settings: {
           title: 'User Settings',
