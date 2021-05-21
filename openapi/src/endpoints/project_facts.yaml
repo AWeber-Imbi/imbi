@@ -13,7 +13,7 @@ paths:
                 type: array
                 items:
                   $ref: '../schemas/project_fact.yaml#/read'
-              examples:
+              example:
                 facts:
                   $ref: '#/components/examples/read'
             application/msgpack:
@@ -29,7 +29,7 @@ paths:
               type: array
               items:
                 $ref: '../schemas/project_fact.yaml#/write'
-            examples:
+            example:
               facts:
                 $ref: '#/components/examples/write'
           application/msgpack:
@@ -42,7 +42,7 @@ paths:
             application/json: &responsesSuccess
               schema:
                 $ref: '../schemas/project_fact_type.yaml#/read'
-              examples:
+              example:
                 record:
                   $ref: '#/components/examples/read'
             application/msgpack:

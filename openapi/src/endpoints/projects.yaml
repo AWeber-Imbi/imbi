@@ -45,6 +45,8 @@ paths:
             **Example Value**
 
               `namespace asc, name desc`
+          schema:
+            type: string
         - name: limit
           in: query
           description: Limit the number of records returned
@@ -66,7 +68,7 @@ paths:
                 type: array
                 items:
                   $ref: '../schemas/project.yaml#/read'
-              examples:
+              example:
                 records:
                   summary: Multiple project records
                   value:
@@ -100,7 +102,7 @@ paths:
           application/json: &postContent
             schema:
               $ref: '../schemas/project.yaml#/write'
-            examples:
+            example:
               record:
                 $ref: '#/components/examples/write'
           application/msgpack:
@@ -205,7 +207,7 @@ components:
         application/json: &responsesSuccess
           schema:
             $ref: '../schemas/project.yaml#/read'
-          examples:
+          example:
             record:
               $ref: '#/components/examples/read'
         application/msgpack:
