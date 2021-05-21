@@ -12,6 +12,7 @@ extensions/uuid.sql
 schemata/v1.sql
 
 -- Types
+types/v1/change_type.sql
 types/v1/cookie_cutter_type.sql
 types/v1/data_type.sql
 types/v1/entity_type.sql
@@ -29,6 +30,7 @@ tables/v1/namespace_kpi_history.sql
 tables/v1/project_types.sql
 tables/v1/cookie_cutters.sql
 tables/v1/projects.sql
+tables/v1/operations_log.sql
 tables/v1/project_dependencies.sql
 tables/v1/project_fact_types.sql
 tables/v1/project_fact_type_enums.sql
