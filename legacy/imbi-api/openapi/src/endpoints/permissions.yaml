@@ -15,7 +15,7 @@ paths:
                 type: array
                 items:
                   type: string
-              examples:
+              example:
                 records:
                   summary: Multiple permissions
                   value:

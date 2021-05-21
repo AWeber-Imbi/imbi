@@ -9,9 +9,8 @@ paths:
         content:
           application/json: &postContent
             schema:
-              schema:
-                $ref: '../schemas/authentication_token.yaml#/write'
-            examples:
+              $ref: '../schemas/authentication_token.yaml#/write'
+            example:
               record:
                 name: Test Integration
           application/msgpack:
@@ -23,7 +22,7 @@ paths:
             application/json: &responseContent
               schema:
                 $ref: '../schemas/authentication_token.yaml#/read'
-              examples:
+              example:
                 records:
                   summary: The newly created authentication token
                   value:
@@ -50,7 +49,7 @@ paths:
                 type: array
                 items:
                   $ref: '../schemas/authentication_token.yaml#/read'
-              examples:
+              example:
                 records:
                   summary: Multiple authentication tokens
                   value:

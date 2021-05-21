@@ -14,8 +14,8 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/namespace.yaml'
-              examples:
+                  $ref: '../schemas/namespace.yaml#/read'
+              example:
                 records:
                   summary: Multiple namespace records
                   value:
@@ -45,7 +45,7 @@ paths:
           application/json: &postContent
             schema:
               $ref: '../schemas/namespace.yaml#/write'
-            examples:
+            example:
               record:
                 $ref: '#/components/examples/write'
           application/msgpack:
@@ -142,7 +142,7 @@ components:
         application/json: &responsesSuccess
           schema:
             $ref: '../schemas/namespace.yaml#/read'
-          examples:
+          example:
             record:
               $ref: '#/components/examples/read'
         application/msgpack:

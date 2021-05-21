@@ -15,7 +15,7 @@ paths:
                 type: array
                 items:
                   $ref: '../schemas/project_link.yaml#/read'
-              examples:
+              example:
                 records:
                   summary: Multiple group records
                   value:
@@ -46,7 +46,7 @@ paths:
           application/json: &postContent
             schema:
               $ref: '../schemas/project_link.yaml#/write'
-            examples:
+            example:
               record:
                 $ref: '#/components/examples/write'
           application/msgpack:
@@ -148,7 +148,7 @@ components:
         application/json: &responsesSuccess
           schema:
             $ref: '../schemas/project_link.yaml#/read'
-          examples:
+          example:
             record:
               $ref: '#/components/examples/read'
         application/msgpack:

@@ -5,7 +5,7 @@ Conflict:
     application/json: &responsesConflict
       schema:
         $ref: './schemas.yaml#/problemDetail'
-      examples:
+      example:
         problemDetail:
           description: An example of the response body
           value:
@@ -24,7 +24,7 @@ NotFound:
     application/json: &responsesNotFound
       schema:
         $ref: './schemas.yaml#/problemDetail'
-      examples:
+      example:
         problemDetail:
           description: An example of the response body
           value:
@@ -47,7 +47,7 @@ RateLimited:
     application/json: &responsesRateLimited
       schema:
         $ref: './schemas.yaml#/problemDetail'
-      examples:
+      example:
         problemDetail:
           description: An example of the response body
           value:
@@ -66,7 +66,7 @@ RequestError:
     application/json: &responsesRequestError
       schema:
         $ref: './schemas.yaml#/problemDetail'
-      examples:
+      example:
         problemDetail:
           description: An example of the response body
           value:
@@ -82,7 +82,7 @@ Unauthorized:
     application/json: &responsesRequestError
       schema:
         $ref: './schemas.yaml#/problemDetail'
-      examples:
+      example:
         problemDetail:
           description: An example of the response body
           value:

@@ -15,7 +15,7 @@ paths:
                 type: array
                 items:
                   $ref: '../schemas/environment.yaml'
-              examples:
+              example:
                 records:
                   summary: Multiple environment records
                   value:
@@ -41,7 +41,7 @@ paths:
           application/json: &postContent
             schema:
               $ref: '../schemas/environment.yaml'
-            examples:
+            example:
               record:
                 $ref: '#/components/examples/record'
           application/msgpack:
@@ -126,7 +126,7 @@ components:
         application/json: &responsesSuccess
           schema:
             $ref: '../schemas/environment.yaml'
-          examples:
+          example:
             record:
               $ref: '#/components/examples/record'
         application/msgpack:

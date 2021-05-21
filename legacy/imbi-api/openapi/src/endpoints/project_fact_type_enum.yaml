@@ -14,8 +14,8 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '../schemas/project_fact_type_enum.yaml'
-              examples:
+                  $ref: '../schemas/project_fact_type_enum.yaml#/read'
+              example:
                 records:
                   summary: Multiple project fact type enum records
                   value:
@@ -56,7 +56,7 @@ paths:
           application/json: &postContent
             schema:
               $ref: '../schemas/project_fact_type_enum.yaml#/write'
-            examples:
+            example:
               record:
                 $ref: '#/components/examples/write'
           application/msgpack:
@@ -149,7 +149,7 @@ components:
         application/json: &responsesSuccess
           schema:
             $ref: '../schemas/project_fact_type_enum.yaml#/read'
-          examples:
+          example:
             record:
               $ref: '#/components/examples/read'
         application/msgpack:

@@ -29,14 +29,10 @@ read:
         - type: string
     score:
       description: The score for the value of the fact
-      oneOf:
-        - type: null
-        - type: integer
+      type: integer
     weight:
       description: The weight of the score against all the other project facts
-      oneOf:
-        - type: null
-        - type: integer
+      type: integer
   additionalProperties: false
 
 write:
