@@ -44,6 +44,8 @@ paths:
   /groups/{name}: { $ref: 'endpoints/group.yaml#/paths/manage' }
   /namespaces: { $ref: 'endpoints/namespace.yaml#/paths/collection' }
   /namespaces/{id}: { $ref: 'endpoints/namespace.yaml#/paths/manage' }
+  /operations-log: { '$ref': 'endpoints/operations_log.yaml#/paths/collection' }
+  /operations-log/{id}: { '$ref': 'endpoints/operations_log.yaml#/paths/manage' }
   /permissions: { $ref: 'endpoints/permissions.yaml#/paths/collection' }
   /project-fact-types:
     { $ref: 'endpoints/project_fact_type.yaml#/paths/collection' }
@@ -93,7 +95,6 @@ tags:
       Endpoints used to manage the groups that Imbi users are able to be members of.
   - name: Namespaces
     description: Endpoints used for the management of organizational namespaces
-
   - name: Fact Types
     description: |-
       Management of records that define types facts that may be collected for a project.
@@ -101,7 +102,6 @@ tags:
       Project facts may be used to calculate a current project health score. For more
       information on project health score, see the compliance documentation.
     x-displayName: Project Fact Types
-
   - name: Fact Type Enums
     description: |-
       Management of records that define enum values for different fact types that may be collected for a project.
@@ -124,7 +124,6 @@ tags:
       Management of records that define types of links or URLs to associate with a project
   - name: Project Types
     description: Endpoints used for the management different types of projects managed in Imbi (APIs, Databases, etc)
-
   - name: Projects
     description: Endpoints used for the management of projects
   - name: Project Dependencies
@@ -137,15 +136,14 @@ tags:
     description: Endpoints used to manage links to external resources for a project
   - name: Project URLs
     description: Endpoints used to manage urls to the project in each operational environment
-
+  - name: Operations Log
+    description: Endpoints used for created, querying, and managing entries in the Operations Log
   - name: Settings
     description: Endpoints used for retrieving settings for the Imbi UI
-
   - name: Health Check / Status
     description: |-
       The health check endpoint can be used by a load balancer to indicate
       service health.
-
 
 x-tagGroups:
   - name: Administration
@@ -162,6 +160,9 @@ x-tagGroups:
       - Fact Type Ranges
       - Project Link Types
       - Project Types
+  - name: Operations Log
+    tags:
+      - Operations Log
   - name: Project Management
     tags:
       - Projects

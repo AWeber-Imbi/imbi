@@ -38,34 +38,23 @@ paths:
         content:
           application/json:
             schema:
-              schema:
-                title: Authentication Token
-                description: Configuration Management or Storage System
-                type: object
-                properties:
-                  name:
-                    description: The name of the token provided by the user
-                    type: string
-                required:
-                  - name
-                additionalProperties: false
-            examples:
+              title: Authentication Token
+              description: Configuration Management or Storage System
+              type: object
+              properties:
+                name:
+                  description: The name of the token provided by the user
+                  type: string
+              required:
+                - name
+              additionalProperties: false
+            example:
               record:
                 name: Test Integration
           application/msgpack:
             schema:
-              schema:
-                title: Authentication Token
-                description: Configuration Management or Storage System
-                type: object
-                properties:
-                  name:
-                    description: The name of the token provided by the user
-                    type: string
-                required:
-                  - name
-                additionalProperties: false
-            examples:
+              $ref: '#/paths/~1authentication-tokens/post/requestBody/content/application~1json/schema'
+            example:
               record:
                 name: Test Integration
       responses:
@@ -102,7 +91,7 @@ paths:
                     format: iso8601-timestamp
                     nullable: true
                 additionalProperties: false
-              examples:
+              example:
                 records:
                   summary: The newly created authentication token
                   value:
@@ -115,7 +104,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
-              examples:
+              example:
                 records:
                   summary: The newly created authentication token
                   value:
@@ -143,7 +132,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
-              examples:
+              example:
                 records:
                   summary: Multiple authentication tokens
                   value:
@@ -164,7 +153,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
-              examples:
+              example:
                 records:
                   summary: Multiple authentication tokens
                   value:
@@ -221,7 +210,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 records:
                   summary: Multiple cookie cutter records
                   value:
@@ -245,7 +234,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 records:
                   summary: Multiple cookie cutter records
                   value:
@@ -303,7 +292,7 @@ paths:
                 - project_type_id
                 - url
               additionalProperties: false
-            examples:
+            example:
               record:
                 summary: A full cookie cutter record
                 value:
@@ -315,7 +304,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-            examples:
+            example:
               record:
                 summary: A full cookie cutter record
                 value:
@@ -340,15 +329,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 record:
-                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/example/record'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 record:
-                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/example/record'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
@@ -441,7 +430,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 records:
                   summary: Multiple environment records
                   value:
@@ -460,7 +449,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 records:
                   summary: Multiple environment records
                   value:
@@ -502,7 +491,7 @@ paths:
                 - name
                 - icon_class
               additionalProperties: false
-            examples:
+            example:
               record:
                 summary: A full environment record
                 value:
@@ -514,7 +503,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-            examples:
+            example:
               record:
                 summary: A full environment record
                 value:
@@ -539,15 +528,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 record:
-                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/example/record'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 record:
-                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/example/record'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
@@ -640,7 +629,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 records:
                   summary: Multiple group records
                   value:
@@ -660,7 +649,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 records:
                   summary: Multiple group records
                   value:
@@ -707,7 +696,7 @@ paths:
                     type: string
                     format: url
                 additionalProperties: false
-              examples:
+              example:
                 problemDetail:
                   description: An example of the response body
                   value:
@@ -717,7 +706,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              examples:
+              example:
                 problemDetail:
                   description: An example of the response body
                   value:
@@ -758,7 +747,7 @@ paths:
                 - name
                 - group_type
               additionalProperties: false
-            examples:
+            example:
               record:
                 summary: A full group record
                 value:
@@ -771,7 +760,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-            examples:
+            example:
               record:
                 summary: A full group record
                 value:
@@ -805,22 +794,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 record:
-                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/example/record'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              examples:
+              example:
                 record:
-                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/examples/record'
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/example/record'
         '400':
           description: The request data could not be validated or contained an error
           content:
             application/json:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              examples:
+              example:
                 problemDetail:
                   description: An example of the response body
                   value:
@@ -830,7 +819,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              examples:
+              example:
                 problemDetail:
                   description: An example of the response body
                   value:
@@ -845,7 +834,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              examples:
+              example:
                 problemDetail:
                   description: An example of the response body
                   value:
@@ -855,7 +844,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              examples:
+              example:
                 problemDetail:
                   description: An example of the response body
                   value:
@@ -879,7 +868,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              examples:
+              example:
                 problemDetail:
                   description: An example of the response body
                   value:
@@ -889,7 +878,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              examples:
+              example:
                 problemDetail:
                   description: An example of the response body
                   value:
@@ -1040,66 +1029,40 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Namespace
-                    description: Used to create namespaces for project organization
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
+                  title: Namespace
+                  description: Used to create namespaces for project organization
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for URLs and table linking
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    name:
+                      description: The namespace name
+                      type: string
+                    slug:
+                      description: Team path slug / abbreviation
+                      type: string
+                    icon_class:
+                      description: Font Awesome UI icon class
+                      type: string
+                    maintained_by:
+                      description: Association of the namespace to one or more internal or external Imbi groups
+                      type: array
+                      items:
                         type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The namespace name
-                        type: string
-                      slug:
-                        description: Team path slug / abbreviation
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      maintained_by:
-                        description: Association of the namespace to one or more internal or external Imbi groups
-                        type: array
-                        items:
-                          type: string
-                        nullable: true
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-                  write:
-                    title: Namespace
-                    description: Used to create namespaces for project organization
-                    type: object
-                    properties:
-                      name:
-                        description: The namespace name
-                        type: string
-                      slug:
-                        description: Team path slug / abbreviation
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      maintained_by:
-                        description: Association of the namespace to one or more internal or external Imbi groups
-                        type: array
-                        items:
-                          type: string
-                        nullable: true
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-              examples:
+                      nullable: true
+                  required:
+                    - name
+                    - slug
+                    - icon_class
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple namespace records
                   value:
@@ -1121,66 +1084,40 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Namespace
-                    description: Used to create namespaces for project organization
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
+                  title: Namespace
+                  description: Used to create namespaces for project organization
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for URLs and table linking
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    name:
+                      description: The namespace name
+                      type: string
+                    slug:
+                      description: Team path slug / abbreviation
+                      type: string
+                    icon_class:
+                      description: Font Awesome UI icon class
+                      type: string
+                    maintained_by:
+                      description: Association of the namespace to one or more internal or external Imbi groups
+                      type: array
+                      items:
                         type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The namespace name
-                        type: string
-                      slug:
-                        description: Team path slug / abbreviation
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      maintained_by:
-                        description: Association of the namespace to one or more internal or external Imbi groups
-                        type: array
-                        items:
-                          type: string
-                        nullable: true
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-                  write:
-                    title: Namespace
-                    description: Used to create namespaces for project organization
-                    type: object
-                    properties:
-                      name:
-                        description: The namespace name
-                        type: string
-                      slug:
-                        description: Team path slug / abbreviation
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      maintained_by:
-                        description: Association of the namespace to one or more internal or external Imbi groups
-                        type: array
-                        items:
-                          type: string
-                        nullable: true
-                    required:
-                      - name
-                      - slug
-                      - icon_class
-                    additionalProperties: false
-              examples:
+                      nullable: true
+                  required:
+                    - name
+                    - slug
+                    - icon_class
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple namespace records
                   value:
@@ -1208,8 +1145,31 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              title: Namespace
+              description: Used to create namespaces for project organization
+              type: object
+              properties:
+                name:
+                  description: The namespace name
+                  type: string
+                slug:
+                  description: Team path slug / abbreviation
+                  type: string
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+                maintained_by:
+                  description: Association of the namespace to one or more internal or external Imbi groups
+                  type: array
+                  items:
+                    type: string
+                  nullable: true
+              required:
+                - name
+                - slug
+                - icon_class
+              additionalProperties: false
+            example:
               record:
                 summary: A full namespace record
                 value:
@@ -1221,8 +1181,8 @@ paths:
                     - Operations
           application/msgpack:
             schema:
-              $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              $ref: '#/paths/~1namespaces/post/requestBody/content/application~1json/schema'
+            example:
               record:
                 summary: A full namespace record
                 value:
@@ -1247,8 +1207,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: A full namespace record
                   value:
@@ -1263,8 +1223,8 @@ paths:
                       - Operations
             application/msgpack:
               schema:
-                $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: A full namespace record
                   value:
@@ -1348,6 +1308,498 @@ paths:
         required: true
         schema:
           type: number
+  /operations-log:
+    get:
+      description: |-
+        **NOT IMPLEMENTED**
+
+        Retrieve the collection of operational log entries
+      summary: Get Entries
+      tags:
+        - Operations Log
+      parameters:
+        - name: from
+          in: query
+          description: |-
+            Add to limit the response to operations log entries with a `recorded_at`
+            value that is greater than or equal to the specified value.
+          schema:
+            type: string
+            format: iso8601-timestamp
+        - name: to
+          in: query
+          description: |-
+            Add to limit the response to operations log entries with a `recorded_at`
+            value that is less than or equal to the specified value.
+          schema:
+            type: string
+            format: iso8601-timestamp
+        - name: order
+          in: query
+          description: Specify the order to return entries by using the `recored_at` value.
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+        - name: namespace_id
+          in: query
+          description: Specify a namespace ID to filter entries to a specific namespace
+          schema:
+            type: string
+            pattern: ^\d+$
+        - name: project_id
+          in: query
+          description: Specify a project ID to filter entries to a specific project
+          schema:
+            type: string
+            pattern: ^\d+$
+        - name: limit
+          in: query
+          description: Used to specify a limit to the number of entries that may be returned in a single response.
+          schema:
+            type: string
+            pattern: ^\d+$
+        - name: start_id
+          in: query
+          description: 'Used by the endpoint for pagination for the Next Page, specifying the first `id` for the entries to return.'
+          schema:
+            type: string
+            pattern: ^\d+$
+        - name: current_id
+          in: query
+          description: 'Used by the endpoint for pagination for the Previous Page, specifying the `id` for the entries to return.'
+          schema:
+            type: string
+            pattern: ^\d+$
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  title: Operations Log Entry
+                  description: Describes an audit log entry for entity operational changes
+                  type: object
+                  properties:
+                    id:
+                      description: Surrogate ID for deleting and modifying entries
+                      type: number
+                    recorded_at:
+                      description: Timestamp indicating when the change was made
+                      type: string
+                      format: iso8601-timestamp
+                    recorded_by:
+                      description: When the entry was recorded
+                      type: string
+                    completed_at:
+                      description: 'If specified, indicates the change occurred over a span of time'
+                      type: string
+                      format: iso8601-timestamp
+                    project_id:
+                      description: The ID of the project that was changed
+                      type: number
+                    environment:
+                      description: The environment that the change occurred in
+                      type: string
+                    change_type:
+                      description: The type of change that occurred
+                      type: string
+                      enum:
+                        - Configured
+                        - Decommissioned
+                        - Deployed
+                        - Migrated
+                        - Provisioned
+                        - Restarted
+                        - Rolled Back
+                        - Scaled
+                        - Upgraded
+                    description:
+                      description: The single line description of the change
+                      type: string
+                    link:
+                      description: An optional link for additional context to the link
+                      type: string
+                    notes:
+                      description: Optional notes for the change in markdown format
+                      type: string
+                    ticket_slug:
+                      description: An optional slug of the ticket that the change was made for
+                      type: string
+                      pattern: '^[\w-]+$'
+                    version:
+                      description: An optional version that the change was made for
+                      type: string
+                  additionalProperties: false
+              example:
+                records:
+                  summary: Multiple operations log entries
+                  value:
+                    - id: 1
+                      recorded_at: 2021-05-21T18:39:24.197Z
+                      recorded_by: gavinr
+                      completed_at: null
+                      project_id: 100
+                      environment: Testing
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                      notes: null
+                      ticket_slug: JIRA-32768
+                      version: 0.13.0
+                    - id: 2
+                      recorded_at: 2021-05-21T18:42:00.000Z
+                      recorded_by: gavinr
+                      completed_at: null
+                      project_id: 100
+                      environment: Staging
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                      notes: null
+                      ticket_slug: JIRA-32768
+                      version: 0.13.0
+                    - id: 3
+                      recorded_at: 2021-05-21T19:00:00.000Z
+                      recorded_by: gavinr
+                      completed_at: null
+                      project_id: 100
+                      environment: Staging
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                      notes: null
+                      ticket_slug: JIRA-32768
+                      version: 0.13.0
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  title: Operations Log Entry
+                  description: Describes an audit log entry for entity operational changes
+                  type: object
+                  properties:
+                    id:
+                      description: Surrogate ID for deleting and modifying entries
+                      type: number
+                    recorded_at:
+                      description: Timestamp indicating when the change was made
+                      type: string
+                      format: iso8601-timestamp
+                    recorded_by:
+                      description: When the entry was recorded
+                      type: string
+                    completed_at:
+                      description: 'If specified, indicates the change occurred over a span of time'
+                      type: string
+                      format: iso8601-timestamp
+                    project_id:
+                      description: The ID of the project that was changed
+                      type: number
+                    environment:
+                      description: The environment that the change occurred in
+                      type: string
+                    change_type:
+                      description: The type of change that occurred
+                      type: string
+                      enum:
+                        - Configured
+                        - Decommissioned
+                        - Deployed
+                        - Migrated
+                        - Provisioned
+                        - Restarted
+                        - Rolled Back
+                        - Scaled
+                        - Upgraded
+                    description:
+                      description: The single line description of the change
+                      type: string
+                    link:
+                      description: An optional link for additional context to the link
+                      type: string
+                    notes:
+                      description: Optional notes for the change in markdown format
+                      type: string
+                    ticket_slug:
+                      description: An optional slug of the ticket that the change was made for
+                      type: string
+                      pattern: '^[\w-]+$'
+                    version:
+                      description: An optional version that the change was made for
+                      type: string
+                  additionalProperties: false
+              example:
+                records:
+                  summary: Multiple operations log entries
+                  value:
+                    - id: 1
+                      recorded_at: 2021-05-21T18:39:24.197Z
+                      recorded_by: gavinr
+                      completed_at: null
+                      project_id: 100
+                      environment: Testing
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                      notes: null
+                      ticket_slug: JIRA-32768
+                      version: 0.13.0
+                    - id: 2
+                      recorded_at: 2021-05-21T18:42:00.000Z
+                      recorded_by: gavinr
+                      completed_at: null
+                      project_id: 100
+                      environment: Staging
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                      notes: null
+                      ticket_slug: JIRA-32768
+                      version: 0.13.0
+                    - id: 3
+                      recorded_at: 2021-05-21T19:00:00.000Z
+                      recorded_by: gavinr
+                      completed_at: null
+                      project_id: 100
+                      environment: Staging
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                      notes: null
+                      ticket_slug: JIRA-32768
+                      version: 0.13.0
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+    post:
+      summary: Create Entry
+      description: Create a new operations log entry
+      requestBody:
+        description: The entry to create
+        content:
+          application/json:
+            schema:
+              title: Operations Log Entry
+              description: Describes an audit log entry for entity operational changes
+              type: object
+              properties:
+                recorded_at:
+                  description: Timestamp indicating when the change was made
+                  type: string
+                  format: iso8601-timestamp
+                recorded_by:
+                  description: When the entry was recorded
+                  type: string
+                completed_at:
+                  description: 'If specified, indicates the change occurred over a span of time'
+                  type: string
+                  format: iso8601-timestamp
+                project_id:
+                  description: The ID of the project that was changed
+                  type: number
+                environment:
+                  description: The environment that the change occurred in
+                  type: string
+                change_type:
+                  description: The type of change that occurred
+                  type: string
+                  enum:
+                    - Configured
+                    - Decommissioned
+                    - Deployed
+                    - Migrated
+                    - Provisioned
+                    - Restarted
+                    - Rolled Back
+                    - Scaled
+                    - Upgraded
+                description:
+                  description: The single line description of the change
+                  type: string
+                link:
+                  description: An optional link for additional context to the link
+                  type: string
+                notes:
+                  description: Optional notes for the change in markdown format
+                  type: string
+                ticket_slug:
+                  description: An optional slug of the ticket that the change was made for
+                  type: string
+                  pattern: '^[\w-]+$'
+                version:
+                  description: An optional version that the change was made for
+                  type: string
+              required:
+                - recored_by
+                - environment
+                - change_type
+              additionalProperties: false
+            example:
+              record:
+                summary: An operations log entry example
+                value:
+                  recorded_at: 2021-05-21T18:39:24.197Z
+                  recorded_by: gavinr
+                  completed_at: null
+                  project_id: 100
+                  environment: Testing
+                  change_type: Deployment
+                  description: Added the Operations Log functionality
+                  link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                  notes: null
+                  ticket_slug: JIRA-32768
+                  version: 0.13.0
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1operations-log/post/requestBody/content/application~1json/schema'
+            example:
+              record:
+                summary: An operations log entry example
+                value:
+                  recorded_at: 2021-05-21T18:39:24.197Z
+                  recorded_by: gavinr
+                  completed_at: null
+                  project_id: 100
+                  environment: Testing
+                  change_type: Deployment
+                  description: Added the Operations Log functionality
+                  link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                  notes: null
+                  ticket_slug: JIRA-32768
+                  version: 0.13.0
+      tags:
+        - Operations Log
+      responses:
+        '200':
+          description: 'The request to create, update, or update the operations-log entry was successful'
+          headers:
+            Link:
+              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1operations-log/get/responses/200/content/application~1json/schema/items'
+              example:
+                record:
+                  summary: An operations log entry example
+                  value:
+                    id: 1
+                    recorded_at: 2021-05-21T18:39:24.197Z
+                    recorded_by: gavinr
+                    completed_at: null
+                    project_id: 100
+                    environment: Testing
+                    change_type: Deployment
+                    description: Added the Operations Log functionality
+                    link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                    notes: null
+                    ticket_slug: JIRA-32768
+                    version: 0.13.0
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1operations-log/get/responses/200/content/application~1json/schema/items'
+              example:
+                record:
+                  summary: An operations log entry example
+                  value:
+                    id: 1
+                    recorded_at: 2021-05-21T18:39:24.197Z
+                    recorded_by: gavinr
+                    completed_at: null
+                    project_id: 100
+                    environment: Testing
+                    change_type: Deployment
+                    description: Added the Operations Log functionality
+                    link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                    notes: null
+                    ticket_slug: JIRA-32768
+                    version: 0.13.0
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '409':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/operations-log/{id}':
+    get:
+      summary: Get Entry
+      description: |-
+        **NOT IMPLEMENTED**
+
+        Retrieve an individual operations log entry
+      tags:
+        - Operations Log
+      responses:
+        '200':
+          $ref: '#/paths/~1operations-log/post/responses/200'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+    patch:
+      summary: Update Entry
+      description: |-
+        **NOT IMPLEMENTED**
+
+        Update an operations log entry, providing a JSON Patch (RFC-6209) payload of update
+        operations to apply.
+      tags:
+        - Operations Log
+      requestBody:
+        description: JSON Patch Payload
+        content:
+          application/json:
+            schema:
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+          application/json-patch+json:
+            schema:
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+          application/json-patch+msgpack:
+            schema:
+              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          $ref: '#/paths/~1operations-log/post/responses/200'
+        '304':
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1groups/post/responses/409'
+    delete:
+      summary: Delete Entry
+      description: |-
+        **NOT IMPLEMENTED**
+
+        Remove an operations log entry
+      tags:
+        - Operations Log
+      responses:
+        '204':
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+    parameters:
+      - name: id
+        in: path
+        description: Entry ID
+        required: true
+        schema:
+          type: string
+          pattern: ^\d+$
   /permissions:
     get:
       description: Retrieve the collection of available permissions
@@ -1366,7 +1818,7 @@ paths:
                 type: array
                 items:
                   type: string
-              examples:
+              example:
                 records:
                   summary: Multiple permissions
                   value:
@@ -1377,7 +1829,7 @@ paths:
                 type: array
                 items:
                   type: string
-              examples:
+              example:
                 records:
                   summary: Multiple permissions
                   value:
@@ -1402,123 +1854,8 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Project Fact Type
-                    description: |
-                      Defines types of facts that can be recorded about a project
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate ID
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The project fact type name
-                        type: string
-                      project_type_ids:
-                        description: An array of Project Type ids to associate the fact type with
-                        type: array
-                        items:
-                          type: number
-                        uniqueItems: true
-                      fact_type:
-                        description: Indicates how a fact value is validated and scored
-                        type: string
-                        enum:
-                          - enum
-                          - free-form
-                          - range
-                      description:
-                        description: Provides additional context about the fact typee
-                        type: string
-                        nullable: true
-                      data_type:
-                        description: The data type for the value
-                        type: string
-                        enum:
-                          - boolean
-                          - date
-                          - decimal
-                          - integer
-                          - string
-                          - timestamp
-                      ui_options:
-                        description: An array of values that are used in the UI for display purposes
-                        type: array
-                        items:
-                          type: string
-                          enum:
-                            - display-as-badge
-                            - display-as-percentage
-                            - hidden
-                        uniqueItems: true
-                      weight:
-                        description: The weight of the fact type when computing a project score
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type
-                    description: |
-                      Defines types of facts that can be recorded about a project
-                    type: object
-                    properties:
-                      name:
-                        description: The project fact type name
-                        type: string
-                      project_type_ids:
-                        description: An array of Project Type ids to associate the fact type with
-                        type: array
-                        items:
-                          type: number
-                        uniqueItems: true
-                      fact_type:
-                        description: Indicates how a fact value is validated and scored
-                        type: string
-                        enum:
-                          - enum
-                          - free-form
-                          - range
-                      description:
-                        description: Provides additional context about the fact typee
-                        type: string
-                        nullable: true
-                      data_type:
-                        description: The data type for the value
-                        type: string
-                        enum:
-                          - boolean
-                          - date
-                          - decimal
-                          - integer
-                          - string
-                          - timestamp
-                      ui_options:
-                        description: An array of values that are used in the UI for display purposes
-                        type: array
-                        items:
-                          type: string
-                          enum:
-                            - display-as-badge
-                            - display-as-percentage
-                            - hidden
-                        uniqueItems: true
-                      weight:
-                        description: The weight of the fact type when computing a project score
-                        type: number
-                        default: 0
-                    required:
-                      - name
-                      - fact_type
-                      - data_type
-                      - weight
-                    additionalProperties: false
-              examples:
+                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+              example:
                 records:
                   summary: Multiple project fact type records
                   value:
@@ -1594,123 +1931,8 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Project Fact Type
-                    description: |
-                      Defines types of facts that can be recorded about a project
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate ID
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The project fact type name
-                        type: string
-                      project_type_ids:
-                        description: An array of Project Type ids to associate the fact type with
-                        type: array
-                        items:
-                          type: number
-                        uniqueItems: true
-                      fact_type:
-                        description: Indicates how a fact value is validated and scored
-                        type: string
-                        enum:
-                          - enum
-                          - free-form
-                          - range
-                      description:
-                        description: Provides additional context about the fact typee
-                        type: string
-                        nullable: true
-                      data_type:
-                        description: The data type for the value
-                        type: string
-                        enum:
-                          - boolean
-                          - date
-                          - decimal
-                          - integer
-                          - string
-                          - timestamp
-                      ui_options:
-                        description: An array of values that are used in the UI for display purposes
-                        type: array
-                        items:
-                          type: string
-                          enum:
-                            - display-as-badge
-                            - display-as-percentage
-                            - hidden
-                        uniqueItems: true
-                      weight:
-                        description: The weight of the fact type when computing a project score
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type
-                    description: |
-                      Defines types of facts that can be recorded about a project
-                    type: object
-                    properties:
-                      name:
-                        description: The project fact type name
-                        type: string
-                      project_type_ids:
-                        description: An array of Project Type ids to associate the fact type with
-                        type: array
-                        items:
-                          type: number
-                        uniqueItems: true
-                      fact_type:
-                        description: Indicates how a fact value is validated and scored
-                        type: string
-                        enum:
-                          - enum
-                          - free-form
-                          - range
-                      description:
-                        description: Provides additional context about the fact typee
-                        type: string
-                        nullable: true
-                      data_type:
-                        description: The data type for the value
-                        type: string
-                        enum:
-                          - boolean
-                          - date
-                          - decimal
-                          - integer
-                          - string
-                          - timestamp
-                      ui_options:
-                        description: An array of values that are used in the UI for display purposes
-                        type: array
-                        items:
-                          type: string
-                          enum:
-                            - display-as-badge
-                            - display-as-percentage
-                            - hidden
-                        uniqueItems: true
-                      weight:
-                        description: The weight of the fact type when computing a project score
-                        type: number
-                        default: 0
-                    required:
-                      - name
-                      - fact_type
-                      - data_type
-                      - weight
-                    additionalProperties: false
-              examples:
+                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+              example:
                 records:
                   summary: Multiple project fact type records
                   value:
@@ -1792,8 +2014,62 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              title: Project Fact Type
+              description: |
+                Defines types of facts that can be recorded about a project
+              type: object
+              properties:
+                name:
+                  description: The project fact type name
+                  type: string
+                project_type_ids:
+                  description: An array of Project Type ids to associate the fact type with
+                  type: array
+                  items:
+                    type: number
+                  uniqueItems: true
+                fact_type:
+                  description: Indicates how a fact value is validated and scored
+                  type: string
+                  enum:
+                    - enum
+                    - free-form
+                    - range
+                description:
+                  description: Provides additional context about the fact typee
+                  type: string
+                  nullable: true
+                data_type:
+                  description: The data type for the value
+                  type: string
+                  enum:
+                    - boolean
+                    - date
+                    - decimal
+                    - integer
+                    - string
+                    - timestamp
+                ui_options:
+                  description: An array of values that are used in the UI for display purposes
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - display-as-badge
+                      - display-as-percentage
+                      - hidden
+                  uniqueItems: true
+                weight:
+                  description: The weight of the fact type when computing a project score
+                  type: number
+                  default: 0
+              required:
+                - name
+                - fact_type
+                - data_type
+                - weight
+              additionalProperties: false
+            example:
               record:
                 summary: A full project fact type record
                 value:
@@ -1807,8 +2083,8 @@ paths:
                   weight: 25
           application/msgpack:
             schema:
-              $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              $ref: '#/paths/~1project-fact-types/post/requestBody/content/application~1json/schema'
+            example:
               record:
                 summary: A full project fact type record
                 value:
@@ -1835,8 +2111,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+              example:
                 record:
                   summary: A full project fact type record
                   value:
@@ -1853,8 +2129,8 @@ paths:
                     weight: 25
             application/msgpack:
               schema:
-                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+              example:
                 record:
                   summary: A full project fact type record
                   value:
@@ -1957,61 +2233,35 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Project Fact Type Enum Value
-                    description: |
-                      Defines options that are available for an enum project fact type
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for the fact type option
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: string
-                      value:
-                        description: The option value
-                        type: string
-                      icon_class:
-                        description: An icon that is specific to the fact type option
-                        type: string
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type Enum Value
-                    description: |
-                      Defines options that are available for a project fact type
-                    type: object
-                    properties:
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: number
-                      value:
-                        description: The option value
-                        type: string
-                      icon_class:
-                        description: An icon that is specific to the fact type option
-                        type: string
-                        nullable: true
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    required:
-                      - fact_type_id
-                      - value
-                      - score
-                    additionalProperties: false
-              examples:
+                  title: Project Fact Type Enum Value
+                  description: |
+                    Defines options that are available for an enum project fact type
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for the fact type option
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    fact_type_id:
+                      description: The ID of the fact type the option is for
+                      type: string
+                    value:
+                      description: The option value
+                      type: string
+                    icon_class:
+                      description: An icon that is specific to the fact type option
+                      type: string
+                    score:
+                      description: The score value for the option
+                      type: number
+                      default: 0
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple project fact type enum records
                   value:
@@ -2044,61 +2294,35 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Project Fact Type Enum Value
-                    description: |
-                      Defines options that are available for an enum project fact type
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for the fact type option
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: string
-                      value:
-                        description: The option value
-                        type: string
-                      icon_class:
-                        description: An icon that is specific to the fact type option
-                        type: string
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type Enum Value
-                    description: |
-                      Defines options that are available for a project fact type
-                    type: object
-                    properties:
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: number
-                      value:
-                        description: The option value
-                        type: string
-                      icon_class:
-                        description: An icon that is specific to the fact type option
-                        type: string
-                        nullable: true
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    required:
-                      - fact_type_id
-                      - value
-                      - score
-                    additionalProperties: false
-              examples:
+                  title: Project Fact Type Enum Value
+                  description: |
+                    Defines options that are available for an enum project fact type
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for the fact type option
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    fact_type_id:
+                      description: The ID of the fact type the option is for
+                      type: string
+                    value:
+                      description: The option value
+                      type: string
+                    icon_class:
+                      description: An icon that is specific to the fact type option
+                      type: string
+                    score:
+                      description: The score value for the option
+                      type: number
+                      default: 0
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple project fact type enum records
                   value:
@@ -2137,8 +2361,31 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1project-fact-type-enums/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              title: Project Fact Type Enum Value
+              description: |
+                Defines options that are available for a project fact type
+              type: object
+              properties:
+                fact_type_id:
+                  description: The ID of the fact type the option is for
+                  type: number
+                value:
+                  description: The option value
+                  type: string
+                icon_class:
+                  description: An icon that is specific to the fact type option
+                  type: string
+                  nullable: true
+                score:
+                  description: The score value for the option
+                  type: number
+                  default: 0
+              required:
+                - fact_type_id
+                - value
+                - score
+              additionalProperties: false
+            example:
               record:
                 summary: A full project fact type enum record
                 value:
@@ -2148,8 +2395,8 @@ paths:
                   score: 50
           application/msgpack:
             schema:
-              $ref: '#/paths/~1project-fact-type-enums/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              $ref: '#/paths/~1project-fact-type-enums/post/requestBody/content/application~1json/schema'
+            example:
               record:
                 summary: A full project fact type enum record
                 value:
@@ -2172,8 +2419,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1project-fact-type-enums/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1project-fact-type-enums/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: A full project fact type enum record
                   value:
@@ -2186,8 +2433,8 @@ paths:
                     score: 50
             application/msgpack:
               schema:
-                $ref: '#/paths/~1project-fact-type-enums/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1project-fact-type-enums/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: A full project fact type enum record
                   value:
@@ -2286,61 +2533,35 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Project Fact Type Range Value
-                    description: |
-                      Defines options that are available for an range project fact type
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for the fact type option
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: string
-                      min_value:
-                        description: The min value for the range
-                        type: number
-                      max_value:
-                        description: The max value for the range
-                        type: number
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type Range Value
-                    description: |
-                      Defines options that are available for a project fact type
-                    type: object
-                    properties:
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: number
-                      min_value:
-                        description: The min value for the range
-                        type: number
-                      max_value:
-                        description: The max value for the range
-                        type: number
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    required:
-                      - fact_type_id
-                      - min_value
-                      - max_value
-                      - score
-                    additionalProperties: false
-              examples:
+                  title: Project Fact Type Range Value
+                  description: |
+                    Defines options that are available for an range project fact type
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for the fact type option
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    fact_type_id:
+                      description: The ID of the fact type the option is for
+                      type: string
+                    min_value:
+                      description: The min value for the range
+                      type: number
+                    max_value:
+                      description: The max value for the range
+                      type: number
+                    score:
+                      description: The score value for the option
+                      type: number
+                      default: 0
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple project fact type range records
                   value:
@@ -2368,61 +2589,35 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Project Fact Type Range Value
-                    description: |
-                      Defines options that are available for an range project fact type
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for the fact type option
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: string
-                      min_value:
-                        description: The min value for the range
-                        type: number
-                      max_value:
-                        description: The max value for the range
-                        type: number
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    additionalProperties: false
-                  write:
-                    title: Project Fact Type Range Value
-                    description: |
-                      Defines options that are available for a project fact type
-                    type: object
-                    properties:
-                      fact_type_id:
-                        description: The ID of the fact type the option is for
-                        type: number
-                      min_value:
-                        description: The min value for the range
-                        type: number
-                      max_value:
-                        description: The max value for the range
-                        type: number
-                      score:
-                        description: The score value for the option
-                        type: number
-                        default: 0
-                    required:
-                      - fact_type_id
-                      - min_value
-                      - max_value
-                      - score
-                    additionalProperties: false
-              examples:
+                  title: Project Fact Type Range Value
+                  description: |
+                    Defines options that are available for an range project fact type
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for the fact type option
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    fact_type_id:
+                      description: The ID of the fact type the option is for
+                      type: string
+                    min_value:
+                      description: The min value for the range
+                      type: number
+                    max_value:
+                      description: The max value for the range
+                      type: number
+                    score:
+                      description: The score value for the option
+                      type: number
+                      default: 0
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple project fact type range records
                   value:
@@ -2456,8 +2651,31 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1project-fact-type-ranges/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              title: Project Fact Type Range Value
+              description: |
+                Defines options that are available for a project fact type
+              type: object
+              properties:
+                fact_type_id:
+                  description: The ID of the fact type the option is for
+                  type: number
+                min_value:
+                  description: The min value for the range
+                  type: number
+                max_value:
+                  description: The max value for the range
+                  type: number
+                score:
+                  description: The score value for the option
+                  type: number
+                  default: 0
+              required:
+                - fact_type_id
+                - min_value
+                - max_value
+                - score
+              additionalProperties: false
+            example:
               record:
                 summary: A full project fact type range record
                 value:
@@ -2467,8 +2685,8 @@ paths:
                   score: 50
           application/msgpack:
             schema:
-              $ref: '#/paths/~1project-fact-type-ranges/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              $ref: '#/paths/~1project-fact-type-ranges/post/requestBody/content/application~1json/schema'
+            example:
               record:
                 summary: A full project fact type range record
                 value:
@@ -2491,8 +2709,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1project-fact-type-ranges/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1project-fact-type-ranges/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: A full project fact type range record
                   value:
@@ -2505,8 +2723,8 @@ paths:
                     score: 50
             application/msgpack:
               schema:
-                $ref: '#/paths/~1project-fact-type-ranges/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1project-fact-type-ranges/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: A full project fact type range record
                   value:
@@ -2605,43 +2823,27 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Link Type
-                    description: Used to describe the types of project deployment systems
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      link_type:
-                        description: The display name for a link type
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    additionalProperties: false
-                  write:
-                    title: Link Type
-                    description: Used to describe the types of project deployment systems
-                    type: object
-                    properties:
-                      link_type:
-                        description: The display name for a link type
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    required:
-                      - link_type
-                      - icon_class
-                    additionalProperties: false
-              examples:
+                  title: Link Type
+                  description: Used to describe the types of project deployment systems
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for URLs and table linking
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    link_type:
+                      description: The display name for a link type
+                      type: string
+                    icon_class:
+                      description: Font Awesome UI icon class
+                      type: string
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple project link type records
                   value:
@@ -2653,43 +2855,27 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Link Type
-                    description: Used to describe the types of project deployment systems
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      link_type:
-                        description: The display name for a link type
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    additionalProperties: false
-                  write:
-                    title: Link Type
-                    description: Used to describe the types of project deployment systems
-                    type: object
-                    properties:
-                      link_type:
-                        description: The display name for a link type
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                    required:
-                      - link_type
-                      - icon_class
-                    additionalProperties: false
-              examples:
+                  title: Link Type
+                  description: Used to describe the types of project deployment systems
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for URLs and table linking
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    link_type:
+                      description: The display name for a link type
+                      type: string
+                    icon_class:
+                      description: Font Awesome UI icon class
+                      type: string
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple project link type records
                   value:
@@ -2707,8 +2893,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              title: Link Type
+              description: Used to describe the types of project deployment systems
+              type: object
+              properties:
+                link_type:
+                  description: The display name for a link type
+                  type: string
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+              required:
+                - link_type
+                - icon_class
+              additionalProperties: false
+            example:
               record:
                 summary: A full link type record
                 value:
@@ -2716,8 +2915,8 @@ paths:
                   icon_class: fab fa-bool
           application/msgpack:
             schema:
-              $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              $ref: '#/paths/~1project-link-types/post/requestBody/content/application~1json/schema'
+            example:
               record:
                 summary: A full link type record
                 value:
@@ -2738,8 +2937,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: The record when returned from the API
                   value:
@@ -2750,8 +2949,8 @@ paths:
                     icon_class: fab fa-bool
             application/msgpack:
               schema:
-                $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: The record when returned from the API
                   value:
@@ -2848,75 +3047,41 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Project Type
-                    description: |
-                      Used to describe the types of operational project_types for projects
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The display name for a project type
-                        type: string
-                      plural_name:
-                        description: The display name for a project type when there is more than 1 item
-                        type: string
-                      description:
-                        description: A description of the project type
-                        type: string
-                        nullable: true
-                      slug:
-                        description: 'The slug for project types, used in filtering'
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      environment_urls:
-                        description: Indicates that projects of this type have per-environment URLs
-                        type: boolean
-                    additionalProperties: false
-                  write:
-                    title: Project Type
-                    description: |
-                      Used to describe the types of operational project_types for projects
-                    type: object
-                    properties:
-                      name:
-                        description: The display name for a project type
-                        type: string
-                      plural_name:
-                        description: The display name for a project type when there is more than 1 item
-                        type: string
-                      description:
-                        description: A description of the project type
-                        type: string
-                        nullable: true
-                      slug:
-                        description: 'The slug for project types, used in filtering'
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      environment_urls:
-                        description: Indicates that projects of this type have per-environment URLs
-                        type: boolean
-                        default: false
-                    required:
-                      - name
-                      - plural_name
-                      - slug
-                      - icon_class
-                      - environment_urls
-                    additionalProperties: false
-              examples:
+                  title: Project Type
+                  description: |
+                    Used to describe the types of operational project_types for projects
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for URLs and table linking
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    name:
+                      description: The display name for a project type
+                      type: string
+                    plural_name:
+                      description: The display name for a project type when there is more than 1 item
+                      type: string
+                    description:
+                      description: A description of the project type
+                      type: string
+                      nullable: true
+                    slug:
+                      description: 'The slug for project types, used in filtering'
+                      type: string
+                    icon_class:
+                      description: Font Awesome UI icon class
+                      type: string
+                    environment_urls:
+                      description: Indicates that projects of this type have per-environment URLs
+                      type: boolean
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple project type records
                   value:
@@ -2934,75 +3099,41 @@ paths:
               schema:
                 type: array
                 items:
-                  read:
-                    title: Project Type
-                    description: |
-                      Used to describe the types of operational project_types for projects
-                    type: object
-                    properties:
-                      id:
-                        description: The surrogate key for URLs and table linking
-                        type: number
-                      created_by:
-                        description: The user that created the record
-                        type: string
-                      last_modified_by:
-                        description: The user that last modified the record
-                        type: string
-                      name:
-                        description: The display name for a project type
-                        type: string
-                      plural_name:
-                        description: The display name for a project type when there is more than 1 item
-                        type: string
-                      description:
-                        description: A description of the project type
-                        type: string
-                        nullable: true
-                      slug:
-                        description: 'The slug for project types, used in filtering'
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      environment_urls:
-                        description: Indicates that projects of this type have per-environment URLs
-                        type: boolean
-                    additionalProperties: false
-                  write:
-                    title: Project Type
-                    description: |
-                      Used to describe the types of operational project_types for projects
-                    type: object
-                    properties:
-                      name:
-                        description: The display name for a project type
-                        type: string
-                      plural_name:
-                        description: The display name for a project type when there is more than 1 item
-                        type: string
-                      description:
-                        description: A description of the project type
-                        type: string
-                        nullable: true
-                      slug:
-                        description: 'The slug for project types, used in filtering'
-                        type: string
-                      icon_class:
-                        description: Font Awesome UI icon class
-                        type: string
-                      environment_urls:
-                        description: Indicates that projects of this type have per-environment URLs
-                        type: boolean
-                        default: false
-                    required:
-                      - name
-                      - plural_name
-                      - slug
-                      - icon_class
-                      - environment_urls
-                    additionalProperties: false
-              examples:
+                  title: Project Type
+                  description: |
+                    Used to describe the types of operational project_types for projects
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for URLs and table linking
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    name:
+                      description: The display name for a project type
+                      type: string
+                    plural_name:
+                      description: The display name for a project type when there is more than 1 item
+                      type: string
+                    description:
+                      description: A description of the project type
+                      type: string
+                      nullable: true
+                    slug:
+                      description: 'The slug for project types, used in filtering'
+                      type: string
+                    icon_class:
+                      description: Font Awesome UI icon class
+                      type: string
+                    environment_urls:
+                      description: Indicates that projects of this type have per-environment URLs
+                      type: boolean
+                  additionalProperties: false
+              example:
                 records:
                   summary: Multiple project type records
                   value:
@@ -3028,8 +3159,39 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              title: Project Type
+              description: |
+                Used to describe the types of operational project_types for projects
+              type: object
+              properties:
+                name:
+                  description: The display name for a project type
+                  type: string
+                plural_name:
+                  description: The display name for a project type when there is more than 1 item
+                  type: string
+                description:
+                  description: A description of the project type
+                  type: string
+                  nullable: true
+                slug:
+                  description: 'The slug for project types, used in filtering'
+                  type: string
+                icon_class:
+                  description: Font Awesome UI icon class
+                  type: string
+                environment_urls:
+                  description: Indicates that projects of this type have per-environment URLs
+                  type: boolean
+                  default: false
+              required:
+                - name
+                - plural_name
+                - slug
+                - icon_class
+                - environment_urls
+              additionalProperties: false
+            example:
               record:
                 summary: A full project type record
                 value:
@@ -3040,8 +3202,8 @@ paths:
                   icon_class: fab fa-aws
           application/msgpack:
             schema:
-              $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items/write'
-            examples:
+              $ref: '#/paths/~1project-types/post/requestBody/content/application~1json/schema'
+            example:
               record:
                 summary: A full project type record
                 value:
@@ -3063,8 +3225,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: A full project type record
                   value:
@@ -3078,8 +3240,8 @@ paths:
                     icon_class: fab fa-aws
             application/msgpack:
               schema:
-                $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items'
+              example:
                 record:
                   summary: A full project type record
                   value:
@@ -3209,6 +3371,8 @@ paths:
             **Example Value**
 
               `namespace asc, name desc`
+          schema:
+            type: string
         - name: limit
           in: query
           description: Limit the number of records returned
@@ -3276,7 +3440,7 @@ paths:
                       description: Indicates that the project is archived
                       type: boolean
                   additionalProperties: false
-              examples:
+              example:
                 records:
                   summary: Multiple project records
                   value:
@@ -3345,7 +3509,7 @@ paths:
                       description: Indicates that the project is archived
                       type: boolean
                   additionalProperties: false
-              examples:
+              example:
                 records:
                   summary: Multiple project records
                   value:
@@ -3410,7 +3574,7 @@ paths:
                 - name
                 - slug
               additionalProperties: false
-            examples:
+            example:
               record:
                 summary: An example of the payload for creating a record
                 value:
@@ -3426,7 +3590,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects/post/requestBody/content/application~1json/schema'
-            examples:
+            example:
               record:
                 summary: An example of the payload for creating a record
                 value:
@@ -3453,7 +3617,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/items'
-              examples:
+              example:
                 record:
                   summary: An example of a project record
                   value:
@@ -3475,7 +3639,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/items'
-              examples:
+              example:
                 record:
                   summary: An example of a project record
                   value:
@@ -3609,16 +3773,14 @@ paths:
                         - type: string
                     score:
                       description: The score for the value of the fact
-                      oneOf:
-                        - type: null
-                        - type: integer
+                      type: integer
+                      nullable: true
                     weight:
                       description: The weight of the score against all the other project facts
-                      oneOf:
-                        - type: null
-                        - type: integer
+                      type: integer
+                      nullable: true
                   additionalProperties: false
-              examples:
+              example:
                 facts:
                   summary: All the current facts for a project
                   value:
@@ -3670,16 +3832,14 @@ paths:
                         - type: string
                     score:
                       description: The score for the value of the fact
-                      oneOf:
-                        - type: null
-                        - type: integer
+                      type: integer
+                      nullable: true
                     weight:
                       description: The weight of the score against all the other project facts
-                      oneOf:
-                        - type: null
-                        - type: integer
+                      type: integer
+                      nullable: true
                   additionalProperties: false
-              examples:
+              example:
                 facts:
                   summary: All the current facts for a project
                   value:
@@ -3731,7 +3891,7 @@ paths:
                   - fact_type_id
                   - value
                 additionalProperties: false
-            examples:
+            example:
               facts:
                 summary: A payload example for setting multiple project facts
                 value:
@@ -3766,7 +3926,7 @@ paths:
                   - fact_type_id
                   - value
                 additionalProperties: false
-            examples:
+            example:
               facts:
                 summary: A payload example for setting multiple project facts
                 value:
@@ -3782,16 +3942,74 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                title: Project Fact Type
+                description: |
+                  Defines types of facts that can be recorded about a project
+                type: object
+                properties:
+                  id:
+                    description: The surrogate ID
+                    type: number
+                  created_by:
+                    description: The user that created the record
+                    type: string
+                  last_modified_by:
+                    description: The user that last modified the record
+                    type: string
+                  name:
+                    description: The project fact type name
+                    type: string
+                  project_type_ids:
+                    description: An array of Project Type ids to associate the fact type with
+                    type: array
+                    items:
+                      type: number
+                    uniqueItems: true
+                  fact_type:
+                    description: Indicates how a fact value is validated and scored
+                    type: string
+                    enum:
+                      - enum
+                      - free-form
+                      - range
+                  description:
+                    description: Provides additional context about the fact typee
+                    type: string
+                    nullable: true
+                  data_type:
+                    description: The data type for the value
+                    type: string
+                    enum:
+                      - boolean
+                      - date
+                      - decimal
+                      - integer
+                      - string
+                      - timestamp
+                  ui_options:
+                    description: An array of values that are used in the UI for display purposes
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - display-as-badge
+                        - display-as-percentage
+                        - hidden
+                    uniqueItems: true
+                  weight:
+                    description: The weight of the fact type when computing a project score
+                    type: number
+                    default: 0
+                additionalProperties: false
+              example:
                 record:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
+                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/example/facts'
             application/msgpack:
               schema:
-                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items/read'
-              examples:
+                $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+              example:
                 record:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
+                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/example/facts'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
@@ -3877,7 +4095,7 @@ paths:
                       description: The weight of the fact type when computing a project score
                       type: number
                       default: 0
-              examples:
+              example:
                 records:
                   summary: Multiple project fact type records
                   value:
@@ -4009,7 +4227,7 @@ paths:
                       description: The weight of the fact type when computing a project score
                       type: number
                       default: 0
-              examples:
+              example:
                 records:
                   summary: Multiple project fact type records
                   value:
@@ -4135,7 +4353,7 @@ paths:
                       type: string
                       format: uri
                   additionalProperties: false
-              examples:
+              example:
                 records:
                   summary: Multiple group records
                   value:
@@ -4184,7 +4402,7 @@ paths:
                       type: string
                       format: uri
                   additionalProperties: false
-              examples:
+              example:
                 records:
                   summary: Multiple group records
                   value:
@@ -4233,7 +4451,7 @@ paths:
                 - link_type_id
                 - url
               additionalProperties: false
-            examples:
+            example:
               record:
                 summary: A project link record
                 value:
@@ -4243,7 +4461,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects~1%7Bid%7D~1links/post/requestBody/content/application~1json/schema'
-            examples:
+            example:
               record:
                 summary: A project link record
                 value:
@@ -4264,7 +4482,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1links/get/responses/200/content/application~1json/schema/items'
-              examples:
+              example:
                 record:
                   summary: A project link record
                   value:
@@ -4277,7 +4495,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1links/get/responses/200/content/application~1json/schema/items'
-              examples:
+              example:
                 record:
                   summary: A project link record
                   value:
@@ -4402,7 +4620,7 @@ paths:
                       description: The ID of the project that is depended upon
                       type: number
                   additionalProperties: false
-              examples:
+              example:
                 records:
                   summary: Multiple records
                   value:
@@ -4430,7 +4648,7 @@ paths:
                       description: The ID of the project that is depended upon
                       type: number
                   additionalProperties: false
-              examples:
+              example:
                 records:
                   summary: Multiple records
                   value:
@@ -4462,7 +4680,7 @@ paths:
               required:
                 - dependency_id
               additionalProperties: false
-            examples:
+            example:
               record:
                 summary: The payload used when creating a project dependency
                 value:
@@ -4470,7 +4688,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects~1%7Bid%7D~1dependencies/post/requestBody/content/application~1json/schema'
-            examples:
+            example:
               record:
                 summary: The payload used when creating a project dependency
                 value:
@@ -4489,7 +4707,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1dependencies/get/responses/200/content/application~1json/schema/items'
-              examples:
+              example:
                 record:
                   summary: A project dependency record
                   value:
@@ -4499,7 +4717,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1dependencies/get/responses/200/content/application~1json/schema/items'
-              examples:
+              example:
                 record:
                   summary: A project dependency record
                   value:
@@ -4595,7 +4813,7 @@ paths:
                       type: string
                       format: uri
                   additionalProperties: false
-              examples:
+              example:
                 records:
                   summary: Multiple group records
                   value:
@@ -4639,7 +4857,7 @@ paths:
                       type: string
                       format: uri
                   additionalProperties: false
-              examples:
+              example:
                 records:
                   summary: Multiple group records
                   value:
@@ -4689,7 +4907,7 @@ paths:
                 - environment
                 - url
               additionalProperties: false
-            examples:
+            example:
               record:
                 summary: A project URL record
                 value:
@@ -4699,7 +4917,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects~1%7Bid%7D~1urls/post/requestBody/content/application~1json/schema'
-            examples:
+            example:
               record:
                 summary: A project URL record
                 value:
@@ -4720,7 +4938,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1urls/get/responses/200/content/application~1json/schema/items'
-              examples:
+              example:
                 record:
                   summary: A project URL record
                   value:
@@ -4731,7 +4949,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1urls/get/responses/200/content/application~1json/schema/items'
-              examples:
+              example:
                 record:
                   summary: A project URL record
                   value:
@@ -5020,6 +5238,8 @@ tags:
     description: Endpoints used to manage links to external resources for a project
   - name: Project URLs
     description: Endpoints used to manage urls to the project in each operational environment
+  - name: Operations Log
+    description: 'Endpoints used for created, querying, and managing entries in the Operations Log'
   - name: Settings
     description: Endpoints used for retrieving settings for the Imbi UI
   - name: Health Check / Status
@@ -5041,6 +5261,9 @@ x-tagGroups:
       - Fact Type Ranges
       - Project Link Types
       - Project Types
+  - name: Operations Log
+    tags:
+      - Operations Log
   - name: Project Management
     tags:
       - Projects
