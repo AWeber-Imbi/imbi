@@ -3774,11 +3774,9 @@ paths:
                     score:
                       description: The score for the value of the fact
                       type: integer
-                      nullable: true
                     weight:
                       description: The weight of the score against all the other project facts
                       type: integer
-                      nullable: true
                   additionalProperties: false
               example:
                 facts:
@@ -3833,11 +3831,9 @@ paths:
                     score:
                       description: The score for the value of the fact
                       type: integer
-                      nullable: true
                     weight:
                       description: The weight of the score against all the other project facts
                       type: integer
-                      nullable: true
                   additionalProperties: false
               example:
                 facts:
@@ -4309,6 +4305,111 @@ paths:
         required: true
         schema:
           type: integer
+  '/projects/{id}/feed':
+    get:
+      description: Retrieve the most recent changes for a project ordered in descending order.
+      summary: Get Activity Feed
+      tags:
+        - Project Activity Feed
+      parameters:
+        - name: id
+          in: path
+          description: Project ID
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Feed Item Entry
+                  properties:
+                    when:
+                      description: The timestamp of the entry
+                      type: string
+                      format: iso8601-timestamp
+                    who:
+                      description: The username of the user who acted on the project
+                      type: string
+                    display_name:
+                      description: The display name of the user who acted on the project
+                      type: string
+                    what:
+                      description: The action taken by the user
+                      type: string
+                      enum:
+                        - created
+                        - updated
+                        - updated fact
+                    fact_type:
+                      description: 'If the action was `updated fact`, the fact that was updated'
+                      type: string
+                    value:
+                      description: 'If the action was `updated fact`, the value of the updated fact'
+                      type: string
+              example:
+                - when: 2021-03-18T03:02:00.912Z
+                  who: Gavin Roy
+                  username: gavinr
+                  what: updated fact
+                  fact_name: Programming Language
+                  value: ES2015+
+                - when: 2021-03-18T02:55:50.865Z
+                  who: Gavin Roy
+                  username: gavinr
+                  what: created
+                  fact_name: null
+                  value: null
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Feed Item Entry
+                  properties:
+                    when:
+                      description: The timestamp of the entry
+                      type: string
+                      format: iso8601-timestamp
+                    who:
+                      description: The username of the user who acted on the project
+                      type: string
+                    display_name:
+                      description: The display name of the user who acted on the project
+                      type: string
+                    what:
+                      description: The action taken by the user
+                      type: string
+                      enum:
+                        - created
+                        - updated
+                        - updated fact
+                    fact_type:
+                      description: 'If the action was `updated fact`, the fact that was updated'
+                      type: string
+                    value:
+                      description: 'If the action was `updated fact`, the value of the updated fact'
+                      type: string
+              example:
+                - when: 2021-03-18T03:02:00.912Z
+                  who: Gavin Roy
+                  username: gavinr
+                  what: updated fact
+                  fact_name: Programming Language
+                  value: ES2015+
+                - when: 2021-03-18T02:55:50.865Z
+                  who: Gavin Roy
+                  username: gavinr
+                  what: created
+                  fact_name: null
+                  value: null
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   '/projects/{id}/links':
     get:
       description: Retrieve the collection of links for a project
@@ -5228,6 +5329,8 @@ tags:
     description: 'Endpoints used for the management different types of projects managed in Imbi (APIs, Databases, etc)'
   - name: Projects
     description: Endpoints used for the management of projects
+  - name: Project Activity Feed
+    description: Endpoints that detail activity on a project
   - name: Project Dependencies
     description: Endpoints used to manage the relationships of projects to other projects
   - name: Project Facts
@@ -5267,6 +5370,7 @@ x-tagGroups:
   - name: Project Management
     tags:
       - Projects
+      - Project Activity Feed
       - Project Dependencies
       - Project Facts
       - Project Fact Types
