@@ -87,6 +87,8 @@ paths:
     { '$ref': 'endpoints/project_urls.yaml#/paths/collection' }
   /projects/{id}/urls/{environment}:
     { '$ref': 'endpoints/project_urls.yaml#/paths/manage' }
+  /reports/namespace-kpi-history: 
+    { $ref: 'endpoints/namespace_kpi_history.yaml#/paths/collection' }
   /status: { $ref: 'status.yaml#/paths/status' }
 
 tags:
@@ -146,6 +148,8 @@ tags:
     description: Endpoints used to manage urls to the project in each operational environment
   - name: Operations Log
     description: Endpoints used for created, querying, and managing entries in the Operations Log
+  - name: Reports
+    description: Endpoints used to report on the state of various objects in Imbi
   - name: Settings
     description: Endpoints used for retrieving settings for the Imbi UI
   - name: Health Check / Status
@@ -181,6 +185,9 @@ x-tagGroups:
       - Project Links
       - Project Scores
       - Project URLs
+  - name: Reports
+    tags:
+      - Reports
   - name: Current User
     tags:
       - User
