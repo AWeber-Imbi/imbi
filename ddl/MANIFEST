@@ -18,12 +18,6 @@ types/v1/data_type.sql
 types/v1/entity_type.sql
 types/v1/fact_type.sql
 
--- Functions
-functions/v1/group_name_from_ldap_dn.sql
-functions/v1/maintain_group_membership_from_ldap_groups.sql
-functions/v1/project_score.sql
-functions/v1/remove_dissociated_project_facts.sql
-
 -- Tables
 tables/v1/environments.sql
 tables/v1/namespaces.sql
@@ -46,6 +40,12 @@ tables/v1/users.sql
 tables/v1/authentication_tokens.sql
 tables/v1/groups.sql
 tables/v1/group_members.sql
+
+-- Functions
+functions/v1/group_name_from_ldap_dn.sql
+functions/v1/maintain_group_membership_from_ldap_groups.sql
+functions/v1/project_score.sql
+functions/v1/remove_dissociated_project_facts.sql
 
 -- Trigger Functions
 functions/v1/enforce_project_type_ids.sql
