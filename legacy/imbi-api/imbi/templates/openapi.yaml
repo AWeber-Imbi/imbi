@@ -4876,6 +4876,69 @@ paths:
         required: true
         schema:
           type: number
+  '/projects/{id}/score-history':
+    get:
+      description: Retrieve the score history for a specific project.
+      summary: Get Score History
+      tags:
+        - Project Scores
+      parameters:
+        - name: id
+          in: path
+          description: Project ID
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Score History Item
+                  properties:
+                    date:
+                      description: The date of the score in ISO-8601 format
+                      type: string
+                    score:
+                      description: The username of the user who acted on the project
+                      type: number
+              example:
+                - date: 2021-03-01T00:00:00.000Z
+                  score: 70
+                - date: 2021-03-12T00:00:00.000Z
+                  score: 72
+                - date: 2021-04-01T00:00:00.000Z
+                  score: 75
+                - date: 2021-05-21T00:00:00.000Z
+                  score: 91
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Score History Item
+                  properties:
+                    date:
+                      description: The date of the score in ISO-8601 format
+                      type: string
+                    score:
+                      description: The username of the user who acted on the project
+                      type: number
+              example:
+                - date: 2021-03-01T00:00:00.000Z
+                  score: 70
+                - date: 2021-03-12T00:00:00.000Z
+                  score: 72
+                - date: 2021-04-01T00:00:00.000Z
+                  score: 75
+                - date: 2021-05-21T00:00:00.000Z
+                  score: 91
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   '/projects/{id}/urls':
     get:
       description: Retrieve the collection of URLs for a project
@@ -5339,6 +5402,8 @@ tags:
     description: An endpoint for returning the project fact types for a specific project
   - name: Project Links
     description: Endpoints used to manage links to external resources for a project
+  - name: Project Scores
+    description: Endpoints detailing information about project scores
   - name: Project URLs
     description: Endpoints used to manage urls to the project in each operational environment
   - name: Operations Log
@@ -5375,6 +5440,7 @@ x-tagGroups:
       - Project Facts
       - Project Fact Types
       - Project Links
+      - Project Scores
       - Project URLs
   - name: Current User
     tags:
