@@ -1,16 +1,16 @@
 from tornado import web
 
 from imbi import constants
-from . import (authentication_tokens, cookie_cutters, dashboard, environments,
-               fact_type_enums, fact_type_ranges, fact_types, groups,
-               namespace_kpi_history, namespaces, openapi, permissions,
-               project_activity_feed, project_dependencies, project_fact_types,
-               project_facts, project_link_types, project_links,
-               project_score_history, project_types, project_urls, projects,
-               reports, status, ui)
+from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
+               environments, fact_type_enums, fact_type_ranges, fact_types,
+               groups, namespaces, openapi, permissions, project_activity_feed,
+               project_dependencies, project_fact_types, project_facts,
+               project_link_types, project_links, project_score_history,
+               project_types, project_urls, projects, reports, status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
+    web.url(r'^/activity-feed$', activity_feed.RequestHandler),
     web.url(r'^/api-docs/$', openapi.RequestHandler),
     web.url(r'^/api-docs/(openapi.yaml)$', openapi.RequestHandler),
     web.url(r'^/authentication-tokens$', authentication_tokens.RequestHandler),
@@ -95,9 +95,6 @@ URLS = [
             r'(?P<environment>[\w_\-%\+]+)$',
             project_urls.RecordRequestHandler,
             name='project-url'),
-    web.url(r'^/reports/namespace-kpi-history$',
-            namespace_kpi_history.CollectionRequestHandler,
-            name='namespace-kpi-history'),
     web.url(r'^/status$', status.RequestHandler),
     web.url(r'^/ui/login$', ui.LoginRequestHandler),
     web.url(r'^/ui/logout$', ui.LogoutRequestHandler),
