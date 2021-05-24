@@ -81,6 +81,8 @@ paths:
     { '$ref': 'endpoints/project_dependencies.yaml#/paths/collection' }
   /projects/{id}/dependencies/{dependency_id}:
     { '$ref': 'endpoints/project_dependencies.yaml#/paths/manage' }
+  /projects/{id}/score-history:
+    { '$ref': 'endpoints/project_score_history.yaml#/paths/collection' }
   /projects/{id}/urls:
     { '$ref': 'endpoints/project_urls.yaml#/paths/collection' }
   /projects/{id}/urls/{environment}:
@@ -138,6 +140,8 @@ tags:
     description: An endpoint for returning the project fact types for a specific project
   - name: Project Links
     description: Endpoints used to manage links to external resources for a project
+  - name: Project Scores
+    description: Endpoints detailing information about project scores
   - name: Project URLs
     description: Endpoints used to manage urls to the project in each operational environment
   - name: Operations Log
@@ -175,6 +179,7 @@ x-tagGroups:
       - Project Facts
       - Project Fact Types
       - Project Links
+      - Project Scores
       - Project URLs
   - name: Current User
     tags:
