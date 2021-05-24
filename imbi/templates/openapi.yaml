@@ -5205,6 +5205,82 @@ paths:
         required: true
         schema:
           type: string
+  /reports/namespace-kpi-history:
+    get:
+      description: The history of health scores for all namespaces for the last 12 months
+      summary: Namespace KPI History
+      tags:
+        - Reports
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Feed Item Entry
+                  properties:
+                    namespace_id:
+                      description: The namespace ID value
+                      type: number
+                    scored_on:
+                      description: The date of the `health_score` value
+                      type: string
+                    health_score:
+                      description: The aggregate health score for the namespace
+                      type: number
+              example:
+                - namespace_id: 1
+                  scored_on: 2021-01-01T00:00:00.000Z
+                  health_score: 10.53
+                - namespace_id: 1
+                  scored_on: 2021-02-01T00:00:00.000Z
+                  health_score: 21.53
+                - namespace_id: 1
+                  scored_on: 2021-03-01T00:00:00.000Z
+                  health_score: 31.43
+                - namespace_id: 1
+                  scored_on: 2021-04-01T00:00:00.000Z
+                  health_score: 51.49
+                - namespace_id: 1
+                  scored_on: 2021-05-01T00:00:00.000Z
+                  health_score: 72.5
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Feed Item Entry
+                  properties:
+                    namespace_id:
+                      description: The namespace ID value
+                      type: number
+                    scored_on:
+                      description: The date of the `health_score` value
+                      type: string
+                    health_score:
+                      description: The aggregate health score for the namespace
+                      type: number
+              example:
+                - namespace_id: 1
+                  scored_on: 2021-01-01T00:00:00.000Z
+                  health_score: 10.53
+                - namespace_id: 1
+                  scored_on: 2021-02-01T00:00:00.000Z
+                  health_score: 21.53
+                - namespace_id: 1
+                  scored_on: 2021-03-01T00:00:00.000Z
+                  health_score: 31.43
+                - namespace_id: 1
+                  scored_on: 2021-04-01T00:00:00.000Z
+                  health_score: 51.49
+                - namespace_id: 1
+                  scored_on: 2021-05-01T00:00:00.000Z
+                  health_score: 72.5
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   /status:
     get:
       security: []
@@ -5408,6 +5484,8 @@ tags:
     description: Endpoints used to manage urls to the project in each operational environment
   - name: Operations Log
     description: 'Endpoints used for created, querying, and managing entries in the Operations Log'
+  - name: Reports
+    description: Endpoints used to report on the state of various objects in Imbi
   - name: Settings
     description: Endpoints used for retrieving settings for the Imbi UI
   - name: Health Check / Status
@@ -5442,6 +5520,9 @@ x-tagGroups:
       - Project Links
       - Project Scores
       - Project URLs
+  - name: Reports
+    tags:
+      - Reports
   - name: Current User
     tags:
       - User
