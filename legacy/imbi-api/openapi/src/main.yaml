@@ -71,6 +71,8 @@ paths:
     { '$ref': 'endpoints/project_facts.yaml#/paths/collection' }
   /projects/{id}/fact-types:
     { '$ref': 'endpoints/project_fact_types.yaml#/paths/collection' }
+  /projects/{id}/feed:
+    { '$ref': 'endpoints/project_activity_feed.yaml#/paths/collection' }
   /projects/{id}/links:
     { '$ref': 'endpoints/project_links.yaml#/paths/collection' }
   /projects/{id}/links/{link_type_id}:
@@ -126,6 +128,8 @@ tags:
     description: Endpoints used for the management different types of projects managed in Imbi (APIs, Databases, etc)
   - name: Projects
     description: Endpoints used for the management of projects
+  - name: Project Activity Feed
+    description: Endpoints that detail activity on a project
   - name: Project Dependencies
     description: Endpoints used to manage the relationships of projects to other projects
   - name: Project Facts
@@ -166,6 +170,7 @@ x-tagGroups:
   - name: Project Management
     tags:
       - Projects
+      - Project Activity Feed
       - Project Dependencies
       - Project Facts
       - Project Fact Types

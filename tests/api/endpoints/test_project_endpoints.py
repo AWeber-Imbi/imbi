@@ -409,6 +409,14 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 304)
         self.assert_link_header_equals(result, url)
 
+        # Feed
+        result = self.fetch(
+            f'/projects/{record["project_id"]}/feed', headers=self.headers)
+        self.assertEqual(result.code, 200)
+        records = json.loads(result.body.decode('utf-8'))
+        self.assertGreaterEqual(len(records), 1)
+        self.assertEqual(records[0]['who'], self.USERNAME[self.ADMIN_ACCESS])
+
         # Get
         result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 200)
