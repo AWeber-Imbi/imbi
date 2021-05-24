@@ -32,6 +32,8 @@ security:
   - token: []
 
 paths:
+  /activity-feed:
+    { $ref: 'endpoints/activity_feed.yaml#/paths/collection' }
   /authentication-tokens:
     { $ref: 'endpoints/authentication_tokens.yaml#/paths/collection' }
   /authentication-tokens/{token}:
@@ -87,11 +89,13 @@ paths:
     { '$ref': 'endpoints/project_urls.yaml#/paths/collection' }
   /projects/{id}/urls/{environment}:
     { '$ref': 'endpoints/project_urls.yaml#/paths/manage' }
-  /reports/namespace-kpi-history: 
+  /reports/namespace-kpi-history:
     { $ref: 'endpoints/namespace_kpi_history.yaml#/paths/collection' }
   /status: { $ref: 'status.yaml#/paths/status' }
 
 tags:
+  - name: Activity Feed
+    description: Endpoints that detail changes to projects and other entities in Imbi
   - name: Cookie Cutters
     description: Endpoints used for the management of project creation cookie cutters
   - name: Environments
@@ -158,6 +162,10 @@ tags:
       service health.
 
 x-tagGroups:
+  - name: Activity Feed
+    tags:
+      - Activity Feed
+      - Project Activity Feed
   - name: Administration
     tags:
       - Groups
@@ -178,7 +186,6 @@ x-tagGroups:
   - name: Project Management
     tags:
       - Projects
-      - Project Activity Feed
       - Project Dependencies
       - Project Facts
       - Project Fact Types

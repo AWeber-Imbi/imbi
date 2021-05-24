@@ -1,13 +1,15 @@
 import re
 
+from tornado import web
+
 from imbi.endpoints import base
 
 
-class CollectionRequestHandler(base.CollectionRequestHandler):
+class RequestHandler(base.RequestHandler):
 
-    NAME = 'namespace-kpi-history'
-    ID = None
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    NAME = 'reports-namespace-kpi-history'
+
+    SQL = re.sub(r'\s+', ' ', """\
         SELECT a.namespace_id,
                a.scored_on,
                a.health_score
@@ -16,3 +18,9 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
             ON b.id = a.namespace_id
          WHERE a.scored_on > CURRENT_DATE - interval '1 year'
       ORDER BY a.scored_on ASC, a.namespace_id ASC;""")
+
+    @web.authenticated
+    async def get(self):
+        result = await self.postgres_execute(
+            self.SQL, metric_name='reports-compliance')
+        self.send_response(result.rows)

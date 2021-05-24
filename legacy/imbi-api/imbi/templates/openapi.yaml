@@ -27,6 +27,151 @@ security:
   - session: []
   - token: []
 paths:
+  /activity-feed:
+    get:
+      description: A feed of changes in Imbi's projects ordered in descending order by date
+      summary: Activity Feed
+      tags:
+        - Activity Feed
+      parameters:
+        - name: limit
+          in: query
+          description: Limit the number of records returned
+          schema:
+            type: number
+        - name: offset
+          in: query
+          description: The starting offset for the records returned
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Feed Item Entry
+                  properties:
+                    when:
+                      description: The timestamp of the entry
+                      type: string
+                      format: iso8601-timestamp
+                    namespace:
+                      description: The namespace of the project
+                      type: string
+                    project_id:
+                      description: The project ID
+                      type: number
+                    project_name:
+                      description: The project name
+                      type: string
+                    project_type:
+                      description: The project type
+                      type: string
+                    who:
+                      description: The username of the user who acted on the project
+                      type: string
+                    display_name:
+                      description: The display name of the user who acted on the project
+                      type: string
+                    what:
+                      description: The action taken by the user
+                      type: string
+                      enum:
+                        - created
+                        - updated
+                        - updated facts
+              example:
+                - when: 2021-05-21T20:43:08.639Z
+                  namespace: Example
+                  project_id: 1
+                  project_name: Imbi
+                  project_type: Web Application
+                  who: gmr
+                  display_name: Gavin M. Roy
+                  what: updated facts
+                - when: 2021-05-21T20:41:06.423Z
+                  namespace: Example
+                  project_id: 1
+                  project_name: Imbi
+                  project_type: Web Application
+                  who: gmr
+                  display_name: Gavin M. Roy
+                  what: updated
+                - when: 2021-05-20T20:30:21.987Z
+                  namespace: Example
+                  project_id: 1
+                  project_name: Imbi
+                  project_type: Web Application
+                  who: gmr
+                  display_name: Gavin M. Roy
+                  what: created
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Feed Item Entry
+                  properties:
+                    when:
+                      description: The timestamp of the entry
+                      type: string
+                      format: iso8601-timestamp
+                    namespace:
+                      description: The namespace of the project
+                      type: string
+                    project_id:
+                      description: The project ID
+                      type: number
+                    project_name:
+                      description: The project name
+                      type: string
+                    project_type:
+                      description: The project type
+                      type: string
+                    who:
+                      description: The username of the user who acted on the project
+                      type: string
+                    display_name:
+                      description: The display name of the user who acted on the project
+                      type: string
+                    what:
+                      description: The action taken by the user
+                      type: string
+                      enum:
+                        - created
+                        - updated
+                        - updated facts
+              example:
+                - when: 2021-05-21T20:43:08.639Z
+                  namespace: Example
+                  project_id: 1
+                  project_name: Imbi
+                  project_type: Web Application
+                  who: gmr
+                  display_name: Gavin M. Roy
+                  what: updated facts
+                - when: 2021-05-21T20:41:06.423Z
+                  namespace: Example
+                  project_id: 1
+                  project_name: Imbi
+                  project_type: Web Application
+                  who: gmr
+                  display_name: Gavin M. Roy
+                  what: updated
+                - when: 2021-05-20T20:30:21.987Z
+                  namespace: Example
+                  project_id: 1
+                  project_name: Imbi
+                  project_type: Web Application
+                  who: gmr
+                  display_name: Gavin M. Roy
+                  what: created
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   /authentication-tokens:
     post:
       summary: Create Token
@@ -5430,6 +5575,8 @@ paths:
               example:
                 $ref: '#/paths/~1status/get/responses/503/content/application~1json/example'
 tags:
+  - name: Activity Feed
+    description: Endpoints that detail changes to projects and other entities in Imbi
   - name: Cookie Cutters
     description: Endpoints used for the management of project creation cookie cutters
   - name: Environments
@@ -5493,6 +5640,10 @@ tags:
       The health check endpoint can be used by a load balancer to indicate
       service health.
 x-tagGroups:
+  - name: Activity Feed
+    tags:
+      - Activity Feed
+      - Project Activity Feed
   - name: Administration
     tags:
       - Groups
@@ -5513,7 +5664,6 @@ x-tagGroups:
   - name: Project Management
     tags:
       - Projects
-      - Project Activity Feed
       - Project Dependencies
       - Project Facts
       - Project Fact Types
