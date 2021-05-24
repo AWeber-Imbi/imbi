@@ -19,6 +19,7 @@
     "dompurify": "^2.0.17",
     "husky": ">=4",
     "lint-staged": ">=10",
+    "lodash": "^4.17.21",
     "marked": "^0.7.0",
     "mobx": "^6.0.4",
     "openapi-types": ">=7",
