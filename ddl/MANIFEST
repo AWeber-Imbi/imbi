@@ -22,6 +22,7 @@ types/v1/fact_type.sql
 functions/v1/group_name_from_ldap_dn.sql
 functions/v1/maintain_group_membership_from_ldap_groups.sql
 functions/v1/project_score.sql
+functions/v1/remove_dissociated_project_facts.sql
 
 -- Tables
 tables/v1/environments.sql
@@ -58,3 +59,6 @@ triggers/v1/enforce_project_type_ids.sql
 triggers/v1/maintain_project_fact_history.sql
 triggers/v1/maintain_project_fact_types.sql
 triggers/v1/validate_project_fact_value.sql
+
+-- Views
+views/v1/activity_feed.sql
