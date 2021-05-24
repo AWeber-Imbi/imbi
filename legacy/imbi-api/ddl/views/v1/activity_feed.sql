@@ -73,4 +73,4 @@ CREATE VIEW v1.activity_feed AS
             a.namespace, a.project_type
    ORDER BY max(a.when) DESC LIMIT 1000;
 
-GRANT SELECT ON v1.project_activity_feed TO reader;
+GRANT SELECT ON v1.activity_feed TO reader;
