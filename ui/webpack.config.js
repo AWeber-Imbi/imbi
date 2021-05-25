@@ -4,7 +4,7 @@ const process = require('process')
 const dev = process.env.NODE_ENV !== 'production'
 
 let publicPath = '/static/'
-if (dev) publicPath = 'http://0.0.0.0:8080/static/'
+if (dev) publicPath = 'http://127.0.0.1:8000/static/'
 
 module.exports = {
   entry: ['babel-polyfill', __dirname + '/src/js/index.jsx'],
