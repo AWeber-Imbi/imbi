@@ -1,6 +1,6 @@
 SET search_path = v1;
 
-CREATE FUNCTION update_namespace_kpi_history() RETURNS void
+CREATE OR REPLACE FUNCTION update_namespace_kpi_history() RETURNS void
        LANGUAGE sql
        SECURITY DEFINER AS $$
   WITH projects_with_facts AS (
@@ -8,6 +8,7 @@ CREATE FUNCTION update_namespace_kpi_history() RETURNS void
             FROM v1.projects AS a
        LEFT JOIN v1.project_fact_types AS b
               ON a.project_type_id = ANY(b.project_type_ids)
+           WHERE a.archived IS NOT TRUE
         GROUP BY a.id, a.namespace_id
           HAVING count(b.*) > 0),
       project_scores AS (
@@ -19,6 +20,7 @@ CREATE FUNCTION update_namespace_kpi_history() RETURNS void
       project_counts AS (
           SELECT namespace_id, count(*)
             FROM v1.projects
+           WHERE archived IS NOT TRUE
         GROUP BY namespace_id),
       namespace_stats AS (
          SELECT a.namespace_id,
