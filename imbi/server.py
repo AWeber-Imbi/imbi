@@ -12,6 +12,7 @@ import yaml
 from sprockets import http
 
 from imbi import app, pkgfiles, version
+from imbi.endpoints import static
 
 LOGGER = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'session_pool_size': session.get('pool_size', 10),
         'session_redis_url': session.get(
             'redis_url', 'redis://localhost:6379/0'),
+        'static_handler_class': static.StaticFileHandler,
         'static_path': module_path / 'static',
         'stats_pool_size': stats.get('pool_size', 10),
         'stats_redis_url': stats.get(
