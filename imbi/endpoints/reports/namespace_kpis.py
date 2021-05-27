@@ -15,6 +15,7 @@ class RequestHandler(base.RequestHandler):
               FROM v1.projects AS a
          LEFT JOIN v1.project_fact_types AS b
                 ON a.project_type_id = ANY(b.project_type_ids)
+             WHERE a.archived IS NOT TRUE
           GROUP BY a.id, a.namespace_id
             HAVING count(b.*) > 0),
         project_scores AS (
