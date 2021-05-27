@@ -30,6 +30,9 @@ paths:
                       description: The timestamp of the entry
                       type: string
                       format: iso8601-timestamp
+                    namespace_id:
+                      description: The namespace ID
+                      type: number
                     namespace:
                       description: The namespace of the project
                       type: string
@@ -48,6 +51,9 @@ paths:
                     display_name:
                       description: The display name of the user who acted on the project
                       type: string
+                    email_address:
+                      description: The email address of the user who acted on the project
+                      type: string
                     what:
                       description: The action taken by the user
                       type: string
@@ -58,27 +64,33 @@ paths:
               example:
                 - when: 2021-05-21 16:43:08.639661-04
                   namespace: Example
+                  namespace_id: 1
                   project_id: 1
                   project_name: Imbi
                   project_type: Web Application
                   who: gmr
                   display_name: Gavin M. Roy
+                  email_address: gmr@imbi.co
                   what: updated facts
                 - when: 2021-05-21 16:41:06.423535-04
                   namespace: Example
+                  namespace_id: 1
                   project_id: 1
                   project_name: Imbi
                   project_type: Web Application
                   who: gmr
                   display_name: Gavin M. Roy
+                  email_address: gmr@imbi.co
                   what: updated
                 - when: 2021-05-20 16:30:21.987839-04
                   namespace: Example
+                  namespace_id: 1
                   project_id: 1
                   project_name: Imbi
                   project_type: Web Application
                   who: gmr
                   display_name: Gavin M. Roy
+                  email_address: gmr@imbi.co
                   what: created
             application/msgpack:
               <<: *responseContent
