@@ -2,11 +2,9 @@
 Application Status View
 
 """
-import datetime
 import platform
 
 import distro
-import isodate
 from sprockets.mixins import mediatype
 from tornado import web
 
