@@ -7,7 +7,7 @@ paths:
       summary: Service Status
       operationId: status
       tags:
-        - Health Check / Status
+        - Monitoring & Metrics
       responses:
         '200':
           description: Service Available

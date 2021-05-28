@@ -5541,7 +5541,7 @@ paths:
       summary: Service Status
       operationId: status
       tags:
-        - Health Check / Status
+        - Monitoring & Metrics
       responses:
         '200':
           description: Service Available
@@ -5664,10 +5664,8 @@ tags:
     description: Endpoints used to report on the state of various objects in Imbi
   - name: Settings
     description: Endpoints used for retrieving settings for the Imbi UI
-  - name: Health Check / Status
-    description: |-
-      The health check endpoint can be used by a load balancer to indicate
-      service health.
+  - name: Monitoring & Metrics
+    description: 'Endpoints used for health checking, service status, and service metrics'
 x-tagGroups:
   - name: Activity Feed
     tags:
@@ -5711,4 +5709,4 @@ x-tagGroups:
       - Settings
   - name: Other
     tags:
-      - Health Check / Status
+      - Monitoring & Metrics
