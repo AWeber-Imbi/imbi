@@ -44,6 +44,7 @@ paths:
   /environments/{name}: { $ref: 'endpoints/environment.yaml#/paths/manage' }
   /groups: { $ref: 'endpoints/group.yaml#/paths/collection' }
   /groups/{name}: { $ref: 'endpoints/group.yaml#/paths/manage' }
+  /metrics: { $ref: 'endpoints/metrics.yaml#/paths/metrics' }
   /namespaces: { $ref: 'endpoints/namespace.yaml#/paths/collection' }
   /namespaces/{id}: { $ref: 'endpoints/namespace.yaml#/paths/manage' }
   /operations-log: { '$ref': 'endpoints/operations_log.yaml#/paths/collection' }
@@ -91,7 +92,7 @@ paths:
     { '$ref': 'endpoints/project_urls.yaml#/paths/manage' }
   /reports/namespace-kpi-history:
     { $ref: 'endpoints/namespace_kpi_history.yaml#/paths/collection' }
-  /status: { $ref: 'status.yaml#/paths/status' }
+  /status: { $ref: 'endpoints/status.yaml#/paths/status' }
 
 tags:
   - name: Activity Feed

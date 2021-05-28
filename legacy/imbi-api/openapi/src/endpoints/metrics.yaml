@@ -1,12 +1,11 @@
 paths:
-  status:
+  metrics:
     get:
       security: []
       description: |-
-        Returns information about the running service, including runtime metrics
-        including counters and durations.
-      summary: Service Status
-      operationId: status
+        Returns runtime metrics including counters and durations.
+      summary: Service metrics
+      operationId: metrics
       parameters:
         - in: query
           name: flush
@@ -18,34 +17,24 @@ paths:
               - 'true'
               - 'false'
       tags:
-        - Health Check / Status
+        - Monitoring & Metrics
       responses:
         '200':
-          description: Service Available
+          description: OK
           content:
-            application/json: &statusAvailable
+            application/json: &metricsAvailable
               schema:
-                $ref: '#/components/schemas/status'
+                $ref: '#/components/schemas/metrics'
               example:
-                $ref: '#/components/examples/statusOk/value'
+                $ref: '#/components/examples/metrics/value'
             application/msgpack:
-              <<: *statusAvailable
-        '503':
-          description: Service Unavailable
-          content:
-            application/json: &statusUnavailable
-              schema:
-                $ref: '#/components/schemas/status'
-              example:
-                $ref: '#/components/examples/statusError/value'
-            application/msgpack:
-              <<: *statusUnavailable
+              <<: *metricsAvailable
 
 components:
   examples:
-    statusOk:
+    metrics:
       summary: Example when the service is available and processing requests
-      value: &exampleStatus
+      value:
         counters:
           'response.Base.GET.200': 10
         durations:
@@ -57,26 +46,10 @@ components:
           available: true
           pool_size: 10
           pool_free: 9
-        started_at: 2020-01-01T00:00:00+00:00
-        status: ok
-        system:
-          language:
-            name: python
-            implementation: CPython
-            version: 3.7.6
-          os:
-            name: Alpine Linux
-            version: 3.11.6
         uptime: PT6M9.053148S
-        version: '{{ settings["version"] }}'
-    statusError:
-      summary: Example when the service is unavailable
-      value:
-        <<: *exampleStatus
-        status: unavailable
 
   schemas:
-    status:
+    metrics:
       type: object
       properties:
         counters:
@@ -114,20 +87,7 @@ components:
               type: number
               description: |-
                 Indicates the current quantity of open connections to Postgres
-        started_at:
-          type: string
-          format: iso8601-timestamp
-          description: The ISO-8601 formatted timestamp of when the service started
-        status:
-          type: string
-          description: The current application status
-          enum:
-            - ok
-            - maintenance
         uptime:
           type: string
           description: |-
             ISO-8601 formatted duration indicating how long the service has been running
-        version:
-          type: string
-          description: The version
