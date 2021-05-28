@@ -18,7 +18,7 @@ OK = 'ok'
 
 class RequestHandler(mediatype.ContentMixin,
                      web.RequestHandler):
-    """Returns the current status and internal metrics"""
+    """Returns the current status"""
     ENDPOINT = 'Status'
 
     SYSTEM = {
@@ -35,18 +35,11 @@ class RequestHandler(mediatype.ContentMixin,
 
     async def get(self):
         """Tornado RequestHandler GET request endpoint for reporting status"""
-        prune = self.get_argument('flush', 'false') == 'true'
         self.set_status(self._status_response_code())
         self.send_response({
-            'counters': await self.application.stats.counters(prune),
-            'durations': await self.application.stats.durations(prune),
-            'postgres': await self.application.postgres_status(),
             'started_at': self.application.started_at_str,
             'status': OK if self.application.ready_to_serve else MAINTENANCE,
             'system': self.SYSTEM,
-            'uptime': isodate.duration_isoformat(
-                datetime.datetime.now(datetime.timezone.utc) -
-                self.application.started_at),
             'version': version})
 
     def set_default_headers(self) -> None:
