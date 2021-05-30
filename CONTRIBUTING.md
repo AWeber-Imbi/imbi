@@ -112,6 +112,43 @@ The easiest way to add a new user is to create a LDIF file and run it using `doc
     ^D
     $
 
-You can also use `docker-compose exec` to spawn a shell and use the ldap utilities directly on the container.  The admin user is `cn=admin,dc=example,dc=org` with a password of `admin`.  The `userPassword` in the document is the Base-64 encoded SHA1 checksum of the plaintext password.
+You can also use `docker-compose exec` to spawn a shell and use the ldap utilities directly on the container. The admin
+user is `cn=admin,dc=example,dc=org` with a password of `admin`. The `userPassword` in the document is the Base-64
+encoded SHA1 checksum of the plaintext password.
 
 Once you have the new user in LDAP, you can log into imbi using the `cn` of the user and the password.
+
+### Configuring gitlab connection
+
+The connection between imbi and gitlab is represented as a OAuth 2 application inside of gitlab and an integration
+inside of imbi.  The first thing that you need to do is create the OAuth 2 application in your gitlab account.
+
+1. Log in to your gitlab instance, browse to your profile, and select "Applications" from the nav bar (e.g.,
+   https://gitlab.com/oauth/applications)
+2. Add a new application with the following information:
+   - **Name**: Imbi
+   - **Redirect URI**: http://127.0.0.1:8000/gitlab/auth
+   - **Confidential**: checked
+   - **Scopes**: api
+3. Press the **Save Application** button    
+4. Leave this page open, you will need the two IDs that were generated
+5. Generate an API token in imbi if you do not have one
+6. Send the following `POST` to imbi to create the integration:
+
+       curl -H "Private-Token: $IMBI_TOKEN" \
+            --request POST \
+            -d 'api_endpoint=https://gitlab.com/api/v4' \
+            -d 'authorization_endpoint=https://gitlab.com/oauth/authorize' \
+            -d 'callback_url=http://127.0.0.1:8000/gitlab/auth' \
+            -d "client_id=$GITLAB_APPLICATION_ID" \
+            -d "client_secret=$GITLAB_SECRET" \
+            -d 'name=gitlab' \
+            -d 'public_client=false' \
+            -d 'revoke_endpoint' \
+            -d 'token_endpoint=https://gitlab.com/oauth/token' \
+            http://127.0.0.1:8000/integrations
+
+   Assuming that `$IMBI_TOKEN`, `$GITLAB_APPLICATION_ID`, and `$GITLAB_SECRET` are set to the obvious values.
+7. After creating the integration, press the "" button on http://127.0.0.1:8000/ui/user/profile .  It will walk through
+   the authorization flow for imbi, create the OAuth 2 token, save it in the database, and leave your user in the
+   connected state.
