@@ -73,7 +73,7 @@ export default {
         administration: 'Administration',
         dashboard: 'Dashboard',
         newOperationsLogEntry: 'Add Ops Log Entry',
-        newProject: 'Create a New Project',
+        newProject: 'New Project',
         openNewMenu: 'Open New Menu',
         openUserMenu: 'Open User Menu',
         profile: 'Profile',
@@ -246,7 +246,7 @@ export default {
       },
       projects: {
         newProject: 'New Project',
-        includeArchived: 'Include archived projects',
+        includeArchived: 'Include archived',
         project: 'project',
         projects: 'projects',
         paginationState:
