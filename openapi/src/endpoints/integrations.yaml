@@ -13,6 +13,26 @@ paths:
                 type: array
                 items:
                   $ref: '../schemas/integration.yaml#/read'
+    post:
+      description: Add a new integration
+      summary: Add integration
+      tags: [Integrations]
+      requestBody:
+        description: Integration details
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/integration.yaml#/write'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
   manage:
     get:
       description: Retrieve a specific integration by name

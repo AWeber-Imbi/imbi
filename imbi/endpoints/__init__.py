@@ -36,7 +36,7 @@ URLS = [
             name='group'),
     web.url(r'^/integrations$', integrations.CollectionRequestHandler),
     web.url(r'^/integrations/(?P<name>[\w_\-%\+]+)$',
-            integrations.RecordRequestHandler),
+            integrations.RecordRequestHandler, name='integration'),
     web.url(r'^/metrics$', metrics.RequestHandler),
     web.url(r'^/namespaces$', namespaces.CollectionRequestHandler),
     web.url(r'^/namespaces/(?P<id>\d+)$',
