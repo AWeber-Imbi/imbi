@@ -97,7 +97,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
 
     async def get(self, *args, **kwargs):
         kwargs['limit'] = int(self.get_query_argument('limit', '10'))
-        kwargs['offset'] = int(self.get_query_argument('offset', '20'))
+        kwargs['offset'] = int(self.get_query_argument('offset', '0'))
         where_chunks = []
         if self.get_query_argument('include_archived', 'false') == 'false':
             where_chunks.append('a.archived IS FALSE')
@@ -106,8 +106,6 @@ class CollectionRequestHandler(_RequestHandlerMixin,
             if value is not None:
                 kwargs[kwarg] = value
                 where_chunks.append(self.FILTER_CHUNKS[kwarg])
-        if 'name' in kwargs:
-            kwargs['name'] = f'{kwargs["name"]}%'
         where_sql = ''
         if where_chunks:
             where_sql = ' WHERE {}'.format(' AND '.join(where_chunks))
