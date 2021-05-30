@@ -1666,6 +1666,18 @@ paths:
                   - revoke_endpoint
                   - client_id
                 additionalProperties: false
+    delete:
+      description: Remove the specified integration
+      summary: Delete an integration
+      tags:
+        - Integrations
+      responses:
+        '204':
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
   /operations-log:
     get:
       description: |-

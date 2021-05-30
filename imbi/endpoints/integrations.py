@@ -42,3 +42,5 @@ class RecordRequestHandler(base.CRUDRequestHandler):
                token_endpoint, revoke_endpoint, client_id
           FROM v1.oauth_integrations
          WHERE name = %(name)s"""
+
+    DELETE_SQL = "DELETE FROM v1.oauth_integrations WHERE name = %(name)s"

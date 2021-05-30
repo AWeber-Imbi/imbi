@@ -48,3 +48,11 @@ paths:
             application/json:
               schema:
                 $ref: '../schemas/integration.yaml#/read'
+    delete:
+      description: Remove the specified integration
+      summary: Delete an integration
+      tags: [Integrations]
+      responses:
+        '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
+        '401': { $ref: '../components/responses.yaml#/Unauthorized' }
+        '404': { $ref: '../components/responses.yaml#/NotFound' }
