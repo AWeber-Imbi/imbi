@@ -80,3 +80,38 @@ Please ensure your code-style passes the lint tests for the code you are modifyi
 Python code is expected to be strict PEP-8 and the `make flake8` command will check the formatting along with other code style preferences.
 
 You should always run prettier for the JavaScript/JSX code. It will reformat the code to the preferred style.
+
+## Local Development Notes
+
+### Adding a new user
+
+The easiest way to add a new user is to create a LDIF file and run it using `docker-compose ldap ldapmodify`:
+
+    $ docker-compose exec ldap ldapadd -D cn=admin,dc=example,dc=org -W
+    Enter LDAP Password: admin
+    dn: cn=dave-shawley,ou=users,dc=example,dc=org
+    objectclass: person
+    objectclass: organizationalPerson
+    objectclass: inetOrgPerson
+    objectClass: posixAccount
+    objectClass: shadowAccount
+    cn: dave-shawley
+    givenName: Dave Shawley
+    sn: Dave
+    uid: dave-shawley
+    mail: daveshawley@gmail.com
+    uidNumber: 502
+    gidNumber: 501
+    homeDirectory: /home/dave-shawley
+    loginShell: /bin/ksh
+    title: Software Engineer
+    initials: DS
+    displayName: Dave
+    gecos: dave-shawley
+    userPassword: {SHA}5en6G6MezRroT3XKqkdPOmY/BfQ=
+    ^D
+    $
+
+You can also use `docker-compose exec` to spawn a shell and use the ldap utilities directly on the container.  The admin user is `cn=admin,dc=example,dc=org` with a password of `admin`.  The `userPassword` in the document is the Base-64 encoded SHA1 checksum of the plaintext password.
+
+Once you have the new user in LDAP, you can log into imbi using the `cn` of the user and the password.
