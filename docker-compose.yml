@@ -1,5 +1,3 @@
-%YAML 1.2
----
 version: "3.7"
 services:
   ldap:
@@ -13,8 +11,6 @@ services:
       - type: bind
         source: ./scaffolding/ldap
         target: /container/service/slapd/assets/config/bootstrap/ldif/custom/
-        volume:
-          nocopy: true
     healthcheck:
       test: /usr/bin/ldapsearch -x -h localhost -b dc=example,dc=org cn=test,ou=users,dc=example,dc=org
     command: --loglevel debug --copy-service
