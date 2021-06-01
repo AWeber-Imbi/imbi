@@ -11,7 +11,9 @@ function SimpleForm({
   onCancel,
   onSubmit,
   ready,
-  saving
+  saving,
+  submitButtonText,
+  submitSavingText
 }) {
   const { t } = useTranslation()
   return (
@@ -37,7 +39,13 @@ function SimpleForm({
           className={'btn-green'}
           disabled={ready === false || saving === true}
           type="submit">
-          {saving ? t('common.saving') : t('common.save')}
+          {saving
+            ? submitSavingText
+              ? submitSavingText
+              : t('common.save')
+            : submitButtonText
+            ? submitButtonText
+            : t('common.saving')}
         </Button>
       </div>
     </form>
@@ -46,7 +54,9 @@ function SimpleForm({
 SimpleForm.defaultPropTypes = {
   errorMessage: null,
   ready: false,
-  saving: false
+  saving: false,
+  submitSavingText: null,
+  submitButtonText: null
 }
 SimpleForm.propTypes = {
   children: PropTypes.arrayOf(Field),
@@ -54,6 +64,8 @@ SimpleForm.propTypes = {
   onCancel: PropTypes.func.isRequired,
   onSubmit: PropTypes.func.isRequired,
   ready: PropTypes.bool.isRequired,
-  saving: PropTypes.bool.isRequired
+  saving: PropTypes.bool.isRequired,
+  submitButtonText: PropTypes.string,
+  submitSavingText: PropTypes.string
 }
 export { SimpleForm }
