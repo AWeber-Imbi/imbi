@@ -31,7 +31,7 @@ function Header({ logo, service, authenticated, user }) {
         {authenticated === true && (
           <Fragment>
             <NavMenu user={user} />
-            <NewMenu />
+            <NewMenu user={user} />
             <UserMenu user={user} />
           </Fragment>
         )}
