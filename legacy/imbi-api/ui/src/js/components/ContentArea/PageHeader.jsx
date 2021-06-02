@@ -13,7 +13,7 @@ function PageHeader({
   pageTitle
 }) {
   return (
-    <div className="grid grid-cols-2">
+    <div className={buttonTitle && 'grid grid-cols-2'}>
       <h1 className="inline-block text-gray-600 text-xl">
         {pageIcon && <Icon icon={pageIcon} className="ml-2 mr-2" />}
         {pageTitle}
