@@ -40,7 +40,8 @@ function Projects() {
     filter: {
       include_archived: query.get('include_archived') === 'true',
       namespace_id: query.get('namespace_id'),
-      project_type_id: query.get('project_type_id')
+      project_type_id: query.get('project_type_id'),
+      project_name: query.get('project_name')
     },
     lastRequest: null,
     offset: parseInt(query.get('offset') || '0'),
@@ -136,7 +137,8 @@ function Projects() {
   function buildURL(path = '/projects') {
     const url = new URL(path, globalState.baseURL)
     Object.entries(state.filter).forEach(([key, value]) => {
-      if (value !== null) url.searchParams.append(key, value)
+      if (value !== null && value.length > 0)
+        url.searchParams.append(key, value)
     })
     const sortValues = []
     sortOrder.map((key) => {
@@ -187,8 +189,10 @@ function Projects() {
         />
         <Link to="/ui/projects/create" className="flex-auto text-right text-sm">
           <button className="btn-green whitespace-nowrap">
-            <Icon className="mr-2" icon="fas plus-circle" />
-            {t('headerNavItems.newProject')}
+            <Icon className="lg:mr-2" icon="fas plus-circle" />
+            <span className="hidden lg:inline-block">
+              {t('headerNavItems.newProject')}
+            </span>
           </button>
         </Link>
       </div>

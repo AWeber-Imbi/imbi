@@ -432,3 +432,34 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # Get 404
         result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 404)
+
+    def test_project_search(self):
+        record = {
+            'namespace_id': self.namespace,
+            'project_type_id': self.project_type,
+            'name': str(uuid.uuid4()),
+            'slug': str(uuid.uuid4().hex),
+            'description': str(uuid.uuid4()),
+            'environments': self.environments
+        }
+
+        def in_results(record_id, results):
+            for r in results['data']:
+                if r['id'] == record_id:
+                    return True
+            return False
+
+        # Create
+        result = self.fetch(
+            '/projects', method='POST', headers=self.headers,
+            body=json.dumps(record).encode('utf-8'))
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        proj_id = response['id']
+
+        # Search by name
+        part = record['name'].split('-')[4]
+        result = self.fetch(f'/projects?name={part}', method='GET',
+                            headers=self.headers)
+        self.assertTrue(in_results(proj_id,
+                                   json.loads(result.body.decode('utf-8'))))
