@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types'
-import React, { Fragment, useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { validate } from 'jsonschema'
 
@@ -84,14 +84,15 @@ function ModalForm({
   }
 
   return (
-    <Modal title={saving ? savingTitle : title}>
-      <Fragment>
-        {ignoreErrors !== true && errorMessage !== null && (
-          <Alert className="mb-3" level="error">
-            {errorMessage}
-          </Alert>
-        )}
-        <form onSubmit={handleSubmit}>
+    <Modal>
+      <form onSubmit={handleSubmit}>
+        <Modal.Title>{saving ? savingTitle : title}</Modal.Title>
+        <Modal.Body>
+          {ignoreErrors !== true && errorMessage !== null && (
+            <Alert className="mb-3" level="error">
+              {errorMessage}
+            </Alert>
+          )}
           {formColumns.map((column, index) => {
             return (
               <Field
@@ -104,25 +105,25 @@ function ModalForm({
               />
             )
           })}
-          <div className="mt-5 sm:mt-6 text-right border-t border-gray-400 pt-5 mt-5 space-x-3">
-            <Button
-              className={'btn-white'}
-              disabled={saving}
-              onClick={() => {
-                setIgnoreErrors(true)
-                onClose()
-              }}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              className={'btn-green'}
-              disabled={!formReady && !saving}
-              type="submit">
-              {saving ? t('common.saving') : t('common.save')}
-            </Button>
-          </div>
-        </form>
-      </Fragment>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button
+            className={'btn-white'}
+            disabled={saving}
+            onClick={() => {
+              setIgnoreErrors(true)
+              onClose()
+            }}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            className={'btn-green'}
+            disabled={!formReady && !saving}
+            type="submit">
+            {saving ? t('common.saving') : t('common.save')}
+          </Button>
+        </Modal.Footer>
+      </form>
     </Modal>
   )
 }
