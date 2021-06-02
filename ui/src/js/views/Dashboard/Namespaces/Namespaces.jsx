@@ -160,6 +160,9 @@ function Namespaces({ onReady }) {
       }
     })
   }
+
+  if (state.fetchedNamespaces !== true || state.fetchedKPIHistory !== true)
+    return <div />
   return (
     <ErrorBoundary>
       {state.chart !== null && (
@@ -176,75 +179,71 @@ function Namespaces({ onReady }) {
           }}
         />
       )}
-      {state.fetchedNamespaces && state.fetchedKPIHistory && (
-        <ContentArea
-          className="flex flex-col lg:h-full pr-0"
-          pageIcon="fas boxes"
-          pageTitle={t('dashboard.namespaces.title')}
-          setPageTitle={false}>
-          {state.namespaceErrorMessage !== null && (
-            <Alert level="error">{state.namespaceErrorMessage}</Alert>
-          )}
-          {state.kpiHistoryErrorMessage !== null && (
-            <Alert level="error">{state.kpiHistoryErrorMessage}</Alert>
-          )}
-          <div className="bg-gray-50 h-full overflow-y-scroll rounded-lg shadow">
-            <table className="bg-gray-50 divide-y divide-gray-200 table-fixed w-full">
-              <Head columns={columns} />
-              <tbody className="bg-white divide-y divide-gray-200">
-                {state.namespaces.map((namespace) => {
-                  const handleClick = () =>
-                    history.push(
-                      `/ui/projects?namespace_id=${namespace.namespace_id}`
-                    )
-                  return (
-                    <tr
-                      className="hover:bg-gray-100 cursor-pointer hover:text-blue-700"
-                      key={`namespace-${namespace.namespace_id}`}>
-                      <td
-                        className="px-5 py-1.5 whitespace-nowrap w-4/12"
-                        onClick={handleClick}>
-                        {namespace.namespace}
-                      </td>
-                      <td
-                        className="px-5 py-1.5 text-center w-2/12"
-                        onClick={handleClick}>
-                        {formatNumber(namespace.projects)}
-                      </td>
-                      <td
-                        className="px-5 py-1.5 text-center w-2/12"
-                        onClick={handleClick}>
-                        <ScoreBadge
-                          value={Math.round(namespace.stack_health_score)}
-                        />
-                      </td>
-                      <td
-                        className="p-0 pr-5 text-center w-4/12"
-                        onClick={() => onShowChart(namespace.namespace_id)}>
-                        <div className="border border-gray-100 rounded sparkline">
-                          <Sparklines
-                            data={state.kpiHistory[namespace.namespace_id].map(
-                              (entry) => entry.value
-                            )}
-                            min={0}
-                            height={20}
-                            max={100}
-                            margin={5}>
+      <ContentArea
+        className="flex flex-col lg:h-full pr-0"
+        pageIcon="fas boxes"
+        pageTitle={t('dashboard.namespaces.title')}
+        setPageTitle={false}>
+        {state.namespaceErrorMessage !== null && (
+          <Alert level="error">{state.namespaceErrorMessage}</Alert>
+        )}
+        {state.kpiHistoryErrorMessage !== null && (
+          <Alert level="error">{state.kpiHistoryErrorMessage}</Alert>
+        )}
+        <div className="bg-gray-50 h-full overflow-y-scroll rounded-lg shadow">
+          <table className="bg-gray-50 divide-y divide-gray-200 table-fixed w-full">
+            <Head columns={columns} />
+            <tbody className="bg-white divide-y divide-gray-200">
+              {state.namespaces.map((namespace) => {
+                const values = state.kpiHistory[namespace.namespace_id].map(
+                  (entry) => entry.value
+                )
+                const handleClick = () =>
+                  history.push(
+                    `/ui/projects?namespace_id=${namespace.namespace_id}`
+                  )
+                return (
+                  <tr
+                    className="hover:bg-gray-100 cursor-pointer hover:text-blue-700"
+                    key={`namespace-${namespace.namespace_id}`}>
+                    <td
+                      className="px-5 py-1.5 whitespace-nowrap w-4/12"
+                      onClick={handleClick}>
+                      {namespace.namespace}
+                    </td>
+                    <td
+                      className="px-5 py-1.5 text-center w-2/12"
+                      onClick={handleClick}>
+                      {formatNumber(namespace.projects)}
+                    </td>
+                    <td
+                      className="px-5 py-1.5 text-center w-2/12"
+                      onClick={handleClick}>
+                      <ScoreBadge
+                        value={Math.round(namespace.stack_health_score)}
+                      />
+                    </td>
+                    <td
+                      className="p-0 pr-5 text-center w-4/12"
+                      onClick={() => onShowChart(namespace.namespace_id)}>
+                      <div className="border border-gray-100 rounded sparkline">
+                        {values && (
+                          <Sparklines data={values} height={20} margin={5}>
                             <SparklinesLine
                               color="#1d4ed8"
                               style={{ strokeWidth: 0.3 }}
                             />
                           </Sparklines>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </ContentArea>
-      )}
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </ContentArea>
     </ErrorBoundary>
   )
 }
