@@ -84,9 +84,9 @@ function Namespaces({ onReady }) {
                     value: entry.health_score
                   }
               })
-            kpiHistory[namespace_id] = history.sort((a, b) =>
-              Date(a.scored_on) > Date(b.scored_on) ? 1 : -1
-            )
+            kpiHistory[namespace_id] = history.sort((a, b) => {
+              return a.date > b.date ? 1 : -1
+            })
           })
           setState({
             ...state,

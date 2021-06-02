@@ -23,7 +23,7 @@ class PopupGraph extends React.PureComponent {
       ]
     }
     return (
-      <Modal>
+      <Modal onClose={this.props.onClose}>
         <Modal.Title
           icon={this.props.icon}
           showClose={true}
