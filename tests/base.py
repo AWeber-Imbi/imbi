@@ -38,6 +38,7 @@ class TestCase(testing.AsyncHTTPTestCase):
         logging.getLogger('openapi_spec_validator').setLevel(logging.CRITICAL)
 
     def setUp(self) -> None:
+        self.maxDiff = 32768
         self.headers = dict(JSON_HEADERS)
         self.postgres = None
         super().setUp()
@@ -52,7 +53,7 @@ class TestCase(testing.AsyncHTTPTestCase):
         LOGGER.info('async_setup start')
         await asyncio.wait(
             [asyncio.create_task(callback(self._app, self.loop))
-             for callback in self._app.on_start_callbacks], loop=self.loop)
+             for callback in self._app.on_start_callbacks])
         while self._app.startup_complete is None:
             await asyncio.sleep(0.001)
         await self._app.startup_complete.wait()
