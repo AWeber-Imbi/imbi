@@ -7,7 +7,7 @@ from imbi.endpoints import base
 
 class RequestHandler(base.RequestHandler):
 
-    NAME = 'reports-namespace-kpi-history'
+    NAME = 'reports-namespace-shs-history'
 
     SQL = re.sub(r'\s+', ' ', """\
         SELECT a.namespace_id,
@@ -21,6 +21,5 @@ class RequestHandler(base.RequestHandler):
 
     @web.authenticated
     async def get(self):
-        result = await self.postgres_execute(
-            self.SQL, metric_name='reports-compliance')
+        result = await self.postgres_execute(self.SQL, metric_name=self.NAME)
         self.send_response(result.rows)
