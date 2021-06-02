@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types'
 import React from 'react'
 import SyntaxHighlighter from 'react-syntax-highlighter'
-import { github } from 'react-syntax-highlighter/dist/esm/styles/hljs'
+import { github } from 'react-syntax-highlighter/dist/cjs/styles/hljs'
 
 class CodeBlock extends React.PureComponent {
   static propTypes = {

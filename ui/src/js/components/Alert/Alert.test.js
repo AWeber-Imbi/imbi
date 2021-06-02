@@ -13,7 +13,7 @@ describe('Alert', () => {
       </div>
     )
     const alert = screen.getByTestId('alert').children[0]
-    expect(alert).toHaveClass('alert-info')
+    expect(alert).toHaveClass('bg-blue-50')
     const svg = alert.getElementsByTagName('svg')[0]
     expect(svg.dataset.prefix).toBe('fas')
     expect(svg.dataset.icon).toBe('info-circle')
@@ -27,7 +27,7 @@ describe('Alert', () => {
       </div>
     )
     const alert = screen.getByTestId('alert').children[0]
-    expect(alert).toHaveClass('alert-warning')
+    expect(alert).toHaveClass('bg-yellow-50')
     const svg = alert.getElementsByTagName('svg')[0]
     expect(svg.dataset.prefix).toBe('fas')
     expect(svg.dataset.icon).toBe('exclamation-triangle')
@@ -43,7 +43,7 @@ describe('Alert', () => {
       </div>
     )
     const alert = screen.getByTestId('alert').children[0]
-    expect(alert).toHaveClass('alert-success')
+    expect(alert).toHaveClass('bg-green-50')
     const svg = alert.getElementsByTagName('svg')[0]
     expect(svg.dataset.prefix).toBe('fas')
     expect(svg.dataset.icon).toBe('check-circle')
