@@ -69,10 +69,10 @@ function Filter({
     }
   }
 
-  function onChange(key, option) {
+  function onChange(key, value) {
     const newValues = {
       ...values,
-      [key]: option === null ? null : option.value.toString()
+      [key]: value
     }
     if (values !== newValues) setFilterValues(newValues)
   }
@@ -90,26 +90,42 @@ function Filter({
         isSearchable={false}
         name="namespace_id"
         options={namespaces}
-        onChange={(values) => {
-          onChange('namespace_id', values)
+        onChange={(option) => {
+          onChange('namespace_id', option && option.value.toString())
         }}
         placeholder={t('terms.namespace')}
         styles={styles}
         value={namespace}
       />
       <Select
-        className="border-gray-200 flex-auto shadow text-gray-600"
+        className="border-gray-200 flex-auto sm:mr-2 shadow text-gray-600"
         isClearable
         isDisabled={disabled}
         isSearchable={false}
         name="project_type_id"
         options={projectTypes}
-        onChange={(values) => {
-          onChange('project_type_id', values)
+        onChange={(option) => {
+          onChange('project_type_id', option && option.value.toString())
         }}
         placeholder={t('terms.projectType')}
         styles={styles}
         value={projectType}
+      />
+      <input
+        className="text-sm border-gray-200 flex-1 shadow text-gray-600
+                   rounded-md pt-2.5 placeholder-gray-500 disabled:bg-gray-100
+                   focus:border-gray-200 focus:outline-none focus:ring-0"
+        type="text"
+        autoComplete="off"
+        disabled={disabled}
+        name="project_name"
+        placeholder={t('common.name')}
+        onBlur={(event) => {
+          onChange('name', event.target.value)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') onChange('name', event.target.value)
+        }}
       />
       <Link
         to="/ui/reports/project-type-definitions"
