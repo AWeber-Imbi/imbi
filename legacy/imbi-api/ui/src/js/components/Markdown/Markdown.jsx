@@ -23,22 +23,38 @@ Link.propTypes = {
   ]),
   href: PropTypes.string
 }
-
-class Markdown extends React.PureComponent {
+class UL extends React.PureComponent {
   render() {
     return (
-      <ReactMarkdown className={this.className} renderers={{ link: Link }}>
-        {this.children}
-      </ReactMarkdown>
+      <ul className="list-disc list-inside space-y-2">{this.props.children}</ul>
     )
   }
 }
-Markdown.propTypes = {
-  children: PropTypes.oneOfType([
-    PropTypes.element,
-    PropTypes.arrayOf(PropTypes.element),
-    PropTypes.string
-  ]),
-  className: PropTypes.string
+UL.propTypes = {
+  children: PropTypes.any
+}
+
+class Markdown extends React.PureComponent {
+  static propTypes = {
+    children: PropTypes.oneOfType([
+      PropTypes.element,
+      PropTypes.arrayOf(PropTypes.element),
+      PropTypes.string
+    ]),
+    className: PropTypes.string
+  }
+
+  render() {
+    return (
+      <ReactMarkdown
+        className={this.props.className}
+        components={{
+          a: ({ ...props }) => <Link {...props} />,
+          ul: ({ ...props }) => <UL {...props} />
+        }}>
+        {this.props.children}
+      </ReactMarkdown>
+    )
+  }
 }
 export { Markdown }

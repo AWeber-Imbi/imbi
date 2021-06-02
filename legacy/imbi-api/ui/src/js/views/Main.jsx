@@ -4,6 +4,7 @@ import { Switch, Route } from 'react-router-dom'
 
 import { Admin, NotFound, User } from '.'
 import { Breadcrumbs, ErrorBoundary, Loading } from '../components'
+import { ComponentPreviews } from '../components/Components'
 import { Context } from '../state'
 import { Dashboard } from './Dashboard/Dashboard'
 import { NewEntry, OperationsLog } from './OperationsLog/'
@@ -45,6 +46,9 @@ function Main({ user }) {
                     <Admin user={user} />
                   </Route>
                 )}
+                <Route path="/ui/components">
+                  <ComponentPreviews />
+                </Route>
                 <Route path="/ui/operations-log/create">
                   <NewEntry user={user} />
                 </Route>

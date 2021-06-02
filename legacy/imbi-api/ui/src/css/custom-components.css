@@ -1,20 +1,4 @@
 @layer components {
-  .alert {
-    @apply bg-gray-50 py-4 px-6 text-sm rounded-lg border;
-  }
-  .alert-info {
-    @apply alert bg-blue-50 text-blue-700 border-blue-100;
-  }
-  .alert-error {
-    @apply alert bg-red-50 text-red-500 border-red-100;
-  }
-  .alert-warning {
-    @apply alert bg-yellow-50 text-yellow-700 border-yellow-100;
-  }
-  .alert-success {
-    @apply alert bg-green-50 text-green-800 border-green-100;
-  }
-
   .bottom-full {
     bottom: 100%;
   }
