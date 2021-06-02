@@ -85,7 +85,7 @@ function Namespaces({ onReady }) {
                   }
               })
             kpiHistory[namespace_id] = history.sort((a, b) =>
-              Date(a.scored_on) > Date(b.scored_on) ? -1 : 1
+              Date(a.scored_on) > Date(b.scored_on) ? 1 : -1
             )
           })
           setState({
