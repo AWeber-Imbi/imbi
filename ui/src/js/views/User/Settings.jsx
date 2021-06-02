@@ -2,7 +2,7 @@ import DateTime from 'luxon/src/datetime'
 import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Backdrop, Button, Form, Icon, Modal, Table } from '../../components'
+import { Button, Form, Icon, Modal, Table } from '../../components'
 import { httpDelete, httpGet, httpPost } from '../../utils'
 import { Context } from '../../state'
 
@@ -10,7 +10,6 @@ function Settings() {
   const { t } = useTranslation()
   const [errorMessage, setErrorMessage] = useState(null)
   const [refresh, setRefresh] = useState(false)
-  const [showBackdrop, setShowBackdrop] = useState(false)
   const [newAuthToken, setNewAuthToken] = useState(null)
   const [state, dispatch] = useContext(Context)
   const [showTokenForm, setShowTokenForm] = useState(false)
@@ -49,7 +48,6 @@ function Settings() {
   }
 
   function generateToken(formValues) {
-    setShowBackdrop(true)
     const url = new URL('/authentication-tokens', state.baseURL)
     httpPost(state.fetch, url, { name: formValues.name }).then(
       ({ data, success }) => {
@@ -57,9 +55,7 @@ function Settings() {
           setShowTokenForm(false)
           setRefresh(true)
           setNewAuthToken(data.token)
-          setShowBackdrop(false)
         } else {
-          setShowBackdrop(false)
           setErrorMessage(data)
         }
       }
@@ -206,19 +202,11 @@ function Settings() {
         </Form.Section>
       </Form.MultiSectionForm>
       {newAuthToken !== null && (
-        <Modal
-          title={t('user.settings.authenticationTokens.generated')}
-          buttons={
-            <Button
-              className="btn-blue"
-              onClick={(event) => {
-                event.preventDefault()
-                setNewAuthToken(null)
-              }}>
-              {t('common.done')}
-            </Button>
-          }>
-          <Fragment>
+        <Modal>
+          <Modal.Title>
+            {t('user.settings.authenticationTokens.generated')}
+          </Modal.Title>
+          <Modal.Body>
             <div
               className="my-4 leading-8 text-gray-600 font-semibold"
               dangerouslySetInnerHTML={{
@@ -252,10 +240,19 @@ function Settings() {
                 <Icon icon="fas clipboard" />
               </button>
             </div>
-          </Fragment>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button
+              className="btn-blue"
+              onClick={(event) => {
+                event.preventDefault()
+                setNewAuthToken(null)
+              }}>
+              {t('common.done')}
+            </Button>
+          </Modal.Footer>
         </Modal>
       )}
-      {showBackdrop && newAuthToken === null && <Backdrop />}
     </Fragment>
   )
 }
