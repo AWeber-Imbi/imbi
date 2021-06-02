@@ -93,7 +93,6 @@ paths:
         '204': { $ref: '../components/responses.yaml#/RecordRemoved' }
         '401': { $ref: '../components/responses.yaml#/Unauthorized' }
         '404': { $ref: '../components/responses.yaml#/NotFound' }
-      security: [{ apiKey: [] }, { session: [] }]
     parameters:
       - name: name
         in: path

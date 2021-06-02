@@ -64,7 +64,7 @@ function Namespaces({ onReady }) {
 
   useEffect(() => {
     if (state.fetchedKPIHistory === false) {
-      const url = new URL('/reports/namespace-kpi-history', globalState.baseURL)
+      const url = new URL('/reports/namespace-shs-history', globalState.baseURL)
       httpGet(
         globalState.fetch,
         url,

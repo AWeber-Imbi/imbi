@@ -90,8 +90,10 @@ paths:
     { '$ref': 'endpoints/project_urls.yaml#/paths/collection' }
   /projects/{id}/urls/{environment}:
     { '$ref': 'endpoints/project_urls.yaml#/paths/manage' }
-  /reports/namespace-kpi-history:
-    { $ref: 'endpoints/namespace_kpi_history.yaml#/paths/collection' }
+  /reports/namespace-shs-history:
+    { $ref: 'endpoints/namespace_shs_history.yaml#/paths/collection' }
+  /reports/system-shs-history:
+    { $ref: 'endpoints/system_shs_history.yaml#/paths/collection' }
   /status: { $ref: 'endpoints/status.yaml#/paths/status' }
 
 tags:
