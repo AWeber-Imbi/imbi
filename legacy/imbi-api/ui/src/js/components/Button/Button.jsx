@@ -2,37 +2,39 @@ import { NavLink } from 'react-router-dom'
 import PropTypes from 'prop-types'
 import React from 'react'
 
-function Button({ children, className, destination, disabled, onClick, type }) {
-  if (destination !== undefined)
+class Button extends React.PureComponent {
+  render() {
+    if (this.props.destination !== undefined)
+      return (
+        <NavLink
+          className={
+            !this.props.disabled ? this.props.className : 'btn-disabled'
+          }
+          to={this.props.destination}>
+          {this.props.children}
+        </NavLink>
+      )
     return (
-      <NavLink
-        className={!disabled ? className : 'btn-disabled'}
-        to={destination}>
-        {children}
-      </NavLink>
+      <button
+        className={!this.props.disabled ? this.props.className : 'btn-disabled'}
+        disabled={this.props.disabled}
+        onClick={(event) => {
+          if (this.props.onClick !== undefined) {
+            event.preventDefault()
+            this.props.onClick(event)
+          }
+        }}
+        type={this.props.type}>
+        {this.props.children}
+      </button>
     )
-  return (
-    <button
-      className={!disabled ? className : 'btn-disabled'}
-      disabled={disabled}
-      onClick={(event) => {
-        if (onClick !== undefined) {
-          event.preventDefault()
-          onClick(event)
-        }
-      }}
-      type={type}>
-      {children}
-    </button>
-  )
+  }
 }
-
 Button.defaultProps = {
   className: 'btn-white',
   disabled: false,
   type: 'button'
 }
-
 Button.propTypes = {
   children: PropTypes.oneOfType([
     PropTypes.arrayOf(
@@ -47,5 +49,4 @@ Button.propTypes = {
   onClick: PropTypes.func,
   type: PropTypes.string
 }
-
 export { Button }
