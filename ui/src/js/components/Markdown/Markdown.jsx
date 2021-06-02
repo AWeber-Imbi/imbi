@@ -2,16 +2,18 @@ import PropTypes from 'prop-types'
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
 
-function Link({ href, children }) {
-  return (
-    <a
-      href={href}
-      className="text-blue-600 hover:text-blue-800"
-      rel="noreferrer"
-      target="_blank">
-      {children}
-    </a>
-  )
+class Link extends React.PureComponent {
+  render() {
+    return (
+      <a
+        href={this.props.href}
+        className="text-blue-600 hover:text-blue-800"
+        rel="noreferrer"
+        target="_blank">
+        {this.props.children}
+      </a>
+    )
+  }
 }
 Link.propTypes = {
   children: PropTypes.oneOfType([
@@ -22,12 +24,14 @@ Link.propTypes = {
   href: PropTypes.string
 }
 
-function Markdown({ children, className }) {
-  return (
-    <ReactMarkdown className={className} renderers={{ link: Link }}>
-      {children}
-    </ReactMarkdown>
-  )
+class Markdown extends React.PureComponent {
+  render() {
+    return (
+      <ReactMarkdown className={this.className} renderers={{ link: Link }}>
+        {this.children}
+      </ReactMarkdown>
+    )
+  }
 }
 Markdown.propTypes = {
   children: PropTypes.oneOfType([
