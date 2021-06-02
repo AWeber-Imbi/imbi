@@ -98,7 +98,7 @@ function Filter({
         value={namespace}
       />
       <input
-        className="flex-1 form-input m-0 placeholder-gray-600 shadow-sm"
+        className="border-0 flex-1 form-input m-0 placeholder-gray-600 shadow"
         type="text"
         autoComplete="off"
         disabled={disabled}
