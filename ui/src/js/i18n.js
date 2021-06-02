@@ -6,6 +6,7 @@ import resources from '../../public/locales/en'
 i18n.use(initReactI18next).init({
   resources,
   lng: 'en',
+  debug: false,
   interpolation: {
     escapeValue: false
   }

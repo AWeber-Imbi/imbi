@@ -55,6 +55,8 @@ export default {
         links: 'Links',
         name: 'Name',
         namespace: 'Namespace',
+        project: 'Project',
+        projects: 'Projects',
         projectInfo: 'Project Information',
         projectFacts: 'Project Facts',
         projectType: 'Project Type',
@@ -62,6 +64,8 @@ export default {
         records: 'records',
         reports: 'Reports',
         score: 'Score',
+        scoreHistory: 'Score History',
+        stackHealthScore: 'Stack health Score',
         slug: 'Slug'
       },
       error: {
@@ -191,8 +195,22 @@ export default {
       },
       dashboard: {
         title: 'Dashboard',
-        namespaces: 'Projects by Namespace',
-        projectTypes: 'Projects by Type'
+        activityFeed: {
+          recentActivity: 'Recent Activity',
+          entry:
+            '<0>{{displayName}}</0> <2>{{action}}</2> the <5>{{project}}</5> project in the <9>{{namespace}}</9> namespace.',
+          created: 'created',
+          updated: 'updated',
+          updatedFacts: 'updated one or more facts for'
+        },
+        namespaces: {
+          chartTitle: '{{namespace}} Stack Health Score History',
+          projects: 'Projects',
+          shsHistory: 'Score History',
+          stackHealthScore: 'Stack Health Score',
+          title: 'Namespaces'
+        },
+        projectTypes: 'Project Types'
       },
       operationsLog: {
         addEntry: 'Add Entry',
