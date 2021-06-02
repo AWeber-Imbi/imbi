@@ -68,5 +68,4 @@ Badge.propTypes = {
   href: PropTypes.string,
   target: PropTypes.string
 }
-
 export { Badge }

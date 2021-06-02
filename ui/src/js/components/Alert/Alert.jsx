@@ -4,10 +4,10 @@ import React from 'react'
 import { Icon } from '..'
 
 const alertClass = {
-  error: 'alert-error',
-  info: 'alert-info',
-  success: 'alert-success',
-  warning: 'alert-warning'
+  error: 'bg-red-50 border-red-100 text-red-500',
+  info: 'bg-blue-50 border-blue-100 text-blue-700',
+  success: 'bg-green-50 border-green-100 text-green-800',
+  warning: 'bg-yellow-50 border-yellow-100 text-yellow-700'
 }
 
 const icons = {
@@ -21,9 +21,9 @@ class Alert extends React.PureComponent {
   render() {
     return (
       <div
-        className={`${alertClass[this.props.level]} ${
-          this.props.className !== undefined ? this.props.className : ''
-        }`}
+        className={`border px-6 py-4 rounded-lg text-sm ${
+          alertClass[this.props.level]
+        } ${this.props.className !== undefined ? this.props.className : ''}`}
         {...this.props}>
         <div className="flex">
           <div className="flex-shrink-0">
