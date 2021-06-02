@@ -77,26 +77,6 @@ describe('Field', () => {
     expect(field).toHaveValue('foo')
   })
 
-  it('should render a description', () => {
-    render(
-      <div data-testid="field">
-        <Field
-          name="test"
-          title="Text Test"
-          type="text"
-          value="foo"
-          description="This is a test"
-        />
-      </div>
-    )
-    const label = screen.getByTestId('field').children[0].children[0]
-    expect(label).toHaveTextContent('Text Test')
-    const desc = screen.getByTestId('field').children[0].children[1].children[1]
-    expect(desc).toBeInstanceOf(HTMLDivElement)
-    expect(desc).toHaveTextContent('This is a test')
-    expect(desc).toHaveClass('text-gray-500')
-  })
-
   it('should render an error instead of a description', () => {
     render(
       <div data-testid="field">
