@@ -79,4 +79,7 @@
   .user-menu-link.active {
     @apply font-bold;
   }
+  .sparkline > svg circle {
+    display: none;
+  }
 }

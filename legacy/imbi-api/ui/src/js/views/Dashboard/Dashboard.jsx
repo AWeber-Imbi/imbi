@@ -1,92 +1,75 @@
 import { Link } from 'react-router-dom'
-import React, { useContext, useEffect, useState } from 'react'
+import React, { Fragment, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ContentArea, Error, Icon, Loading } from '../../components/'
+import { Icon, Loading } from '../../components/'
 import { Context } from '../../state'
-import { httpGet } from '../../utils'
-import { Stats } from './Stats/'
+
+import { Feed } from './ActivityFeed/'
+import { Namespaces } from './Namespaces/'
+import { ProjectTypes } from './Stats/'
+import { setDocumentTitle } from '../../utils'
 
 export function Dashboard() {
-  const [data, setData] = useState(null)
-  const [errorMessage, setErrorMessage] = useState(null)
-  const [state, dispatch] = useContext(Context)
+  const [state, setState] = useState({
+    feedReady: false,
+    namespacesReady: false,
+    projectTypesReady: false
+  })
+  const [globalState, dispatch] = useContext(Context)
   const { t } = useTranslation()
 
   useEffect(() => {
     dispatch({
       type: 'SET_CURRENT_PAGE',
       payload: {
-        url: new URL('/ui/', state.baseURL)
+        url: new URL('/ui/', globalState.baseURL)
       }
     })
   }, [])
-
-  useEffect(() => {
-    if (data === null) {
-      const url = new URL('/dashboard', state.baseURL)
-      httpGet(
-        state.fetch,
-        url,
-        (result) => {
-          setData(result)
-        },
-        (error) => {
-          setErrorMessage(error)
-        }
-      )
-    }
-  }, [data])
-
-  if (errorMessage !== null) return <Error>{errorMessage}</Error>
-  if (data === null) return <Loading />
-
+  setDocumentTitle(t('dashboard.title'))
+  const loading =
+    state.feedReady !== true &&
+    state.namespacesReady !== true &&
+    state.projectTypesReady !== true
   return (
-    <div className="flex-grow mt-2 space-y-3">
-      <ContentArea
-        className="flex-grow"
-        pageIcon="fas chart-line"
-        pageTitle={t('dashboard.namespaces')}>
-        <Stats.Container>
-          {data.namespaces.map((row) => {
-            return (
-              <Stats.Value
-                key={`stats-${row.name}`}
-                title={row.name}
-                icon={row.icon}
-                url={`/ui/projects?namespace_id=${row.namespace_id}`}
-                value={row.count}
-              />
-            )
-          })}
-        </Stats.Container>
-      </ContentArea>
-      <ContentArea
-        className="flex-grow"
-        pageIcon="fas chart-line"
-        pageTitle={t('dashboard.projectTypes')}>
-        <Stats.Container>
-          {data.project_types.map((row) => {
-            return (
-              <Stats.Value
-                key={`stats-${row.name}`}
-                title={row.count === 1 ? row.name : row.plural}
-                icon={row.icon}
-                url={`/ui/projects?project_type_id=${row.project_type_id}`}
-                value={row.count}
-              />
-            )
-          })}
-        </Stats.Container>
-        <div className="mr-2 text-right">
-          <Link
-            to="/ui/reports/project-type-definitions"
-            className="italic text-sm text-gray-600 hover:text-blue-600">
-            <Icon icon="fas book-open" className="mr-2" />
-            {t('reports.projectTypeDefinitions.title')}
-          </Link>
+    <Fragment>
+      {loading && <Loading />}
+      <div className={`flex-1 ${loading ? 'hidden' : ''}`}>
+        <div className="flex flex-col lg:flex-row lg:items-stretch lg:h-screen-1/2 space-x-0 lg:space-x-3 space-y-3 lg:space-y-0">
+          <div className="flex-auto lg:h-full lg:w-8/12 w-full">
+            <Namespaces
+              onReady={() => {
+                setState({ ...state, namespacesReady: true })
+              }}
+            />
+          </div>
+          <div className="flex-auto lg:h-full lg:w-4/12 w-full">
+            <Feed
+              onReady={() => {
+                setState({ ...state, feedReady: true })
+              }}
+            />
+          </div>
         </div>
-      </ContentArea>
-    </div>
+        <ProjectTypes
+          onReady={() => {
+            setState({ ...state, projectTypesReady: true })
+          }}
+        />
+        {state.feedReady === true &&
+          state.namespacesReady === true &&
+          state.projectTypesReady === true && (
+            <div className="mr-2 pb-3 text-right">
+              <Link
+                to="/ui/reports/project-type-definitions"
+                className="italic text-sm text-gray-600 hover:text-blue-600">
+                <Icon icon="fas book-open" className="mr-2" />
+                {t('reports.projectTypeDefinitions.title')}
+              </Link>
+            </div>
+          )}
+      </div>
+    </Fragment>
   )
 }
