@@ -15,9 +15,10 @@ function ContentArea({
   className,
   pageIcon,
   pageTitle,
+  setPageTitle,
   showHeader
 }) {
-  setDocumentTitle(pageTitle)
+  if (setPageTitle === true) setDocumentTitle(pageTitle)
   return (
     <div
       className={`p-4 space-y-3 ${className !== undefined ? className : ''}`}>
@@ -37,7 +38,8 @@ function ContentArea({
   )
 }
 ContentArea.defaultProps = {
-  showHeader: true
+  showHeader: true,
+  setPageTitle: true
 }
 ContentArea.propTypes = {
   children: PropTypes.oneOfType([
@@ -53,6 +55,7 @@ ContentArea.propTypes = {
   buttonIcon: PropTypes.string,
   buttonOnClick: PropTypes.func,
   buttonTitle: PropTypes.string,
-  showHeader: PropTypes.bool
+  showHeader: PropTypes.bool,
+  setPageTitle: PropTypes.bool
 }
 export { ContentArea }
