@@ -5,10 +5,10 @@ import { ErrorBoundary, Form } from '../../components'
 import { useTranslation } from 'react-i18next'
 import { asOptions } from '../../metadata'
 import { Context } from '../../state'
-import { httpGet, httpPost } from '../../utils'
+import { httpGet, httpPatch, httpPost } from '../../utils'
 import { useHistory } from 'react-router-dom'
 
-function GitlabImport({ user }) {
+function GitlabImport() {
   const emptyErrors = {
     gitlab_namespace_id: null,
     gitlab_project_id: null,
@@ -30,6 +30,7 @@ function GitlabImport({ user }) {
   const [formState, setFormState] = useState({
     namespaceSelected: false,
     projectName: null,
+    projectDescription: null,
     projectURL: null,
     saving: false
   })
@@ -71,6 +72,7 @@ function GitlabImport({ user }) {
       if (projectDetails) {
         setFormState({
           ...formState,
+          projectDescription: projectDetails.description,
           projectName: projectDetails.name,
           projectURL: projectDetails.web_url
         })
@@ -118,21 +120,17 @@ function GitlabImport({ user }) {
     }).then(({ data, success }) => {
       if (success === true) {
         let projectId = data.id
-        const scmLink = state.metadata.projectLinkTypes.find(
-          (elm) => elm.link_type === 'scm'
-        )
-        httpPost(
+        httpPatch(
           state.fetch,
-          new URL(
-            '/projects/' + projectId.toString() + '/links',
-            state.baseURL
-          ),
-          {
-            link_type_id: scmLink.id,
-            project_id: projectId,
-            url: formState.projectURL
-          }
-        ).then(({ data, success }) => {
+          new URL(`/projects/${projectId}`, state.baseURL),
+          [
+            {
+              op: 'replace',
+              path: '/gitlab_project_id',
+              value: formValues.gitlab_project_id
+            }
+          ]
+        ).then(({ success }) => {
           if (success === true) {
             history.push(`/ui/projects/${projectId}`)
           } else {

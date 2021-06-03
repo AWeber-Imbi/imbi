@@ -205,6 +205,7 @@ class ProjectsHandler(sprockets.mixins.http.HTTPClientMixin,
             entries = await self.fetch_all_pages(url, token)
             projects.extend([
                 {
+                    'description': entry['description'],
                     'name': entry['name'],
                     'id': entry['id'],
                     'web_url': entry['web_url'],
