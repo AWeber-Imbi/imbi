@@ -43,4 +43,5 @@ class RecordRequestHandler(base.CRUDRequestHandler):
           FROM v1.oauth_integrations
          WHERE name = %(name)s"""
 
-    DELETE_SQL = "DELETE FROM v1.oauth_integrations WHERE name = %(name)s"
+    DELETE_SQL = """\
+        DELETE FROM v1.oauth_integrations WHERE name = %(name)s"""

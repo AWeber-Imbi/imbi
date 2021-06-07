@@ -159,8 +159,8 @@ class User:
                 'password', self.password),
             'permissions': self.permissions,
             'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at),
-            'integrations': sorted(list(set(
-                app.name for app in self.connected_integrations))),
+            'integrations': sorted({
+                app.name for app in self.connected_integrations}),
         }
 
     async def authenticate(self) -> bool:
