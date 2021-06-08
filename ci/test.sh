@@ -16,7 +16,6 @@ tar c -C /source -f - \
     setup.py \
     tests \
   | tar xf -
-ln -s /usr/local /tmp/test/env
 
 cat > .env <<EOF
 export DEBUG=1
@@ -58,5 +57,4 @@ logging:
   incremental: false
 EOF
 ls -al
-pip3 install -e '.[testing]'
 make python-tests
