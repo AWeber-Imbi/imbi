@@ -57,6 +57,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         self.stats: typing.Optional[stats.Stats] = None
 
         content.set_default_content_type(self, 'application/json')
+        content.add_transcoder(self, transcoders.FormTranscoder())
         content.add_transcoder(self, transcoders.JSONTranscoder())
         content.add_transcoder(self, transcoders.MsgPackTranscoder())
         content.add_text_content_type(

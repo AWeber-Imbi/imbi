@@ -103,25 +103,19 @@ logging:
   loggers:
     imbi:
       level: DEBUG
-      propagate: true
-      handlers: [console]
     imbi.ldap:
       level: WARNING
-      handlers: [console]
     imbi.session:
       level: WARNING
-      handlers: [console]
     imbi.user:
       level: WARNING
-      handlers: [console]
     sprockets_postgres:
       level: DEBUG
-      propagate: true
-      handlers: [console]
     tornado:
       level: DEBUG
-      propagate: true
-      handlers: [console]
+  root:
+    level: INFO
+    handlers: [console]
   disable_existing_loggers: false
   incremental: false
 EOF
@@ -155,7 +149,6 @@ logging:
   loggers: {}
   root:
     level: CRITICAL
-    propagate: true
     handlers: [console]
   disable_existing_loggers: true
   incremental: false

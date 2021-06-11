@@ -39,6 +39,20 @@ function useMetadata(externalRefresh = false) {
   const [timerHandle, setTimerHandle] = useState(null)
   const [refresh, setRefresh] = useState(true)
   const [values, setValues] = useState(undefined)
+  const [gitlabDetails, setGitlabDetails] = useState({
+    authorizationEndpoint: null,
+    clientId: null,
+    redirectURI: null
+  })
+
+  function processGitlabResponse(data) {
+    setGitlabDetails({
+      ...gitlabDetails,
+      authorizationEndpoint: data.authorization_endpoint,
+      clientId: data.client_id,
+      redirectURI: data.callback_url
+    })
+  }
 
   function get(path, onSuccess, key) {
     httpGet(state.fetch, new URL(path, state.baseURL), onSuccess, (error) => {
@@ -60,6 +74,7 @@ function useMetadata(externalRefresh = false) {
       get('/project-fact-types', setProjectFactTypes, 'projectFactTypes')
       get('/project-link-types', setProjectLinkTypes, 'projectLinkTypes')
       get('/project-types', setProjectTypes, 'projectTypes')
+      get('/integrations/gitlab', processGitlabResponse, '')
       setLastUpdated(Date.now())
       setRefresh(false)
     }
@@ -92,6 +107,7 @@ function useMetadata(externalRefresh = false) {
       setValues({
         cookieCutters: cookieCutters,
         environments: environments,
+        gitlabDetails: gitlabDetails,
         groups: groups,
         namespaces: namespaces,
         projectFactTypes: projectFactTypes,
@@ -102,6 +118,7 @@ function useMetadata(externalRefresh = false) {
   }, [
     cookieCutters,
     environments,
+    gitlabDetails,
     groups,
     namespaces,
     projectFactTypes,

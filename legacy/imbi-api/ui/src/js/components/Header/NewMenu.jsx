@@ -5,6 +5,7 @@ import PropTypes from 'prop-types'
 import { useTranslation } from 'react-i18next'
 
 import { Icon } from '../'
+import { User } from '../../schema'
 
 function NewMenuItem({ value, to }) {
   return (
@@ -24,7 +25,7 @@ NewMenuItem.propTypes = {
   to: PropTypes.string.isRequired
 }
 
-function NewMenu() {
+function NewMenu({ user }) {
   const { t } = useTranslation()
   return (
     <Menu as="div" className="flex-shrink mr-3">
@@ -46,11 +47,19 @@ function NewMenu() {
           to="/ui/projects/create"
           value={t('headerNavItems.newProject')}
         />
+        {user.integrations.includes('gitlab') && (
+          <NewMenuItem
+            to="/ui/projects/import"
+            value={t('headerNavItems.importProject')}
+          />
+        )}
       </Menu.Items>
     </Menu>
   )
 }
 
-NewMenu.propTypes = {}
+NewMenu.propTypes = {
+  user: PropTypes.shape(User)
+}
 
 export { NewMenu }

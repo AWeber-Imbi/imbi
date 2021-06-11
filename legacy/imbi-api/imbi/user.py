@@ -2,6 +2,7 @@
 User Model supporting both LDAP and PostgreSQL data sources
 
 """
+import dataclasses
 import datetime
 import logging
 import typing
@@ -29,6 +30,13 @@ class Group:
     def __repr__(self):
         return '<Group name={} permissions={}>'.format(
             self.name, self.permissions)
+
+
+@dataclasses.dataclass
+class ConnectedIntegration:
+    """The connection between a user and a specific integration."""
+    name: str
+    external_id: str
 
 
 class User:
@@ -59,6 +67,11 @@ class User:
       FROM v1.groups AS a
       JOIN v1.group_members AS b ON b.group = a.name
      WHERE b.username = %(username)s;"""
+
+    SQL_INTEGRATIONS = """\
+    SELECT integration AS name, external_id
+      FROM v1.user_oauth2_tokens
+     WHERE username = %(username)s;"""
 
     SQL_REFRESH = """\
     SELECT username, created_at, last_seen_at, user_type, external_id,
@@ -112,6 +125,7 @@ class User:
         self.display_name: typing.Optional[str] = None
         self.password = password
         self.token = token
+        self.connected_integrations: typing.List[ConnectedIntegration] = []
         self.groups: typing.List[Group] = []
         self.permissions: typing.List[str] = []
 
@@ -144,7 +158,9 @@ class User:
             'password': self._application.encrypt_value(
                 'password', self.password),
             'permissions': self.permissions,
-            'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at)
+            'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at),
+            'integrations': sorted({
+                app.name for app in self.connected_integrations}),
         }
 
     async def authenticate(self) -> bool:
@@ -248,12 +264,16 @@ class User:
             result = await conn.execute(
                 self.SQL_REFRESH, {'username': self.username},
                 'user-refresh')
+        if result:
             self._assign_values(result.row)
-        self.groups = await self._db_groups()
-        self.permissions = sorted(set(
-            chain.from_iterable([g.permissions for g in self.groups])))
-        self.last_refreshed_at = max(
-            timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
+            self.groups = await self._db_groups()
+            self.permissions = sorted(set(
+                chain.from_iterable([g.permissions for g in self.groups])))
+            self.connected_integrations = await self._refresh_integrations()
+            self.last_refreshed_at = max(
+                timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
+        else:
+            self._reset()
 
     async def _ldap_auth(self) -> bool:
         """Authenticate via LDAP"""
@@ -306,7 +326,17 @@ class User:
         self.groups = await self._db_groups()
         self.permissions = sorted(set(
             chain.from_iterable([g.permissions for g in self.groups])))
+        self.connected_integrations = await self._refresh_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
+
+    async def _refresh_integrations(self) -> typing.Sequence[
+            ConnectedIntegration]:
+        """Fetch connected integration details from the DB."""
+        async with self._application.postgres_connector(
+                on_error=self.on_postgres_error) as conn:
+            result = await conn.execute(
+                self.SQL_INTEGRATIONS, {'username': self.username})
+            return [ConnectedIntegration(**r) for r in result]
 
     def _reset(self) -> None:
         """Reset the internally assigned values associated with this user
@@ -314,15 +344,16 @@ class User:
 
         """
         self._ldap_conn = None
-        self.created_at: typing.Optional[datetime.datetime] = None
-        self.last_seen_at: typing.Optional[datetime.datetime] = None
+        self.created_at = None
+        self.last_seen_at = None
         self.user_type = 'internal'
-        self.external_id: typing.Optional[str] = None
-        self.email_address: typing.Optional[str] = None
-        self.display_name: typing.Optional[str] = None
-        self.groups: typing.List[Group] = []
-        self.permissions: typing.List[str] = []
-        self.last_refreshed_at: typing.Optional[datetime.datetime] = None
+        self.external_id = None
+        self.email_address = None
+        self.display_name = None
+        self.groups = []
+        self.permissions = []
+        self.last_refreshed_at = None
+        self.connected_integrations = []
 
     async def _token_auth(self) -> bool:
         """Validate via v1.authentication_tokens table"""

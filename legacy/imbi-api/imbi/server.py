@@ -34,15 +34,15 @@ DEFAULT_LOG_CONFIG = {
     },
     'loggers': {
         'imbi': {
-            'level': 'INFO',
-            'propagate': True,
-            'handlers': ['console']
+            'level': 'INFO'
         },
         'tornado': {
-            'level': 'INFO',
-            'propagate': True,
-            'handlers': ['console']
+            'level': 'INFO'
         }
+    },
+    'root': {
+        'level': 'WARNING',
+        'handlers': ['console']
     },
     'disable_existing_loggers': True,
     'incremental': False
