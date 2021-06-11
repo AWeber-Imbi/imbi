@@ -3689,6 +3689,22 @@ paths:
                     archived:
                       description: Indicates that the project is archived
                       type: boolean
+                    gitlab_project_id:
+                      description: Optional project ID for the associated gitlab project
+                      type: integer
+                      nullable: true
+                    sentry_project_slug:
+                      description: Optional slug for the project in sentry
+                      type: string
+                      nullable: true
+                    sonarqube_project_key:
+                      description: Optional slug for the project in SonarQube
+                      type: string
+                      nullable: true
+                    pagerduty_service_id:
+                      description: Optional ID for the project in PagerDuty
+                      type: string
+                      nullable: true
                   additionalProperties: false
               example:
                 records:
@@ -3758,6 +3774,22 @@ paths:
                     archived:
                       description: Indicates that the project is archived
                       type: boolean
+                    gitlab_project_id:
+                      description: Optional project ID for the associated gitlab project
+                      type: integer
+                      nullable: true
+                    sentry_project_slug:
+                      description: Optional slug for the project in sentry
+                      type: string
+                      nullable: true
+                    sonarqube_project_key:
+                      description: Optional slug for the project in SonarQube
+                      type: string
+                      nullable: true
+                    pagerduty_service_id:
+                      description: Optional ID for the project in PagerDuty
+                      type: string
+                      nullable: true
                   additionalProperties: false
               example:
                 records:
