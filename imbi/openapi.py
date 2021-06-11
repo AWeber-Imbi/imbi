@@ -12,6 +12,8 @@ from jsonschema import validators as jsonschema_validators
 from openapi_core.schema.specs import factories, models
 from tornado import template
 
+from imbi import transcoders
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -75,6 +77,7 @@ def request_validator(settings: dict) -> tornado_openapi3.RequestValidator:
             'application/msgpack': umsgpack.unpackb,
             'application/problem+json': json.loads,
             'application/problem+msgpack': umsgpack.unpackb,
+            'application/x-www-form-urlencoded': transcoders.parse_form_body,
             'application/yaml': yaml.safe_load})
 
 

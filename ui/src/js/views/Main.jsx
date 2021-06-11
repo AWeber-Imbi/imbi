@@ -58,6 +58,9 @@ function Main({ user }) {
                 <Route path="/ui/projects/create">
                   <Project.Create user={user} />
                 </Route>
+                <Route path="/ui/projects/import">
+                  <Project.GitlabImport user={user} />
+                </Route>
                 <Route path="/ui/projects/:projectId">
                   <Project.Detail user={user} />
                 </Route>

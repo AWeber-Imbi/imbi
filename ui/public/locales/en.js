@@ -15,6 +15,8 @@ export default {
         icon: 'Icon',
         iconClass: 'Icon Class',
         id: 'ID',
+        import: 'Import',
+        importing: 'Importing',
         initializing: 'Initializing',
         invalidURL: 'Value does not appear to be a URL',
         lastUpdated: 'Last Updated: {{date}}',
@@ -76,6 +78,7 @@ export default {
       headerNavItems: {
         administration: 'Administration',
         dashboard: 'Dashboard',
+        importProject: 'Import from Gitlab',
         newOperationsLogEntry: 'Add Ops Log Entry',
         newProject: 'New Project',
         openNewMenu: 'Open New Menu',
@@ -235,6 +238,10 @@ export default {
         editProject: 'Edit Project',
         environments: 'Environments',
         factHistory: 'Fact History',
+        gitlab: {
+          namespace: 'Gitlab Folder',
+          project: 'Gitlab Project'
+        },
         links: 'Links',
         linksSaved: 'Links Saved',
         logs: 'Logs',
@@ -297,7 +304,8 @@ export default {
           userType: 'User Type',
           externalId: 'External ID',
           emailAddress: 'Email Address',
-          groups: 'Groups'
+          groups: 'Groups',
+          integrations: 'Integrated Applications'
         },
         settings: {
           title: 'User Settings',
