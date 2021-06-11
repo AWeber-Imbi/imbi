@@ -11,7 +11,9 @@ class _RequestHandlerMixin:
     ITEM_NAME = 'project'
     ID_KEY = ['id']
     FIELDS = ['id', 'namespace_id', 'project_type_id', 'name', 'slug',
-              'description', 'environments', 'archived']
+              'description', 'environments', 'archived', 'gitlab_project_id',
+              'sentry_project_slug', 'sonarqube_project_key',
+              'pagerduty_service_id']
     TTL = 300
 
     GET_SQL = re.sub(r'\s+', ' ', """\
@@ -28,7 +30,11 @@ class _RequestHandlerMixin:
                a.slug,
                a.description,
                a.environments,
-               a.archived
+               a.archived,
+               a.gitlab_project_id,
+               a.sentry_project_slug,
+               a.sonarqube_project_key,
+               a.pagerduty_service_id
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
@@ -57,6 +63,10 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                a.description,
                a.environments,
                a.archived,
+               a.gitlab_project_id,
+               a.sentry_project_slug,
+               a.sonarqube_project_key,
+               a.pagerduty_service_id,
                v1.project_score(a.id) AS project_score
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
@@ -156,6 +166,10 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                a.description,
                a.environments,
                a.archived,
+               a.gitlab_project_id,
+               a.sentry_project_slug,
+               a.sonarqube_project_key,
+               a.pagerduty_service_id,
                v1.project_score(a.id)
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
@@ -229,7 +243,11 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                slug=%(slug)s,
                description=%(description)s,
                environments=%(environments)s,
-               archived=%(archived)s
+               archived=%(archived)s,
+               gitlab_project_id=%(gitlab_project_id)s,
+               sentry_project_slug=%(sentry_project_slug)s,
+               sonarqube_project_key=%(sonarqube_project_key)s,
+               pagerduty_service_id=%(pagerduty_service_id)s
          WHERE id=%(id)s""")
 
     async def get(self, *args, **kwargs):

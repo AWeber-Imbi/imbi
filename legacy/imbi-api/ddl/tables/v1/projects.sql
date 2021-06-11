@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS projects (
   description            TEXT,
   environments           TEXT[],
   archived               BOOLEAN                   NOT NULL  DEFAULT FALSE,
+  gitlab_project_id      INT4,
+  sentry_project_slug    TEXT,
+  sonarqube_project_key  TEXT,
+  pagerduty_service_id   TEXT,
   UNIQUE (namespace_id, project_type_id, name),
   FOREIGN KEY (namespace_id) REFERENCES namespaces (id) ON UPDATE CASCADE ON DELETE RESTRICT,
   FOREIGN KEY (project_type_id) REFERENCES project_types (id) ON UPDATE CASCADE ON DELETE RESTRICT
@@ -33,6 +37,10 @@ COMMENT ON COLUMN projects.slug IS 'The project slug used in paths';
 COMMENT ON COLUMN projects.description IS 'Description of the high-level purpose and context for the project';
 COMMENT ON COLUMN projects.environments IS 'The operational environments the project is available in';
 COMMENT ON COLUMN projects.archived IS 'Indicates that the project is archived and should not appear in normal search results';
+COMMENT ON COLUMN projects.gitlab_project_id IS 'If set, specifies the GitLab project ID for the GitLab integration';
+COMMENT ON COLUMN projects.sentry_project_slug IS 'If set, specifies the project slug for the Sentry integration';
+COMMENT ON COLUMN projects.sonarqube_project_key IS 'If set, specifies the project slug for the SonarQube integration';
+COMMENT ON COLUMN projects.pagerduty_service_id IS 'If set, specifies the service id for the PagerDuty integration';
 
 GRANT SELECT ON projects TO reader;
 GRANT SELECT, INSERT, UPDATE, DELETE ON projects TO writer;

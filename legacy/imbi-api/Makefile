@@ -27,14 +27,17 @@ clean:
 	@ rm -rf imbi/static/fonts/* imbi/static/js/*
 	@ rm -rf .env build dist imbi.egg-info env ui/node_modules
 
-.env: scaffolding/postgres/ddl.sql
+.env: scaffolding/postgres/ddl.sql bootstrap docker-compose.yml
 	@ ./bootstrap
 
-env:
+env: env/stamp
+
+env/stamp: setup.cfg setup.py
 	@ python3 -m venv env
 	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install --upgrade pip
 	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install wheel
 	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install -e '.[testing]'
+	@ touch env/stamp
 
 .PHONY: postgres-ready
 postgres-ready: .env
@@ -42,7 +45,7 @@ ifeq ($(docker-compose ps postgres |grep -c healthy), 1)
 	@ $(error Docker image for PostgreSQL is not running, perhaps you forget to run "make .env" or you should "make clean" and try again)
 endif
 
-scaffolding/postgres/ddl.sql:
+scaffolding/postgres/ddl.sql: $(wildcard ddl/extensions/*.sql) $(wildcard ddl/*/v1/*.sql) $(wildcard ddl/roles/*.sql) $(wildcard ddl/schemata/*.sql)
 	@ cd ddl && bin/build.sh ../scaffolding/postgres/ddl.sql
 
 .PHONY: setup
@@ -68,10 +71,10 @@ dist: build-openapi ui-setup
 	@ cd ddl && bin/build.sh ../ddl.sql
 	@ python3 setup.py sdist
 
-openapi/node_modules:
+openapi/node_modules: openapi/package.json
 	@ cd openapi && yarn install
 
-ui/node_modules:
+ui/node_modules: ui/package.json
 	@ cd ui && yarn install
 
 .PHONY: serve
@@ -84,7 +87,7 @@ watch: ui/node_modules
 
 # Testing
 
-.PHONEY: bandit
+.PHONY: bandit
 bandit: env
 	@ printf "\nRunning Bandit\n\n"
 	@ env/bin/bandit -r imbi
