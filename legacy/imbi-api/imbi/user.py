@@ -8,6 +8,7 @@ import logging
 import typing
 from itertools import chain
 
+import ldap3
 import psycopg2.errors
 from tornado import web
 
@@ -114,7 +115,7 @@ class User:
                  token: typing.Optional[str] = None) -> None:
         self._application = application
         self._ldap = ldap.Client(application.settings['ldap'])
-        self._ldap_conn = None
+        self._ldap_conn: typing.Optional[ldap3.Connection] = None
         self.username = username
         self.created_at: typing.Optional[datetime.datetime] = None
         self.last_refreshed_at: typing.Optional[datetime.datetime] = None
@@ -128,6 +129,11 @@ class User:
         self.connected_integrations: typing.List[ConnectedIntegration] = []
         self.groups: typing.List[Group] = []
         self.permissions: typing.List[str] = []
+
+    def __del__(self):
+        if self._ldap_conn is not None:
+            self._ldap_conn.strategy.close()
+            self._ldap_conn = None
 
     def __repr__(self):
         return '<User username={} user_type={} permissions={}>'.format(
@@ -281,11 +287,13 @@ class User:
             LOGGER.debug('Can not LDAP authenticate without a password')
             return False
         LOGGER.debug('Authenticating via LDAP')
-        self._conn = await self._ldap.connect(self.username, self.password)
-        if self._conn:
+        if not self._ldap_conn:
+            self._ldap_conn = await self._ldap.connect(self.username,
+                                                       self.password)
+        if self._ldap_conn:
             LOGGER.debug('Authenticated as %s', self.username)
             self.user_type = 'ldap'
-            result = self._conn.extend.standard.who_am_i()
+            result = self._ldap_conn.extend.standard.who_am_i()
             self.external_id = result[3:].strip()
             await self._ldap_refresh()
             return True
@@ -295,7 +303,7 @@ class User:
     async def _ldap_refresh(self) -> None:
         """Update the attributes from LDAP"""
         LOGGER.debug('Refreshing attributes from LDAP server')
-        attrs = await self._ldap.attributes(self._conn, self.external_id)
+        attrs = await self._ldap.attributes(self._ldap_conn, self.external_id)
         LOGGER.debug('Attributes: %r', attrs)
         self.display_name = attrs.get('displayName', attrs['cn'])
         self.email_address = attrs.get('mail')
@@ -314,7 +322,8 @@ class User:
             self.last_seen_at = result.row['last_seen_at']
 
         # Update the groups in the database and get the group names
-        ldap_groups = await self._ldap.groups(self._conn, self.external_id)
+        ldap_groups = await self._ldap.groups(self._ldap_conn,
+                                              self.external_id)
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
             await conn.callproc(
