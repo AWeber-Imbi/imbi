@@ -81,7 +81,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
           {{WHERE}}""")
 
     FILTER_CHUNKS = {
-        'name': 'to_tsvector(lower(a.name)) @@ %(name)s::tsquery',
+        'name': 'to_tsvector(lower(a.name)) @@ plainto_tsquery(%(name)s)',
         'namespace_id': 'b.id = %(namespace_id)s',
         'project_type_id': 'c.id = %(project_type_id)s'
     }
