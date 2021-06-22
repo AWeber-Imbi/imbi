@@ -98,7 +98,8 @@ function Namespaces({ onReady }) {
         (error) => {
           setState({
             ...state,
-            fetchedKPIHistory: true,
+            kpiHistory: {},
+            fetchedKPIHistory: false,
             kpiHistoryErrorMessage: error
           })
         }
@@ -195,9 +196,9 @@ function Namespaces({ onReady }) {
             <Head columns={columns} />
             <tbody className="bg-white divide-y divide-gray-200">
               {state.namespaces.map((namespace) => {
-                const values = state.kpiHistory[namespace.namespace_id].map(
-                  (entry) => entry.value
-                )
+                const values = (
+                  state.kpiHistory[namespace.namespace_id] || []
+                ).map((entry) => entry.value)
                 const handleClick = () =>
                   history.push(
                     `/ui/projects?namespace_id=${namespace.namespace_id}`
