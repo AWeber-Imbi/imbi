@@ -7,13 +7,54 @@ import sprockets.mixins.http
 import yarl
 
 from . import base
-from .. import integrations, user
+from .. import integrations, user, version
 
 
 @dataclasses.dataclass
 class GitlabToken:
     access_token: str
     refresh_token: str
+
+
+class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
+    def __init__(self, token: integrations.IntegrationToken):
+        super().__init__()
+        self.token = token
+        self.headers = {
+            'Accept': 'application/json',
+            'Authorization': f'Bearer {self.token.access_token}',
+        }
+
+    async def fetch_all_pages(self, *path, **query) -> typing.Sequence[dict]:
+        url = self.token.integration.api_endpoint
+        for component in path:
+            url /= component
+        if query:
+            url = url.with_query(query)
+
+        entries = []
+        while url is not None:
+            response = await self.api(url)
+            if not response.ok:
+                raise problemdetails.Problem(
+                    500, 'GET %s failed: %s', url, response.code,
+                    title='GitLab API Failure')
+
+            entries.extend(response.body)
+            for link in response.links:
+                if link['rel'] == 'next':
+                    url = yarl.URL(link['target'])
+                    break
+            else:
+                url = None
+
+        return entries
+
+    async def api(self, url: yarl.URL, *, method: str = 'GET', **kwargs):
+        request_headers = kwargs.setdefault('request_headers', {})
+        request_headers.update(self.headers)
+        kwargs['user_agent'] = f'imbi/{version} (GitLabClient)'
+        return await super().http_fetch(str(url), method=method, **kwargs)
 
 
 class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
@@ -104,83 +145,39 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         ...
 
 
-class UserNamespacesHandler(sprockets.mixins.http.HTTPClientMixin,
-                            base.AuthenticatedRequestHandler):
-    integration: integrations.OAuth2Integration
+class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
+    client: GitLabClient
 
     async def prepare(self) -> None:
         await super().prepare()
         if not self._finished:
-            self.integration = await integrations.OAuth2Integration.by_name(
+            integration = await integrations.OAuth2Integration.by_name(
                 self.application, 'gitlab')
-            if not self.integration:
+            if not integration:
                 raise problemdetails.Problem(
                     500, 'application lookup failed for %s', 'gitlab',
                     type='https://imbi.aweber.com/errors/#server-error',
                     title='Internal server error')
 
-    async def get(self):
-        namespaces = []
-        imbi_user = await self.get_current_user()  # shouldn't be None
-        url = self.integration.api_endpoint / 'groups'
-        url = url.with_query({'min_access_level': 30})
-        for token in await self.integration.get_user_tokens(imbi_user):
-            entries = await self.fetch_all_pages(url, token)
-            namespaces.extend([
-                {
-                    'name': entry['full_name'],
-                    'id': entry['id'],
-                }
-                for entry in entries
-            ])
+            imbi_user = await self.get_current_user()  # never None
+            tokens = await integration.get_user_tokens(imbi_user)
+            if not tokens:
+                raise problemdetails.Problem(
+                    403, 'no gitlab tokens for %r', imbi_user,
+                    title='GitLab Not Connected')
+            self.client = GitLabClient(tokens[0])
 
+
+class UserNamespacesHandler(GitLabIntegratedHandler):
+    async def get(self):
+        entries = await self.client.fetch_all_pages('groups', min_access_level=30)
+        namespaces = [{'name': entry['full_name'], 'id': entry['id']}
+                      for entry in entries]
         namespaces.sort(key=lambda elm: elm['name'])
         self.send_response(namespaces)
 
-    async def fetch_all_pages(
-            self, url: yarl.URL, token: integrations.IntegrationToken
-    ) -> typing.Sequence[dict]:
-        entries = []
-        while url is not None:
-            response = await self.http_fetch(
-                str(url),
-                request_headers={
-                    'Accept': 'application/json',
-                    'Authorization': f'Bearer {token.access_token}',
-                }
-            )
-            if response.ok:
-                entries.extend(response.body)
-            else:  # TODO -- handle token expiration
-                raise problemdetails.Problem(
-                    500, 'failed to retrieve groups: %s', response.code,
-                    type='https://imbi.aweber.com/errors/#server-error',
-                    title='Internal server error')
 
-            url = None
-            for link in response.links:
-                if link['rel'] == 'next':
-                    url = yarl.URL(link['target'])
-                    break
-
-        return entries
-
-
-class ProjectsHandler(sprockets.mixins.http.HTTPClientMixin,
-                      base.AuthenticatedRequestHandler):
-    integration: integrations.OAuth2Integration
-
-    async def prepare(self) -> None:
-        await super().prepare()
-        if not self._finished:
-            self.integration = await integrations.OAuth2Integration.by_name(
-                self.application, 'gitlab')
-            if not self.integration:
-                raise problemdetails.Problem(
-                    500, 'application lookup failed for %s', 'gitlab',
-                    type='https://imbi.aweber.com/errors/#server-error',
-                    title='Internal server error')
-
+class ProjectsHandler(GitLabIntegratedHandler):
     async def get(self):
         group_arg = self.get_query_argument('group_id')
         try:
@@ -191,54 +188,15 @@ class ProjectsHandler(sprockets.mixins.http.HTTPClientMixin,
                 type='https://imbi.aweber.com/errors/#invalid-parameter',
                 title='Invalid Query Parameter')
 
-        imbi_user = await self.get_current_user()
-        url = (self.integration.api_endpoint / 'groups' / str(group_id)
-               / 'projects')
-        url = url.with_query({
-            'include_subgroups': 'false',
-            'simple': 'true',
-            'with_shared': 'false',
-        })
-
-        projects = []
-        for token in await self.integration.get_user_tokens(imbi_user):
-            entries = await self.fetch_all_pages(url, token)
-            projects.extend([
-                {
-                    'description': entry['description'],
-                    'name': entry['name'],
-                    'id': entry['id'],
-                    'web_url': entry['web_url'],
-                }
-                for entry in entries
-            ])
-
-        self.send_response(projects)
-
-    async def fetch_all_pages(
-            self, url: yarl.URL, token: integrations.IntegrationToken
-    ) -> typing.Sequence[dict]:
-        entries = []
-        while url is not None:
-            response = await self.http_fetch(
-                str(url),
-                request_headers={
-                    'Accept': 'application/json',
-                    'Authorization': f'Bearer {token.access_token}',
-                }
-            )
-            if response.ok:
-                entries.extend(response.body)
-            else:  # TODO -- handle token expiration
-                raise problemdetails.Problem(
-                    500, 'failed to retrieve groups: %s', response.code,
-                    type='https://imbi.aweber.com/errors/#server-error',
-                    title='Internal server error')
-
-            url = None
-            for link in response.links:
-                if link['rel'] == 'next':
-                    url = yarl.URL(link['target'])
-                    break
-
-        return entries
+        projects = await self.client.fetch_all_pages(
+            'groups', group_id, 'projects', include_subgroups='false',
+            simple='true', with_shared='false')
+        self.send_response([
+            {
+                'description': project['description'],
+                'name': project['name'],
+                'id': project['id'],
+                'web_url': project['web_url'],
+            }
+            for project in projects
+        ])
