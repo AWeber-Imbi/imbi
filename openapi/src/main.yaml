@@ -100,10 +100,14 @@ paths:
   /reports/system-shs-history:
     { $ref: 'endpoints/system_shs_history.yaml#/paths/collection' }
   /status: { $ref: 'endpoints/status.yaml#/paths/status' }
+  /ui/automations/gitlab/create:
+    { $ref: 'endpoints/automations.yaml#/gitlab/create'}
 
 tags:
   - name: Activity Feed
     description: Endpoints that detail changes to projects and other entities in Imbi
+  - name: Automations
+    description: Endpoints related to project automations
   - name: Cookie Cutters
     description: Endpoints used for the management of project creation cookie cutters
   - name: Environments
@@ -212,6 +216,7 @@ x-tagGroups:
       - User
   - name: UI Specific
     tags:
+      - Automations
       - Dashboard
       - Settings
   - name: Other

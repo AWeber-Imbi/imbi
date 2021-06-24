@@ -5926,9 +5926,53 @@ paths:
                 $ref: '#/paths/~1status/get/responses/200/content/application~1json/schema'
               example:
                 $ref: '#/paths/~1status/get/responses/503/content/application~1json/example'
+  /ui/automations/gitlab/create:
+    post:
+      summary: Create GitLab repo
+      description: |
+        Create a new GitLab repository for a specific project.
+
+        The GitLab parent namespace is calculated from the namespace configured in the parent Imbi group and the
+        prefix configured in the project type.  If either value is not configured, then an error response is
+        returned.
+      tags:
+        - Automations
+      requestBody:
+        description: Project details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  description: Name for the GitLab project
+                  type: string
+                description:
+                  type: string
+                project_id:
+                  description: Imbi project ID to create the repository for
+                  type: integer
+      responses:
+        '200':
+          description: GitLab repository was created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gitlab_project_url:
+                    type: string
+                  gitlab_project_id:
+                    type: integer
+        '400':
+          description: Request could not be processed
+        '422':
+          description: Request is semantically invalid
 tags:
   - name: Activity Feed
     description: Endpoints that detail changes to projects and other entities in Imbi
+  - name: Automations
+    description: Endpoints related to project automations
   - name: Cookie Cutters
     description: Endpoints used for the management of project creation cookie cutters
   - name: Environments
@@ -6033,6 +6077,7 @@ x-tagGroups:
       - User
   - name: UI Specific
     tags:
+      - Automations
       - Dashboard
       - Settings
   - name: Other
