@@ -3,12 +3,11 @@ import logging
 import typing
 import urllib.parse
 
-import problemdetails
 import sprockets.mixins.http
 import yarl
 
 from . import base
-from .. import integrations, user, version
+from .. import errors, integrations, user, version
 
 
 @dataclasses.dataclass
@@ -68,8 +67,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         while url is not None:
             response = await self.api(url)
             if not response.ok:
-                raise problemdetails.Problem(
-                    500, 'GET %s failed: %s', url, response.code,
+                raise errors.InternalServerError(
+                    'GET %s failed: %s', url, response.code,
                     title='GitLab API Failure')
 
             entries.extend(response.body)
@@ -92,8 +91,9 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             return None
         if response.ok:
             return response.body
-        raise problemdetails.Problem(500, 'failed to fetch group %s: %s', slug,
-                                     response.code, title='GitLab API Failure')
+        raise errors.InternalServerError(
+            'failed to fetch group %s: %s', slug, response.code,
+            title='GitLab API Failure')
 
     async def create_project(self, parent, project_name, **attributes) -> dict:
         for name, value in PROJECT_DEFAULTS.items():
@@ -105,9 +105,9 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         response = await self.api('projects', method='POST', body=attributes)
         if response.ok:
             return response.body
-        raise problemdetails.Problem(500, 'failed to create project %s: %s',
-                                     project_name, response.code,
-                                     title='GitLab API Failure')
+        raise errors.InternalServerError(
+            'failed to create project %s: %s', project_name, response.code,
+            title='GitLab API Failure')
 
 
 class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
@@ -120,10 +120,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
             self.integration = await integrations.OAuth2Integration.by_name(
                 self.application, 'gitlab')
             if not self.integration:
-                raise problemdetails.Problem(
-                    500, 'application lookup failed for %s', 'gitlab',
-                    type='https://imbi.aweber.com/errors/#server-error',
-                    title='Internal server error')
+                raise errors.IntegrationNotFound('gitlab')
 
     async def get(self):
         auth_code = self.get_query_argument('code')
@@ -134,14 +131,12 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
             imbi_user = user.User(self.application, username=state)
             await imbi_user.refresh()
             if imbi_user.email_address != email:
-                raise problemdetails.Problem(
-                    403, 'mismatched user email: expected %r received %r',
+                raise errors.Forbidden(
+                    'mismatched user email: expected %r received %r',
                     imbi_user.email_address, email,
-                    type='https://imbi.aweber.com/errors/#gitlab-auth-failure',
                     title='Gitlab authorization failure',
                     detail='unexpected email address {} for user {}'.format(
-                        email, imbi_user.username),
-                )
+                        email, imbi_user.username))
             await self.integration.add_user_token(
                 imbi_user, str(user_id), token.access_token,
                 token.refresh_token)
@@ -168,10 +163,9 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
             self.logger.error('failed to exchange auth code for token: %s %s',
                               response.body['error'],
                               response.body['error_description'])
-            raise problemdetails.Problem(
-                500, 'failed exchange auth code for token: %s', response.code,
-                type='https://imbi.aweber.com/errors/#gitlab-auth-failure',
-                title='Gitlab authorization failure',
+            raise errors.InternalServerError(
+                'failed exchange auth code for token: %s', response.code,
+                title='GitLab authorization failure',
                 instance={
                     'error': response.body['error'],
                     'error_description': response.body['error_description'],
@@ -189,10 +183,9 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         if response.ok:
             return (response.body['id'], response.body['username'],
                     response.body['email'])
-        raise problemdetails.Problem(
-            500, 'failed to retrieve gitlab user from access token',
-            type='https://imbi.aweber.com/errors/#gitlab-auth-failure',
-            title='Gitlab user lookup failure')
+        raise errors.InternalServerError(
+            'failed to retrieve GitLab user from access token',
+            title='GitLab user lookup failure')
 
     async def revoke_gitlab_token(self, token: GitlabToken):
         ...
@@ -207,17 +200,13 @@ class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
             integration = await integrations.OAuth2Integration.by_name(
                 self.application, 'gitlab')
             if not integration:
-                raise problemdetails.Problem(
-                    500, 'application lookup failed for %s', 'gitlab',
-                    type='https://imbi.aweber.com/errors/#server-error',
-                    title='Internal server error')
+                raise errors.IntegrationNotFound('gitlab')
 
             imbi_user = await self.get_current_user()  # never None
             tokens = await integration.get_user_tokens(imbi_user)
             if not tokens:
-                raise problemdetails.Problem(
-                    403, 'no gitlab tokens for %r', imbi_user,
-                    title='GitLab Not Connected')
+                raise errors.Forbidden('no GitLab tokens for %r', imbi_user,
+                                       title='GitLab Not Connected')
             self.client = GitLabClient(tokens[0])
 
 
@@ -237,10 +226,8 @@ class ProjectsHandler(GitLabIntegratedHandler):
         try:
             group_id = int(group_arg)
         except ValueError:
-            raise problemdetails.Problem(
-                400, 'invalid group ID: %r', group_arg,
-                type='https://imbi.aweber.com/errors/#invalid-parameter',
-                title='Invalid Query Parameter')
+            raise errors.BadRequest('invalid group ID: %r', group_arg,
+                                    title='Invalid Query Parameter')
 
         projects = await self.client.fetch_all_pages(
             'groups', group_id, 'projects', include_subgroups='false',

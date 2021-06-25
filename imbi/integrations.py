@@ -2,10 +2,9 @@ import dataclasses
 import logging
 import typing
 
-import problemdetails
 import yarl
 
-from imbi import app, user
+from imbi import app, errors, user
 
 
 LOGGER = logging.getLogger(__name__)
@@ -122,11 +121,7 @@ class OAuth2Integration:
 
     @staticmethod
     def _on_postgres_error(_metric_name: str, exc: Exception) -> None:
-        raise problemdetails.Problem(
-            500, 'database failure: %s', exc,
-            type='https://imbi.aweber.com/errors/#database-error',
-            title='Database failure',
-        )
+        raise errors.DatabaseError(error=exc)
 
     def _reset(self):
         self.api_endpoint = None

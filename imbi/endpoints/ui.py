@@ -2,9 +2,7 @@
 API Endpoint for returning UI Settings
 
 """
-import problemdetails
-
-from imbi import integrations
+from imbi import errors, integrations
 from imbi.endpoints import base, gitlab
 
 
@@ -75,16 +73,13 @@ class GitLabAutomationHandler(base.AuthenticatedRequestHandler):
             gitlab_int = await integrations.OAuth2Integration.by_name(
                 self.application, 'gitlab')
             if not gitlab_int:
-                raise problemdetails.Problem(
-                    500, 'application lookup failed for gitlab',
-                    title='Integration Missing',
-                    detail='GitLab integration is not configured')
+                raise errors.IntegrationNotFound('gitlab')
 
             imbi_user = await self.get_current_user()  # never None
             tokens = await gitlab_int.get_user_tokens(imbi_user)
             if not tokens:
-                raise problemdetails.Problem(
-                    403, 'no gitlab tokens for %r', imbi_user,
+                raise errors.Forbidden(
+                    'no gitlab tokens for %r', imbi_user,
                     title='GitLab Not Connected')
             self.gitlab = gitlab.GitLabClient(tokens[0])
 
@@ -115,35 +110,29 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
                 """,
                 {'project_id': project_id})
             if result.row_count == 0:
-                raise problemdetails.Problem(
-                    400, 'non-existent project %s', project_id,
-                    title='Invalid Request',
-                    detail=f'{project_id} is not a valid namespace')
+                raise errors.BadRequest('%s is not a valid imbi project ID',
+                                        project_id)
             project_info = result.row
 
             if project_info['gitlab_group_name'] is None:
-                raise problemdetails.Problem(
-                    400, 'namespace %s does not have a gitlab group',
+                raise errors.BadRequest(
+                    'namespace %s does not have a GitLab group',
                     project_info['namespace_slug'],
-                    title='Invalid Request',
-                    detail=(project_info['namespace_slug'] +
-                            ' is not connected to gitlab'))
+                    title='Imbi State Error')
             if project_info['gitlab_project_prefix'] is None:
-                raise problemdetails.Problem(
-                    400, 'project type %s does not have a gitlab prefix',
-                    project_info['type_slug'], title='Invalid Request',
-                    detail=(project_info['type_slug'] +
-                            ' is missing a gitlab prefix'))
+                raise errors.BadRequest(
+                    'project type %s does not have a GitLab prefix',
+                    project_info['type_slug'],
+                    title='Imbi State Error')
 
             parent = await self.gitlab.fetch_group(
                 project_info['gitlab_group_name'],
                 project_info['gitlab_project_prefix'])
             if parent is None:
-                raise problemdetails.Problem(
-                    400, 'GitLab parent %s/%s does not exist',
-                    project_info['gitlab_group_name'],
-                    project_info['gitlab_project_prefix'],
-                    title='GitLab Group Not Found')
+                raise errors.BadRequest('GitLab folder %s/%s does not exist',
+                                        project_info['gitlab_group_name'],
+                                        project_info['gitlab_project_prefix'],
+                                        title='GitLab Group Not Found')
 
             project_info = await self.gitlab.create_project(
                 parent, project_name, description=description)
