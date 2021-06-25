@@ -17,14 +17,11 @@ gitlab:
             schema:
               type: object
               properties:
-                name:
-                  description: Name for the GitLab project
-                  type: string
-                description:
-                  type: string
                 project_id:
                   description: Imbi project ID to create the repository for
                   type: integer
+              required:
+                - project_id
       responses:
         "200":
           description: GitLab repository was created successfully
@@ -39,5 +36,3 @@ gitlab:
                     type: integer
         "400":
           description: Request could not be processed
-        "422":
-          description: Request is semantically invalid

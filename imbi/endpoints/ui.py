@@ -91,14 +91,14 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
 
     async def post(self):
         request = self.get_request_body()
-        description = request['description']
         project_id = int(request['project_id'])
-        project_name = request['name']
 
         async with self.postgres_transaction() as transaction:
             result = await transaction.execute(
                 """
-                SELECT p.gitlab_project_id,
+                SELECT p.description AS project_description,
+                       p.gitlab_project_id,
+                       p.slug AS project_name,
                        n.slug AS namespace_slug,
                        n.gitlab_group_name,
                        t.slug AS type_slug,
@@ -134,19 +134,20 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
                                         project_info['gitlab_project_prefix'],
                                         title='GitLab Group Not Found')
 
-            project_info = await self.gitlab.create_project(
-                parent, project_name, description=description)
-            self.logger.info('created GitLab project %s', project_info['id'])
+            gitlab_info = await self.gitlab.create_project(
+                parent, project_info['project_name'],
+                description=project_info['project_description'])
+            self.logger.info('created GitLab project %s', gitlab_info['id'])
             await transaction.execute(
                 """UPDATE v1.projects
                       SET gitlab_project_id = %(gitlab_project_id)s
                     WHERE id = %(project_id)s""",
                 {
                     'project_id': project_id,
-                    'gitlab_project_id': project_info['id'],
+                    'gitlab_project_id': gitlab_info['id'],
                 })
 
         self.send_response({
-            'gitlab_project_id': project_info['id'],
-            'gitlab_project_url': project_info['_links']['self'],
+            'gitlab_project_id': gitlab_info['id'],
+            'gitlab_project_url': gitlab_info['_links']['self'],
         })
