@@ -118,7 +118,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
             self._request_logger.warning(
                 REQUEST_LOG_FORMAT, status_code, handler._request_summary(),
                 request_time, handler.request.headers.get('User-Agent'))
-        if status_code > 500:
+        if status_code >= 500:
             self._request_logger.error(
                 REQUEST_LOG_FORMAT, status_code, handler._request_summary(),
                 request_time, handler.request.headers.get('User-Agent'))
