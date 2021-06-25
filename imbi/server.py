@@ -79,6 +79,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     module_path = pathlib.Path(sys.modules['imbi'].__file__).parent
 
     settings = {
+        'canonical_server_name': http_settings['canonical_server_name'],
         'compress_response': http_settings.get('compress_response', True),
         'cookie_secret': http_settings.get('cookie_secret', 'imbi'),
         'debug': debug,

@@ -74,6 +74,7 @@ EOF
 cat > build/debug.yaml <<EOF
 ---
 http:
+  canonical_server_name: imbi.localhost
   processes: 1
 javascript_url: http://localhost:8080/static/
 ldap:
@@ -122,6 +123,8 @@ EOF
 
 cat > build/test.yaml <<EOF
 ---
+http:
+  canonical_server_name: imbi.example.org
 ldap:
   enabled: true
   host: ${TEST_HOST}

@@ -28,7 +28,8 @@ try:
 except ImportError:
     sentry_logging, sentry_tornado = None, None
 
-from imbi import endpoints, openapi, permissions, stats, transcoders, version
+from imbi import (endpoints, errors, openapi, permissions, stats, transcoders,
+                  version)
 from imbi.endpoints import default
 
 LOGGER = logging.getLogger(__name__)
@@ -66,6 +67,8 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         content.add_binary_content_type(
             self, 'application/json-patch+msgpack',
             umsgpack.packb, umsgpack.unpackb)
+
+        errors.set_canonical_server(self.settings['canonical_server_name'])
 
     def decrypt_value(self, key: str, value: str) -> bytes:
         """Decrypt a value that is encrypted using Tornado's secure cookie
