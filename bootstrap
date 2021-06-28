@@ -73,6 +73,9 @@ EOF
 
 cat > build/debug.yaml <<EOF
 ---
+automations:
+  gitlab:
+    repository_link_id: ~
 http:
   canonical_server_name: imbi.localhost
   processes: 1
@@ -123,6 +126,9 @@ EOF
 
 cat > build/test.yaml <<EOF
 ---
+automations:
+  gitlab:
+    repository_link_id: ~
 http:
   canonical_server_name: imbi.example.org
 ldap:

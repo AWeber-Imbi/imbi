@@ -30,6 +30,7 @@ class Project:
 
 class GitLabCreateProjectAutomation:
     def __init__(self,
+                 automation_settings: dict,
                  project: Project,
                  user: imbi.user.User,
                  db: sprockets_postgres.PostgresConnector):
@@ -37,6 +38,7 @@ class GitLabCreateProjectAutomation:
         self.imbi_project = project
         self.logger = logging.getLogger(__package__).getChild(
             self.__class__.__name__)
+        self.settings = automation_settings.get('gitlab', {})
         self.user = user
 
         self._errors: typing.List[str] = []
@@ -70,6 +72,20 @@ class GitLabCreateProjectAutomation:
                 'project_id': self.imbi_project.project_id,
                 'gitlab_project_id': gitlab_info['id'],
             })
+
+        if self.settings.get('repository_link_id'):
+            await self.db.execute(
+                """INSERT INTO v1.project_links(project_id, link_type_id,
+                                                created_by, url)
+                        VALUES (%(project_id)s, %(link_type_id)s,
+                                %(username)s, %(url)s)""",
+                {
+                    'link_type_id': self.settings['repository_link_id'],
+                    'project_id': self.imbi_project.project_id,
+                    'url': gitlab_info['web_url'],
+                    'username': self.user.username,
+                })
+
         return gitlab_info
 
     def _add_error(self, msg_format, *args):
