@@ -4,7 +4,9 @@ import typing
 
 import yarl
 
-from imbi import app, errors, user
+from imbi import app, errors
+if typing.TYPE_CHECKING:
+    from imbi import user
 
 
 LOGGER = logging.getLogger(__name__)
@@ -92,7 +94,7 @@ class OAuth2Integration:
         else:
             self._reset()
 
-    async def add_user_token(self, user_info: user.User, external_id: str,
+    async def add_user_token(self, user_info: 'user.User', external_id: str,
                              access_token: str, refresh_token: str):
         async with self._application.postgres_connector(
                 on_error=self._on_postgres_error) as conn:
@@ -102,7 +104,7 @@ class OAuth2Integration:
                 'refresh_token': refresh_token})
 
     async def get_user_tokens(
-            self, user_info: user.User) -> typing.Sequence[IntegrationToken]:
+            self, user_info: 'user.User') -> typing.Sequence[IntegrationToken]:
         async with self._application.postgres_connector(
                 on_error=self._on_postgres_error) as conn:
             result = await conn.execute(self.SQL_GET_TOKENS, {

@@ -2,7 +2,7 @@
 API Endpoint for returning UI Settings
 
 """
-from imbi import errors, integrations
+from imbi import automations, errors, integrations
 from imbi.endpoints import base, gitlab
 
 
@@ -96,56 +96,34 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
         async with self.postgres_transaction() as transaction:
             result = await transaction.execute(
                 """
-                SELECT p.description AS project_description,
-                       p.gitlab_project_id,
-                       p.slug AS project_name,
-                       n.slug AS namespace_slug,
-                       n.gitlab_group_name,
-                       t.slug AS type_slug,
-                       t.gitlab_project_prefix
-                  FROM v1.projects AS p
-                  JOIN v1.namespaces AS n ON (n.id = p.namespace_id)
-                  JOIN v1.project_types AS t ON (t.id = p.project_type_id)
-                 WHERE p.id = %(project_id)s
+                SELECT id, description, gitlab_project_id, name, namespace_id,
+                       project_type_id, slug
+                  FROM v1.projects
+                 WHERE id = %(project_id)s
                 """,
                 {'project_id': project_id})
             if result.row_count == 0:
                 raise errors.BadRequest('%s is not a valid imbi project ID',
                                         project_id)
-            project_info = result.row
 
-            if project_info['gitlab_group_name'] is None:
-                raise errors.BadRequest(
-                    'namespace %s does not have a GitLab group',
-                    project_info['namespace_slug'],
-                    title='Imbi State Error')
-            if project_info['gitlab_project_prefix'] is None:
-                raise errors.BadRequest(
-                    'project type %s does not have a GitLab prefix',
-                    project_info['type_slug'],
-                    title='Imbi State Error')
+            automation = automations.GitLabCreateProjectAutomation(
+                automations.Project.from_database(result.row),
+                await self.get_current_user(),
+                transaction)
+            failures = await automation.prepare()
+            if failures:
+                if len(failures) == 1:
+                    raise errors.BadRequest('Create project failed: %s',
+                                            failures[0],
+                                            title='Create project failure',
+                                            failures=failures)
+                else:
+                    raise errors.BadRequest(
+                        'Create project failed with %s errors', len(failures),
+                        title='Create project failure',
+                        failures=failures)
 
-            parent = await self.gitlab.fetch_group(
-                project_info['gitlab_group_name'],
-                project_info['gitlab_project_prefix'])
-            if parent is None:
-                raise errors.BadRequest('GitLab folder %s/%s does not exist',
-                                        project_info['gitlab_group_name'],
-                                        project_info['gitlab_project_prefix'],
-                                        title='GitLab Group Not Found')
-
-            gitlab_info = await self.gitlab.create_project(
-                parent, project_info['project_name'],
-                description=project_info['project_description'])
-            self.logger.info('created GitLab project %s', gitlab_info['id'])
-            await transaction.execute(
-                """UPDATE v1.projects
-                      SET gitlab_project_id = %(gitlab_project_id)s
-                    WHERE id = %(project_id)s""",
-                {
-                    'project_id': project_id,
-                    'gitlab_project_id': gitlab_info['id'],
-                })
+            gitlab_info = await automation.run()
 
         self.send_response({
             'gitlab_project_id': gitlab_info['id'],
