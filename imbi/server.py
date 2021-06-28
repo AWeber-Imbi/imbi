@@ -68,7 +68,6 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     log_config = config.get('logging', DEFAULT_LOG_CONFIG)
 
     footer_link = config.get('footer_link', {})
-    gitlab = config.get('gitlab', {})
     http_settings = config.get('http', {})
     ldap = config.get('ldap', {})
     postgres = config.get('postgres', {})
@@ -88,9 +87,6 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'text': footer_link.get('text', ''),
             'url': footer_link.get('url', '')
         },
-        'gitlab_application_id': gitlab.get('application_id'),
-        'gitlab_secret': gitlab.get('secret'),
-        'gitlab_url': gitlab.get('url', 'https://gitlab.com'),
         'javascript_url': config.get('javascript_url', None),
         'ldap': {
             'enabled': ldap.get('enabled'),
