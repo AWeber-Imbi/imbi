@@ -12,7 +12,7 @@ import ldap3
 import psycopg2.errors
 from tornado import web
 
-from imbi import ldap, timestamp
+from imbi import integrations, ldap, timestamp
 
 LOGGER = logging.getLogger(__name__)
 
@@ -231,6 +231,14 @@ class User:
                 {'username': self.username},
                 'user-update-last-seen-at')
             self.last_seen_at = result.row['last_seen_at']
+
+    async def fetch_integration_tokens(self,
+                                       integration: str) -> typing.Sequence[
+                                                integrations.IntegrationToken]:
+        """Retrieve access tokens for the specified integration."""
+        obj = await integrations.OAuth2Integration.by_name(
+            self._application, integration)
+        return await obj.get_user_tokens(self)
 
     def _assign_values(self, data: dict) -> None:
         """Assign values from the cursor row to the instance"""

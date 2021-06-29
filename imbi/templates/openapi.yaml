@@ -778,6 +778,99 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
+  /gitlab/auth:
+    get:
+      description: |
+        This endpoint is invoked during the GitLab authorization flow for a specific user.
+        It exchanges the code for an access/refresh token pair and stores them in the database
+        for future use.
+      summary: GitLab OAuth 2 callback
+      security: []
+      tags:
+        - Integrations
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect back to profile
+  /gitlab/namespaces:
+    get:
+      description: Retrieve GitLab namespaces for the current user
+      summary: Available GitLab namespaces
+      tags:
+        - Integrations
+        - User
+      responses:
+        '200':
+          description: List of available namespaces
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: Full name of the GitLab namespace
+                    id:
+                      type: integer
+                      description: Unique identifier of the GitLab namespace
+  /gitlab/projects:
+    get:
+      description: Retrieve projects visible to the current user
+      summary: Available GitLab projects
+      tags:
+        - Integrations
+        - User
+      parameters:
+        - name: group_id
+          in: query
+          description: Unique GitLab group/namespace ID
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Possibly empty list of projects in the requested namespace
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    description:
+                      type: string
+                      description: Editable (and optional) description of the repository
+                    name:
+                      type: string
+                      minLength: 1
+                      description: Name of the repository
+                    id:
+                      type: integer
+                      description: Unique repository identifier assigned by GitLab
+                    web_url:
+                      type: string
+                      description: URL for the web view of the repository
+                  required:
+                    - description
+                    - name
+                    - id
+                    - web_url
+        '400':
+          description: Invalid request -- missing query parameter
+        '500':
+          description: GitLab integration is not available/configured
   /groups:
     get:
       description: Retrieve the collection of groups
@@ -1307,6 +1400,10 @@ paths:
                       items:
                         type: string
                       nullable: true
+                    gitlab_group_name:
+                      description: Optional name of associated GitLab group
+                      type: string
+                      nullable: true
                   required:
                     - name
                     - slug
@@ -1362,6 +1459,10 @@ paths:
                       items:
                         type: string
                       nullable: true
+                    gitlab_group_name:
+                      description: Optional name of associated GitLab group
+                      type: string
+                      nullable: true
                   required:
                     - name
                     - slug
@@ -1413,6 +1514,10 @@ paths:
                   type: array
                   items:
                     type: string
+                  nullable: true
+                gitlab_group_name:
+                  description: Optional name of associated GitLab group
+                  type: string
                   nullable: true
               required:
                 - name
@@ -3450,6 +3555,9 @@ paths:
                     environment_urls:
                       description: Indicates that projects of this type have per-environment URLs
                       type: boolean
+                    gitlab_project_prefix:
+                      description: Prefix for this project type in GitLab
+                      type: string
                   additionalProperties: false
               example:
                 records:
@@ -3502,6 +3610,9 @@ paths:
                     environment_urls:
                       description: Indicates that projects of this type have per-environment URLs
                       type: boolean
+                    gitlab_project_prefix:
+                      description: Prefix for this project type in GitLab
+                      type: string
                   additionalProperties: false
               example:
                 records:
@@ -3554,6 +3665,9 @@ paths:
                   description: Indicates that projects of this type have per-environment URLs
                   type: boolean
                   default: false
+                gitlab_project_prefix:
+                  description: Prefix for this project type in GitLab
+                  type: string
               required:
                 - name
                 - plural_name
@@ -5812,9 +5926,48 @@ paths:
                 $ref: '#/paths/~1status/get/responses/200/content/application~1json/schema'
               example:
                 $ref: '#/paths/~1status/get/responses/503/content/application~1json/example'
+  /ui/automations/gitlab/create:
+    post:
+      summary: Create GitLab repo
+      description: |
+        Create a new GitLab repository for a specific project.
+
+        The GitLab parent namespace is calculated from the namespace configured in the parent Imbi group and the
+        prefix configured in the project type.  If either value is not configured, then an error response is
+        returned.
+      tags:
+        - Automations
+      requestBody:
+        description: Project details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_id:
+                  description: Imbi project ID to create the repository for
+                  type: integer
+              required:
+                - project_id
+      responses:
+        '200':
+          description: GitLab repository was created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gitlab_project_url:
+                    type: string
+                  gitlab_project_id:
+                    type: integer
+        '400':
+          description: Request could not be processed
 tags:
   - name: Activity Feed
     description: Endpoints that detail changes to projects and other entities in Imbi
+  - name: Automations
+    description: Endpoints related to project automations
   - name: Cookie Cutters
     description: Endpoints used for the management of project creation cookie cutters
   - name: Environments
@@ -5877,6 +6030,8 @@ tags:
     description: Endpoints used to retrieve information about applications that Imbi is integrated with
   - name: Monitoring & Metrics
     description: 'Endpoints used for health checking, service status, and service metrics'
+  - name: User
+    description: Endpoints related to the current user
 x-tagGroups:
   - name: Activity Feed
     tags:
@@ -5917,6 +6072,7 @@ x-tagGroups:
       - User
   - name: UI Specific
     tags:
+      - Automations
       - Dashboard
       - Settings
   - name: Other
