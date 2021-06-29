@@ -67,8 +67,8 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
 
     log_config = config.get('logging', DEFAULT_LOG_CONFIG)
 
+    automations = config.get('automations', {})
     footer_link = config.get('footer_link', {})
-    gitlab = config.get('gitlab', {})
     http_settings = config.get('http', {})
     ldap = config.get('ldap', {})
     postgres = config.get('postgres', {})
@@ -79,6 +79,8 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     module_path = pathlib.Path(sys.modules['imbi'].__file__).parent
 
     settings = {
+        'automations': {'gitlab': automations.get('gitlab', {})},
+        'canonical_server_name': http_settings['canonical_server_name'],
         'compress_response': http_settings.get('compress_response', True),
         'cookie_secret': http_settings.get('cookie_secret', 'imbi'),
         'debug': debug,
@@ -87,9 +89,6 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'text': footer_link.get('text', ''),
             'url': footer_link.get('url', '')
         },
-        'gitlab_application_id': gitlab.get('application_id'),
-        'gitlab_secret': gitlab.get('secret'),
-        'gitlab_url': gitlab.get('url', 'https://gitlab.com'),
         'javascript_url': config.get('javascript_url', None),
         'ldap': {
             'enabled': ldap.get('enabled'),
@@ -131,6 +130,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'xsrf_cookies': False,
         'version': version
     }
+
     return {k: v for k, v in settings.items() if v is not None}, log_config
 
 

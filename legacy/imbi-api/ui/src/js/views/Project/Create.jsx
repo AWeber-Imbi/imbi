@@ -67,6 +67,7 @@ function Create() {
   const [projectId, setProjectId] = useState(null)
   const [saveComplete, setSaveComplete] = useState({
     attributes: false,
+    gitlabRepo: false,
     links: false,
     urls: false
   })
@@ -74,8 +75,17 @@ function Create() {
   const [savingSteps, setSavingSteps] = useState([])
   const [state, dispatch] = useContext(Context)
   const [urls, setURLs] = useState([])
-
   const { t } = useTranslation()
+  const [gitlabEnabled, setGitlabEnabled] = useState(false)
+
+  // Only want to make the gitlab automation available if the project type
+  // has a configured project prefix
+  const gitlabEnabledNamespaces = (state.metadata.namespaces || [])
+    .filter((namespace) => namespace.gitlab_group_name !== null)
+    .map((namespace) => namespace.id)
+  const gitlabEnabledTypes = (state.metadata.projectTypes || [])
+    .filter((projectType) => projectType.gitlab_project_prefix !== null)
+    .map((projectType) => projectType.id)
 
   function onAutomationChange(key, value) {
     setAutomations({ ...automations, [key]: value })
@@ -148,6 +158,26 @@ function Create() {
           } else {
             setErrorMessage(result.data)
             setSaving(false)
+          }
+        } else if (saveComplete.gitlabRepo === false && projectId !== null) {
+          if (automations.createGitlabRepo && gitlabEnabled) {
+            let result = await httpPost(
+              state.fetch,
+              new URL('/ui/automations/gitlab/create', state.baseURL),
+              {
+                description: formValues.description,
+                name: formValues.name,
+                project_id: projectId
+              }
+            )
+            if (result.success === true) {
+              setSaveComplete({ ...saveComplete, gitlabRepo: true })
+            } else {
+              setErrorMessage(result.data)
+              setSaving(false)
+            }
+          } else {
+            setSaveComplete({ ...saveComplete, gitlabRepo: true })
           }
         } else if (saveComplete.urls === false && projectId !== null) {
           if (Object.values(urls).length > 0) {
@@ -226,7 +256,6 @@ function Create() {
   }, [formValues])
 
   // Update the available steps when saving for the UI
-
   useEffect(() => {
     const steps = [
       {
@@ -249,9 +278,9 @@ function Create() {
         completedLabel: t('project.linksSaved')
       })
     }
-    if (automations.createGitlabRepo === true) {
+    if (automations.createGitlabRepo === true && gitlabEnabled) {
       steps.push({
-        isComplete: false,
+        isComplete: saveComplete.gitlabRepo,
         pendingLabel: t('project.createGitLabRepo'),
         completedLabel: t('project.gitlabRepoCreated')
       })
@@ -278,7 +307,16 @@ function Create() {
       })
     }
     setSavingSteps(steps)
-  }, [saveComplete, links, automations])
+  }, [saveComplete, links, automations, gitlabEnabled])
+
+  // Update UI elements when changing the project type or namespace
+  useEffect(() => {
+    const { namespace_id, project_type_id } = formValues
+    setGitlabEnabled(
+      gitlabEnabledNamespaces.includes(namespace_id) &&
+        gitlabEnabledTypes.includes(project_type_id)
+    )
+  }, [formValues])
 
   return (
     <ErrorBoundary>
@@ -392,7 +430,7 @@ function Create() {
             title={t('project.createGitLabRepository')}
             name="createGitlabRepo"
             type="toggle"
-            disabled={true}
+            disabled={!gitlabEnabled}
             onChange={onAutomationChange}
           />
           <Form.Field

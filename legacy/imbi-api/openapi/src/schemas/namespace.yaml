@@ -27,6 +27,10 @@ read:
       items:
         type: string
       nullable: true
+    gitlab_group_name:
+      description: Optional name of associated GitLab group
+      type: string
+      nullable: true
   required:
     - name
     - slug
@@ -52,6 +56,10 @@ write:
       type: array
       items:
         type: string
+      nullable: true
+    gitlab_group_name:
+      description: Optional name of associated GitLab group
+      type: string
       nullable: true
   required:
     - name

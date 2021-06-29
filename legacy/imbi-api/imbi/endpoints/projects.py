@@ -1,8 +1,7 @@
 import asyncio
 import re
 
-import problemdetails
-
+from imbi import errors
 from imbi.endpoints import base
 
 
@@ -264,8 +263,7 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                     self.GET_URLS_SQL, query_args, 'get-project-urls'))
 
             if not project.row_count or not project.row:
-                raise problemdetails.Problem(
-                    status_code=404, title='Item not found')
+                raise errors.ItemNotFound()
 
             output = project.row
             output.update({

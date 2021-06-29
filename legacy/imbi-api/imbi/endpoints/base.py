@@ -22,7 +22,7 @@ from sprockets.http import mixins
 from sprockets.mixins import mediatype
 from tornado import httputil, web
 
-from imbi import session, user, version
+from imbi import errors, session, user, version
 
 LOGGER = logging.getLogger(__name__)
 
@@ -44,10 +44,8 @@ def require_permission(permission):
                         'index.html',
                         javascript_url=self.application.settings.get(
                             'javascript_url'))
-                LOGGER.info('%r does not have the "%s" permission',
-                            self._current_user, permission)
-                raise problemdetails.Problem(
-                    status_code=403, title='Unauthorized')
+                raise errors.Forbidden('%r does not have the "%s" permission',
+                                       self._current_user, permission)
             return f(self, *args, **kwargs)
         return wrapped
     return _require_permission
@@ -225,31 +223,25 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
         try:
             self.application.validate_request(self.request)
         except DeserializeError as err:
-            self.logger.warning('Request failed to deserialize: %s', err)
-            raise problemdetails.Problem(
-                status_code=400, title='Bad Request', detail=str(err))
+            raise errors.BadRequest('Failed to deserialize body: %s', err,
+                                    detail=str(err))
         except InvalidSecurity as err:
-            self.logger.debug('Invalid OpenAPI spec security: %s', err)
-            raise problemdetails.Problem(
-                status_code=500, title='OpenAPI security error',
-                detail=str(err))
+            raise errors.InternalServerError(
+                'Invalid OpenAPI spec security: %s', err,
+                title='OpenAPI Security Error')
         except OperationNotFound as err:
-            raise problemdetails.Problem(
-                status_code=405, title='Method Not Allowed', detail=str(err))
+            raise errors.MethodNotAllowed(err.method.upper())
         except InvalidContentType as err:
-            raise problemdetails.Problem(
-                status_code=415, title='Unsupported Media Type',
-                detail=str(err))
+            raise errors.UnsupportedMediaType(err.mimetype)
         except PathNotFound as err:
-            self.logger.error('OpenAPI Spec Error: %s', err)
-            raise problemdetails.Problem(
-                status_code=500, title='OpenAPI Spec Error', detail=str(err))
+            raise errors.InternalServerError('OpenAPI Spec Error: %s', err,
+                                             title='OpenAPI Spec Error',
+                                             detail=str(err))
         except ValidateError as err:
-            self.logger.warning('Request failed to validate: %s', err)
-            raise problemdetails.Problem(
-                status_code=400, title='Bad Request',
-                detail='The request did not validate',
-                errors=[str(e).split('\n')[0] for e in err.schema_errors])
+            raise errors.BadRequest('Request failed to validate: %s', err,
+                                    detail='The request did not validate',
+                                    errors=[str(e).split('\n')[0]
+                                            for e in err.schema_errors])
 
 
 class CRUDRequestHandler(ValidatingRequestHandler):
@@ -271,15 +263,13 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     async def delete(self, *args, **kwargs):
         if self.DELETE_SQL is None:
             self.logger.debug('DELETE_SQL not defined')
-            raise problemdetails.Problem(
-                status_code=405, title='Not Implemented')
+            raise errors.MethodNotAllowed('DELETE')
         await self._delete(kwargs)
 
     async def get(self, *args, **kwargs):
         if self.GET_SQL is None:
             self.logger.debug('GET_SQL not defined')
-            raise problemdetails.Problem(
-                status_code=405, title='Not Implemented')
+            raise errors.MethodNotAllowed('GET')
         if self._respond_with_html:
             return self.render(
                 'index.html',
@@ -289,15 +279,13 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     async def patch(self, *args, **kwargs):
         if self.PATCH_SQL is None:
             self.logger.debug('PATCH_SQL not defined')
-            raise problemdetails.Problem(
-                status_code=405, title='Not Implemented')
+            raise errors.MethodNotAllowed('PATCH')
         await self._patch(kwargs)
 
     async def post(self, *args, **kwargs):
         if self.POST_SQL is None:
             self.logger.debug('POST_SQL not defined')
-            raise problemdetails.Problem(
-                status_code=405, title='Not Implemented')
+            raise errors.MethodNotAllowed('POST')
         await self._post(kwargs)
 
     def send_response(self, value: typing.Union[dict, list]) -> None:
@@ -331,8 +319,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             self.DELETE_SQL, self._get_query_kwargs(kwargs),
             'delete-{}'.format(self.NAME))
         if not result.row_count:
-            raise problemdetails.Problem(
-                status_code=404, title='Item not found')
+            raise errors.ItemNotFound(instance=self.request.uri)
         self.set_status(204, reason='Item Deleted')
 
     async def _get(self, kwargs):
@@ -340,8 +327,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             self.GET_SQL, self._get_query_kwargs(kwargs),
             'get-{}'.format(self.NAME))
         if not result.row_count or not result.row:
-            raise problemdetails.Problem(
-                status_code=404, title='Item not found')
+            raise errors.ItemNotFound(instance=self.request.uri)
         for key, value in result.row.items():
             if isinstance(value, uuid.UUID):
                 result.row[key] = str(value)
@@ -359,8 +345,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             self.GET_SQL, self._get_query_kwargs(kwargs),
             'get-{}'.format(self.NAME))
         if not result.row_count:
-            raise problemdetails.Problem(
-                status_code=404, title='Item not found')
+            raise errors.ItemNotFound(instance=self.request.uri)
 
         original = dict(result.row)
         for key in {'created_at', 'created_by',
@@ -393,8 +378,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             self.PATCH_SQL, updated,
             'patch-{}'.format(self.NAME))
         if not result.row_count:
-            raise problemdetails.Problem(
-                status_code=500, title='Failed to update record')
+            raise errors.DatabaseError('No rows returned from PATCH_SQL',
+                                       title='Failed to update record')
 
         # Send the new record as a response
         await self._get(self._get_query_kwargs(updated))
@@ -419,9 +404,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         result = await self.postgres_execute(
             self.POST_SQL, values, 'post-{}'.format(self.NAME))
         if not result.row_count:
-            self.logger.debug('No rows returned')
-            raise problemdetails.Problem(
-                status_code=500, title='Failed to create record')
+            raise errors.DatabaseError('No rows returned from POST_SQL',
+                                       title='Failed to create record')
 
             # Return the record as if it were a GET
         await self._get(self._get_query_kwargs(result.row))

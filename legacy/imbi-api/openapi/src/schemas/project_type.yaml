@@ -32,6 +32,9 @@ read:
     environment_urls:
       description: Indicates that projects of this type have per-environment URLs
       type: boolean
+    gitlab_project_prefix:
+      description: Prefix for this project type in GitLab
+      type: string
   additionalProperties: false
 
 write:
@@ -60,6 +63,9 @@ write:
       description: Indicates that projects of this type have per-environment URLs
       type: boolean
       default: false
+    gitlab_project_prefix:
+      description: Prefix for this project type in GitLab
+      type: string
   required:
     - name
     - plural_name

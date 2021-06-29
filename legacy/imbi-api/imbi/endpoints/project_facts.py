@@ -1,10 +1,9 @@
 import re
 import typing
 
-import problemdetails
-from psycopg2 import errors
+import psycopg2.errors
 
-from imbi import common
+from imbi import common, errors
 from imbi.endpoints import base
 
 
@@ -88,8 +87,6 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
         it here.
 
         """
-        if isinstance(exc, errors.lookup('P0001')):
-            return problemdetails.Problem(
-                status_code=400, title='Bad Request',
-                detail=str(exc).split('\n')[0])
+        if isinstance(exc, psycopg2.errors.lookup('P0001')):
+            return errors.BadRequest(str(exc).split('\n')[0])
         super().on_postgres_error(metric_name, exc)

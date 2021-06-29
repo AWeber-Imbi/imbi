@@ -42,6 +42,9 @@ paths:
   /cookie-cutters/{name}: { $ref: 'endpoints/cookie_cutter.yaml#/paths/manage' }
   /environments: { $ref: 'endpoints/environment.yaml#/paths/collection' }
   /environments/{name}: { $ref: 'endpoints/environment.yaml#/paths/manage' }
+  /gitlab/auth: { $ref: 'endpoints/gitlab.yaml#/paths/auth' }
+  /gitlab/namespaces: { $ref: 'endpoints/gitlab.yaml#/paths/namespaces' }
+  /gitlab/projects: { $ref: 'endpoints/gitlab.yaml#/paths/projects' }
   /groups: { $ref: 'endpoints/group.yaml#/paths/collection' }
   /groups/{name}: { $ref: 'endpoints/group.yaml#/paths/manage' }
   /metrics: { $ref: 'endpoints/metrics.yaml#/paths/metrics' }
@@ -97,10 +100,14 @@ paths:
   /reports/system-shs-history:
     { $ref: 'endpoints/system_shs_history.yaml#/paths/collection' }
   /status: { $ref: 'endpoints/status.yaml#/paths/status' }
+  /ui/automations/gitlab/create:
+    { $ref: 'endpoints/automations.yaml#/gitlab/create'}
 
 tags:
   - name: Activity Feed
     description: Endpoints that detail changes to projects and other entities in Imbi
+  - name: Automations
+    description: Endpoints related to project automations
   - name: Cookie Cutters
     description: Endpoints used for the management of project creation cookie cutters
   - name: Environments
@@ -166,6 +173,8 @@ tags:
   - name: Monitoring & Metrics
     description: |-
       Endpoints used for health checking, service status, and service metrics
+  - name: User
+    description: Endpoints related to the current user
 
 x-tagGroups:
   - name: Activity Feed
@@ -207,6 +216,7 @@ x-tagGroups:
       - User
   - name: UI Specific
     tags:
+      - Automations
       - Dashboard
       - Settings
   - name: Other

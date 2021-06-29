@@ -5,6 +5,7 @@ gitlab:
   url: https://gitlab.com   # The URL to the Gitlab instance to integrate with
 
 http:
+  canonical_server_name: imbi.tld
   compress_response: true
   cookie_secret: imbi
   port: 8000
