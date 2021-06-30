@@ -32,7 +32,7 @@ PROJECT_DEFAULTS = {
 
 
 class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
-    def __init__(self, token: integrations.IntegrationToken):
+    def __init__(self, token: 'integrations.IntegrationToken'):
         super().__init__()
         self.logger = logging.getLogger(__package__).getChild('GitLabClient')
         self.token = token
@@ -112,7 +112,7 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
 
 class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                       base.RequestHandler):
-    integration: integrations.OAuth2Integration
+    integration: 'integrations.OAuth2Integration'
 
     async def prepare(self) -> None:
         await super().prepare()

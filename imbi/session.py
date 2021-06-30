@@ -103,7 +103,7 @@ class Session:
         if value:
             return value.decode('utf-8')
 
-    async def _load_data(self) -> typing.Optional[user.User]:
+    async def _load_data(self) -> typing.Optional['user.User']:
         """Load the data from Redis, creating the user object and returning it
         if there was a previously saved user,
 
