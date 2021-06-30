@@ -281,8 +281,8 @@ function Create() {
     if (automations.createGitlabRepo === true && gitlabEnabled) {
       steps.push({
         isComplete: saveComplete.gitlabRepo,
-        pendingLabel: t('project.createGitLabRepo'),
-        completedLabel: t('project.gitlabRepoCreated')
+        pendingLabel: t('project.gitlab.creatingRepo'),
+        completedLabel: t('project.gitlab.repoCreated')
       })
     }
     if (automations.createSentryProject === true) {

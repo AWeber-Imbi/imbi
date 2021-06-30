@@ -251,8 +251,10 @@ export default {
         environments: 'Environments',
         factHistory: 'Fact History',
         gitlab: {
+          creatingRepo: 'Creating GitLab Repository',
           namespace: 'Gitlab Folder',
-          project: 'Gitlab Project'
+          project: 'Gitlab Project',
+          repoCreated: 'GitLab Repository Created'
         },
         links: 'Links',
         linksSaved: 'Links Saved',
