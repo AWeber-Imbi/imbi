@@ -28,8 +28,8 @@ try:
 except ImportError:
     sentry_logging, sentry_tornado = None, None
 
-from imbi import (endpoints, errors, openapi, permissions, stats, transcoders,
-                  version)
+from imbi import (endpoints, errors, keychain, openapi, permissions, stats,
+                  transcoders, version)
 from imbi.endpoints import default
 
 LOGGER = logging.getLogger(__name__)
@@ -48,6 +48,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         super(Application, self).__init__(endpoints.URLS, **settings)
         self._ready_to_serve = False
         self._request_logger = logging.getLogger('imbi')
+        self.keychain = keychain.Keychain(self.settings['encryption_key'])
         self.loop: typing.Optional[ioloop.IOLoop] = None
         self.on_start_callbacks.append(self.on_start)
         self.openapi_validator = openapi.request_validator(self.settings)
@@ -70,42 +71,31 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         errors.set_canonical_server(self.settings['canonical_server_name'])
 
-    def decrypt_value(self, key: str, value: str) -> bytes:
-        """Decrypt a value that is encrypted using Tornado's secure cookie
-        signing methods.
+    def hash_password(self, password: str) -> str:
+        """Generate a HMAC-SHA512 hash of `password`."""
+        return self.keychain.hash(password).hex()
+
+    def decrypt_value(self, key: str, value: str) -> str:
+        """Decrypt a value that is encrypted using `encrypt_value`.
 
         :param key: The name of the field containing the value
         :param value: The value to decrypt
         :rtype: str
 
         """
-        return web.decode_signed_value(
-            self.settings['cookie_secret'], key, value)
+        plaintext_bytes = self.keychain.decrypt(bytes.fromhex(value))
+        return plaintext_bytes.decode('utf-8')
 
     def encrypt_value(self, key: str, value: str) -> str:
-        """Encrypt a value using the code used to create Tornado's secure
-        cookies, using the common cookie secret.
+        """Encrypt a value.
 
         :param key: The name of the field containing the value
         :param value: The value to encrypt
         :rtype: str
 
         """
-        return web.create_signed_value(
-            self.settings['cookie_secret'], key, value).decode('utf-8')
-
-    @staticmethod
-    def is_encrypted_value(value: str) -> bool:
-        """Checks to see if the value matches the format for a signed value using
-        Tornado's signing methods.
-
-        :param str value: The value to check
-        :rtype: bool
-
-        """
-        if value is None or not isinstance(value, str):
-            return False
-        return SIGNED_VALUE_PATTERN.match(value) is not None
+        cipher_bytes = self.keychain.encrypt(value.encode('utf-8'))
+        return cipher_bytes.hex()
 
     def log_request(self, handler: web.RequestHandler) -> None:
         """Writes a completed HTTP request to the logs"""

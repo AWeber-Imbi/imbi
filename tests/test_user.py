@@ -68,7 +68,7 @@ class InternalTestCase(base.TestCase):
             str(uuid.uuid4()), str(uuid.uuid4())))
         values.setdefault('last_seen_at', timestamp.utcnow())
         password = values.get('password', str(uuid.uuid4()))
-        values['password'] = self._app.encrypt_value('password', password)
+        values['password'] = self._app.hash_password(password)
         await self.postgres_execute(self.SQL_INSERT_USER, values)
         values['password'] = password
         return values
@@ -105,15 +105,6 @@ class InternalTestCase(base.TestCase):
         for role in group_value['permissions']:
             self.assertTrue(obj.has_permission(role))
         self.assertFalse(obj.has_permission('other'))
-
-    @testing.gen_test
-    async def test_password_is_decrypted_on_assignment(self):
-        username = str(uuid.uuid4())
-        password = str(uuid.uuid4())
-        obj = user.User(
-            self._app, username,
-            self._app.encrypt_value('password', password))
-        self.assertEqual(obj.password, password)
 
     @testing.gen_test
     async def test_refresh(self):
@@ -161,7 +152,7 @@ class InternalTestCase(base.TestCase):
         self.assertTrue(await obj.authenticate())
         for key in {'display_name', 'email_address'}:
             self.assertEqual(user_value[key], getattr(obj, key))
-        obj.password = str(uuid.uuid4())
+        obj._password = str(uuid.uuid4())
         self.assertFalse(await obj.authenticate())
         for key in {'display_name', 'email_address'}:
             self.assertIsNone(getattr(obj, key))
