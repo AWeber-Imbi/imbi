@@ -73,7 +73,8 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
     def hash_password(self, password: str) -> str:
         """Generate a HMAC-SHA512 hash of `password`."""
-        return self.keychain.hash(password).hex()
+        hashed_bytes = self.keychain.hash(password)
+        return '{}:{}'.format(self.keychain.algorithm.name, hashed_bytes.hex())
 
     def decrypt_value(self, value: str) -> str:
         """Decrypt a value that is encrypted using `encrypt_value`."""

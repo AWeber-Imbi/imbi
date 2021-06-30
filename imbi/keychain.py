@@ -26,6 +26,8 @@ class Keychain:
     then compare it to a newly encrypted value for raw byte equality.
 
     """
+    algorithm = hashes.SHA512()
+
     def __init__(self, key: bytes):
         if len(key) != 32:
             raise ValueError('Keychain requires a 32-byte key')
@@ -49,6 +51,6 @@ class Keychain:
 
     def hash(self, data: str) -> bytes:
         """Generate a HMAC-SHA512 of the supplied data."""
-        hasher = hmac.HMAC(self._key, hashes.SHA512())
+        hasher = hmac.HMAC(self._key, self.algorithm)
         hasher.update(data.encode('utf-8'))
         return hasher.finalize()
