@@ -193,6 +193,11 @@ export default {
           itemName: 'Project Type',
           pluralName: 'Pluralized Name',
           environmentURLs: 'Per-Environment URLs',
+          gitLabProjectPrefix: {
+            title: 'GitLab Project Prefix',
+            description:
+              'Prefix to use when creating GitLab projects of this type'
+          },
           errors: {
             uniqueViolation: 'A project type with the same name already exists'
           }
