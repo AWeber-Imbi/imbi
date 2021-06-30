@@ -136,11 +136,18 @@ export default {
         namespaces: {
           collectionName: 'Namespaces',
           itemName: 'Namespace',
-          maintainedBy: 'Managed By',
-          maintainedByDescription:
-            'Groups that have access to manage projects in this namespace',
+          maintainedBy: {
+            title: 'Managed By',
+            description:
+              'Groups that have access to manage projects in this namespace'
+          },
           errors: {
             uniqueViolation: 'A namespace with the same name already exists'
+          },
+          gitLabGroupName: {
+            title: 'GitLab Group Name',
+            description:
+              'GitLab group that new projects for this namespace will be created in'
           }
         },
         projectFactTypes: {
