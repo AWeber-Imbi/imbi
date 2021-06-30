@@ -107,10 +107,8 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
                                         project_id)
 
             automation = automations.GitLabCreateProjectAutomation(
-                self.settings['automations'],
-                automations.Project.from_database(result.row),
-                await self.get_current_user(),
-                transaction)
+                self.settings['automations'], project_id,
+                await self.get_current_user(), transaction)
             failures = await automation.prepare()
             if failures:
                 if len(failures) == 1:
