@@ -122,7 +122,7 @@ class Session:
 
         password = data['user'].pop('password', None)
         if password is not None:
-            password = self._application.decrypt_value('password', password)
+            password = self._application.decrypt_value(password)
 
         user_obj = user.User(self._handler.application, password=password)
         for key, value in data['user'].items():
