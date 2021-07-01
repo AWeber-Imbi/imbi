@@ -14,11 +14,16 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_namespace_lifecycle(self):
         record = {
+            field: namespaces.CollectionRequestHandler.DEFAULTS.get(
+                field, None)
+            for field in namespaces.CollectionRequestHandler.FIELDS
+            if field != namespaces.CollectionRequestHandler.ID_KEY
+        }
+        record.update({
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'icon_class': 'fas fa-blind',
-            'maintained_by': []
-        }
+        })
 
         # Create
         result = self.fetch(

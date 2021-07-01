@@ -42,7 +42,7 @@ export function Namespaces() {
           type: 'text',
           tableOptions: {
             className: 'truncate',
-            headerClassName: 'w-5/12'
+            headerClassName: 'w-4/12'
           }
         },
         {
@@ -52,19 +52,28 @@ export function Namespaces() {
           description: t('common.slugDescription'),
           tableOptions: {
             className: 'font-mono font-gray-500',
-            headerClassName: 'w-4/12'
+            headerClassName: 'w-3/12'
           }
         },
         {
-          title: t('admin.namespaces.maintainedBy'),
+          title: t('admin.namespaces.maintainedBy.title'),
           name: 'maintained_by',
           default: [],
-          description: t('admin.namespaces.maintainedByDescription'),
+          description: t('admin.namespaces.maintainedBy.description'),
           multiple: true,
           options: asOptions(state.metadata.groups, 'name', 'name'),
           type: 'select',
           tableOptions: {
             hide: true
+          }
+        },
+        {
+          title: t('admin.namespaces.gitLabGroupName.title'),
+          name: 'gitlab_group_name',
+          description: t('admin.namespaces.gitLabGroupName.description'),
+          type: 'text',
+          tableOptions: {
+            headerClassName: 'w-4/12'
           }
         }
       ]}

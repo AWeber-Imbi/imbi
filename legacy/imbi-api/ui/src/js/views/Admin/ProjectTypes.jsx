@@ -77,6 +77,15 @@ export function ProjectTypes() {
           tableOptions: {
             hide: true
           }
+        },
+        {
+          title: t('admin.projectTypes.gitLabProjectPrefix.title'),
+          name: 'gitlab_project_prefix',
+          description: t('admin.projectTypes.gitLabProjectPrefix.description'),
+          type: 'text',
+          tableOptions: {
+            headerClassName: 'w-3/12'
+          }
         }
       ]}
       errorStrings={{

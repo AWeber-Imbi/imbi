@@ -20,6 +20,9 @@ export const jsonSchema = {
     },
     maintained_by: {
       oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }]
+    },
+    gitlab_group_name: {
+      oneOf: [{ type: 'string' }, { type: 'null' }]
     }
   },
   additionalProperties: false,
@@ -30,5 +33,6 @@ export const Namespace = {
   name: PropTypes.string.isRequired,
   slug: PropTypes.string.isRequired,
   icon_class: PropTypes.string,
-  maintained_by: PropTypes.string
+  maintained_by: PropTypes.string,
+  gitlab_group_name: PropTypes.string
 }

@@ -110,7 +110,7 @@ class RequestHandler(postgres.RequestHandlerMixin,
         """Override Tornado's built-in ETag generation"""
         return None
 
-    async def get_current_user(self) -> typing.Optional[user.User]:
+    async def get_current_user(self) -> typing.Optional['user.User']:
         """Used by the system to manage authentication behaviors"""
         if self.session and self.session.user:
             return self.session.user

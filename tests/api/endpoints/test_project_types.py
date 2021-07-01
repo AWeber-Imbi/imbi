@@ -14,13 +14,19 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_project_type_lifecycle(self):
         record = {
+            field: project_types.CollectionRequestHandler.DEFAULTS.get(
+                field, None)
+            for field in project_types.CollectionRequestHandler.FIELDS
+            if field != project_types.CollectionRequestHandler.ID_KEY
+        }
+        record.update({
             'name': str(uuid.uuid4()),
             'plural_name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4()),
             'description': str(uuid.uuid4()),
             'icon_class': 'fas fa-blind',
             'environment_urls': False
-        }
+        })
 
         # Create
         result = self.fetch(

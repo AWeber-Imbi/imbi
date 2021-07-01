@@ -124,11 +124,15 @@ class User:
         self.external_id: typing.Optional[str] = None
         self.email_address: typing.Optional[str] = None
         self.display_name: typing.Optional[str] = None
-        self.password = password
+        self._password = password
         self.token = token
         self.connected_integrations: typing.List[ConnectedIntegration] = []
         self.groups: typing.List[Group] = []
         self.permissions: typing.List[str] = []
+
+    @property
+    def password(self):
+        return self._password
 
     def __del__(self):
         if self._ldap_conn is not None:
@@ -138,17 +142,6 @@ class User:
     def __repr__(self):
         return '<User username={} user_type={} permissions={}>'.format(
             self.username, self.user_type, self.permissions)
-
-    def __setattr__(self, name: str, value: typing.Any) -> None:
-        """Intercept the assignment of a signed password and decrypt it
-        if it appears to be encrypted.
-
-        """
-        if name == 'password' \
-                and self._application.is_encrypted_value(value):
-            value = self._application.decrypt_value(
-                name, value).decode('utf-8')
-        object.__setattr__(self, name, value)
 
     def as_dict(self) -> dict:
         """Return a representation of the user data as a dict"""
@@ -162,7 +155,7 @@ class User:
             'display_name': self.display_name,
             'groups': [g.name for g in self.groups],
             'password': self._application.encrypt_value(
-                'password', self.password),
+                '' if self.password is None else self.password),
             'permissions': self.permissions,
             'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at),
             'integrations': sorted({
@@ -250,11 +243,12 @@ class User:
         LOGGER.debug('Authenticating with the database')
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
+            password = None
+            if self.password is not None:
+                password = self._application.hash_password(self.password)
             result = await conn.execute(
                 self.SQL_AUTHENTICATE,
-                {'username': self.username,
-                 'password': self._application.encrypt_value(
-                     'password', self.password) if self.password else None},
+                {'username': self.username, 'password': password},
                 'user-authenticate')
             if not result.row_count:
                 self._reset()

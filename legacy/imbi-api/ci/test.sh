@@ -1,6 +1,6 @@
 #!/bin/sh -e
 echo "Setting up tests"
-apk --update add curl-dev gcc git libffi-dev libpq libressl-dev make musl-dev postgresql-dev linux-headers tzdata
+apk --update add curl-dev gcc git libffi-dev libpq openssl-dev make musl-dev postgresql-dev linux-headers tzdata cargo
 cd /tmp/test
 tar c -C /source -f - \
     LICENSE \
@@ -23,6 +23,8 @@ EOF
 
 cat > build/test.yaml <<EOF
 ---
+http:
+  canonical_server_name: imbi.localhost
 ldap:
   enabled: true
   host: ldap

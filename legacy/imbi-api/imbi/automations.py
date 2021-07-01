@@ -32,7 +32,7 @@ class GitLabCreateProjectAutomation:
     def __init__(self,
                  automation_settings: dict,
                  project: Project,
-                 user: imbi.user.User,
+                 user: 'imbi.user.User',
                  db: sprockets_postgres.PostgresConnector):
         self.db = db
         self.imbi_project = project
@@ -122,7 +122,7 @@ class GitLabCreateProjectAutomation:
         return None
 
     async def _get_gitlab_token(self) -> typing.Union[
-            imbi.integrations.IntegrationToken, None]:
+            'imbi.integrations.IntegrationToken', None]:
         tokens = await self.user.fetch_integration_tokens('gitlab')
         if not tokens:
             self._add_error('GitLab token not found for current user')

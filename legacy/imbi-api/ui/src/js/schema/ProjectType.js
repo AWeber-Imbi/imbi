@@ -27,6 +27,9 @@ export const jsonSchema = {
     },
     environment_urls: {
       type: 'boolean'
+    },
+    gitlab_project_prefix: {
+      oneOf: [{ type: 'string' }, { type: 'null' }]
     }
   },
   additionalProperties: false,
@@ -40,5 +43,6 @@ export const propTypes = {
   slug: PropTypes.string.isRequired,
   description: PropTypes.string,
   icon_class: PropTypes.string,
-  environment_urls: PropTypes.bool
+  environment_urls: PropTypes.bool,
+  gitlab_project_prefix: PropTypes.string
 }
