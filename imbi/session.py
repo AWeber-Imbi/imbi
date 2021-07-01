@@ -37,7 +37,7 @@ class Session:
 
         """
         self.user = user.User(
-            self._handler.application, username, password)
+            self._handler.application, username=username, password=password)
         self.authenticated = await self.user.authenticate()
         if not self.authenticated:
             self.user = None
@@ -103,7 +103,7 @@ class Session:
         if value:
             return value.decode('utf-8')
 
-    async def _load_data(self) -> typing.Optional[user.User]:
+    async def _load_data(self) -> typing.Optional['user.User']:
         """Load the data from Redis, creating the user object and returning it
         if there was a previously saved user,
 
@@ -120,11 +120,11 @@ class Session:
         if not data.get('user'):
             return
 
-        if 'password' in data['user']:
-            data['user']['password'] = self._application.decrypt_value(
-                'password', data['user']['password']).decode('utf-8')
+        password = data['user'].pop('password', None)
+        if password is not None:
+            password = self._application.decrypt_value(password)
 
-        user_obj = user.User(self._handler.application)
+        user_obj = user.User(self._handler.application, password=password)
         for key, value in data['user'].items():
             setattr(user_obj, key, value)
         return user_obj

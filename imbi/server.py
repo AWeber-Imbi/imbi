@@ -3,6 +3,8 @@ Imbi CLI application
 
 """
 import argparse
+import base64
+import binascii
 import logging
 import pathlib
 import sys
@@ -63,7 +65,18 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         sys.exit(1)
 
     with config_file.open('r') as handle:
-        config = yaml.safe_load(handle)
+        try:
+            config = yaml.safe_load(handle)
+        except yaml.YAMLError as error:
+            sys.stderr.write(
+                'Failed to load configuration file: {}\n'.format(error))
+            sys.exit(1)
+        else:
+            if not isinstance(config, dict):
+                sys.stderr.write(
+                    'Configuration file {} is not a YAML mapping\n'.format(
+                        config_file.name))
+                sys.exit(1)
 
     log_config = config.get('logging', DEFAULT_LOG_CONFIG)
 
@@ -78,12 +91,25 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
 
     module_path = pathlib.Path(sys.modules['imbi'].__file__).parent
 
+    # Allow encryption key to be encoded as a Base-64 string.
+    # If it isn't, then use it as-is.
+    try:
+        encoded_key = config['encryption_key']
+    except KeyError:
+        encryption_key = b'some thirty-two character secret'
+    else:
+        try:
+            encryption_key = base64.b64decode(encoded_key.encode())
+        except binascii.Error:
+            encryption_key = encoded_key.encode()
+
     settings = {
         'automations': {'gitlab': automations.get('gitlab', {})},
         'canonical_server_name': http_settings['canonical_server_name'],
         'compress_response': http_settings.get('compress_response', True),
         'cookie_secret': http_settings.get('cookie_secret', 'imbi'),
         'debug': debug,
+        'encryption_key': encryption_key,
         'footer_link': {
             'icon': footer_link.get('icon', ''),
             'text': footer_link.get('text', ''),
