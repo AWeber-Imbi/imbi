@@ -23,6 +23,8 @@ EOF
 
 cat > build/test.yaml <<EOF
 ---
+http:
+  canonical_server_name: imbi.localhost
 ldap:
   enabled: true
   host: ldap
