@@ -5,9 +5,11 @@ import pathlib
 import tempfile
 import typing
 
+import isort.api
 import cookiecutter.main
 import sprockets_postgres
 import yarl
+from yapf.yapflib import yapf_api
 
 import imbi.integrations
 import imbi.user
@@ -257,6 +259,9 @@ class GitLabInitialCommitAutomation(Automation):
         return self.errors
 
     async def run(self):
+        self.logger.info('generating initial commit for %s (%s) from %s',
+                         self._project.slug, self._project.id,
+                         self._cookie_cutter.url)
         package_name = self._project.slug.lower().replace('-', '_')
         with tempfile.TemporaryDirectory() as tmp_dir:
             # TODO: create a "nicer" context to work with ... this one
@@ -291,15 +296,36 @@ class GitLabInitialCommitAutomation(Automation):
                         self._sonar_settings['url'], self._project)
                 })
 
+            self.logger.debug('expanding %s for project %s in %s',
+                              self._cookie_cutter.url, self._project.id,
+                              tmp_dir)
             project_dir = cookiecutter.main.cookiecutter(
                 self._cookie_cutter.url, extra_context=context, no_input=True,
                 output_dir=tmp_dir)
+            project_dir = pathlib.Path(project_dir)
 
-            # TODO -- run yapf on initial files
-            # TODO -- run isort on initial files
+            self.logger.debug('reformatting project files')
+            for py_file in project_dir.rglob('*.py'):
+                isort.api.sort_file(
+                    py_file,
+                    profile='pycharm',
+                    multi_line_output=3,
+                    force_grid_wrap=0,
+                    known_first_party=[
+                        'acceptance',
+                        'tests',
+                        context['package_name'],
+                    ],
+                    use_parentheses=False,
+                )
+                yapf_api.FormatFile(
+                    str(py_file),
+                    style_config={'ALLOW_SPLIT_BEFORE_DICT_VALUE': False},
+                    in_place=True)
 
+            self.logger.debug('committing to GitLab')
             commit_info = await self._gitlab.commit_tree(
-                self._gitlab_project_info, pathlib.Path(project_dir),
+                self._gitlab_project_info, project_dir,
                 'Initial commit (automated)')
 
             return commit_info
