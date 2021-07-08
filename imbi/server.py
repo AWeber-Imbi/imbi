@@ -104,7 +104,10 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             encryption_key = encoded_key.encode()
 
     settings = {
-        'automations': {'gitlab': automations.get('gitlab', {})},
+        'automations': {
+            'gitlab': automations.get('gitlab', {}),
+            'sonar': automations.get('sonar', {}),
+        },
         'canonical_server_name': http_settings['canonical_server_name'],
         'compress_response': http_settings.get('compress_response', True),
         'cookie_secret': http_settings.get('cookie_secret', 'imbi'),

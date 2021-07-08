@@ -71,6 +71,10 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         errors.set_canonical_server(self.settings['canonical_server_name'])
 
+        sonar_settings = self.settings['automations'].get('sonar', {})
+        if not sonar_settings or sonar_settings.get('url', None) is None:
+            self.settings['automations']['sonar'] = {}
+
     def hash_password(self, password: str) -> str:
         """Generate a HMAC-SHA512 hash of `password`."""
         hashed_bytes = self.keychain.hash(password)

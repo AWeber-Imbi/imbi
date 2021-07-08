@@ -122,6 +122,16 @@ class Automation:
             return None
         return tokens[0]
 
+    @staticmethod
+    def _generate_sonar_key(project: Project) -> str:
+        return ':'.join([project.namespace.slug.lower(), project.slug.lower()])
+
+    def _generate_sonar_dashboard_link(self, root_url: str,
+                                       project: Project) -> str:
+        return str(yarl.URL(root_url).with_path('/dashboard').with_query({
+            'id': self._generate_sonar_key(project),
+        }))
+
 
 class GitLabCreateProjectAutomation(Automation):
     def __init__(self,
@@ -132,6 +142,8 @@ class GitLabCreateProjectAutomation(Automation):
         super().__init__(user, db)
         self.imbi_project_id = project_id
         self.settings = automation_settings.get('gitlab', {})
+        self.sonar_settings = automation_settings.get('sonar', {})
+
         self._gitlab: typing.Optional[gitlab.GitLabClient] = None
         self._gitlab_parent: typing.Optional[dict] = None
         self._project: typing.Optional[Project] = None
@@ -176,6 +188,19 @@ class GitLabCreateProjectAutomation(Automation):
                     'username': self.user.username,
                 })
 
+        if self.sonar_settings.get('dashboard_link_id'):
+            await self.db.execute(
+                """INSERT INTO v1.project_links(project_id, link_type_id,
+                                                created_by, url)
+                        VALUES (%(project_id)s, %(link_type_id)s,
+                                %(username)s, %(url)s)""",
+                {
+                    'link_type_id': self.sonar_settings['dashboard_link_id'],
+                    'project_id': self._project.id,
+                    'url': self._generate_sonar_dashboard_link(
+                        self.sonar_settings['url'], self._project),
+                    'username': self.user.username,
+                })
 
         return gitlab_info
 
@@ -204,6 +229,7 @@ class GitLabInitialCommitAutomation(Automation):
         self._cookie_cutter: typing.Union[CookieCutter, None] = None
         self._gitlab_project_info: typing.Union[dict, None] = None
         self._project: typing.Union[Project, None] = None
+        self._sonar_settings = automation_settings.get('sonar', {})
         self._token: typing.Union[imbi.integrations.IntegrationToken,
                                   None] = None
 
@@ -250,8 +276,6 @@ class GitLabInitialCommitAutomation(Automation):
                 'project_team':
                     self._project.namespace.gitlab_group_name.lower(),
                 # These are also available for future use
-                # 'sonar_project_key': None,
-                # 'sonar_project_url': None,
                 # 'sentry_team': None,
                 # 'legacy_sentry_dsn': None,
                 # 'sentry_dsn': None,
@@ -259,6 +283,13 @@ class GitLabInitialCommitAutomation(Automation):
                 # 'sentry_dashboard': None,
                 # 'sentry_organization': None,
             }
+            if self._sonar_settings:
+                context.update({
+                    'sonar_project_key': self._generate_sonar_key(
+                        self._project),
+                    'sonar_project_url': self._generate_sonar_dashboard_link(
+                        self._sonar_settings['url'], self._project)
+                })
 
             project_dir = cookiecutter.main.cookiecutter(
                 self._cookie_cutter.url, extra_context=context, no_input=True,
