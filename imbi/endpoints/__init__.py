@@ -104,6 +104,7 @@ URLS = [
             project_urls.RecordRequestHandler,
             name='project-url'),
     web.url(r'^/status$', status.RequestHandler),
+    web.url(r'^/ui/automations/gitlab/commit', ui.GitLabCommitAutomation),
     web.url(r'^/ui/automations/gitlab/create', ui.GitLabCreationAutomation),
     web.url(r'^/ui/login$', ui.LoginRequestHandler),
     web.url(r'^/ui/logout$', ui.LogoutRequestHandler),

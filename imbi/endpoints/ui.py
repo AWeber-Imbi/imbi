@@ -83,6 +83,17 @@ class GitLabAutomationHandler(base.AuthenticatedRequestHandler):
                     title='GitLab Not Connected')
             self.gitlab = gitlab.GitLabClient(tokens[0])
 
+    @staticmethod
+    def handle_prepare_failures(action: str, failures: list) -> Exception:
+        action = action.title()
+        if len(failures) == 1:
+            return errors.BadRequest('%s failed: %s', action, failures[0],
+                                     title=f'{action} failure',
+                                     failures=failures)
+        return errors.BadRequest('%s failed with %s errors', action,
+                                 len(failures), title=f'{action} failure',
+                                 failures=failures)
+
 
 class GitLabCreationAutomation(GitLabAutomationHandler,
                                base.ValidatingRequestHandler):
@@ -94,37 +105,43 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
         project_id = int(request['project_id'])
 
         async with self.postgres_transaction() as transaction:
-            result = await transaction.execute(
-                """
-                SELECT id, description, gitlab_project_id, name, namespace_id,
-                       project_type_id, slug
-                  FROM v1.projects
-                 WHERE id = %(project_id)s
-                """,
-                {'project_id': project_id})
-            if result.row_count == 0:
-                raise errors.BadRequest('%s is not a valid imbi project ID',
-                                        project_id)
-
             automation = automations.GitLabCreateProjectAutomation(
                 self.settings['automations'], project_id,
                 await self.get_current_user(), transaction)
             failures = await automation.prepare()
             if failures:
-                if len(failures) == 1:
-                    raise errors.BadRequest('Create project failed: %s',
-                                            failures[0],
-                                            title='Create project failure',
-                                            failures=failures)
-                else:
-                    raise errors.BadRequest(
-                        'Create project failed with %s errors', len(failures),
-                        title='Create project failure',
-                        failures=failures)
-
+                raise self.handle_prepare_failures('Create Project', failures)
             gitlab_info = await automation.run()
 
         self.send_response({
             'gitlab_project_id': gitlab_info['id'],
             'gitlab_project_url': gitlab_info['_links']['self'],
         })
+
+
+class GitLabCommitAutomation(GitLabAutomationHandler):
+    NAME = 'GitLabCommitAutomation'
+    ENDPOINT = 'ui-gitlab-commit'
+
+    async def post(self):
+        request = self.get_request_body()
+        try:
+            imbi_project_id = request['project_id']
+            cookie_cutter = request['cookie_cutter']
+        except KeyError as error:
+            raise errors.BadRequest('request missing required field %s',
+                                    error.args[0])
+        except TypeError as error:
+            raise errors.BadRequest('failed to decode body: %s', error)
+
+        async with self.postgres_transaction() as transaction:
+            automation = automations.GitLabInitialCommitAutomation(
+                self.settings['automations'], imbi_project_id,
+                cookie_cutter, await self.get_current_user(), transaction)
+            failures = await automation.prepare()
+            if failures:
+                raise self.handle_prepare_failures('Create Initial Commit',
+                                                   failures)
+            commit_info = await automation.run()
+
+        self.send_response(commit_info)

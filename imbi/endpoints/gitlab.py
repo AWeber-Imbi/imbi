@@ -1,5 +1,8 @@
+import base64
 import dataclasses
 import logging
+import pathlib
+import stat
 import typing
 import urllib.parse
 
@@ -95,6 +98,18 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             'failed to fetch group %s: %s', slug, response.code,
             title='GitLab API Failure')
 
+    async def fetch_project(self, project_id: int) -> typing.Union[dict, None]:
+        url = (self.token.integration.api_endpoint / 'projects' /
+               str(project_id))
+        response = await self.api(url)
+        if response.code == 404:
+            return None
+        if response.ok:
+            return response.body
+        raise errors.InternalServerError(
+            'failed to fetch project %s: %s', project_id, response.code,
+            title='GitLab API Failure')
+
     async def create_project(self, parent, project_name, **attributes) -> dict:
         for name, value in PROJECT_DEFAULTS.items():
             attributes.setdefault(name, value)
@@ -107,7 +122,50 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             return response.body
         raise errors.InternalServerError(
             'failed to create project %s: %s', project_name, response.code,
-            title='GitLab API Failure')
+            title='GitLab API Failure', gitlab_response=response.body)
+
+    async def commit_tree(self, project_info: dict, project_dir: pathlib.Path,
+                          commit_message: str):
+        self.logger.info('creating commit for %s', project_info['id'])
+
+        files = [path for path in project_dir.glob('**/*') if path.is_file()]
+        self.logger.debug('found %d files in %s', len(files), project_dir)
+
+        actions = [
+            {
+                'action': 'create',
+                'content': base64.b64encode(file.read_bytes()).decode('ascii'),
+                'encoding': 'base64',
+                'file_path': str(file.relative_to(project_dir)),
+            }
+            for file in files
+        ]
+        actions.extend([
+            {
+                'action': 'chmod',
+                'execute_filemode': True,
+                'file_path': str(file.relative_to(project_dir)),
+            }
+            for file in files
+            if file.stat().st_mode & stat.S_IXUSR
+        ])
+        self.logger.debug('creating commit with %d actions', len(actions))
+
+        project_url = yarl.URL(project_info['_links']['self'])
+        response = await self.api(
+            project_url / 'repository' / 'commits',
+            method='POST',
+            body={
+                'branch': project_info['default_branch'],
+                'commit_message': commit_message,
+                'actions': actions,
+            },
+        )
+        if response.ok:
+            return response.body
+        raise errors.InternalServerError(
+            'failed to commit to %s: %s', project_url, response.code,
+            title='GitLab API Failure', gitlab_response=response.body)
 
 
 class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,

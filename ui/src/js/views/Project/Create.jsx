@@ -68,6 +68,7 @@ function Create() {
   const [saveComplete, setSaveComplete] = useState({
     attributes: false,
     gitlabRepo: false,
+    gitlabCommit: false,
     links: false,
     urls: false
   })
@@ -178,6 +179,28 @@ function Create() {
             }
           } else {
             setSaveComplete({ ...saveComplete, gitlabRepo: true })
+          }
+        } else if (
+          saveComplete.gitlabCommit === false &&
+          saveComplete.gitlabRepo !== false
+        ) {
+          if (automations.projectCookieCutter && gitlabEnabled) {
+            let result = await httpPost(
+              state.fetch,
+              new URL('/ui/automations/gitlab/commit', state.baseURL),
+              {
+                cookie_cutter: automations.projectCookieCutter,
+                project_id: projectId
+              }
+            )
+            if (result.success === true) {
+              setSaveComplete({ ...saveComplete, gitlabCommit: true })
+            } else {
+              setErrorMessage(result.data)
+              setSaving(false)
+            }
+          } else {
+            setSaveComplete({ ...saveComplete, gitlabCommit: true })
           }
         } else if (saveComplete.urls === false && projectId !== null) {
           if (Object.values(urls).length > 0) {
@@ -294,9 +317,9 @@ function Create() {
     }
     if (automations.projectCookieCutter !== null) {
       steps.push({
-        isComplete: false,
-        pendingLabel: t('project.creatingInitialProjectCommit'),
-        completedLabel: t('project.initialProjectCommitCreated')
+        isComplete: saveComplete.gitlabCommit,
+        pendingLabel: t('project.gitlab.creatingInitialCommit'),
+        completedLabel: t('project.gitlab.initialCommitCreated')
       })
     }
     if (automations.dashboardCookieCutter !== null) {
@@ -444,7 +467,7 @@ function Create() {
             title={t('project.projectCookieCutter')}
             name="projectCookieCutter"
             type="select"
-            disabled={true}
+            disabled={!gitlabEnabled}
             options={
               state.metadata.cookieCutters !== null
                 ? state.metadata.cookieCutters
