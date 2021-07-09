@@ -51,8 +51,12 @@ class Project:
 
 
 class Automation:
-    def __init__(self, user: 'imbi.user.User',
+    def __init__(self,
+                 application: 'imbi.app.Application',
+                 user: 'imbi.user.User',
                  db: sprockets_postgres.PostgresConnector):
+        self.application = application
+        self.automation_settings = self.application.settings['automations']
         self.db = db
         self.errors: typing.List[str] = []
         self.logger = logging.getLogger(__package__).getChild(
@@ -130,22 +134,21 @@ class Automation:
 
     def _generate_sonar_dashboard_link(self, root_url: str,
                                        project: Project) -> str:
-        return str(yarl.URL(root_url).with_path('/dashboard').with_query({
-            'id': self._generate_sonar_key(project),
-        }))
+        if self.automation_settings['sonar']['url']:
+            root_url = yarl.URL(self.automation_settings['sonar']['url'])
+            return str(root_url.with_path('/dashboard').with_query({
+                'id': self._generate_sonar_key(project),
+            }))
 
 
 class GitLabCreateProjectAutomation(Automation):
     def __init__(self,
-                 automation_settings: dict,
+                 application: 'imbi.app.Application',
                  project_id: int,
                  user: 'imbi.user.User',
                  db: sprockets_postgres.PostgresConnector):
-        super().__init__(user, db)
+        super().__init__(application, user, db)
         self.imbi_project_id = project_id
-        self.settings = automation_settings.get('gitlab', {})
-        self.sonar_settings = automation_settings.get('sonar', {})
-
         self._gitlab: typing.Optional[gitlab.GitLabClient] = None
         self._gitlab_parent: typing.Optional[dict] = None
         self._project: typing.Optional[Project] = None
@@ -177,32 +180,43 @@ class GitLabCreateProjectAutomation(Automation):
                 'gitlab_project_id': gitlab_info['id'],
             })
 
-        if self.settings.get('repository_link_id'):
+        link_id = self.automation_settings['gitlab'].get('repository_link_id')
+        if link_id:
             await self.db.execute(
                 """INSERT INTO v1.project_links(project_id, link_type_id,
                                                 created_by, url)
                         VALUES (%(project_id)s, %(link_type_id)s,
                                 %(username)s, %(url)s)""",
                 {
-                    'link_type_id': self.settings['repository_link_id'],
+                    'link_type_id': link_id,
                     'project_id': self._project.id,
                     'url': gitlab_info['web_url'],
                     'username': self.user.username,
                 })
 
-        if self.sonar_settings.get('dashboard_link_id'):
+        link_id = self.automation_settings['sonar'].get('dashboard_link_id')
+        if link_id:
             await self.db.execute(
                 """INSERT INTO v1.project_links(project_id, link_type_id,
                                                 created_by, url)
                         VALUES (%(project_id)s, %(link_type_id)s,
                                 %(username)s, %(url)s)""",
                 {
-                    'link_type_id': self.sonar_settings['dashboard_link_id'],
+                    'link_type_id': link_id,
                     'project_id': self._project.id,
                     'url': self._generate_sonar_dashboard_link(
-                        self.sonar_settings['url'], self._project),
+                        None, self._project),
                     'username': self.user.username,
                 })
+            await self.db.execute(
+                """UPDATE v1.projects
+                      SET sonarqube_project_key = %(sonar_key)s
+                    WHERE id = %(project_id)s""",
+                {
+                    'project_id': self._project.id,
+                    'sonar_key': self._generate_sonar_key(self._project),
+                }
+            )
 
         return gitlab_info
 
@@ -219,19 +233,18 @@ class GitLabCreateProjectAutomation(Automation):
 
 class GitLabInitialCommitAutomation(Automation):
     def __init__(self,
-                 automation_settings: dict,
+                 application: 'imbi.app.Application',
                  project_id: int,
                  cookie_cutter: str,
                  user: 'imbi.user.User',
                  db: sprockets_postgres.PostgresConnector):
-        super().__init__(user, db)
+        super().__init__(application, user, db)
         self._cookie_cutter_name = cookie_cutter
         self._imbi_project_id = project_id
 
         self._cookie_cutter: typing.Union[CookieCutter, None] = None
         self._gitlab_project_info: typing.Union[dict, None] = None
         self._project: typing.Union[Project, None] = None
-        self._sonar_settings = automation_settings.get('sonar', {})
         self._token: typing.Union[imbi.integrations.IntegrationToken,
                                   None] = None
 
@@ -288,12 +301,12 @@ class GitLabInitialCommitAutomation(Automation):
                 # 'sentry_dashboard': None,
                 # 'sentry_organization': None,
             }
-            if self._sonar_settings:
+            if self.automation_settings['sonar'].get('url'):
                 context.update({
                     'sonar_project_key': self._generate_sonar_key(
                         self._project),
                     'sonar_project_url': self._generate_sonar_dashboard_link(
-                        self._sonar_settings['url'], self._project)
+                        '', self._project)
                 })
 
             self.logger.debug('expanding %s for project %s in %s',

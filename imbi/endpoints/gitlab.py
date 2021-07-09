@@ -56,7 +56,7 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             request_headers['Content-Type'] = 'application/json'
             kwargs['content_type'] = 'application/json'
         kwargs['user_agent'] = f'imbi/{version} (GitLabClient)'
-        self.logger.debug('%s %s %r', method, url, kwargs)
+        self.logger.debug('%s %s', method, url)
         return await super().http_fetch(str(url), method=method, **kwargs)
 
     async def fetch_all_pages(self, *path, **query) -> typing.Sequence[dict]:

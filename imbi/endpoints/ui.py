@@ -106,8 +106,8 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
 
         async with self.postgres_transaction() as transaction:
             automation = automations.GitLabCreateProjectAutomation(
-                self.settings['automations'], project_id,
-                await self.get_current_user(), transaction)
+                self.application, project_id, await self.get_current_user(),
+                transaction)
             failures = await automation.prepare()
             if failures:
                 raise self.handle_prepare_failures('Create Project', failures)
@@ -136,8 +136,8 @@ class GitLabCommitAutomation(GitLabAutomationHandler):
 
         async with self.postgres_transaction() as transaction:
             automation = automations.GitLabInitialCommitAutomation(
-                self.settings['automations'], imbi_project_id,
-                cookie_cutter, await self.get_current_user(), transaction)
+                self.application, imbi_project_id, cookie_cutter,
+                await self.get_current_user(), transaction)
             failures = await automation.prepare()
             if failures:
                 raise self.handle_prepare_failures('Create Initial Commit',
