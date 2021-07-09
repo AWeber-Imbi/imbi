@@ -76,9 +76,19 @@ cat > build/debug.yaml <<EOF
 automations:
   gitlab:
     repository_link_id: ~
+  # see https://pycqa.github.io/isort/reference/isort/settings.html
+  isort:
+    force_grid_wrap: 0
+    known_first_party: ['acceptance', 'tests']
+    multi_line_output: 3
+    profile: pycharm
+    use_parentheses: false
   sonar:
     url: ~
     dashboard_link_id: ~
+  # see https://github.com/google/yapf#knobs
+  yapf:
+    ALLOW_SPLIT_BEFORE_DICT_VALUE: false
 http:
   canonical_server_name: imbi.localhost
   processes: 1

@@ -318,23 +318,15 @@ class GitLabInitialCommitAutomation(Automation):
             project_dir = pathlib.Path(project_dir)
 
             self.logger.debug('reformatting project files')
+            isort_cfg = self.automation_settings['isort']
+            isort_cfg.setdefault('known_first_party', [])
+            isort_cfg['known_first_party'].append(context['package_name'])
+            yapf_style = self.automation_settings['yapf']
+
             for py_file in project_dir.rglob('*.py'):
-                isort.api.sort_file(
-                    py_file,
-                    profile='pycharm',
-                    multi_line_output=3,
-                    force_grid_wrap=0,
-                    known_first_party=[
-                        'acceptance',
-                        'tests',
-                        context['package_name'],
-                    ],
-                    use_parentheses=False,
-                )
-                yapf_api.FormatFile(
-                    str(py_file),
-                    style_config={'ALLOW_SPLIT_BEFORE_DICT_VALUE': False},
-                    in_place=True)
+                isort.api.sort_file(py_file, **isort_cfg)
+                yapf_api.FormatFile(str(py_file), style_config=yapf_style,
+                                    in_place=True)
 
             self.logger.debug('committing to GitLab')
             commit_info = await self._gitlab.commit_tree(

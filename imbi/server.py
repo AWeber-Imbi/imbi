@@ -106,7 +106,11 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     settings = {
         'automations': {
             'gitlab': automations.get('gitlab', {}),
+            # see https://pycqa.github.io/isort/reference/isort/settings.html
+            'isort': automations.get('isort', {}),
             'sonar': automations.get('sonar', {}),
+            # see https://github.com/google/yapf#knobs
+            'yapf': config.get('yapf', {}),
         },
         'canonical_server_name': http_settings['canonical_server_name'],
         'compress_response': http_settings.get('compress_response', True),
@@ -155,9 +159,9 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'redis_url', 'redis://localhost:6379/1'),
         'template_loader': pkgfiles.TemplateLoader(debug=debug),
         'template_path': module_path / 'templates',
+        'version': version,
         'xheaders': http_settings.get('xheaders', True),
         'xsrf_cookies': False,
-        'version': version
     }
 
     return {k: v for k, v in settings.items() if v is not None}, log_config
