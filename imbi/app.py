@@ -71,6 +71,11 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         errors.set_canonical_server(self.settings['canonical_server_name'])
 
+        gitlab_settings = self.settings['automations'].get('gitlab', {})
+        if (not gitlab_settings or
+                gitlab_settings.get('repository_link_id', None) is None):
+            self.settings['automations']['gitlab'] = {}
+
         sonar_settings = self.settings['automations'].get('sonar', {})
         if not sonar_settings or sonar_settings.get('url', None) is None:
             self.settings['automations']['sonar'] = {}
