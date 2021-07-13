@@ -81,7 +81,7 @@ class GitLabAutomationHandler(base.AuthenticatedRequestHandler):
                 raise errors.Forbidden(
                     'no gitlab tokens for %r', imbi_user,
                     title='GitLab Not Connected')
-            self.gitlab = gitlab.GitLabClient(tokens[0])
+            self.gitlab = gitlab.GitLabClient(tokens[0], self.application)
 
     @staticmethod
     def handle_prepare_failures(action: str, failures: list) -> Exception:

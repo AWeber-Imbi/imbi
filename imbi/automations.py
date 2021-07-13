@@ -162,7 +162,7 @@ class GitLabCreateProjectAutomation(Automation):
             self._add_error('GitLab project {} already exists for {}',
                             project.gitlab_project_id, project.slug)
         elif project is not None and token is not None:
-            self._gitlab = gitlab.GitLabClient(token)
+            self._gitlab = gitlab.GitLabClient(token, self.application)
             self._gitlab_parent = await self._get_gitlab_parent(project)
             self._project = project
         return self.errors
@@ -243,6 +243,7 @@ class GitLabInitialCommitAutomation(Automation):
         self._imbi_project_id = project_id
 
         self._cookie_cutter: typing.Union[CookieCutter, None] = None
+        self._gitlab: typing.Optional[gitlab.GitLabClient] = None
         self._gitlab_project_info: typing.Union[dict, None] = None
         self._project: typing.Union[Project, None] = None
         self._token: typing.Union[imbi.integrations.IntegrationToken,
@@ -263,7 +264,7 @@ class GitLabInitialCommitAutomation(Automation):
             self._add_error('GitLab project does not exist for {}',
                             self._project.slug)
         else:
-            self._gitlab = gitlab.GitLabClient(self._token)
+            self._gitlab = gitlab.GitLabClient(self._token, self.application)
             self._gitlab_project_info = await self._gitlab.fetch_project(
                 self._project.gitlab_project_id)
             if not self._gitlab_project_info:

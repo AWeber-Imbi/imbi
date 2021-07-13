@@ -7,6 +7,7 @@ import typing
 import urllib.parse
 
 import sprockets.mixins.http
+import tornado.web
 import yarl
 
 from . import base
@@ -35,14 +36,19 @@ PROJECT_DEFAULTS = {
 
 
 class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
-    def __init__(self, token: 'integrations.IntegrationToken'):
+    def __init__(self, token: 'integrations.IntegrationToken',
+                 application: tornado.web.Application):
         super().__init__()
+        settings = application.settings['automations']['gitlab']
         self.logger = logging.getLogger(__package__).getChild('GitLabClient')
+        self.restrict_to_user = settings.get('restrict_to_user', False)
         self.token = token
         self.headers = {
             'Accept': 'application/json',
             'Authorization': f'Bearer {self.token.access_token}',
         }
+        self._user_info: typing.Union[dict, None] = None
+        self._user_namespace: typing.Union[dict, None] = None
 
     async def api(self, url: typing.Union[yarl.URL, str], *,
                   method: str = 'GET', **kwargs):
@@ -111,11 +117,14 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             title='GitLab API Failure')
 
     async def create_project(self, parent, project_name, **attributes) -> dict:
+        if self.restrict_to_user:
+            parent = await self.fetch_user_namespace()
+
         for name, value in PROJECT_DEFAULTS.items():
             attributes.setdefault(name, value)
         attributes.update({
             'name': project_name,
-            'namespace_id':  parent['id'],
+            'namespace_id': parent['id'],
         })
         response = await self.api('projects', method='POST', body=attributes)
         if response.ok:
@@ -166,6 +175,30 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         raise errors.InternalServerError(
             'failed to commit to %s: %s', project_url, response.code,
             title='GitLab API Failure', gitlab_response=response.body)
+
+    async def fetch_user_information(self):
+        if self._user_info:
+            return self._user_info
+        response = await self.api(self.token.integration.api_endpoint / 'user')
+        if response.ok:
+            self._user_info = response.body
+            return self._user_info
+        raise errors.InternalServerError(
+            'failed to retrieve GitLab user information: %s', response.code,
+            title='GitLab API Failure')
+
+    async def fetch_user_namespace(self):
+        if self._user_namespace:
+            return self._user_namespace
+        user_info = await self.fetch_user_information()
+        response = await self.api(self.token.integration.api_endpoint /
+                                  'namespaces' / user_info['username'])
+        if response.ok:
+            self._user_namespace = response.body
+            return self._user_namespace
+        raise errors.InternalServerError(
+            'failed to retrieve GitLab user namespace for %s: %s',
+            user_info['username'], response.code, title='GitLab API Failure')
 
 
 class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
@@ -265,7 +298,7 @@ class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
             if not tokens:
                 raise errors.Forbidden('no GitLab tokens for %r', imbi_user,
                                        title='GitLab Not Connected')
-            self.client = GitLabClient(tokens[0])
+            self.client = GitLabClient(tokens[0], self.application)
 
 
 class UserNamespacesHandler(GitLabIntegratedHandler):
