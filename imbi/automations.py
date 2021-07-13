@@ -5,8 +5,8 @@ import pathlib
 import tempfile
 import typing
 
-import isort.api
 import cookiecutter.main
+import isort.api
 import sprockets_postgres
 import yarl
 from yapf.yapflib import yapf_api
@@ -294,6 +294,7 @@ class GitLabInitialCommitAutomation(Automation):
                 'project_name': self._project.name,
                 'project_team':
                     self._project.namespace.gitlab_group_name.lower(),
+                'short_description': self._project.description,
                 # These are also available for future use
                 # 'sentry_team': None,
                 # 'legacy_sentry_dsn': None,
