@@ -62,7 +62,7 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
     async def fetch_all_pages(self, *path, **query) -> typing.Sequence[dict]:
         url = self.token.integration.api_endpoint
         for component in path:
-            url /= component
+            url /= str(component)
         if query:
             url = url.with_query(query)
 
