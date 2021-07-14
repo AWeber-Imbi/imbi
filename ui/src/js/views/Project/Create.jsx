@@ -39,6 +39,7 @@ SideBar.propTypes = {
 function Create() {
   const [automations, setAutomations] = useState({
     createGitlabRepo: false,
+    createSonarProject: false,
     createSentryProject: false,
     dashboardCookieCutter: null,
     projectCookieCutter: null
@@ -68,6 +69,7 @@ function Create() {
   const [saveComplete, setSaveComplete] = useState({
     attributes: false,
     gitlabRepo: false,
+    sonarProject: false,
     gitlabCommit: false,
     links: false,
     urls: false
@@ -172,6 +174,11 @@ function Create() {
               }
             )
             if (result.success === true) {
+              // order is important here ... no need to make this effect depend on automations as well
+              setAutomations({
+                ...automations,
+                createSonarProject: result.data.create_sonar_project
+              })
               setSaveComplete({ ...saveComplete, gitlabRepo: true })
             } else {
               setErrorMessage(result.data)
@@ -179,6 +186,24 @@ function Create() {
             }
           } else {
             setSaveComplete({ ...saveComplete, gitlabRepo: true })
+          }
+        } else if (
+          saveComplete.gitlabRepo !== false &&
+          saveComplete.sonarProject === false
+        ) {
+          if (automations.createSonarProject) {
+            let result = await httpPost(
+              state.fetch,
+              new URL('/ui/automations/sonar/create', state.baseURL),
+              { project_id: projectId }
+            )
+            if (result.success === true) {
+              setSaveComplete({ ...saveComplete, sonarProject: true })
+            } else {
+              setErrorMessage(result.data)
+            }
+          } else {
+            setSaveComplete({ ...saveComplete, sonarProject: true })
           }
         } else if (
           saveComplete.gitlabCommit === false &&

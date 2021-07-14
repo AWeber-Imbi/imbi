@@ -8,12 +8,12 @@ import typing
 import cookiecutter.main
 import isort.api
 import sprockets_postgres
-import yarl
 from yapf.yapflib import yapf_api
 
 import imbi.integrations
 import imbi.user
 from imbi.endpoints import gitlab
+from . import sonarqube
 
 
 @dataclasses.dataclass
@@ -128,18 +128,6 @@ class Automation:
             return None
         return tokens[0]
 
-    @staticmethod
-    def _generate_sonar_key(project: Project) -> str:
-        return ':'.join([project.namespace.slug.lower(), project.slug.lower()])
-
-    def _generate_sonar_dashboard_link(self, root_url: str,
-                                       project: Project) -> str:
-        if self.automation_settings['sonar']['url']:
-            root_url = yarl.URL(self.automation_settings['sonar']['url'])
-            return str(root_url.with_path('/dashboard').with_query({
-                'id': self._generate_sonar_key(project),
-            }))
-
 
 class GitLabCreateProjectAutomation(Automation):
     def __init__(self,
@@ -193,30 +181,6 @@ class GitLabCreateProjectAutomation(Automation):
                     'url': gitlab_info.web_url,
                     'username': self.user.username,
                 })
-
-        link_id = self.automation_settings['sonar'].get('dashboard_link_id')
-        if link_id:
-            await self.db.execute(
-                """INSERT INTO v1.project_links(project_id, link_type_id,
-                                                created_by, url)
-                        VALUES (%(project_id)s, %(link_type_id)s,
-                                %(username)s, %(url)s)""",
-                {
-                    'link_type_id': link_id,
-                    'project_id': self._project.id,
-                    'url': self._generate_sonar_dashboard_link(
-                        None, self._project),
-                    'username': self.user.username,
-                })
-            await self.db.execute(
-                """UPDATE v1.projects
-                      SET sonarqube_project_key = %(sonar_key)s
-                    WHERE id = %(project_id)s""",
-                {
-                    'project_id': self._project.id,
-                    'sonar_key': self._generate_sonar_key(self._project),
-                }
-            )
 
         return gitlab_info
 
@@ -304,10 +268,9 @@ class GitLabInitialCommitAutomation(Automation):
             }
             if self.automation_settings['sonar'].get('url'):
                 context.update({
-                    'sonar_project_key': self._generate_sonar_key(
-                        self._project),
-                    'sonar_project_url': self._generate_sonar_dashboard_link(
-                        '', self._project)
+                    'sonar_project_key': sonarqube.generate_key(self._project),
+                    'sonar_project_url': sonarqube.generate_dashboard_link(
+                        self._project, self.automation_settings['sonar'])
                 })
 
             self.logger.debug('expanding %s for project %s in %s',
@@ -347,3 +310,69 @@ class GitLabInitialCommitAutomation(Automation):
             return CookieCutter(**result.row)
         else:
             self._add_error('Cookie cutter {} does not exist', url)
+
+
+class SonarCreateProject(Automation):
+    def __init__(self, application: 'imbi.app.Application',
+                 project_id: int,
+                 user: 'imbi.user.User',
+                 db: sprockets_postgres.PostgresConnector):
+        super().__init__(application, user, db)
+        self._imbi_project_id = project_id
+
+        self._gitlab_project: typing.Union[gitlab.ProjectInfo, None] = None
+        self._project: typing.Union[Project, None] = None
+        self._sonar_client: typing.Union[sonarqube.SonarQubeClient,
+                                         None] = None
+
+    async def prepare(self) -> typing.List[str]:
+        self._project = await self._get_project(self._imbi_project_id)
+        token = await self._get_gitlab_token()
+        if self._project and self._project.gitlab_project_id is None:
+            self._add_error('GitLab project does not exist for {}',
+                            self._project.slug)
+        if not self._has_error():
+            client = gitlab.GitLabClient(token, self.application)
+            self._gitlab_project = await client.fetch_project(
+                self._project.gitlab_project_id)
+            if self._gitlab_project is None:
+                self._add_error('GitLab project id {} does not exist',
+                                self._project.gitlab_project_id)
+
+        if not self._has_error():
+            self._sonar_client = sonarqube.SonarQubeClient(self.application)
+            if not self._sonar_client.enabled:
+                self._add_error('SonarQube integration is not configured')
+
+        return self.errors
+
+    async def run(self) -> dict:
+        project_key, dashboard = await self._sonar_client.create_project(
+            self._project,
+            main_branch_name=self._gitlab_project.default_branch)
+
+        link_id = self.automation_settings['sonar'].get('dashboard_link_id')
+        if link_id:
+            await self.db.execute(
+                """INSERT INTO v1.project_links(project_id, link_type_id,
+                                                created_by, url)
+                        VALUES (%(project_id)s, %(link_type_id)s,
+                                %(username)s, %(url)s)""",
+                {
+                    'link_type_id': link_id,
+                    'project_id': self._project.id,
+                    'url': dashboard,
+                    'username': self.user.username,
+                })
+            await self.db.execute(
+                """UPDATE v1.projects
+                      SET sonarqube_project_key = %(sonar_key)s
+                    WHERE id = %(project_id)s""",
+                {
+                    'project_id': self._project.id,
+                    'sonar_key': project_key,
+                }
+            )
+
+        return {'sonarqube_dashboard': dashboard,
+                'sonarqube_project_key': project_key}

@@ -85,8 +85,9 @@ automations:
     profile: pycharm
     use_parentheses: false
   sonar:
-    url: ~
+    admin_token: ~
     dashboard_link_id: ~
+    url: ~
   # see https://github.com/google/yapf#knobs
   yapf:
     allow_multiline_dictionary_keys: true

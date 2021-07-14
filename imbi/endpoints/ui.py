@@ -113,7 +113,10 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
                 raise self.handle_prepare_failures('Create Project', failures)
             gitlab_info = await automation.run()
 
+        sonar_settings = self.application.settings['automations']['sonar']
         self.send_response({
+            'create_sonar_project': (sonar_settings.get('admin_token') and
+                                     sonar_settings.get('url')),
             'gitlab_project_id': gitlab_info.id,
             'gitlab_project_url': gitlab_info.links.self,
         })
@@ -145,3 +148,28 @@ class GitLabCommitAutomation(GitLabAutomationHandler):
             commit_info = await automation.run()
 
         self.send_response(commit_info)
+
+
+class SonarCreationAutomation(GitLabAutomationHandler):
+    NAME = 'SonarCreationAutomation'
+    ENDPOINT = 'ui-sonar-create'
+
+    async def post(self):
+        request = self.get_request_body()
+        try:
+            imbi_project_id = request['project_id']
+        except KeyError as error:
+            raise errors.BadRequest('request missing required field %s',
+                                    error.args[0])
+
+        async with self.postgres_transaction() as transaction:
+            automation = automations.SonarCreateProject(
+                self.application, imbi_project_id,
+                await self.get_current_user(), transaction)
+            failures = await automation.prepare()
+            if failures:
+                raise self.handle_prepare_failures('Create SonarQube Project',
+                                                   failures)
+            project_info = await automation.run()
+
+        self.send_response(project_info)
