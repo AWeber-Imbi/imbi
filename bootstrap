@@ -89,7 +89,8 @@ automations:
     dashboard_link_id: ~
   # see https://github.com/google/yapf#knobs
   yapf:
-    ALLOW_SPLIT_BEFORE_DICT_VALUE: false
+    allow_multiline_dictionary_keys: true
+    allow_split_before_dict_value: false
 http:
   canonical_server_name: imbi.localhost
   processes: 1

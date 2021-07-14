@@ -327,7 +327,7 @@ class GitLabInitialCommitAutomation(Automation):
             for py_file in project_dir.rglob('*.py'):
                 isort.api.sort_file(py_file, **isort_cfg)
                 yapf_api.FormatFile(str(py_file), style_config=yapf_style,
-                                    in_place=True)
+                                    in_place=True, logger=None)
 
             self.logger.debug('committing to GitLab')
             commit_info = await self._gitlab.commit_tree(

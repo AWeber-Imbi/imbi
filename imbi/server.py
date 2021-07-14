@@ -110,7 +110,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'isort': automations.get('isort', {}),
             'sonar': automations.get('sonar', {}),
             # see https://github.com/google/yapf#knobs
-            'yapf': config.get('yapf', {}),
+            'yapf': automations.get('yapf', {}),
         },
         'canonical_server_name': http_settings['canonical_server_name'],
         'compress_response': http_settings.get('compress_response', True),
