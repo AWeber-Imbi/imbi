@@ -167,7 +167,7 @@ class GitLabCreateProjectAutomation(Automation):
             self._project = project
         return self.errors
 
-    async def run(self):
+    async def run(self) -> gitlab.ProjectInfo:
         gitlab_info = await self._gitlab.create_project(
             self._gitlab_parent, self._project.name,
             description=self._project.description)
@@ -177,7 +177,7 @@ class GitLabCreateProjectAutomation(Automation):
                 WHERE id = %(project_id)s""",
             {
                 'project_id': self._project.id,
-                'gitlab_project_id': gitlab_info['id'],
+                'gitlab_project_id': gitlab_info.id,
             })
 
         link_id = self.automation_settings['gitlab'].get('repository_link_id')
@@ -190,7 +190,7 @@ class GitLabCreateProjectAutomation(Automation):
                 {
                     'link_type_id': link_id,
                     'project_id': self._project.id,
-                    'url': gitlab_info['web_url'],
+                    'url': gitlab_info.web_url,
                     'username': self.user.username,
                 })
 
@@ -244,7 +244,7 @@ class GitLabInitialCommitAutomation(Automation):
 
         self._cookie_cutter: typing.Union[CookieCutter, None] = None
         self._gitlab: typing.Optional[gitlab.GitLabClient] = None
-        self._gitlab_project_info: typing.Union[dict, None] = None
+        self._gitlab_project: typing.Union[gitlab.ProjectInfo, None] = None
         self._project: typing.Union[Project, None] = None
         self._token: typing.Union[imbi.integrations.IntegrationToken,
                                   None] = None
@@ -265,9 +265,9 @@ class GitLabInitialCommitAutomation(Automation):
                             self._project.slug)
         else:
             self._gitlab = gitlab.GitLabClient(self._token, self.application)
-            self._gitlab_project_info = await self._gitlab.fetch_project(
+            self._gitlab_project = await self._gitlab.fetch_project(
                 self._project.gitlab_project_id)
-            if not self._gitlab_project_info:
+            if self._gitlab_project is None:
                 self._add_error('GitLab project id {} does not exist',
                                 self._project.gitlab_project_id)
         return self.errors
@@ -286,10 +286,9 @@ class GitLabInitialCommitAutomation(Automation):
                     self._project.namespace.gitlab_group_name.lower(),
                     self._project.project_type.gitlab_project_prefix,
                 ]),
-                'gitlab_namespace_id':
-                    self._gitlab_project_info['namespace']['id'],
-                'gitlab_project_id': self._gitlab_project_info['id'],
-                'gitlab_url': self._gitlab_project_info['web_url'],
+                'gitlab_namespace_id': self._gitlab_project.namespace.id,
+                'gitlab_project_id': self._gitlab_project.id,
+                'gitlab_url': self._gitlab_project.web_url,
                 'package_name': package_name,
                 'project_name': self._project.name,
                 'project_team':
@@ -332,7 +331,7 @@ class GitLabInitialCommitAutomation(Automation):
 
             self.logger.debug('committing to GitLab')
             commit_info = await self._gitlab.commit_tree(
-                self._gitlab_project_info, project_dir,
+                self._gitlab_project, project_dir,
                 'Initial commit (automated)')
 
             return commit_info

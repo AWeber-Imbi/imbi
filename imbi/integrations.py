@@ -4,9 +4,9 @@ import typing
 
 import yarl
 
-from imbi import app, errors
+from imbi import errors
 if typing.TYPE_CHECKING:
-    from imbi import user
+    from imbi import app, user
 
 
 LOGGER = logging.getLogger(__name__)

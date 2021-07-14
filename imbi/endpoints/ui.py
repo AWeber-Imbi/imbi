@@ -114,8 +114,8 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
             gitlab_info = await automation.run()
 
         self.send_response({
-            'gitlab_project_id': gitlab_info['id'],
-            'gitlab_project_url': gitlab_info['_links']['self'],
+            'gitlab_project_id': gitlab_info.id,
+            'gitlab_project_url': gitlab_info.links.self,
         })
 
 
