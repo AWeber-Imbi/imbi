@@ -24,6 +24,7 @@ def generate_dashboard_link(project: 'automations.Project',
 
 class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
     enabled: typing.Union[bool, None] = None
+    gitlab_alm_key: typing.Union[bool, None, str] = None
 
     def __init__(self, application: tornado.web.Application, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -121,4 +122,62 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                         'failed to rename main branch %s for %s: %s',
                         branch['name'], project_key, response.code)
 
+        if await self._is_gitlab_alm_available():
+            self.logger.debug('checking for PR decoration on %s', project_key)
+            response = await self.api(
+                yarl.URL('/alm_settings/get_binding').with_query({
+                    'project': project_key,
+                })
+            )
+            if response.code == 404:  # not configured or doesn't exist
+                response = await self.api(
+                    yarl.URL('/alm_settings/set_gitlab_binding'),
+                    method='POST',
+                    body={
+                        'almSetting': self.gitlab_alm_key,
+                        'project': project_key,
+                        'repository': project.gitlab_project_id,
+                    }
+                )
+                if not response.ok:
+                    self.logger.error(
+                        'failed to enable PR decoration for %s: %s',
+                        project_key, response.code)
+            elif not response.ok:
+                self.logger.error(
+                    'failed to check for GitLab integration for %s: %s',
+                    project_key, response.code)
+
         return project_key, str(dashboard_url)
+
+    async def _is_gitlab_alm_available(self) -> bool:
+        """Check if the SonarQube server has the GitLab ALM configured.
+
+        The result of this method is "remembered" by setting the
+        `gitlab_alm_key` class attribute to something other than
+        :data:`None`.  It will be set to :data:`False` when we
+        determine that the GitLab ALM is not configured or to the
+        configured "key" value.
+
+        """
+        if self.gitlab_alm_key is None:
+            response = await self.api('/alm_settings/list_definitions')
+            if response.ok:
+                self.__class__.gitlab_alm_key = False
+                for connection in response.body.get('gitlab', []):
+                    if connection['key'] == 'gitlab':
+                        self.logger.info('found GitLab ALM %s',
+                                         connection['key'])
+                        self.__class__.gitlab_alm_key = connection['key']
+                        break
+                else:
+                    self.logger.warning(
+                        'GitLab ALM not found in %r, disabling MR decoration',
+                        response.body)
+            else:
+                self.logger.warning(
+                    'failed to list alm_settings for sonar: %s',
+                    response.code)
+                return False  # don't cache failures for now
+
+        return bool(self.gitlab_alm_key)
