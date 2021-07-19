@@ -8,6 +8,7 @@ import typing
 import cookiecutter.main
 import isort.api
 import sprockets_postgres
+import yarl
 from yapf.yapflib import yapf_api
 
 import imbi.integrations
@@ -315,9 +316,11 @@ class GitLabInitialCommitAutomation(Automation):
 class SonarCreateProject(Automation):
     def __init__(self, application: 'imbi.app.Application',
                  project_id: int,
+                 public_url: yarl.URL,
                  user: 'imbi.user.User',
                  db: sprockets_postgres.PostgresConnector):
         super().__init__(application, user, db)
+        self._public_url = public_url
         self._imbi_project_id = project_id
 
         self._gitlab_project: typing.Union[gitlab.ProjectInfo, None] = None
@@ -348,7 +351,7 @@ class SonarCreateProject(Automation):
 
     async def run(self) -> dict:
         project_key, dashboard = await self._sonar_client.create_project(
-            self._project,
+            self._project, public_url=self._public_url,
             main_branch_name=self._gitlab_project.default_branch)
 
         link_id = self.automation_settings['sonar'].get('dashboard_link_id')

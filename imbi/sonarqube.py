@@ -78,8 +78,8 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
         return response
 
     async def create_project(self, project: 'automations.Project', *,
-                             main_branch_name='main') -> typing.Tuple[str,
-                                                                      str]:
+                             main_branch_name='main',
+                             public_url: yarl.URL) -> typing.Tuple[str, str]:
         self.logger.info('creating SonarQube project for %s', project.slug)
         response = await self.api('/projects/create', method='POST', body={
             'name': project.name,
@@ -147,6 +147,20 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                 self.logger.error(
                     'failed to check for GitLab integration for %s: %s',
                     project_key, response.code)
+
+        self.logger.debug('adding link to Imbi project for %s', project_key)
+        response = await self.api(
+            yarl.URL('/project_links/create'),
+            method='POST',
+            body={
+                'name': 'Imbi Project',
+                'projectKey': project_key,
+                'url': str(public_url),
+            }
+        )
+        if not response.ok:
+            self.logger.error('failed to set the Imbi project link for %s: %s',
+                              project_key, response.code)
 
         return project_key, str(dashboard_url)
 

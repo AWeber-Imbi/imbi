@@ -122,6 +122,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'text': footer_link.get('text', ''),
             'url': footer_link.get('url', '')
         },
+        'frontend_url': config.get('frontend_url', None),
         'javascript_url': config.get('javascript_url', None),
         'ldap': {
             'enabled': ldap.get('enabled'),
