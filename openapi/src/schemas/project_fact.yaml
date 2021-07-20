@@ -23,10 +23,6 @@ read:
         - type: number
           format: double
         - type: string
-          format: date
-        - type: string
-          format: iso8601-timestamp
-        - type: string
     score:
       description: The score for the value of the fact
       type: integer
@@ -50,10 +46,6 @@ write:
         - type: integer
         - type: number
           format: double
-        - type: string
-          format: date
-        - type: string
-          format: iso8601-timestamp
         - type: string
 
   required:

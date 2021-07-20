@@ -3558,6 +3558,7 @@ paths:
                     gitlab_project_prefix:
                       description: Prefix for this project type in GitLab
                       type: string
+                      nullable: true
                   additionalProperties: false
               example:
                 records:
@@ -3613,6 +3614,7 @@ paths:
                     gitlab_project_prefix:
                       description: Prefix for this project type in GitLab
                       type: string
+                      nullable: true
                   additionalProperties: false
               example:
                 records:
@@ -3668,7 +3670,6 @@ paths:
                 gitlab_project_prefix:
                   description: Prefix for this project type in GitLab
                   type: string
-                  nullable: true
               required:
                 - name
                 - plural_name
@@ -4284,10 +4285,6 @@ paths:
                         - type: number
                           format: double
                         - type: string
-                          format: date
-                        - type: string
-                          format: iso8601-timestamp
-                        - type: string
                     score:
                       description: The score for the value of the fact
                       type: integer
@@ -4341,10 +4338,6 @@ paths:
                         - type: number
                           format: double
                         - type: string
-                          format: date
-                        - type: string
-                          format: iso8601-timestamp
-                        - type: string
                     score:
                       description: The score for the value of the fact
                       type: integer
@@ -4396,10 +4389,6 @@ paths:
                       - type: number
                         format: double
                       - type: string
-                        format: date
-                      - type: string
-                        format: iso8601-timestamp
-                      - type: string
                 required:
                   - fact_type_id
                   - value
@@ -4430,10 +4419,6 @@ paths:
                       - type: integer
                       - type: number
                         format: double
-                      - type: string
-                        format: date
-                      - type: string
-                        format: iso8601-timestamp
                       - type: string
                 required:
                   - fact_type_id
