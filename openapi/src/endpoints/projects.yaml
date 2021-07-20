@@ -25,6 +25,11 @@ paths:
           description: Set to `true` to include archived values
           schema:
             type: boolean
+        - name: sonarqube_project_key
+          in: query
+          description: Filter by SonarQube Project Key
+          schema:
+            type: string
         - name: sort
           in: query
           description: |-
