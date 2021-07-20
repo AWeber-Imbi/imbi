@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import typing
 import urllib.parse
@@ -10,11 +11,13 @@ from imbi import automations, errors, version
 
 
 def generate_key(project: 'automations.Project') -> str:
+    """Generate a SonarQube project key for `project`."""
     return ':'.join([project.namespace.slug.lower(), project.slug.lower()])
 
 
 def generate_dashboard_link(project: 'automations.Project',
                             sonar_settings: dict) -> typing.Union[str, None]:
+    """Generate a link to the SonarQube dashboard for `project`."""
     if sonar_settings['url']:
         root = yarl.URL(sonar_settings['url'])
         return str(root.with_path('/dashboard').with_query({
@@ -23,6 +26,12 @@ def generate_dashboard_link(project: 'automations.Project',
 
 
 class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
+    """API Client for SonarQube.
+
+    This client uses the SonarQube HTTP API to automate aspects
+    of managing projects.
+
+    """
     enabled: typing.Union[bool, None] = None
     gitlab_alm_key: typing.Union[bool, None, str] = None
 
@@ -48,7 +57,9 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
             self.api_root = self.sonar_url / 'api'
 
     async def api(self, url: typing.Union[yarl.URL, str], *,
-                  method: str = 'GET', **kwargs):
+                  method: str = 'GET', **kwargs
+                  ) -> sprockets.mixins.http.HTTPResponse:
+        """Make an authenticated API call."""
         if not self.enabled:
             raise RuntimeError('SonarQube integration is not enabled')
         if not isinstance(url, yarl.URL):
@@ -80,6 +91,12 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
     async def create_project(self, project: 'automations.Project', *,
                              main_branch_name='main',
                              public_url: yarl.URL) -> typing.Tuple[str, str]:
+        """Create a SonarQube project for `project`.
+
+        :returns: a :class:`tuple` containing the assigned project key
+            and a link to the dashboard
+
+        """
         self.logger.info('creating SonarQube project for %s', project.slug)
         response = await self.api('/projects/create', method='POST', body={
             'name': project.name,
@@ -94,7 +111,25 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
             'id': project_key,
         })
 
-        self.logger.debug('retrieving branches for %s', project_key)
+        await asyncio.gather(
+            self._fix_main_branch(project_key, main_branch_name),
+            self._enable_pr_decoration(project_key, project.gitlab_project_id),
+            self._add_link_to_sonar(project_key, 'Imbi Project', public_url),
+        )
+
+        return project_key, str(dashboard_url)
+
+    async def _fix_main_branch(self, project_key: str, main_branch_name: str):
+        """Sonar assumes that the "main" branch is named master.
+
+        This will cause main branches with any other name to be
+        treated as one-off branches.  You can *manually* fix this
+        by deleting the branch that was analyzed and renaming the
+        "master" branch.  Instead of requiring this for projects,
+        this method ensures that the "master" branch in SonarQube
+        matches the default branch in the SCM.
+
+        """
         response = await self.api(
             yarl.URL('/project_branches/list').with_query({
                 'project': project_key,
@@ -102,67 +137,58 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
         if not response.ok:
             self.logger.error('failed to list project branches for %s: %s',
                               project_key, response.code)
-        else:
-            self.logger.debug('making sure that main branch is %s for %s',
-                              main_branch_name, project_key)
-            main_branches = [branch
-                             for branch in response.body['branches']
-                             if branch['isMain']]
-            if main_branches and main_branches[0]['name'] != main_branch_name:
-                branch = main_branches[0]
-                self.logger.info('resetting main branch from %s to %s for %s',
-                                 branch['name'], main_branch_name, project_key)
-                response = await self.api(
-                    '/project_branches/rename', method='POST', body={
-                        'project': project_key,
-                        'name': main_branch_name,
-                    })
-                if not response.ok:
-                    self.logger.error(
-                        'failed to rename main branch %s for %s: %s',
-                        branch['name'], project_key, response.code)
+            return
 
-        if await self._is_gitlab_alm_available():
-            self.logger.debug('checking for PR decoration on %s', project_key)
+        self.logger.debug('making sure that main branch is %s for %s',
+                          main_branch_name, project_key)
+        main_branches = [branch
+                         for branch in response.body['branches']
+                         if branch['isMain']]
+        if main_branches and main_branches[0]['name'] != main_branch_name:
+            branch = main_branches[0]
+            self.logger.info('resetting main branch from %s to %s for %s',
+                             branch['name'], main_branch_name, project_key)
             response = await self.api(
-                yarl.URL('/alm_settings/get_binding').with_query({
+                '/project_branches/rename', method='POST', body={
                     'project': project_key,
+                    'name': main_branch_name,
                 })
-            )
-            if response.code == 404:  # not configured or doesn't exist
-                response = await self.api(
-                    yarl.URL('/alm_settings/set_gitlab_binding'),
-                    method='POST',
-                    body={
-                        'almSetting': self.gitlab_alm_key,
-                        'project': project_key,
-                        'repository': project.gitlab_project_id,
-                    }
-                )
-                if not response.ok:
-                    self.logger.error(
-                        'failed to enable PR decoration for %s: %s',
-                        project_key, response.code)
-            elif not response.ok:
+            if not response.ok:
                 self.logger.error(
-                    'failed to check for GitLab integration for %s: %s',
-                    project_key, response.code)
+                    'failed to rename main branch %s for %s: %s',
+                    branch['name'], project_key, response.code)
 
-        self.logger.debug('adding link to Imbi project for %s', project_key)
+    async def _enable_pr_decoration(self, project_key: str,
+                                    gitlab_project_id: int):
+        """Enable GitLab MR decoration if it is available."""
+        alm_enabled = await self._is_gitlab_alm_available()
+        if not alm_enabled:
+            return
+
+        self.logger.debug('checking for PR decoration on %s', project_key)
         response = await self.api(
-            yarl.URL('/project_links/create'),
-            method='POST',
-            body={
-                'name': 'Imbi Project',
-                'projectKey': project_key,
-                'url': str(public_url),
-            }
+            yarl.URL('/alm_settings/get_binding').with_query({
+                'project': project_key,
+            })
         )
-        if not response.ok:
-            self.logger.error('failed to set the Imbi project link for %s: %s',
-                              project_key, response.code)
-
-        return project_key, str(dashboard_url)
+        if response.code == 404:  # not configured or doesn't exist
+            response = await self.api(
+                yarl.URL('/alm_settings/set_gitlab_binding'),
+                method='POST',
+                body={
+                    'almSetting': self.gitlab_alm_key,
+                    'project': project_key,
+                    'repository': gitlab_project_id,
+                }
+            )
+            if not response.ok:
+                self.logger.error(
+                    'failed to enable PR decoration for %s: %s',
+                    project_key, response.code)
+        elif not response.ok:
+            self.logger.error(
+                'failed to check for GitLab integration for %s: %s',
+                project_key, response.code)
 
     async def _is_gitlab_alm_available(self) -> bool:
         """Check if the SonarQube server has the GitLab ALM configured.
@@ -195,3 +221,15 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                 return False  # don't cache failures for now
 
         return bool(self.gitlab_alm_key)
+
+    async def _add_link_to_sonar(self, project_key: str, name: str,
+                                 url: yarl.URL):
+        """Add a named link to the SonarQube dashboard."""
+        self.logger.debug('adding link to Imbi project for %s', project_key)
+        response = await self.api(
+            yarl.URL('/project_links/create'),
+            method='POST',
+            body={'name': name, 'projectKey': project_key, 'url': str(url)})
+        if not response.ok:
+            self.logger.error('failed to set the Imbi project link for %s: %s',
+                              project_key, response.code)
