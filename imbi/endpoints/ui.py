@@ -4,8 +4,8 @@ API Endpoint for returning UI Settings
 """
 import yarl
 
-from imbi import automations, errors, integrations
-from imbi.endpoints import base, gitlab
+from imbi import automations, errors, gitlab, integrations
+from imbi.endpoints import base
 
 
 class IndexRequestHandler(base.RequestHandler):

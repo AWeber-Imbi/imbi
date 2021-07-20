@@ -13,8 +13,7 @@ from yapf.yapflib import yapf_api
 
 import imbi.integrations
 import imbi.user
-from imbi.endpoints import gitlab
-from . import sonarqube
+from . import gitlab, sonarqube
 
 
 @dataclasses.dataclass
