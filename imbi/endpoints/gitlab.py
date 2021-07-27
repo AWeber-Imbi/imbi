@@ -1,5 +1,4 @@
 import dataclasses
-import logging
 import typing
 import urllib.parse
 
@@ -7,107 +6,13 @@ import sprockets.mixins.http
 import yarl
 
 from . import base
-from .. import errors, integrations, user, version
+from .. import errors, gitlab, integrations, user
 
 
 @dataclasses.dataclass
 class GitlabToken:
     access_token: str
     refresh_token: str
-
-
-PROJECT_DEFAULTS = {
-    'default_branch': 'main',
-    'issues_access_level': 'disabled',
-    'issues_enabled': False,  # deprecated but required to disable :(
-    'builds_access_level': 'enabled',
-    'merge_requests_access_level': 'enabled',
-    'operations_access_level': 'disabled',
-    'packages_enabled': False,
-    'pages_access_level': 'disabled',
-    'snippets_access_level': 'enabled',
-    'wiki_access_level': 'disabled',
-    'wiki_enabled': False,  # deprecated but required to disable :(
-}
-
-
-class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
-    def __init__(self, token: 'integrations.IntegrationToken'):
-        super().__init__()
-        self.logger = logging.getLogger(__package__).getChild('GitLabClient')
-        self.token = token
-        self.headers = {
-            'Accept': 'application/json',
-            'Authorization': f'Bearer {self.token.access_token}',
-        }
-
-    async def api(self, url: typing.Union[yarl.URL, str], *,
-                  method: str = 'GET', **kwargs):
-        if not isinstance(url, yarl.URL):
-            url = yarl.URL(url)
-        if not url.is_absolute():
-            url = self.token.integration.api_endpoint / url.path.lstrip('/')
-        request_headers = kwargs.setdefault('request_headers', {})
-        request_headers.update(self.headers)
-        if kwargs.get('body', None) is not None:
-            request_headers['Content-Type'] = 'application/json'
-            kwargs['content_type'] = 'application/json'
-        kwargs['user_agent'] = f'imbi/{version} (GitLabClient)'
-        self.logger.debug('%s %s %r', method, url, kwargs)
-        return await super().http_fetch(str(url), method=method, **kwargs)
-
-    async def fetch_all_pages(self, *path, **query) -> typing.Sequence[dict]:
-        url = self.token.integration.api_endpoint
-        for component in path:
-            url /= component
-        if query:
-            url = url.with_query(query)
-
-        entries = []
-        while url is not None:
-            response = await self.api(url)
-            if not response.ok:
-                raise errors.InternalServerError(
-                    'GET %s failed: %s', url, response.code,
-                    title='GitLab API Failure')
-
-            entries.extend(response.body)
-            for link in response.links:
-                if link['rel'] == 'next':
-                    url = yarl.URL(link['target'])
-                    break
-            else:
-                url = None
-
-        return entries
-
-    async def fetch_group(self, *group_path) -> typing.Union[dict, None]:
-        slug = urllib.parse.quote('/'.join(group_path), safe='')
-        url = self.token.integration.api_endpoint
-        url = url.with_path(url.path.rstrip('/') + '/groups/' + slug,
-                            encoded=True)
-        response = await self.api(url)
-        if response.code == 404:
-            return None
-        if response.ok:
-            return response.body
-        raise errors.InternalServerError(
-            'failed to fetch group %s: %s', slug, response.code,
-            title='GitLab API Failure')
-
-    async def create_project(self, parent, project_name, **attributes) -> dict:
-        for name, value in PROJECT_DEFAULTS.items():
-            attributes.setdefault(name, value)
-        attributes.update({
-            'name': project_name,
-            'namespace_id':  parent['id'],
-        })
-        response = await self.api('projects', method='POST', body=attributes)
-        if response.ok:
-            return response.body
-        raise errors.InternalServerError(
-            'failed to create project %s: %s', project_name, response.code,
-            title='GitLab API Failure')
 
 
 class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
@@ -192,7 +97,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 
 
 class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
-    client: GitLabClient
+    client: gitlab.GitLabClient
 
     async def prepare(self) -> None:
         await super().prepare()
@@ -207,7 +112,7 @@ class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
             if not tokens:
                 raise errors.Forbidden('no GitLab tokens for %r', imbi_user,
                                        title='GitLab Not Connected')
-            self.client = GitLabClient(tokens[0])
+            self.client = gitlab.GitLabClient(tokens[0], self.application)
 
 
 class UserNamespacesHandler(GitLabIntegratedHandler):

@@ -76,6 +76,22 @@ cat > build/debug.yaml <<EOF
 automations:
   gitlab:
     repository_link_id: ~
+    restrict_to_user: true
+  # see https://pycqa.github.io/isort/reference/isort/settings.html
+  isort:
+    force_grid_wrap: 0
+    known_first_party: ['acceptance', 'tests']
+    multi_line_output: 3
+    profile: pycharm
+    use_parentheses: false
+  sonar:
+    admin_token: ~
+    dashboard_link_id: ~
+    url: ~
+  # see https://github.com/google/yapf#knobs
+  yapf:
+    allow_multiline_dictionary_keys: true
+    allow_split_before_dict_value: false
 http:
   canonical_server_name: imbi.localhost
   processes: 1
@@ -126,9 +142,6 @@ EOF
 
 cat > build/test.yaml <<EOF
 ---
-automations:
-  gitlab:
-    repository_link_id: ~
 http:
   canonical_server_name: imbi.example.org
 ldap:
