@@ -39,6 +39,7 @@ SideBar.propTypes = {
 function Create() {
   const [automations, setAutomations] = useState({
     createGitlabRepo: false,
+    createSonarProject: false,
     createSentryProject: false,
     dashboardCookieCutter: null,
     projectCookieCutter: null
@@ -68,6 +69,8 @@ function Create() {
   const [saveComplete, setSaveComplete] = useState({
     attributes: false,
     gitlabRepo: false,
+    sonarProject: false,
+    gitlabCommit: false,
     links: false,
     urls: false
   })
@@ -171,6 +174,11 @@ function Create() {
               }
             )
             if (result.success === true) {
+              // order is important here ... no need to make this effect depend on automations as well
+              setAutomations({
+                ...automations,
+                createSonarProject: result.data.create_sonar_project
+              })
               setSaveComplete({ ...saveComplete, gitlabRepo: true })
             } else {
               setErrorMessage(result.data)
@@ -178,6 +186,46 @@ function Create() {
             }
           } else {
             setSaveComplete({ ...saveComplete, gitlabRepo: true })
+          }
+        } else if (
+          saveComplete.gitlabRepo !== false &&
+          saveComplete.sonarProject === false
+        ) {
+          if (automations.createSonarProject) {
+            let result = await httpPost(
+              state.fetch,
+              new URL('/ui/automations/sonar/create', state.baseURL),
+              { project_id: projectId }
+            )
+            if (result.success === true) {
+              setSaveComplete({ ...saveComplete, sonarProject: true })
+            } else {
+              setErrorMessage(result.data)
+            }
+          } else {
+            setSaveComplete({ ...saveComplete, sonarProject: true })
+          }
+        } else if (
+          saveComplete.gitlabCommit === false &&
+          saveComplete.gitlabRepo !== false
+        ) {
+          if (automations.projectCookieCutter && gitlabEnabled) {
+            let result = await httpPost(
+              state.fetch,
+              new URL('/ui/automations/gitlab/commit', state.baseURL),
+              {
+                cookie_cutter: automations.projectCookieCutter,
+                project_id: projectId
+              }
+            )
+            if (result.success === true) {
+              setSaveComplete({ ...saveComplete, gitlabCommit: true })
+            } else {
+              setErrorMessage(result.data)
+              setSaving(false)
+            }
+          } else {
+            setSaveComplete({ ...saveComplete, gitlabCommit: true })
           }
         } else if (saveComplete.urls === false && projectId !== null) {
           if (Object.values(urls).length > 0) {
@@ -281,8 +329,8 @@ function Create() {
     if (automations.createGitlabRepo === true && gitlabEnabled) {
       steps.push({
         isComplete: saveComplete.gitlabRepo,
-        pendingLabel: t('project.createGitLabRepo'),
-        completedLabel: t('project.gitlabRepoCreated')
+        pendingLabel: t('project.gitlab.creatingRepo'),
+        completedLabel: t('project.gitlab.repoCreated')
       })
     }
     if (automations.createSentryProject === true) {
@@ -294,9 +342,9 @@ function Create() {
     }
     if (automations.projectCookieCutter !== null) {
       steps.push({
-        isComplete: false,
-        pendingLabel: t('project.creatingInitialProjectCommit'),
-        completedLabel: t('project.initialProjectCommitCreated')
+        isComplete: saveComplete.gitlabCommit,
+        pendingLabel: t('project.gitlab.creatingInitialCommit'),
+        completedLabel: t('project.gitlab.initialCommitCreated')
       })
     }
     if (automations.dashboardCookieCutter !== null) {
@@ -444,7 +492,7 @@ function Create() {
             title={t('project.projectCookieCutter')}
             name="projectCookieCutter"
             type="select"
-            disabled={true}
+            disabled={!gitlabEnabled}
             options={
               state.metadata.cookieCutters !== null
                 ? state.metadata.cookieCutters

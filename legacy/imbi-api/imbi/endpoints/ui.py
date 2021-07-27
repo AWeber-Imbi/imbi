@@ -2,8 +2,10 @@
 API Endpoint for returning UI Settings
 
 """
-from imbi import automations, errors, integrations
-from imbi.endpoints import base, gitlab
+import yarl
+
+from imbi import automations, errors, gitlab, integrations
+from imbi.endpoints import base
 
 
 class IndexRequestHandler(base.RequestHandler):
@@ -81,7 +83,18 @@ class GitLabAutomationHandler(base.AuthenticatedRequestHandler):
                 raise errors.Forbidden(
                     'no gitlab tokens for %r', imbi_user,
                     title='GitLab Not Connected')
-            self.gitlab = gitlab.GitLabClient(tokens[0])
+            self.gitlab = gitlab.GitLabClient(tokens[0], self.application)
+
+    @staticmethod
+    def handle_prepare_failures(action: str, failures: list) -> Exception:
+        action = action.title()
+        if len(failures) == 1:
+            return errors.BadRequest('%s failed: %s', action, failures[0],
+                                     title=f'{action} failure',
+                                     failures=failures)
+        return errors.BadRequest('%s failed with %s errors', action,
+                                 len(failures), title=f'{action} failure',
+                                 failures=failures)
 
 
 class GitLabCreationAutomation(GitLabAutomationHandler,
@@ -94,39 +107,79 @@ class GitLabCreationAutomation(GitLabAutomationHandler,
         project_id = int(request['project_id'])
 
         async with self.postgres_transaction() as transaction:
-            result = await transaction.execute(
-                """
-                SELECT id, description, gitlab_project_id, name, namespace_id,
-                       project_type_id, slug
-                  FROM v1.projects
-                 WHERE id = %(project_id)s
-                """,
-                {'project_id': project_id})
-            if result.row_count == 0:
-                raise errors.BadRequest('%s is not a valid imbi project ID',
-                                        project_id)
-
             automation = automations.GitLabCreateProjectAutomation(
-                self.settings['automations'],
-                automations.Project.from_database(result.row),
-                await self.get_current_user(),
+                self.application, project_id, await self.get_current_user(),
                 transaction)
             failures = await automation.prepare()
             if failures:
-                if len(failures) == 1:
-                    raise errors.BadRequest('Create project failed: %s',
-                                            failures[0],
-                                            title='Create project failure',
-                                            failures=failures)
-                else:
-                    raise errors.BadRequest(
-                        'Create project failed with %s errors', len(failures),
-                        title='Create project failure',
-                        failures=failures)
-
+                raise self.handle_prepare_failures('Create Project', failures)
             gitlab_info = await automation.run()
 
+        sonar_settings = self.application.settings['automations']['sonar']
         self.send_response({
-            'gitlab_project_id': gitlab_info['id'],
-            'gitlab_project_url': gitlab_info['_links']['self'],
+            'create_sonar_project': (sonar_settings.get('admin_token') and
+                                     sonar_settings.get('url')),
+            'gitlab_project_id': gitlab_info.id,
+            'gitlab_project_url': gitlab_info.links.self,
         })
+
+
+class GitLabCommitAutomation(GitLabAutomationHandler):
+    NAME = 'GitLabCommitAutomation'
+    ENDPOINT = 'ui-gitlab-commit'
+
+    async def post(self):
+        request = self.get_request_body()
+        try:
+            imbi_project_id = request['project_id']
+            cookie_cutter = request['cookie_cutter']
+        except KeyError as error:
+            raise errors.BadRequest('request missing required field %s',
+                                    error.args[0])
+        except TypeError as error:
+            raise errors.BadRequest('failed to decode body: %s', error)
+
+        async with self.postgres_transaction() as transaction:
+            automation = automations.GitLabInitialCommitAutomation(
+                self.application, imbi_project_id, cookie_cutter,
+                await self.get_current_user(), transaction)
+            failures = await automation.prepare()
+            if failures:
+                raise self.handle_prepare_failures('Create Initial Commit',
+                                                   failures)
+            commit_info = await automation.run()
+
+        self.send_response(commit_info)
+
+
+class SonarCreationAutomation(GitLabAutomationHandler):
+    NAME = 'SonarCreationAutomation'
+    ENDPOINT = 'ui-sonar-create'
+
+    async def post(self):
+        request = self.get_request_body()
+        try:
+            imbi_project_id = request['project_id']
+        except KeyError as error:
+            raise errors.BadRequest('request missing required field %s',
+                                    error.args[0])
+
+        if self.settings.get('frontend_url'):
+            public_url = yarl.URL(self.settings['frontend_url'])
+        else:
+            public_url = yarl.URL.build(scheme=self.request.protocol,
+                                        host=self.request.host)
+        public_url = public_url.with_path(
+            self.reverse_url('project', imbi_project_id))
+
+        async with self.postgres_transaction() as transaction:
+            automation = automations.SonarCreateProject(
+                self.application, imbi_project_id, public_url,
+                await self.get_current_user(), transaction)
+            failures = await automation.prepare()
+            if failures:
+                raise self.handle_prepare_failures('Create SonarQube Project',
+                                                   failures)
+            project_info = await automation.run()
+
+        self.send_response(project_info)

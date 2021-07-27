@@ -104,7 +104,14 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             encryption_key = encoded_key.encode()
 
     settings = {
-        'automations': {'gitlab': automations.get('gitlab', {})},
+        'automations': {
+            'gitlab': automations.get('gitlab', {}),
+            # see https://pycqa.github.io/isort/reference/isort/settings.html
+            'isort': automations.get('isort', {}),
+            'sonar': automations.get('sonar', {}),
+            # see https://github.com/google/yapf#knobs
+            'yapf': automations.get('yapf', {}),
+        },
         'canonical_server_name': http_settings['canonical_server_name'],
         'compress_response': http_settings.get('compress_response', True),
         'cookie_secret': http_settings.get('cookie_secret', 'imbi'),
@@ -115,6 +122,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'text': footer_link.get('text', ''),
             'url': footer_link.get('url', '')
         },
+        'frontend_url': config.get('frontend_url', None),
         'javascript_url': config.get('javascript_url', None),
         'ldap': {
             'enabled': ldap.get('enabled'),
@@ -152,9 +160,9 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'redis_url', 'redis://localhost:6379/1'),
         'template_loader': pkgfiles.TemplateLoader(debug=debug),
         'template_path': module_path / 'templates',
+        'version': version,
         'xheaders': http_settings.get('xheaders', True),
         'xsrf_cookies': False,
-        'version': version
     }
 
     return {k: v for k, v in settings.items() if v is not None}, log_config

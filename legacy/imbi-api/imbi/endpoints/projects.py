@@ -82,7 +82,9 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     FILTER_CHUNKS = {
         'name': 'to_tsvector(lower(a.name)) @@ websearch_to_tsquery(%(name)s)',
         'namespace_id': 'b.id = %(namespace_id)s',
-        'project_type_id': 'c.id = %(project_type_id)s'
+        'project_type_id': 'c.id = %(project_type_id)s',
+        'sonarqube_project_key':
+            'a.sonarqube_project_key = %(sonarqube_project_key)s',
     }
 
     SORT_MAP = {
@@ -110,7 +112,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
         where_chunks = []
         if self.get_query_argument('include_archived', 'false') == 'false':
             where_chunks.append('a.archived IS FALSE')
-        for kwarg in ['namespace_id', 'project_type_id', 'name']:
+        for kwarg in self.FILTER_CHUNKS.keys():
             value = self.get_query_argument(kwarg, None)
             if value is not None:
                 kwargs[kwarg] = value
