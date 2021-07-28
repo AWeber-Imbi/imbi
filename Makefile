@@ -6,7 +6,7 @@ ifneq (,$(wildcard ./.env))
 endif
 
 .PHONY: all
-all: setup scaffolding/postgres/ddl.sql build-openapi all-tests build-ui
+all: setup build-openapi all-tests build-ui
 
 .PHONY: build-openapi
 build-openapi: openapi-setup
@@ -23,11 +23,10 @@ build-ui-dev:
 .PHONY: clean
 clean:
 	@ docker-compose down
-	@ rm -f scaffolding/postgres/ddl.sql
 	@ rm -rf imbi/static/fonts/* imbi/static/js/*
 	@ rm -rf .env build dist imbi.egg-info env ui/node_modules
 
-.env: scaffolding/postgres/ddl.sql bootstrap docker-compose.yml
+.env: bootstrap docker-compose.yml
 	@ ./bootstrap
 
 env: env/stamp
@@ -39,20 +38,8 @@ env/stamp: setup.cfg setup.py
 	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install -e '.[testing]'
 	@ touch env/stamp
 
-.PHONY: postgres-ready
-postgres-ready: .env
-ifeq ($(docker-compose ps postgres |grep -c healthy), 1)
-	@ $(error Docker image for PostgreSQL is not running, perhaps you forget to run "make .env" or you should "make clean" and try again)
-endif
-
-scaffolding/postgres/ddl.sql: $(wildcard ddl/extensions/*.sql) $(wildcard ddl/*/v1/*.sql) $(wildcard ddl/roles/*.sql) $(wildcard ddl/schemata/*.sql)
-	@ cd ddl && bin/build.sh ../scaffolding/postgres/ddl.sql
-
 .PHONY: setup
 setup: .env env openapi/node_modules ui/node_modules
-
-.PHONY: ddl-setup
-ddl-setup: .env
 
 .PHONY: openapi-setup
 openapi-setup: openapi/node_modules
@@ -68,7 +55,6 @@ dist: build-openapi ui-setup
 	@ rm -rf dist
 	@ cd openapi && yarn run build
 	@ cd ui && NODE_ENV=production yarn run build
-	@ cd ddl && bin/build.sh ../ddl.sql
 	@ python3 setup.py sdist
 
 openapi/node_modules: openapi/package.json
@@ -132,19 +118,7 @@ prettier-check: ui/node_modules
 # Testing Groups
 
 .PHONY: all-tests
-all-tests: ddl-tests python-tests ui-tests
-
-.PHONY: ddl-tests
-ddl-tests: postgres-ready
-	@ printf "\nRunning DDL Tests\n\n"
-	@ docker-compose exec -T postgres /usr/bin/dropdb --if-exists ${REVISION}
-	@ docker-compose exec -T postgres /usr/bin/createdb ${REVISION} > /dev/null
-	@ cd ddl && bin/build.sh ../build/ddl-${REVISION}.sql
-	@ docker-compose exec -T postgres /usr/bin/psql -d ${REVISION} -v ON_ERROR_STOP=1 -f /build/ddl-${REVISION}.sql -X -q --pset=pager=off
-	@ docker-compose exec -T postgres /usr/bin/psql -d ${REVISION} -v ON_ERROR_STOP=1 -c "CREATE EXTENSION pgtap;" -X -q --pset=pager=off
-	@ cd ddl && docker-compose exec -T postgres /usr/local/bin/pg_prove -v -f -d ${REVISION} tests/*.sql
-	@ docker-compose exec -T postgres /usr/bin/dropdb --if-exists  ${REVISION}
-	@ rm build/ddl-${REVISION}.sql
+all-tests: python-tests ui-tests
 
 .PHONY: python-tests
 python-tests: bandit flake8 coverage

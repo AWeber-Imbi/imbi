@@ -15,13 +15,11 @@ services:
       test: /usr/bin/ldapsearch -x -h localhost -b dc=example,dc=org cn=test,ou=users,dc=example,dc=org
     command: --loglevel debug --copy-service
   postgres:
-    image: gavinmroy/alpine-postgres:13.2-0
+    image: aweber/imbi-postgres:0.14.0
     ports:
       - 5432
     volumes:
-      - ./ddl/tests:/tests:rw
-      - ./build:/build:rw
-      - ./scaffolding/postgres:/docker-entrypoint-initdb.d
+      - ./scaffolding/postgres:/tmp/postgres
   redis:
     image: gavinmroy/alpine-redis:5.0.9-0
     ports:

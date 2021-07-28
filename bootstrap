@@ -56,6 +56,8 @@ docker-compose up -d ldap postgres redis
 
 wait_for_healthy_containers 3
 
+docker-compose exec postgres psql -U postgres -d postgres -f /tmp/postgres/dml.sql -q
+
 cat > .env <<EOF
 export ENVIRONMENT=development
 export LDAP_ENABLED=true
