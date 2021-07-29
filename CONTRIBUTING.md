@@ -49,28 +49,20 @@ The following generic targets are available in the [Makefile]().
 - `all` - Setup the development environment, DDL and DML, OpenAPI document, the UI, and run tests
 - `bootstrap` - Bootstrap the docker-compose dependencies for development
 - `build-openapi` - Build the OpenAPI template document
-- `build-ui` - Create a "production" build of the React UI
-- `build-ui-dev` - Create a development build of the React UI
 - `clean` - Remove all build artifacts and shutdown the docker-compose development environment
 - `dist` - Create the release packages
 - `env` - Setup a Python virtual environment and install the API dependencies (including testing)
 - `setup` - Setup the development environment for the API, OpenAPI docs, and UI
-- `serve` - Run a JavaScript webserver that watches UI files and rebuilds the development versions on change, pushing changes to the browser
-- `watch` - Watches UI files and rebuilds the development versions on change
 
 ### Testing Targets
 
 The following [Makefile]() targets are for running the various tests for the various parts of Imbi.
 
 - `all-tests` - Runs all tests (API, DDL, OpenAPI Spec, UI)
-- `ddl-tests` - Run the DDL pgTap tests
 - `python-tests` - Run the tests for the Python project (bandit, flake8, coverage)
-- `ui-tests` - Run the tests for the UI (eslint, jest)
 - `bandit` - Run bandit against the Python project
 - `coverage` - Use coverage to run the Python project tests
-- `estlint` - Run eslint against the UI project source
 - `flake8` - Run flake8 against the Python project
-- `jest` - Run jest against the UI project tests
 - `openapi-validate` - Run `swagger-cli validate` against the OpenAPI spec
 
 ## Code Formatting
@@ -130,7 +122,7 @@ inside of imbi.  The first thing that you need to do is create the OAuth 2 appli
    - **Redirect URI**: http://127.0.0.1:8000/gitlab/auth
    - **Confidential**: checked
    - **Scopes**: api
-3. Press the **Save Application** button    
+3. Press the **Save Application** button
 4. Leave this page open, you will need the two IDs that were generated
 5. Generate an API token in imbi if you do not have one
 6. Send the following `POST` to imbi to create the integration:
