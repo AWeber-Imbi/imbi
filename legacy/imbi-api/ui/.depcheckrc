@@ -1,2 +1,0 @@
-ignores: ["@babel/core", "@testing-library/dom", "autoprefixer", "browserslist", "depcheck", "dns-packet", "elliptic", "eslint", "hosted-git-info", "husky", "identity-obj-proxy", "inter-ui", "jest", "lint-staged", "lodash", "node-fetch", "postcss", "postcss-import", "prettier", "react-hot-loader", "ssri", "typescript", "webpack", "webpack-cli", "webpack-dev-server"]
-specials: ["babel", "eslint", "jest", "prettier", "webpack"]
