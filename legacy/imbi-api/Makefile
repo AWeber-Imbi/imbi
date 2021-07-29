@@ -6,11 +6,7 @@ ifneq (,$(wildcard ./.env))
 endif
 
 .PHONY: all
-all: setup build-openapi all-tests build-ui
-
-.PHONY: build-openapi
-build-openapi: openapi-setup
-	@ cd openapi && yarn run build && yarn run redoc
+all: setup all-tests
 
 .PHONY: clean
 clean:
@@ -33,21 +29,15 @@ env/stamp: setup.cfg setup.py
 .PHONY: setup
 setup: .env env openapi/node_modules ui/node_modules
 
-.PHONY: openapi-setup
-openapi-setup: openapi/node_modules
-
 .PHONY: python-setup
 python-setup: .env env
 
 .PHONY: dist
-dist: build-openapi ui-setup
+dist:
 	@ rm -rf dist
 	@ cd openapi && yarn run build
 	@ cd ui && NODE_ENV=production yarn run build
 	@ python3 setup.py sdist
-
-openapi/node_modules: openapi/package.json
-	@ cd openapi && yarn install
 
 # Testing
 
@@ -67,11 +57,6 @@ coverage: .env env
 flake8: env
 	@ printf "\nRunning Flake8 Tests\n\n"
 	@ env/bin/flake8 --tee --output-file=build/flake8.txt
-
-.PHONY: openapi-validate
-openapi-validate:
-	@ printf "\nRunning swagger-cli-validate\n\n"
-	@ cd openapi && yarn run validate
 
 # Testing Groups
 
