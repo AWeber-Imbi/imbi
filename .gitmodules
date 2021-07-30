@@ -1,0 +1,12 @@
+[submodule "api"]
+	path = api
+	url = https://github.com/AWeber-Imbi/imbi-api.git
+[submodule "openapi"]
+	path = openapi
+	url = https://github.com/AWeber-Imbi/imbi-openapi.git
+[submodule "ui"]
+	path = ui
+	url = https://github.com/AWeber-Imbi/imbi-ui.git
+[submodule "ddl"]
+	path = ddl
+	url = https://github.com/AWeber-Imbi/imbi-schema.git
