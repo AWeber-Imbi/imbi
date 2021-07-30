@@ -56,7 +56,7 @@ docker-compose up -d ldap postgres redis
 
 wait_for_healthy_containers 3
 
-docker-compose exec postgres psql -U postgres -d postgres -f /tmp/postgres/dml.sql -q
+docker-compose exec -T postgres psql -U postgres -d postgres -f /tmp/postgres/dml.sql -q
 
 cat > .env <<EOF
 export ENVIRONMENT=development
