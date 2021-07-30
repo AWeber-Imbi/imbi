@@ -27,41 +27,28 @@ env/stamp: setup.cfg setup.py
 	@ touch env/stamp
 
 .PHONY: setup
-setup: .env env openapi/node_modules ui/node_modules
-
-.PHONY: python-setup
-python-setup: .env env
-
-.PHONY: dist
-dist:
-	@ rm -rf dist
-	@ cd openapi && yarn run build
-	@ cd ui && NODE_ENV=production yarn run build
-	@ python3 setup.py sdist
+setup: .env env
 
 # Testing
 
 .PHONY: bandit
 bandit: env
-	@ printf "\nRunning Bandit\n\n"
+	@ printf "\nRunning Bandit\n"
 	@ env/bin/bandit -r imbi
 
 .PHONY: coverage
 coverage: .env env
-	@ printf "\nRunning Python Tests\n\n"
+	@ printf "\nRunning Python Tests\n"
 	@ env/bin/coverage run
 	@ env/bin/coverage xml
 	@ env/bin/coverage report
 
 .PHONY: flake8
 flake8: env
-	@ printf "\nRunning Flake8 Tests\n\n"
+	@ printf "\nRunning Flake8 Tests\n"
 	@ env/bin/flake8 --tee --output-file=build/flake8.txt
 
 # Testing Groups
 
-.PHONY: all-tests
-all-tests: python-tests
-
-.PHONY: python-tests
-python-tests: bandit flake8 coverage
+.PHONY: test
+test: bandit flake8 coverage

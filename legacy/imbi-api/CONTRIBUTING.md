@@ -14,8 +14,6 @@ Imbi requires the following in the development environment:
 
 - Docker (local)
 - Make
-- Node
-  - yarn
 - Python 3.9
     - pip
     - setuptools
@@ -36,30 +34,21 @@ imbi --debug build/debug.yaml
 Once complete, imbi should be running at [http://localhost:8000](). The test admin
 user is `test` and the password is `password`.
 
-
-## Building Static Assets
-
-Imbi uses webpack to build the static assets for the site. To work on the UI
-in development mode, `make watch` is useful.
-
 ## Makefile Targets
 
 The following generic targets are available in the [Makefile]().
 
-- `all` - Setup the development environment, DDL and DML, OpenAPI document, the UI, and run tests
+- `all` - Setup the development environment and run tests
 - `bootstrap` - Bootstrap the docker-compose dependencies for development
-- `build-openapi` - Build the OpenAPI template document
 - `clean` - Remove all build artifacts and shutdown the docker-compose development environment
-- `dist` - Create the release packages
 - `env` - Setup a Python virtual environment and install the API dependencies (including testing)
-- `setup` - Setup the development environment for the API, OpenAPI docs, and UI
+- `setup` - Setup the development environment for the API
 
 ### Testing Targets
 
 The following [Makefile]() targets are for running the various tests for the various parts of Imbi.
 
-- `all-tests` - Runs all tests (API, DDL, OpenAPI Spec, UI)
-- `python-tests` - Run the tests for the Python project (bandit, flake8, coverage)
+- `test` - Run the tests for the Python project (bandit, flake8, coverage)
 - `bandit` - Run bandit against the Python project
 - `coverage` - Use coverage to run the Python project tests
 - `flake8` - Run flake8 against the Python project

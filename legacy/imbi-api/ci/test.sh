@@ -59,4 +59,4 @@ logging:
   incremental: false
 EOF
 ls -al
-make python-tests
+make test
