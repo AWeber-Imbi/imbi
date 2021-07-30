@@ -5,23 +5,28 @@ way to manage a large environment that contains many services and applications.
 
 |Version| |Coverage| |License|
 
+Features
+--------
+- Automation of new project setup
+    - Source code repository setup
+    - Automated initial project creation using curated project cookie-cutters
+- Centralized Service inventory with:
+    - Automated service library/package inventory
+    - Service dependency graph
+- Reporting
+    - Site-wide and team specific reporting for service standards and compliance
+
 Planned Features
 ----------------
 
 - Automation of new project setup
-    - Source code repository setup
-    - Automated initial project creation using curated project cookie-cutters
     - Grafana dashboard creation using curated dashboard cookie-cutters
     - for Consul, Sentry, and other 3rd party integrations
-- Centralized Service inventory with:
-    - Automated service library/package inventory
-    - Service dependency graph
 - Automated release management
     - Integrated with releases from GitLab
     - Centralized logging of deployments with per service history and Slack integration
     - Acceptance testing on deployment for projects and first-tier dependencies
 - Reporting
-    - Site-wide and team specific reporting for service standards and compliance
     - Integration with Consul, Sensu, and PagerDuty for service status and availability history
 
 Configuration
