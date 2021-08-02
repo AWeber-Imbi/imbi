@@ -1,3 +1,4 @@
+import base64
 import dataclasses
 import typing
 import urllib.parse
@@ -29,11 +30,13 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 
     async def get(self):
         auth_code = self.get_query_argument('code')
-        state = self.get_query_argument('state')
+        state = base64.b64decode(
+            self.get_query_argument('state'), b'-_').decode('utf-8')
+        username, target = state.rstrip('?').split(':')
         token = await self.exchange_code_for_token(auth_code)
         try:
             user_id, user_name, email = await self.fetch_gitlab_user(token)
-            imbi_user = user.User(self.application, username=state)
+            imbi_user = user.User(self.application, username=username)
             await imbi_user.refresh()
             if imbi_user.email_address != email:
                 raise errors.Forbidden(
@@ -49,8 +52,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
             await self.revoke_gitlab_token(token)
             raise
 
-        target = yarl.URL(self.request.full_url())
-        target = target.with_path('/ui/user/profile')
+        target = yarl.URL(self.request.full_url()).with_path(target or '/ui/')
         self.redirect(str(target))
 
     async def exchange_code_for_token(self, code) -> GitlabToken:
