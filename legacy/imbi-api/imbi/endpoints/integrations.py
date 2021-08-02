@@ -12,11 +12,11 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
     COLLECTION_SQL = """\
         SELECT name, api_endpoint, callback_url, authorization_endpoint,
                token_endpoint, revoke_endpoint, client_id
-          FROM v1.oauth_integrations
+          FROM v1.oauth2_integrations
          ORDER BY "name" ASC"""
 
     POST_SQL = """\
-        INSERT INTO v1.oauth_integrations
+        INSERT INTO v1.oauth2_integrations
                     (name, api_endpoint, callback_url, authorization_endpoint,
                      token_endpoint, revoke_endpoint, client_id, client_secret,
                      public_client)
@@ -29,7 +29,7 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
     GET_SQL = """\
         SELECT name, api_endpoint, callback_url, authorization_endpoint,
                token_endpoint, revoke_endpoint, client_id
-          FROM v1.oauth_integrations
+          FROM v1.oauth2_integrations
          WHERE name = %(name)s"""
 
 
@@ -40,8 +40,8 @@ class RecordRequestHandler(base.CRUDRequestHandler):
     GET_SQL = """\
         SELECT name, api_endpoint, callback_url, authorization_endpoint,
                token_endpoint, revoke_endpoint, client_id
-          FROM v1.oauth_integrations
+          FROM v1.oauth2_integrations
          WHERE name = %(name)s"""
 
     DELETE_SQL = """\
-        DELETE FROM v1.oauth_integrations WHERE name = %(name)s"""
+        DELETE FROM v1.oauth2_integrations WHERE name = %(name)s"""

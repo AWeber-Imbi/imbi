@@ -28,7 +28,7 @@ class OAuth2Integration:
     SELECT api_endpoint, authorization_endpoint, token_endpoint,
            revoke_endpoint, client_id, client_secret, public_client,
            callback_url
-      FROM v1.oauth_integrations
+      FROM v1.oauth2_integrations
      WHERE name = %(name)s"""
 
     SQL_ADD_TOKEN = """\
