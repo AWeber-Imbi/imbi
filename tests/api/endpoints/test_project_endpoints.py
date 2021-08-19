@@ -45,7 +45,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             '/project-link-types', method='POST', headers=self.headers,
             body=json.dumps({
                 'link_type': str(uuid.uuid4()),
-                'icon_class': 'fas fa-blind'
+                'icon_class': 'fas fa-blind',
+                'is_primary_repository': False
             }).encode('utf-8'))
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))['id']

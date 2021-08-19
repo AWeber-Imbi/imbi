@@ -3317,6 +3317,9 @@ paths:
                     icon_class:
                       description: Font Awesome UI icon class
                       type: string
+                    is_primary_repository:
+                      description: Is this type of link for the primary source-code repository?
+                      type: boolean
                   additionalProperties: false
               example:
                 records:
@@ -3324,8 +3327,13 @@ paths:
                   value:
                     - project_link_type: documentation
                       icon_class: fab fa-bool
+                      is_primary_repository: false
                     - project_link_type: grafana
-                      icon_class: fab fa-graph
+                      icon_class: fab fa-grafana
+                      is_primary_repository: false
+                    - project_link_type: gitlab
+                      icon_class: fab fa-gitlab
+                      is_primary_repository: true
             application/msgpack:
               schema:
                 type: array
@@ -3349,6 +3357,9 @@ paths:
                     icon_class:
                       description: Font Awesome UI icon class
                       type: string
+                    is_primary_repository:
+                      description: Is this type of link for the primary source-code repository?
+                      type: boolean
                   additionalProperties: false
               example:
                 records:
@@ -3356,8 +3367,13 @@ paths:
                   value:
                     - project_link_type: documentation
                       icon_class: fab fa-bool
+                      is_primary_repository: false
                     - project_link_type: grafana
-                      icon_class: fab fa-graph
+                      icon_class: fab fa-grafana
+                      is_primary_repository: false
+                    - project_link_type: gitlab
+                      icon_class: fab fa-gitlab
+                      is_primary_repository: true
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
     post:
@@ -3378,6 +3394,9 @@ paths:
                 icon_class:
                   description: Font Awesome UI icon class
                   type: string
+                is_primary_repository:
+                  description: Is this type of link for the primary source-code repository?
+                  type: boolean
               required:
                 - link_type
                 - icon_class
@@ -3388,6 +3407,7 @@ paths:
                 value:
                   link_type: documentation
                   icon_class: fab fa-bool
+                  is_primary_repository: false
           application/msgpack:
             schema:
               $ref: '#/paths/~1project-link-types/post/requestBody/content/application~1json/schema'
@@ -3397,6 +3417,7 @@ paths:
                 value:
                   link_type: documentation
                   icon_class: fab fa-bool
+                  is_primary_repository: false
       tags:
         - Project Link Types
       responses:
@@ -3422,6 +3443,7 @@ paths:
                     last_modified_by: null
                     link_type: documentation
                     icon_class: fab fa-bool
+                    is_primary_repository: false
             application/msgpack:
               schema:
                 $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items'
@@ -3434,6 +3456,7 @@ paths:
                     last_modified_by: null
                     link_type: documentation
                     icon_class: fab fa-bool
+                    is_primary_repository: false
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
