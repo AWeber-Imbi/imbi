@@ -15,8 +15,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
     def test_project_link_type_lifecycle(self):
         record = {
             'link_type': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind',
-            'is_primary_repository': False
+            'icon_class': 'fas fa-blind'
         }
 
         # Create
