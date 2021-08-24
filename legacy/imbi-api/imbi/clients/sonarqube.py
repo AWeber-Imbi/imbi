@@ -7,15 +7,16 @@ import sprockets.mixins.http
 import tornado.web
 import yarl
 
-from imbi import automations, errors, version
+from imbi import errors, version
+from imbi.automations import models
 
 
-def generate_key(project: 'automations.Project') -> str:
+def generate_key(project: models.Project) -> str:
     """Generate a SonarQube project key for `project`."""
     return ':'.join([project.namespace.slug.lower(), project.slug.lower()])
 
 
-def generate_dashboard_link(project: 'automations.Project',
+def generate_dashboard_link(project: models.Project,
                             sonar_settings: dict) -> typing.Union[str, None]:
     """Generate a link to the SonarQube dashboard for `project`."""
     if sonar_settings['url']:
@@ -40,10 +41,10 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
         self.logger = logging.getLogger(__package__).getChild(
             'SonarQubeClient')
 
-        settings = application.settings['automations']['sonar']
+        self.settings = application.settings['automations']['sonarqube']
         try:
-            self.admin_token = settings['admin_token']
-            self.sonar_url = yarl.URL(settings['url'])
+            self.admin_token = self.settings['admin_token']
+            self.sonar_url = yarl.URL(self.settings['url'])
         except KeyError as error:
             if self.__class__.enabled is None:
                 self.logger.warning('disabling SonarQube integration due to'
@@ -88,7 +89,7 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                 self.logger.warning('response body: %r', response.body)
         return response
 
-    async def create_project(self, project: 'automations.Project', *,
+    async def create_project(self, project: models.Project, *,
                              main_branch_name='main',
                              public_url: yarl.URL) -> typing.Tuple[str, str]:
         """Create a SonarQube project for `project`.
@@ -116,7 +117,6 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
             self._enable_pr_decoration(project_key, project.gitlab_project_id),
             self._add_link_to_sonar(project_key, 'Imbi Project', public_url),
         )
-
         return project_key, str(dashboard_url)
 
     async def _fix_main_branch(self, project_key: str, main_branch_name: str):

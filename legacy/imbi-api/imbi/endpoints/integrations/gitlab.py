@@ -6,8 +6,9 @@ import urllib.parse
 import sprockets.mixins.http
 import yarl
 
-from . import base
-from .. import errors, gitlab, integrations, user
+from imbi import errors, oauth2, user
+from imbi.clients import gitlab
+from imbi.endpoints import base
 
 
 @dataclasses.dataclass
@@ -18,12 +19,12 @@ class GitlabToken:
 
 class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                       base.RequestHandler):
-    integration: 'integrations.OAuth2Integration'
+    integration: 'oauth2.OAuth2Integration'
 
     async def prepare(self) -> None:
         await super().prepare()
         if not self._finished:
-            self.integration = await integrations.OAuth2Integration.by_name(
+            self.integration = await oauth2.OAuth2Integration.by_name(
                 self.application, 'gitlab')
             if not self.integration:
                 raise errors.IntegrationNotFound('gitlab')
@@ -82,7 +83,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                            refresh_token=response.body['refresh_token'])
 
     async def fetch_gitlab_user(self, token: GitlabToken) -> typing.Tuple[
-            int, str, str]:
+        int, str, str]:
         response = await self.http_fetch(
             str(self.integration.api_endpoint / 'user'),
             request_headers={'Accept': 'application/json',
@@ -104,7 +105,7 @@ class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
     async def prepare(self) -> None:
         await super().prepare()
         if not self._finished:
-            integration = await integrations.OAuth2Integration.by_name(
+            integration = await oauth2.OAuth2Integration.by_name(
                 self.application, 'gitlab')
             if not integration:
                 raise errors.IntegrationNotFound('gitlab')

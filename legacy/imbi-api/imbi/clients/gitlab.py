@@ -10,8 +10,7 @@ import sprockets.mixins.http
 import tornado.web
 import yarl
 
-import imbi.integrations
-from imbi import errors, version
+from imbi import errors, oauth2, version
 
 
 class Namespace(pydantic.BaseModel):
@@ -48,11 +47,11 @@ PROJECT_DEFAULTS = {
 class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
     """API Client for GitLab.
 
-    This client sends authenticated HTTP requests to the GitLab
-    API.
+    This client sends authenticated HTTP requests to the GitLab API.
 
     """
-    def __init__(self, token: imbi.integrations.IntegrationToken,
+    def __init__(self,
+                 token: oauth2.IntegrationToken,
                  application: tornado.web.Application):
         super().__init__()
         settings = application.settings['automations']['gitlab']
@@ -82,7 +81,7 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         self.logger.debug('%s %s', method, url)
         return await super().http_fetch(str(url), method=method, **kwargs)
 
-    async def fetch_all_pages(self, *path, **query) -> typing.Sequence[dict]:
+    async def fetch_all_pages(self, *path, **query) -> typing.List[dict]:
         url = self.token.integration.api_endpoint
         for component in path:
             url /= str(component)
@@ -104,16 +103,16 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
                     break
             else:
                 url = None
-
         return entries
 
-    async def fetch_group(self, *group_path) -> typing.Union[dict, None]:
+    async def fetch_group(self, *group_path) -> typing.Optional[dict]:
         slug = urllib.parse.quote('/'.join(group_path), safe='')
         url = self.token.integration.api_endpoint
-        url = url.with_path(url.path.rstrip('/') + '/groups/' + slug,
-                            encoded=True)
+        path = f'{url.path.rstrip("/")}/groups/{slug}'
+        url = url.with_path(path, encoded=True)
         response = await self.api(url)
         if response.code == 404:
+            self.logger.debug('Group not found: %s', url)
             return None
         if response.ok:
             return response.body
@@ -121,8 +120,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             'failed to fetch group %s: %s', slug, response.code,
             title='GitLab API Failure')
 
-    async def fetch_project(self, project_id: int) -> typing.Union[
-            ProjectInfo, None]:
+    async def fetch_project(self, project_id: int) \
+            -> typing.Optional[ProjectInfo]:
         url = (self.token.integration.api_endpoint / 'projects' /
                str(project_id))
         response = await self.api(url)
@@ -134,7 +133,9 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             'failed to fetch project %s: %s', project_id, response.code,
             title='GitLab API Failure')
 
-    async def create_project(self, parent, project_name,
+    async def create_project(self,
+                             parent,
+                             project_name: str,
                              **attributes) -> ProjectInfo:
         if self.restrict_to_user:
             parent = await self.fetch_user_namespace()
@@ -152,8 +153,10 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             'failed to create project %s: %s', project_name, response.code,
             title='GitLab API Failure', gitlab_response=response.body)
 
-    async def commit_tree(self, project_info: ProjectInfo,
-                          project_dir: pathlib.Path, commit_message: str):
+    async def commit_tree(self,
+                          project_info: ProjectInfo,
+                          project_dir: pathlib.Path,
+                          commit_message: str):
         self.logger.info('creating commit for %s', project_info.id)
 
         files = [path for path in project_dir.glob('**/*') if path.is_file()]
@@ -210,8 +213,9 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         if self._user_namespace:
             return self._user_namespace
         user_info = await self.fetch_user_information()
-        response = await self.api(self.token.integration.api_endpoint /
-                                  'namespaces' / user_info['username'])
+        response = await self.api(
+            self.token.integration.api_endpoint /
+            'namespaces' / user_info['username'])
         if response.ok:
             self._user_namespace = response.body
             return self._user_namespace
