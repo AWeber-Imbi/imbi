@@ -77,8 +77,10 @@ cat > build/debug.yaml <<EOF
 ---
 automations:
   gitlab:
-    repository_link_id: ~
+    project_link_type_id: ~
     restrict_to_user: true
+  grafana:
+    project_link_type_id: ~
   # see https://pycqa.github.io/isort/reference/isort/settings.html
   isort:
     force_grid_wrap: 0
@@ -86,9 +88,11 @@ automations:
     multi_line_output: 3
     profile: pycharm
     use_parentheses: false
-  sonar:
+  sentry:
+    project_link_type_id: ~
+  sonarqube:
     admin_token: ~
-    dashboard_link_id: ~
+    project_link_type_id: ~
     url: ~
   # see https://github.com/google/yapf#knobs
   yapf:
@@ -109,6 +113,7 @@ ldap:
   pool_size: 5
 postgres:
   url: postgres://postgres@${TEST_HOST}:$(get_exposed_port postgres 5432)/postgres
+project_url_template: http://{slug}.service.{environment}.consul
 session:
   redis_url: redis://${TEST_HOST}:$(get_exposed_port redis 6379)/0
 stats:
@@ -157,6 +162,7 @@ ldap:
   pool_size: 5
 postgres:
   url: postgres://postgres@${TEST_HOST}:$(get_exposed_port postgres 5432)/postgres
+project_url_template: ~
 session:
   redis_url: redis://${TEST_HOST}:$(get_exposed_port redis 6379)/0
 stats:

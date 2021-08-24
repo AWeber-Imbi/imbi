@@ -81,6 +81,18 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     log_config = config.get('logging', DEFAULT_LOG_CONFIG)
 
     automations = config.get('automations', {})
+    automations_gitlab = automations.get('gitlab', {})
+    automations_grafana = automations.get('grafana', {})
+    if automations_grafana.get('url') \
+            and automations_grafana.get('admin_token'):
+        automations_grafana['enabled'] = True
+    automations_sentry = automations.get('sentry', {})
+    if automations_sentry.get('url') \
+            and automations_sentry.get('admin_token'):
+        automations_sentry['enabled'] = True
+    automations_sonar = automations.get('sonarqube', {})
+    if automations_sonar.get('url') and automations_sonar.get('admin_token'):
+        automations_sonar['enabled'] = True
     footer_link = config.get('footer_link', {})
     http_settings = config.get('http', {})
     ldap = config.get('ldap', {})
@@ -105,10 +117,31 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
 
     settings = {
         'automations': {
-            'gitlab': automations.get('gitlab', {}),
+            'gitlab': {
+                'project_link_type_id':
+                    automations_gitlab.get('project_link_type_id'),
+                'restrict_to_user':
+                    automations_grafana.get('restrict_to_user', False)
+            },
+            'grafana': {
+                'enabled': automations_grafana.get('enabled', False),
+                'project_link_type_id':
+                    automations_grafana.get('project_link_type_id')
+            },
             # see https://pycqa.github.io/isort/reference/isort/settings.html
             'isort': automations.get('isort', {}),
-            'sonar': automations.get('sonar', {}),
+            'sentry': {
+                'enabled': automations_sentry.get('enabled', False),
+                'project_link_type_id':
+                    automations_sentry.get('project_link_type_id')
+            },
+            'sonarqube': {
+                'enabled': automations_sonar.get('enabled', False),
+                'admin_token': automations_sonar.get('admin_token'),
+                'project_link_type_id':
+                    automations_sonar.get('project_link_type_id'),
+                'url': automations_sonar.get('url')
+            },
             # see https://github.com/google/yapf#knobs
             'yapf': automations.get('yapf', {}),
         },
@@ -146,8 +179,9 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'postgres_connection_timeout': postgres.get('connection_timeout'),
         'postgres_connection_ttl': postgres.get('connection_ttl'),
         'postgres_query_timeout': postgres.get('query_timeout'),
-        'sentry_backend_dsn': sentry.get('backend_dsn', False),
-        'sentry_ui_dsn': sentry.get('ui_dsn', False),
+        'project_url_template': config.get('project_url_template', None),
+        'sentry_backend_dsn': sentry.get('backend_dsn', 'false'),
+        'sentry_ui_dsn': sentry.get('ui_dsn', 'false'),
         'server_header': 'imbi/{}'.format(version),
         'session_duration': int(session.get('duration', '7')),
         'session_pool_size': session.get('pool_size', 10),
