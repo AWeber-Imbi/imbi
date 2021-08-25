@@ -82,8 +82,8 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         return GitlabToken(access_token=response.body['access_token'],
                            refresh_token=response.body['refresh_token'])
 
-    async def fetch_gitlab_user(self, token: GitlabToken) -> typing.Tuple[
-        int, str, str]:
+    async def fetch_gitlab_user(self, token: GitlabToken) \
+            -> typing.Tuple[int, str, str]:
         response = await self.http_fetch(
             str(self.integration.api_endpoint / 'user'),
             request_headers={'Accept': 'application/json',

@@ -9,6 +9,7 @@ from imbi.clients import gitlab, sonarqube
 if typing.TYPE_CHECKING:
     from imbi import app, user
 
+
 class SonarCreateProject(base.Automation):
 
     INSERT_SQL = re.sub(
