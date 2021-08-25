@@ -11,8 +11,7 @@ class _RequestHandlerMixin:
 
     GET_SQL = re.sub(r'\s+', ' ', """\
         SELECT id, created_at, created_by, last_modified_at, last_modified_by,
-               link_type, icon_class, is_primary_repository,
-               created_by_automation
+               link_type, icon_class
           FROM v1.project_link_types
          WHERE id=%(id)s""")
 
