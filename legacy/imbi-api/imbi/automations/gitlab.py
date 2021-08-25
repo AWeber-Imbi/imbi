@@ -169,11 +169,11 @@ class GitLabInitialCommitAutomation(base.Automation):
                 # 'sentry_dashboard': None,
                 # 'sentry_organization': None,
             }
-            if self.automation_settings['sonar'].get('url'):
+            if self.automation_settings['sonarqube'].get('url'):
                 context.update({
                     'sonar_project_key': sonarqube.generate_key(self._project),
                     'sonar_project_url': sonarqube.generate_dashboard_link(
-                        self._project, self.automation_settings['sonar'])
+                        self._project, self.automation_settings['sonarqube'])
                 })
 
             self.logger.debug('expanding %s for project %s in %s',
