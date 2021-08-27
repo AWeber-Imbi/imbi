@@ -4,8 +4,7 @@ import typing
 
 import sprockets_postgres
 
-from imbi import oauth2
-from imbi.automations import models
+from imbi import models, oauth2
 if typing.TYPE_CHECKING:
     from imbi import app, user
 

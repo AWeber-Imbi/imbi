@@ -9,8 +9,8 @@ import isort
 import sprockets_postgres
 from yapf import yapf_api
 
-from imbi import oauth2
-from imbi.automations import base, models
+from imbi import models, oauth2
+from imbi.automations import base
 from imbi.clients import gitlab, sonarqube
 if typing.TYPE_CHECKING:
     from imbi import app, user

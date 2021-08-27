@@ -7,8 +7,7 @@ import sprockets.mixins.http
 import tornado.web
 import yarl
 
-from imbi import errors, version
-from imbi.automations import models
+from imbi import errors, models, version
 
 
 def generate_key(project: models.Project) -> str:
