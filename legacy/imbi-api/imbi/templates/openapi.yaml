@@ -2109,7 +2109,7 @@ paths:
                   description: An optional version that the change was made for
                   type: string
               required:
-                - recored_by
+                - recorded_by
                 - environment
                 - change_type
               additionalProperties: false
