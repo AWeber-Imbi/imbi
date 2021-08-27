@@ -5,6 +5,7 @@ User Model supporting both LDAP and PostgreSQL data sources
 import dataclasses
 import datetime
 import logging
+import re
 import typing
 from itertools import chain
 
@@ -45,69 +46,69 @@ class User:
 
     REFRESH_AFTER = datetime.timedelta(minutes=5)
 
-    SQL_AUTHENTICATE = """\
-       UPDATE v1.users
-          SET last_seen_at = CURRENT_TIMESTAMP
-        WHERE username = %(username)s
-          AND password = %(password)s
-          AND user_type = 'internal'
-    RETURNING username;"""
+    SQL_AUTHENTICATE = re.sub(r'\s+', ' ', """\
+           UPDATE v1.users
+              SET last_seen_at = CURRENT_TIMESTAMP
+            WHERE username = %(username)s
+              AND password = %(password)s
+              AND user_type = 'internal'
+        RETURNING username""")
 
-    SQL_AUTHENTICATE_TOKEN = """\
-       UPDATE v1.users
-          SET last_seen_at = CURRENT_TIMESTAMP
-        WHERE username IN (
-                SELECT username
-                  FROM v1.authentication_tokens
-                 WHERE token = %(token)s
-                   AND expires_at > CURRENT_TIMESTAMP)
-    RETURNING username, user_type, external_id;"""  # nosec
+    SQL_AUTHENTICATE_TOKEN = re.sub(r'\s+', ' ', """\
+           UPDATE v1.users
+              SET last_seen_at = CURRENT_TIMESTAMP
+            WHERE username IN (
+                    SELECT username
+                      FROM v1.authentication_tokens
+                     WHERE token = %(token)s
+                       AND expires_at > CURRENT_TIMESTAMP)
+        RETURNING username, user_type, external_id""")  # nosec
 
-    SQL_GROUPS = """\
-    SELECT a.name, a.permissions
-      FROM v1.groups AS a
-      JOIN v1.group_members AS b ON b.group = a.name
-     WHERE b.username = %(username)s;"""
+    SQL_GROUPS = re.sub(r'\s+', ' ', """\
+        SELECT a.name, a.permissions
+          FROM v1.groups AS a
+          JOIN v1.group_members AS b ON b.group = a.name
+         WHERE b.username = %(username)s""")
 
-    SQL_INTEGRATIONS = """\
-    SELECT integration AS name, external_id
-      FROM v1.user_oauth2_tokens
-     WHERE username = %(username)s;"""
+    SQL_INTEGRATIONS = re.sub(r'\s+', ' ', """\
+        SELECT integration AS name, external_id
+          FROM v1.user_oauth2_tokens
+         WHERE username = %(username)s""")
 
-    SQL_REFRESH = """\
-    SELECT username, created_at, last_seen_at, user_type, external_id,
-           email_address, display_name
-      FROM v1.users
-     WHERE username = %(username)s;"""
+    SQL_REFRESH = re.sub(r'\s+', ' ', """\
+        SELECT username, created_at, last_seen_at, user_type, external_id,
+               email_address, display_name
+          FROM v1.users
+         WHERE username = %(username)s""")
 
-    SQL_UPDATE_GROUP_MEMBERSHIPS_FROM_LDAP = """\
-    SELECT maintain_group_membership_from_ldap_groups AS groups
-      FROM maintain_group_membership_from_ldap_groups(%(username)s,
-                                                      %(groups)s);"""
+    SQL_UPDATE_GROUP_MEMBERSHIPS_FROM_LDAP = re.sub(r'\s+', ' ', """\
+        SELECT maintain_group_membership_from_ldap_groups AS groups
+          FROM maintain_group_membership_from_ldap_groups(%(username)s,
+                                                          %(groups)s)""")
 
-    SQL_UPDATE_LAST_SEEN_AT = """\
-        UPDATE v1.users
-           SET last_seen_at = CURRENT_TIMESTAMP
-         WHERE username = %(username)s
-     RETURNING last_seen_at"""
+    SQL_UPDATE_LAST_SEEN_AT = re.sub(r'\s+', ' ', """\
+            UPDATE v1.users
+               SET last_seen_at = CURRENT_TIMESTAMP
+             WHERE username = %(username)s
+         RETURNING last_seen_at""")
 
-    SQL_UPDATE_USER_FROM_LDAP = """\
-    INSERT INTO v1.users (username, user_type, external_id,
-                          display_name, email_address, last_seen_at)
-         VALUES (%(username)s,
-                 %(user_type)s,
-                 %(external_id)s,
-                 %(display_name)s,
-                 %(email_address)s,
-                 CURRENT_TIMESTAMP)
-    ON CONFLICT (username)
-             DO UPDATE SET email_address = EXCLUDED.email_address,
-                             external_id = EXCLUDED.external_id,
-                               user_type = EXCLUDED.user_type,
-                                password = NULL,
-                            last_seen_at = CURRENT_TIMESTAMP
-                    WHERE users.username = EXCLUDED.username
-      RETURNING last_seen_at;"""
+    SQL_UPDATE_USER_FROM_LDAP = re.sub(r'\s+', ' ', """\
+        INSERT INTO v1.users (username, user_type, external_id,
+                              display_name, email_address, last_seen_at)
+             VALUES (%(username)s,
+                     %(user_type)s,
+                     %(external_id)s,
+                     %(display_name)s,
+                     %(email_address)s,
+                     CURRENT_TIMESTAMP)
+        ON CONFLICT (username)
+                 DO UPDATE SET email_address = EXCLUDED.email_address,
+                                 external_id = EXCLUDED.external_id,
+                                   user_type = EXCLUDED.user_type,
+                                    password = NULL,
+                                last_seen_at = CURRENT_TIMESTAMP
+                        WHERE users.username = EXCLUDED.username
+          RETURNING last_seen_at""")
 
     def __init__(self, application,
                  username: typing.Optional[str] = None,
