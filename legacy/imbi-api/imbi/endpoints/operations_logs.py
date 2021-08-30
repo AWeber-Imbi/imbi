@@ -6,8 +6,9 @@ from imbi.endpoints import base
 class _RequestHandlerMixin:
 
     ID_KEY = 'id'
-    FIELDS = ['id', 'project_id', 'environment', 'change_type', 'description',
-              'link', 'notes', 'ticket_slug', 'version']
+    FIELDS = ['id', 'recorded_at', 'recorded_by', 'completed_at', 'project_id',
+              'environment', 'change_type', 'description', 'link', 'notes',
+              'ticket_slug', 'version']
 
     GET_SQL = re.sub(r'\s+', ' ', """\
         SELECT id, recorded_at, recorded_by, completed_at,
