@@ -32,7 +32,7 @@ class Automation:
 
     async def _get_project(self, project_id: int) \
             -> typing.Optional[models.Project]:
-        project = await models.project(project_id)
+        project = await models.project(project_id, self.application)
         if not project:
             self._add_error('project not found for {}', project_id)
         else:
