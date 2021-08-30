@@ -2067,7 +2067,7 @@ paths:
                   type: string
                   format: iso8601-timestamp
                 recorded_by:
-                  description: When the entry was recorded
+                  description: The user who recorded the change
                   type: string
                 completed_at:
                   description: 'If specified, indicates the change occurred over a span of time'
