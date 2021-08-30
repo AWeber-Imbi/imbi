@@ -1,7 +1,6 @@
 from tornado import testing
 
 from imbi import models
-
 from tests import base
 
 

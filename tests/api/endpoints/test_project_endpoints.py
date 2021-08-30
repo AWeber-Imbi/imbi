@@ -24,7 +24,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.project_link_type = self.create_project_link_type()
         self.project_type = self.create_project_type()
 
-
     def test_project_lifecycle(self):
         record = {
             'namespace_id': self.namespace['id'],
