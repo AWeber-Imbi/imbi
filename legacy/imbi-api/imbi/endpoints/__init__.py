@@ -7,7 +7,7 @@ from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                permissions, project_activity_feed, project_dependencies,
                project_fact_types, project_facts, project_link_types,
                project_links, project_score_history, project_types,
-               project_urls, projects, reports, status, ui)
+               project_urls, projects, reports, status, ui, temp)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -97,5 +97,7 @@ URLS = [
             r'(?P<environment>[\w_\-%\+]+)$',
             project_urls.RecordRequestHandler,
             name='project-url'),
+    web.url(r'^/project/(?P<project_id>\d+)$',
+            temp.RequestHandler),
     web.url(r'^/status$', status.RequestHandler),
 ] + integrations.URLS + ui.URLS + reports.URLS

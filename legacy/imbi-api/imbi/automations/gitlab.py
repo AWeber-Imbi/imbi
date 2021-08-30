@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import pathlib
 import re
 import tempfile
@@ -145,9 +146,10 @@ class GitLabInitialCommitAutomation(base.Automation):
                          self._cookie_cutter.url)
         package_name = self._project.slug.lower().replace('-', '_')
         with tempfile.TemporaryDirectory() as tmp_dir:
-            # TODO: create a "nicer" context to work with ... this one
-            # TODO: is from project-creator
-            context = {
+            context = dataclasses.asdict(self._project)
+
+            ## Legacy cookie cutter fields
+            context.update({
                 'consul_prefix': '/'.join([
                     'services',
                     self._project.namespace.gitlab_group_name.lower(),
@@ -168,7 +170,7 @@ class GitLabInitialCommitAutomation(base.Automation):
                 # 'sentry_slug': None,
                 # 'sentry_dashboard': None,
                 # 'sentry_organization': None,
-            }
+            })
             if self.automation_settings['sonarqube'].get('url'):
                 context.update({
                     'sonar_project_key': sonarqube.generate_key(self._project),
