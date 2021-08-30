@@ -119,6 +119,16 @@ class TestCaseWithReset(TestCase):
                 'TRUNCATE TABLE {} CASCADE'.format(table), {})
         await super().async_tear_down()
 
+    def create_environment(self) -> str:
+        result = self.fetch(
+            '/environments', method='POST', headers=self.headers,
+            body=json.dumps({
+                'name': str(uuid.uuid4()),
+                'icon_class': 'fas fa-mountain',
+            }).encode('utf-8'))
+        self.assertEqual(result.code, 200)
+        return json.loads(result.body.decode('utf-8'))['name']
+
     def create_project_fact_type(self) -> int:
         result = self.fetch(
             '/project-fact-types', method='POST', headers=self.headers,
