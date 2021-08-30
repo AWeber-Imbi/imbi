@@ -101,3 +101,28 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # DELETE should fail as record should not exist
         result = self.fetch(url, method='DELETE', headers=self.headers)
         self.assertEqual(result.code, 404)
+
+    def test_create_with_missing_fields(self):
+        record = {
+            'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
+            'recorded_at': '2021-08-30T00:00:00+00:00',
+            'environment': self.environment,
+            'change_type': 'Upgraded',
+        }
+        result = self.fetch('/operations-log', method='POST',
+                            body=json.dumps(record).encode('utf-8'),
+                            headers=self.headers)
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        url = self.get_url('/operations-log/{}'.format(response['id']))
+        self.assert_link_header_equals(result, url)
+        self.assertEqual(response['environment'], record['environment'])
+        self.assertEqual(response['change_type'], record['change_type'])
+
+        # DELETE
+        result = self.fetch(url, method='DELETE', headers=self.headers)
+        self.assertEqual(result.code, 204)
+
+        # GET record should not exist
+        result = self.fetch(url, headers=self.headers)
+        self.assertEqual(result.code, 404)
