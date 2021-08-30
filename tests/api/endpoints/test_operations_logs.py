@@ -126,3 +126,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # GET record should not exist
         result = self.fetch(url, headers=self.headers)
         self.assertEqual(result.code, 404)
+
+    def test_method_not_implemented(self):
+        for method in {'DELETE', 'PATCH'}:
+            result = self.fetch(
+                '/operations-log', method=method,
+                allow_nonstandard_methods=True,
+                headers=self.headers)
+            self.assertEqual(result.code, 405)
+
+        url = '/operations-log/' + str(uuid.uuid4())
+        result = self.fetch(url, method='POST',
+                            allow_nonstandard_methods=True,
+                            headers=self.headers)
+        self.assertEqual(result.code, 405)
