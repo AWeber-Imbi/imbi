@@ -24,7 +24,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'name': str(uuid.uuid4()),
             'description': str(uuid.uuid4()),
             'type': 'project',
-            'project_type_id': self.project_type,
+            'project_type_id': self.project_type['id'],
             'url': 'http://{}/{}.git'.format(uuid.uuid4(), uuid.uuid4())
         }
 
@@ -104,7 +104,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         record = {
             'name': str(uuid.uuid4()),
             'type': 'dashboard',
-            'project_type_id': self.project_type,
+            'project_type_id': self.project_type['id'],
             'url': 'http://{}/{}.git'.format(uuid.uuid4(), uuid.uuid4())
         }
         result = self.fetch(
