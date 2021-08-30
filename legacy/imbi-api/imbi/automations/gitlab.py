@@ -6,6 +6,7 @@ import tempfile
 import typing
 
 import cookiecutter.main
+import flatdict
 import isort
 import sprockets_postgres
 from yapf import yapf_api
@@ -145,44 +146,42 @@ class GitLabInitialCommitAutomation(base.Automation):
                          self._project.slug, self._project.id,
                          self._cookie_cutter.url)
         package_name = self._project.slug.lower().replace('-', '_')
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            context = dataclasses.asdict(self._project)
-
-            ## Legacy cookie cutter fields
+        context = dataclasses.asdict(self._project)
+        links = {k.lower().replace(' ', '_'): v
+                 for k, v in context['links'].items()}
+        urls = {k.lower().replace(' ', '_'): v
+                for k, v in context['urls'].items()}
+        context.update({
+            'environments': ','.join(self._project.environments),
+            'gitlab_namespace_id': self._gitlab_project.namespace.id,
+            'gitlab_url': self._gitlab_project.web_url,
+            'links': links,
+            'package_name': package_name,
+            'sentry_team': None,
+            'legacy_sentry_dsn': None,
+            'sentry_dsn': None,
+            'sentry_slug': None,
+            'sentry_dashboard': None,
+            'sentry_organization': None,
+            'urls': urls
+        })
+        if self.automation_settings['sonarqube'].get('url'):
             context.update({
-                'consul_prefix': '/'.join([
-                    'services',
-                    self._project.namespace.gitlab_group_name.lower(),
-                    self._project.project_type.gitlab_project_prefix,
-                ]),
-                'gitlab_namespace_id': self._gitlab_project.namespace.id,
-                'gitlab_project_id': self._gitlab_project.id,
-                'gitlab_url': self._gitlab_project.web_url,
-                'package_name': package_name,
-                'project_name': self._project.name,
-                'project_team':
-                    self._project.namespace.gitlab_group_name.lower(),
-                'short_description': self._project.description,
-                # These are also available for future use
-                # 'sentry_team': None,
-                # 'legacy_sentry_dsn': None,
-                # 'sentry_dsn': None,
-                # 'sentry_slug': None,
-                # 'sentry_dashboard': None,
-                # 'sentry_organization': None,
+                'sonar_project_key': sonarqube.generate_key(self._project),
+                'sonar_project_url': sonarqube.generate_dashboard_link(
+                    self._project, self.automation_settings['sonarqube'])
             })
-            if self.automation_settings['sonarqube'].get('url'):
-                context.update({
-                    'sonar_project_key': sonarqube.generate_key(self._project),
-                    'sonar_project_url': sonarqube.generate_dashboard_link(
-                        self._project, self.automation_settings['sonarqube'])
-                })
 
+        context = flatdict.FlatDict(context, '_').as_dict()
+        self.logger.debug('Context %r', context)
+        with tempfile.TemporaryDirectory() as tmp_dir:
             self.logger.debug('expanding %s for project %s in %s',
                               self._cookie_cutter.url, self._project.id,
                               tmp_dir)
             project_dir = cookiecutter.main.cookiecutter(
-                self._cookie_cutter.url, extra_context=context, no_input=True,
+                self._cookie_cutter.url,
+                extra_context=context,
+                no_input=True,
                 output_dir=tmp_dir)
             project_dir = pathlib.Path(project_dir)
 
@@ -194,8 +193,9 @@ class GitLabInitialCommitAutomation(base.Automation):
 
             for py_file in project_dir.rglob('*.py'):
                 isort.api.sort_file(py_file, **isort_cfg)
-                yapf_api.FormatFile(str(py_file), style_config=yapf_style,
-                                    in_place=True, logger=None)
+                yapf_api.FormatFile(
+                    str(py_file), style_config=yapf_style,
+                    in_place=True, logger=None)
 
             self.logger.debug('committing to GitLab')
             commit_info = await self._gitlab.commit_tree(
