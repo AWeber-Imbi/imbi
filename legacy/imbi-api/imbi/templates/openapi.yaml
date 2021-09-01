@@ -1836,18 +1836,26 @@ paths:
           schema:
             type: string
             pattern: ^\d+$
-        - name: start_id
+        - name: recorded_at_anchor
           in: query
-          description: 'Used by the endpoint for pagination for the Next Page, specifying the first `id` for the entries to return.'
+          description: Defined in Link header URLs, specifying the `recorded_at` value of the row closest to, but outside of, the linked page's result set.
+          schema:
+            type: string
+            format: iso8601-timestamp
+        - name: id_anchor
+          in: query
+          description: Defined in Link header URLs, specifying the `id` of the row which `recorded_at_anchor` comes from.
           schema:
             type: string
             pattern: ^\d+$
-        - name: current_id
+        - name: page_direction
           in: query
-          description: 'Used by the endpoint for pagination for the Previous Page, specifying the `id` for the entries to return.'
+          description: Defined in Link header URLs, specifying whether it is a next or a previous link.
           schema:
             type: string
-            pattern: ^\d+$
+            enum:
+              - next
+              - prev
       responses:
         '200':
           description: Success
