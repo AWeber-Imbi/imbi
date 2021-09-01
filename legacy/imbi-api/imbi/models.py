@@ -109,10 +109,14 @@ class ProjectFact:
       ORDER BY a.name""")
 
     def __post_init__(self):
+        if self.value is None:
+            return
         if self.data_type == 'boolean':
-            self.__setattr__('value', bool(util.strtobool(self.value)))
+            self.__setattr__(
+                'value', bool(util.strtobool(self.value)))
         elif self.data_type == 'decimal':
-            self.__setattr__('value', decimal.Decimal(self.value))
+            if self.value:
+                self.__setattr__('value', decimal.Decimal(self.value))
         elif self.data_type == 'integer':
             self.__setattr__('value', int(self.value))
 
@@ -209,7 +213,7 @@ class Project:
     last_modified_at: typing.Optional[datetime.datetime]
     last_modified_by: typing.Optional[str]
     namespace: Namespace
-    project_type: ProjectType
+    type: ProjectType
     name: str
     slug: str
     description: typing.Optional[str]
@@ -311,7 +315,7 @@ async def project(project_id: int,
             del values['project_type_id']
             values.update({
                 'namespace': result[0],
-                'project_type': result[1],
+                'type': result[1],
                 'facts': {value.name: value.value for value in result[2]},
                 'links': {value.link_type: value.url for value in result[3]},
                 'urls': {value.environment: value.url for value in result[4]}})

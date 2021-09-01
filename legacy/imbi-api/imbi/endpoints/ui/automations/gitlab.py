@@ -82,6 +82,13 @@ class InitialCommitRequestHandler(GitLabAutomationRequestHandler):
             if failures:
                 raise self.handle_prepare_failures('Create Initial Commit',
                                                    failures)
-            commit_info = await automation.run()
+            try:
+                commit_info = await automation.run()
+            except automations.CookieCutterError as error:
+                raise errors.InternalServerError(
+                    'Error applying cookiecutter: %s', error)
+            except automations.InitialCommitError as error:
+                raise errors.InternalServerError(
+                    'Error creating initial commit: %s', error)
 
         self.send_response(commit_info)

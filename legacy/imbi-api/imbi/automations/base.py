@@ -39,9 +39,9 @@ class Automation:
             if project.namespace.gitlab_group_name is None:
                 self._add_error('missing GitLab group for namespace {}',
                                 project.namespace.slug)
-            if project.project_type.gitlab_project_prefix is None:
+            if project.type.gitlab_project_prefix is None:
                 self._add_error('missing no GitLab prefix for project type {}',
-                                project.project_type.slug)
+                                project.type.slug)
 
         if not self._has_error():
             return project
