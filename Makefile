@@ -1,67 +1,23 @@
 REVISION = $(shell git rev-parse HEAD | cut -b 1-7)
 
-ifneq (,$(wildcard ./.env))
-	include .env
-	export $(shell sed 's/=.*//' .env)
-endif
-
 .PHONY: all
-all: setup all-tests
-
-.PHONY: clean
-clean:
-	@ docker-compose down
-	@ rm -rf imbi/static/fonts/* imbi/static/js/*
-	@ rm -rf .env build dist imbi.egg-info env ui/node_modules
-
-.env: bootstrap docker-compose.yml
-	@ ./bootstrap
-
-env: env/stamp
-
-env/stamp: setup.cfg setup.py
-	@ python3 -m venv env
-	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install --upgrade pip
-	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install wheel
-	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install -e '.[testing]'
-	@ touch env/stamp
+all: dist
 
 .PHONY: setup
-setup: .env env openapi/node_modules ui/node_modules
-
-.PHONY: python-setup
-python-setup: .env env
+setup: openapi/node_modules ui/node_modules
 
 .PHONY: dist
-dist:
-	@ rm -rf dist
+dist: setup
+	@ rm -rf api/dist
 	@ cd openapi && yarn run build
+	@ cp openapi/build/openapi.yaml api/imbi/templates/openapi.yaml
+	@ cp openapi/build/redoc.standalone.js api/imbi/static/redoc.standalone.js
 	@ cd ui && NODE_ENV=production yarn run build
-	@ python3 setup.py sdist
+	@ cp -R ui/build/* api/imbi/static/
+	@ cd api && python3 setup.py sdist
 
-# Testing
+openapi/node_modules:
+	@ cd openapi && yarn install
 
-.PHONY: bandit
-bandit: env
-	@ printf "\nRunning Bandit\n\n"
-	@ env/bin/bandit -r imbi
-
-.PHONY: coverage
-coverage: .env env
-	@ printf "\nRunning Python Tests\n\n"
-	@ env/bin/coverage run
-	@ env/bin/coverage xml
-	@ env/bin/coverage report
-
-.PHONY: flake8
-flake8: env
-	@ printf "\nRunning Flake8 Tests\n\n"
-	@ env/bin/flake8 --tee --output-file=build/flake8.txt
-
-# Testing Groups
-
-.PHONY: all-tests
-all-tests: python-tests
-
-.PHONY: python-tests
-python-tests: bandit flake8 coverage
+ui/node_modules:
+	@ cd ui && yarn install

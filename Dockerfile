@@ -4,7 +4,7 @@ ARG VERSION=0.0.0
 
 ENV PORT=8000
 
-COPY dist/imbi-${VERSION}.tar.gz /tmp/
+COPY api/dist/imbi-${VERSION}.tar.gz /tmp/
 COPY docker-config.yaml /etc/imbi/imbi.yaml
 
 RUN apk add --no-cache --virtual install-deps curl-dev gcc libffi-dev libressl-dev linux-headers musl-dev postgresql-dev \
