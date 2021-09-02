@@ -105,6 +105,8 @@ class TestCaseWithReset(TestCase):
 
     def setUp(self) -> None:
         super().setUp()
+        self.environments = None
+        self.namespace = None
         self.project_fact_type = None
         self.project_type = None
         self.project_type_name = None
@@ -137,6 +139,20 @@ class TestCaseWithReset(TestCase):
                 'slug': str(uuid.uuid4().hex),
                 'icon_class': 'fas fa-blind',
                 'maintained_by': []
+            }).encode('utf-8'))
+        self.assertEqual(result.code, 200)
+        return json.loads(result.body.decode('utf-8'))['id']
+
+    def create_project(self) -> int:
+        result = self.fetch(
+            '/projects', method='POST', headers=self.headers,
+            body=json.dumps({
+                'namespace_id': self.namespace,
+                'project_type_id': self.project_type,
+                'name': str(uuid.uuid4()),
+                'slug': str(uuid.uuid4().hex),
+                'description': str(uuid.uuid4()),
+                'environments': self.environments,
             }).encode('utf-8'))
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))['id']
