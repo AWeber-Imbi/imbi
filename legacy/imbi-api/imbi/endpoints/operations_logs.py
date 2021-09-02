@@ -1,4 +1,7 @@
 import re
+from urllib import parse
+
+import yarl
 
 from imbi.endpoints import base
 
@@ -25,11 +28,24 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     ITEM_NAME = 'operations-log'
 
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
-        SELECT id, recorded_at, recorded_by, completed_at,
-               project_id, environment, change_type, description,
-               link, notes, ticket_slug, "version"
-          FROM v1.operations_log
-         ORDER BY id ASC""")
+        SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
+               o.project_id, o.environment, o.change_type, o.description,
+               o.link, o.notes, o.ticket_slug, o.version
+          FROM v1.operations_log AS o
+          {{JOIN}} {{WHERE}}
+      ORDER BY o.recorded_at {{ORDER}}, o.id {{ORDER}}
+         LIMIT %(limit)s""")
+
+    VALUE_FILTER_CHUNK = re.sub(r'\s+', ' ', """\
+        ((o.recorded_at = %(recorded_at_anchor)s AND o.id {{OP}} %(id_anchor)s)
+        OR o.recorded_at {{OP}} %(recorded_at_anchor)s)""")
+
+    FILTER_CHUNKS = {
+        'from': 'o.recorded_at >= %(from)s',
+        'to': 'o.recorded_at < %(to)s',
+        'project_id': 'o.project_id = %(project_id)s',
+        'namespace_id': 'p.namespace_id = %(namespace_id)s',
+    }
 
     POST_SQL = re.sub(r'\s+', ' ', """\
         INSERT INTO v1.operations_log
@@ -41,6 +57,88 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                      %(description)s, %(link)s, %(notes)s, %(ticket_slug)s,
                      %(version)s)
           RETURNING id""")
+
+    async def get(self, *args, **kwargs):
+        kwargs['limit'] = int(self.get_query_argument('limit', '100')) + 1
+        order = self.get_query_argument('order', 'desc')
+        kwargs['from'] = self.get_query_argument('from', None)
+        kwargs['to'] = self.get_query_argument('to', None)
+        kwargs['namespace_id'] = self.get_query_argument('namespace_id', None)
+        kwargs['project_id'] = self.get_query_argument('project_id', None)
+        kwargs['recorded_at_anchor'] = self.get_query_argument(
+            'recorded_at_anchor',
+            None)
+        kwargs['id_anchor'] = self.get_query_argument('id_anchor', None)
+        page_direction = self.get_query_argument('page_direction', None)
+        is_link = (page_direction is not None
+                   and kwargs['recorded_at_anchor'] is not None
+                   and kwargs['id_anchor'] is not None)
+
+        join_sql = ''
+        if kwargs['namespace_id'] is not None:
+            join_sql += 'JOIN v1.projects AS p ON o.project_id = p.id'
+
+        where_chunks = []
+        for kwarg in self.FILTER_CHUNKS.keys():
+            if kwargs[kwarg] is not None:
+                where_chunks.append(self.FILTER_CHUNKS[kwarg])
+        if is_link:
+            if (kwargs['order'] == 'asc' and page_direction == 'next') or \
+                    (kwargs['order'] == 'desc' and page_direction == 'prev'):
+                op = '>'
+            else:
+                op = '<'
+            where_chunks.append(self.VALUE_FILTER_CHUNK.replace('{{OP}}', op))
+        where_sql = ''
+        if where_chunks:
+            where_sql = 'WHERE {}'.format(' AND '.join(where_chunks))
+
+        sql = self.COLLECTION_SQL \
+            .replace('{{JOIN}}', join_sql) \
+            .replace('{{WHERE}}', where_sql) \
+            .replace('{{ORDER}}', order)
+
+        result = await self.postgres_execute(
+            sql, kwargs, metric_name='get-{}'.format(self.NAME))
+
+        next_needed, prev_needed = False, False
+        if result.row_count == kwargs['limit']:
+            if not is_link or page_direction == 'next':
+                result.rows.pop(-1)
+            else:
+                result.rows.pop(0)
+
+            next_needed = True
+            if not is_link:
+                prev_needed = True
+        elif page_direction == 'next':
+            prev_needed = True
+        elif page_direction == 'prev':
+            next_needed = True
+
+        request_url = yarl.URL(self.request.full_url())
+        if next_needed:
+            next_anchor = result.rows[-1]
+            query = dict(request_url.query)
+            query.update({
+                'recorded_at_anchor': next_anchor['recorded_at'],
+                'id_anchor': next_anchor['id'],
+                'page_direction': 'next',
+            })
+            query_string = parse.urlencode(query)
+            self._links['next'] = self.request.path + '?' + query_string
+        if prev_needed:
+            prev_anchor = result.rows[0]
+            query = dict(request_url.query)
+            query.update({
+                'recorded_at_anchor': prev_anchor['recorded_at'],
+                'id_anchor': prev_anchor['id'],
+                'page_direction': 'prev',
+            })
+            query_string = parse.urlencode(query)
+            self._links['prev'] = self.request.path + '?' + query_string
+
+        self.send_response(result.rows)
 
 
 class RecordRequestHandler(_RequestHandlerMixin,
