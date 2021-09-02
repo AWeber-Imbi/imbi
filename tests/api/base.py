@@ -129,6 +129,18 @@ class TestCaseWithReset(TestCase):
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))['name']
 
+    def create_namespace(self):
+        result = self.fetch(
+            '/namespaces', method='POST', headers=self.headers,
+            body=json.dumps({
+                'name': str(uuid.uuid4()),
+                'slug': str(uuid.uuid4().hex),
+                'icon_class': 'fas fa-blind',
+                'maintained_by': []
+            }).encode('utf-8'))
+        self.assertEqual(result.code, 200)
+        return json.loads(result.body.decode('utf-8'))['id']
+
     def create_project_fact_type(self) -> int:
         result = self.fetch(
             '/project-fact-types', method='POST', headers=self.headers,
