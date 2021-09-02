@@ -17,11 +17,7 @@ jobs:
         run: echo "::set-output name=version::$(tr -d '\n' < api/VERSION)"
         shell: bash
       - name: Setup API Environment
-        run: |-
-          sudo apt-get install -y python3 curl
-          sudo curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-          sudo python3 get-pip.py
-          sudo cd api && pip3 install --upgrade setuptools twine
+        run: sudo make deploy_setup
         shell: bash
       - name: Build
         run: make dist
