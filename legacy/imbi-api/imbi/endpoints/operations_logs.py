@@ -109,8 +109,6 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                 result.rows.pop(0)
 
             next_needed = True
-            if not is_link:
-                prev_needed = True
         elif page_direction == 'next':
             prev_needed = True
         elif page_direction == 'previous':
