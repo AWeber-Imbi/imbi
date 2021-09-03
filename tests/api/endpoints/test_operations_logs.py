@@ -51,7 +51,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             records[i]['completed_at'] = None
 
         # page 1
-        result = self.fetch('/operations-log?limit=4', headers=self.headers)
+        result = self.fetch(
+            f'/operations-log?limit=4&namespace_id={self.namespace}',
+            headers=self.headers)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 4)
