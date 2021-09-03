@@ -1855,7 +1855,7 @@ paths:
             type: string
             enum:
               - next
-              - prev
+              - previous
       responses:
         '200':
           description: Success
