@@ -83,8 +83,8 @@ class CollectionRequestHandler(_RequestHandlerMixin,
             if kwargs[kwarg] is not None:
                 where_chunks.append(self.FILTER_CHUNKS[kwarg])
         if is_link:
-            if (kwargs['order'] == 'asc' and page_direction == 'next') or \
-                    (kwargs['order'] == 'desc' and page_direction == 'previous'):
+            if (order == 'asc' and page_direction == 'next') or \
+                    (order == 'desc' and page_direction == 'previous'):
                 op = '>'
             else:
                 op = '<'
