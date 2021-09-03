@@ -93,6 +93,9 @@ class CollectionRequestHandler(_RequestHandlerMixin,
         if where_chunks:
             where_sql = 'WHERE {}'.format(' AND '.join(where_chunks))
 
+        if page_direction == 'previous':
+            order = 'desc' if order == 'asc' else 'asc'
+
         sql = self.COLLECTION_SQL \
             .replace('{{JOIN}}', join_sql) \
             .replace('{{WHERE}}', where_sql) \
@@ -100,23 +103,28 @@ class CollectionRequestHandler(_RequestHandlerMixin,
 
         result = await self.postgres_execute(
             sql, kwargs, metric_name='get-{}'.format(self.NAME))
+        rows = result.rows
 
-        next_needed, prev_needed = False, False
-        if result.row_count == kwargs['limit']:
+        if page_direction == 'previous':
+            rows = list(reversed(rows))
+
+        next_needed, previous_needed = False, False
+        if len(rows) == kwargs['limit']:
             if not is_link or page_direction == 'next':
-                result.rows.pop(-1)
+                rows.pop(-1)
+                next_needed = True
             else:
-                result.rows.pop(0)
-
-            next_needed = True
+                rows.pop(0)
+                if page_direction == 'previous':
+                    previous_needed = True
         if page_direction == 'next':
-            prev_needed = True
+            previous_needed = True
         elif page_direction == 'previous':
             next_needed = True
 
         request_url = yarl.URL(self.request.full_url())
         if next_needed:
-            next_anchor = result.rows[-1]
+            next_anchor = rows[-1]
             query = dict(request_url.query)
             query.update({
                 'recorded_at_anchor': next_anchor['recorded_at'],
@@ -125,18 +133,18 @@ class CollectionRequestHandler(_RequestHandlerMixin,
             })
             query_string = parse.urlencode(query)
             self._links['next'] = self.request.path + '?' + query_string
-        if prev_needed:
-            prev_anchor = result.rows[0]
+        if previous_needed:
+            previous_anchor = rows[0]
             query = dict(request_url.query)
             query.update({
-                'recorded_at_anchor': prev_anchor['recorded_at'],
-                'id_anchor': prev_anchor['id'],
+                'recorded_at_anchor': previous_anchor['recorded_at'],
+                'id_anchor': previous_anchor['id'],
                 'page_direction': 'previous',
             })
             query_string = parse.urlencode(query)
             self._links['previous'] = self.request.path + '?' + query_string
 
-        self.send_response(result.rows)
+        self.send_response(rows)
 
 
 class RecordRequestHandler(_RequestHandlerMixin,
