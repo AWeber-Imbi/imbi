@@ -109,7 +109,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                 result.rows.pop(0)
 
             next_needed = True
-        elif page_direction == 'next':
+        if page_direction == 'next':
             prev_needed = True
         elif page_direction == 'previous':
             next_needed = True
