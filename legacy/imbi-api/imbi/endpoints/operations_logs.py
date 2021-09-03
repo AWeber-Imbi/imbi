@@ -84,7 +84,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                 where_chunks.append(self.FILTER_CHUNKS[kwarg])
         if is_link:
             if (kwargs['order'] == 'asc' and page_direction == 'next') or \
-                    (kwargs['order'] == 'desc' and page_direction == 'prev'):
+                    (kwargs['order'] == 'desc' and page_direction == 'previous'):
                 op = '>'
             else:
                 op = '<'
@@ -113,7 +113,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                 prev_needed = True
         elif page_direction == 'next':
             prev_needed = True
-        elif page_direction == 'prev':
+        elif page_direction == 'previous':
             next_needed = True
 
         request_url = yarl.URL(self.request.full_url())
@@ -133,10 +133,10 @@ class CollectionRequestHandler(_RequestHandlerMixin,
             query.update({
                 'recorded_at_anchor': prev_anchor['recorded_at'],
                 'id_anchor': prev_anchor['id'],
-                'page_direction': 'prev',
+                'page_direction': 'previous',
             })
             query_string = parse.urlencode(query)
-            self._links['prev'] = self.request.path + '?' + query_string
+            self._links['previous'] = self.request.path + '?' + query_string
 
         self.send_response(result.rows)
 
