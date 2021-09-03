@@ -32,7 +32,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         for i in range(10):
             record = {
                 'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-                'recorded_at': f'2021-08-30T00:00:00+00:00',
+                'recorded_at': '2021-08-30T00:00:00+00:00',
                 'environment': self.environment,
                 'project_id': self.project,
                 'change_type': 'Upgraded',
