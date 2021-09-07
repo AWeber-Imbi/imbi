@@ -16,7 +16,7 @@ class _RequestHandlerMixin:
     GET_SQL = re.sub(r'\s+', ' ', """\
         SELECT id, recorded_at, recorded_by, completed_at,
                project_id, environment, change_type, description,
-               link, notes, ticket_slug, "version"
+               link, notes, ticket_slug, version
           FROM v1.operations_log
          WHERE id = %(id)s""")
 
@@ -51,7 +51,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
         INSERT INTO v1.operations_log
                     (recorded_by, recorded_at, completed_at,
                      project_id, environment, change_type, description,
-                     link, notes, ticket_slug, "version")
+                     link, notes, ticket_slug, version)
              VALUES (%(recorded_by)s, %(recorded_at)s, %(completed_at)s,
                      %(project_id)s, %(environment)s, %(change_type)s,
                      %(description)s, %(link)s, %(notes)s, %(ticket_slug)s,
@@ -164,5 +164,5 @@ class RecordRequestHandler(_RequestHandlerMixin,
                link = %(link)s,
                notes = %(notes)s,
                ticket_slug = %(ticket_slug)s,
-               "version" = %(version)s
+               version = %(version)s
          WHERE id = %(id)s""")
