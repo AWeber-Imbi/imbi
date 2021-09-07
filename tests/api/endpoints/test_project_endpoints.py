@@ -20,52 +20,14 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
     def setUp(self):
         super().setUp()
         self.environments = self.create_environments()
-        self.namespace_name = str(uuid.uuid4())
         self.namespace = self.create_namespace()
         self.project_link_type = self.create_project_link_type()
         self.project_type = self.create_project_type()
 
-    def create_environments(self):
-        environments = []
-        for iteration in range(0, 2):
-            result = self.fetch(
-                '/environments', method='POST', headers=self.headers,
-                body=json.dumps({
-                    'name': str(uuid.uuid4()),
-                    'description': str(uuid.uuid4()),
-                    'icon_class': 'fas fa-blind'
-                }).encode('utf-8'))
-            self.assertEqual(result.code, 200)
-            environments.append(
-                json.loads(result.body.decode('utf-8'))['name'])
-        return environments
-
-    def create_project_link_type(self):
-        result = self.fetch(
-            '/project-link-types', method='POST', headers=self.headers,
-            body=json.dumps({
-                'link_type': str(uuid.uuid4()),
-                'icon_class': 'fas fa-blind'
-            }).encode('utf-8'))
-        self.assertEqual(result.code, 200)
-        return json.loads(result.body.decode('utf-8'))['id']
-
-    def create_namespace(self):
-        result = self.fetch(
-            '/namespaces', method='POST', headers=self.headers,
-            body=json.dumps({
-                'name': self.namespace_name,
-                'slug': str(uuid.uuid4().hex),
-                'icon_class': 'fas fa-blind',
-                'maintained_by': []
-            }).encode('utf-8'))
-        self.assertEqual(result.code, 200)
-        return json.loads(result.body.decode('utf-8'))['id']
-
     def test_project_lifecycle(self):
         record = {
-            'namespace_id': self.namespace,
-            'project_type_id': self.project_type,
+            'namespace_id': self.namespace['id'],
+            'project_type_id': self.project_type['id'],
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'description': str(uuid.uuid4()),
@@ -87,8 +49,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 projects.RecordRequestHandler.TTL))
         record.update({
             'id': response['id'],
-            'namespace': self.namespace_name,
-            'project_type': self.project_type_name,
+            'namespace': self.namespace['name'],
+            'project_type': self.project_type['name'],
             'created_by': self.USERNAME[self.ADMIN_ACCESS],
             'last_modified_by': None,
             'archived': False,
@@ -146,8 +108,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_create_with_missing_fields(self):
         record = {
-            'namespace_id': self.namespace,
-            'project_type_id': self.project_type,
+            'namespace_id': self.namespace['id'],
+            'project_type_id': self.project_type['id'],
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'environments': self.environments
@@ -167,8 +129,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 projects.RecordRequestHandler.TTL))
         record.update({
             'id': response['id'],
-            'namespace': self.namespace_name,
-            'project_type': self.project_type_name,
+            'namespace': self.namespace['name'],
+            'project_type': self.project_type['name'],
             'created_by': self.USERNAME[self.ADMIN_ACCESS],
             'description': None,
             'last_modified_by': None,
@@ -182,8 +144,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_dependencies(self):
         project_a = {
-            'namespace_id': self.namespace,
-            'project_type_id': self.project_type,
+            'namespace_id': self.namespace['id'],
+            'project_type_id': self.project_type['id'],
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'environments': self.environments
@@ -195,8 +157,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         project_a = json.loads(result.body.decode('utf-8'))
 
         project_b = {
-            'namespace_id': self.namespace,
-            'project_type_id': self.project_type,
+            'namespace_id': self.namespace['id'],
+            'project_type_id': self.project_type['id'],
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'environments': self.environments
@@ -255,8 +217,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_links(self):
         project_record = {
-            'namespace_id': self.namespace,
-            'project_type_id': self.project_type,
+            'namespace_id': self.namespace['id'],
+            'project_type_id': self.project_type['id'],
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'environments': self.environments
@@ -270,13 +232,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         record = {
             'project_id': response['id'],
-            'link_type_id': self.project_link_type,
+            'link_type_id': self.project_link_type['id'],
             'url': 'https://github.com/AWeber/Imbi'
         }
 
         links_url = self.get_url('/projects/{}/links'.format(response['id']))
         url = self.get_url('/projects/{}/links/{}'.format(
-            response['id'], self.project_link_type))
+            response['id'], self.project_link_type['id']))
 
         # Create
         result = self.fetch(
@@ -348,8 +310,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_urls(self):
         project_record = {
-            'namespace_id': self.namespace,
-            'project_type_id': self.project_type,
+            'namespace_id': self.namespace['id'],
+            'project_type_id': self.project_type['id'],
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'environments': self.environments
@@ -443,8 +405,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_project_search(self):
         record = {
-            'namespace_id': self.namespace,
-            'project_type_id': self.project_type,
+            'namespace_id': self.namespace['id'],
+            'project_type_id': self.project_type['id'],
             'name': str(uuid.uuid4()),
             'slug': str(uuid.uuid4().hex),
             'description': str(uuid.uuid4()),

@@ -21,8 +21,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def setUp(self):
         super().setUp()
-        self.environment = self.create_environment()
-        self.environments = [self.environment]
+        self.environments = self.create_environments()
+        self.environment = self.environments[0]
         self.namespace = self.create_namespace()
         self.project_type = self.create_project_type()
         self.project = self.create_project()
@@ -34,7 +34,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
                 'recorded_at': '2021-08-30T00:00:00+00:00',
                 'environment': self.environment,
-                'project_id': self.project,
+                'project_id': self.project['id'],
                 'change_type': 'Upgraded',
                 'description': str(uuid.uuid4()),
                 'link': str(uuid.uuid4()),
@@ -51,8 +51,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             records[i]['completed_at'] = None
 
         # page 1
+        namespace_id = self.namespace['id']
         result = self.fetch(
-            f'/operations-log?limit=4&namespace_id={self.namespace}',
+            f'/operations-log?limit=4&namespace_id={namespace_id}',
             headers=self.headers)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
@@ -143,7 +144,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
                 'recorded_at': f'2021-08-30T00:00:0{i}+00:00',
                 'environment': self.environment,
-                'project_id': self.project,
+                'project_id': self.project['id'],
                 'change_type': 'Upgraded',
                 'description': str(uuid.uuid4()),
                 'link': str(uuid.uuid4()),
@@ -196,7 +197,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
                 'recorded_at': f'2021-08-30T00:00:03+00:00',
                 'environment': self.environment,
-                'project_id': self.project,
+                'project_id': self.project['id'],
                 'change_type': 'Upgraded',
                 'description': str(uuid.uuid4()),
                 'link': str(uuid.uuid4()),

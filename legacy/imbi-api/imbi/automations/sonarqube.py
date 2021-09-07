@@ -4,7 +4,8 @@ import typing
 import sprockets_postgres
 import yarl
 
-from imbi.automations import base, models
+from imbi import models
+from imbi.automations import base
 from imbi.clients import gitlab, sonarqube
 if typing.TYPE_CHECKING:
     from imbi import app, user

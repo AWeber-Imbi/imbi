@@ -1,16 +1,18 @@
 import asyncio
+import dataclasses
 import pathlib
 import re
 import tempfile
 import typing
 
 import cookiecutter.main
-import isort
+import flatdict
 import sprockets_postgres
-from yapf import yapf_api
+from cookiecutter import exceptions
+from jinja2 import exceptions as jinja_exceptions
 
-from imbi import oauth2
-from imbi.automations import base, models
+from imbi import models, oauth2
+from imbi.automations import base
 from imbi.clients import gitlab, sonarqube
 if typing.TYPE_CHECKING:
     from imbi import app, user
@@ -84,13 +86,21 @@ class GitLabCreateProjectAutomation(base.Automation):
     async def _get_gitlab_parent(self, project:  models.Project) -> dict:
         gitlab_parent = await self._gitlab.fetch_group(
             project.namespace.gitlab_group_name,
-            project.project_type.gitlab_project_prefix)
+            project.type.gitlab_project_prefix)
         if not gitlab_parent:
             self._add_error(
                 'GitLab path {}/{} does not exist',
                 project.namespace.gitlab_group_name,
-                project.project_type.gitlab_project_prefix)
+                project.type.gitlab_project_prefix)
         return gitlab_parent
+
+
+class CookieCutterError(Exception):
+    """Raised when there is an error applying the cookiecutter"""
+
+
+class InitialCommitError(Exception):
+    """Raised when there is an error creating the initial commit"""
 
 
 class GitLabInitialCommitAutomation(base.Automation):
@@ -122,11 +132,12 @@ class GitLabInitialCommitAutomation(base.Automation):
         self._cookie_cutter = await self._get_cookie_cutter(
             self._cookie_cutter_name)
 
-        if not self._has_error() and (self._project.project_type.id
-                                      != self._cookie_cutter.project_type_id):
+        if not self._has_error() \
+                and (self._project.type.id
+                     != self._cookie_cutter.project_type_id):
             self._add_error(
                 'Cookie Cutter {} is not available for Project Type {}',
-                self._cookie_cutter.name, self._project.project_type.slug)
+                self._cookie_cutter.name, self._project.type.slug)
         elif self._project.gitlab_project_id is None:
             self._add_error('GitLab project does not exist for {}',
                             self._project.slug)
@@ -143,47 +154,61 @@ class GitLabInitialCommitAutomation(base.Automation):
         self.logger.info('generating initial commit for %s (%s) from %s',
                          self._project.slug, self._project.id,
                          self._cookie_cutter.url)
-        package_name = self._project.slug.lower().replace('-', '_')
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # TODO: create a "nicer" context to work with ... this one
-            # TODO: is from project-creator
-            context = {
-                'consul_prefix': '/'.join([
-                    'services',
-                    self._project.namespace.gitlab_group_name.lower(),
-                    self._project.project_type.gitlab_project_prefix,
-                ]),
-                'gitlab_namespace_id': self._gitlab_project.namespace.id,
-                'gitlab_project_id': self._gitlab_project.id,
-                'gitlab_url': self._gitlab_project.web_url,
-                'package_name': package_name,
-                'project_name': self._project.name,
-                'project_team':
-                    self._project.namespace.gitlab_group_name.lower(),
-                'short_description': self._project.description,
-                # These are also available for future use
-                # 'sentry_team': None,
-                # 'legacy_sentry_dsn': None,
-                # 'sentry_dsn': None,
-                # 'sentry_slug': None,
-                # 'sentry_dashboard': None,
-                # 'sentry_organization': None,
-            }
-            if self.automation_settings['sonar'].get('url'):
-                context.update({
-                    'sonar_project_key': sonarqube.generate_key(self._project),
-                    'sonar_project_url': sonarqube.generate_dashboard_link(
-                        self._project, self.automation_settings['sonar'])
-                })
+        context = dataclasses.asdict(self._project)
+        links = {k.lower().replace(' ', '_'): v
+                 for k, v in context['links'].items()}
+        urls = {k.lower().replace(' ', '_'): v
+                for k, v in context['urls'].items()}
+        context.update({
+            'environments': ','.join(self._project.environments),
+            'gitlab': {
+                'namespace_id': self._gitlab_project.namespace.id,
+                'project_id': self._project.gitlab_project_id
+            },
+            'links': links,
+            'pagerduty': {
+                'service_id': None,
+            },
+            'sentry': {
+                'dashboard': None,
+                'dsn': None,
+                'organization': None,
+                'slug': self._project.sentry_project_slug,
+                'team': None
+            },
+            'sonarqube': {'key': None},
+            'urls': urls
+        })
+        if self.automation_settings['sonarqube'].get('url'):
+            context.update({
+                'sonarqube': {'key': sonarqube.generate_key(self._project)}
+            })
 
+        for var in ['gitlab_project_id', 'pagerduty_service_id',
+                    'sentry_project_slug', 'sonarqube_project_key']:
+            del context[var]
+
+        self.logger.debug('Context %r', {'project': context})
+        with tempfile.TemporaryDirectory() as tmp_dir:
             self.logger.debug('expanding %s for project %s in %s',
                               self._cookie_cutter.url, self._project.id,
                               tmp_dir)
-            project_dir = cookiecutter.main.cookiecutter(
-                self._cookie_cutter.url, extra_context=context, no_input=True,
-                output_dir=tmp_dir)
+            try:
+                project_dir = cookiecutter.main.cookiecutter(
+                    self._cookie_cutter.url,
+                    extra_context=dict(
+                        flatdict.FlatDict({'project': context}, '_')),
+                    no_input=True,
+                    output_dir=tmp_dir)
+            except (exceptions.ContextDecodingException,
+                    exceptions.NonTemplatedInputDirException,
+                    exceptions.UndefinedVariableInTemplate,
+                    jinja_exceptions.UndefinedError) as error:
+                raise CookieCutterError(str(error))
+
             project_dir = pathlib.Path(project_dir)
 
+            """Disabling for the time being
             self.logger.debug('reformatting project files')
             isort_cfg = self.automation_settings['isort']
             isort_cfg.setdefault('known_first_party', [])
@@ -192,8 +217,10 @@ class GitLabInitialCommitAutomation(base.Automation):
 
             for py_file in project_dir.rglob('*.py'):
                 isort.api.sort_file(py_file, **isort_cfg)
-                yapf_api.FormatFile(str(py_file), style_config=yapf_style,
-                                    in_place=True, logger=None)
+                yapf_api.FormatFile(
+                    str(py_file), style_config=yapf_style,
+                    in_place=True, logger=None)
+            """
 
             self.logger.debug('committing to GitLab')
             commit_info = await self._gitlab.commit_tree(

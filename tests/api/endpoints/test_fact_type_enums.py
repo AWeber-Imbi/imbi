@@ -18,12 +18,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def setUp(self) -> None:
         super().setUp()
-        self.project_type = self.create_project_type()
         self.project_fact_type = self.create_project_fact_type()
 
     def test_project_fact_type_option_lifecycle(self):
         record = {
-            'fact_type_id': self.project_fact_type,
+            'fact_type_id': self.project_fact_type['id'],
             'icon_class': 'fas check',
             'value': str(uuid.uuid4()),
             'score': 50

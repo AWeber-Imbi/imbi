@@ -18,7 +18,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_project_fact_type_lifecycle(self):
         record = {
-            'project_type_ids': [self.project_type],
+            'project_type_ids': [self.project_type['id']],
             'name': str(uuid.uuid4()),
             'fact_type': 'free-form',
             'data_type': 'string',
@@ -104,7 +104,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_create_with_missing_fields(self):
         record = {
-            'project_type_ids': [self.project_type],
+            'project_type_ids': [self.project_type['id']],
             'name': str(uuid.uuid4())
         }
         result = self.fetch(
