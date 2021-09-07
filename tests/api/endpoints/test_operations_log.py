@@ -4,7 +4,7 @@ import uuid
 import jsonpatch
 from ietfparse import headers
 
-from imbi.endpoints import operations_logs
+from imbi.endpoints import operations_log
 from tests import base
 
 
@@ -271,7 +271,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                operations_logs.RecordRequestHandler.TTL))
+                operations_log.RecordRequestHandler.TTL))
         record.update({
             'id': response['id'],
             'completed_at': response['completed_at'],
@@ -306,7 +306,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assert_link_header_equals(result, url)
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
-                operations_logs.RecordRequestHandler.TTL))
+                operations_log.RecordRequestHandler.TTL))
         response = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(response, record)
 
