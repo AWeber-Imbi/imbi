@@ -4,10 +4,10 @@ from imbi import constants
 from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                environments, fact_type_enums, fact_type_ranges, fact_types,
                groups, integrations, metrics, namespaces, openapi,
-               permissions, project_activity_feed, project_dependencies,
-               project_fact_types, project_facts, project_link_types,
-               project_links, project_score_history, project_types,
-               project_urls, projects, reports, status, ui)
+               operations_log, permissions, project_activity_feed,
+               project_dependencies, project_fact_types, project_facts,
+               project_link_types, project_links, project_score_history,
+               project_types, project_urls, projects, reports, status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -36,6 +36,10 @@ URLS = [
     web.url(r'^/namespaces/(?P<id>\d+)$',
             namespaces.RecordRequestHandler,
             name='namespace'),
+    web.url(r'^/operations-log$', operations_log.CollectionRequestHandler),
+    web.url(r'^/operations-log/(?P<id>\d+)$',
+            operations_log.RecordRequestHandler,
+            name='operations-log'),
     web.url(r'^/permissions$', permissions.RequestHandler),
     web.url(r'^/project-fact-types$', fact_types.CollectionRequestHandler),
     web.url(r'^/project-fact-types/(?P<id>\d+)$',

@@ -120,6 +120,24 @@ class TestCaseWithReset(TestCase):
                 'TRUNCATE TABLE {} CASCADE'.format(table), {})
         await super().async_tear_down()
 
+    def create_project(self) -> dict:
+        if not self.namespace:
+            self.namespace = self.create_namespace()
+        if not self.project_type:
+            self.project_type = self.create_project_type()
+        result = self.fetch(
+            '/projects', method='POST', headers=self.headers,
+            body=json.dumps({
+                'namespace_id': self.namespace['id'],
+                'project_type_id': self.project_type['id'],
+                'name': str(uuid.uuid4()),
+                'slug': str(uuid.uuid4().hex),
+                'description': str(uuid.uuid4()),
+                'environments': self.environments,
+            }).encode('utf-8'))
+        self.assertEqual(result.code, 200)
+        return json.loads(result.body.decode('utf-8'))
+
     def create_environments(self) -> typing.List[dict]:
         environments = []
         for iteration in range(0, 2):

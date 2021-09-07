@@ -1786,8 +1786,6 @@ paths:
   /operations-log:
     get:
       description: |-
-        **NOT IMPLEMENTED**
-
         Retrieve the collection of operational log entries
       summary: Get Entries
       tags:
@@ -1836,18 +1834,26 @@ paths:
           schema:
             type: string
             pattern: ^\d+$
-        - name: start_id
+        - name: recorded_at_anchor
           in: query
-          description: 'Used by the endpoint for pagination for the Next Page, specifying the first `id` for the entries to return.'
+          description: Defined in Link header URLs, specifying the `recorded_at` value of the row closest to, but outside of, the linked page's result set.
+          schema:
+            type: string
+            format: iso8601-timestamp
+        - name: id_anchor
+          in: query
+          description: Defined in Link header URLs, specifying the `id` of the row which `recorded_at_anchor` comes from.
           schema:
             type: string
             pattern: ^\d+$
-        - name: current_id
+        - name: page_direction
           in: query
-          description: 'Used by the endpoint for pagination for the Previous Page, specifying the `id` for the entries to return.'
+          description: Defined in Link header URLs, specifying whether it is a next or a previous link.
           schema:
             type: string
-            pattern: ^\d+$
+            enum:
+              - next
+              - previous
       responses:
         '200':
           description: Success
@@ -1868,7 +1874,7 @@ paths:
                       type: string
                       format: iso8601-timestamp
                     recorded_by:
-                      description: When the entry was recorded
+                      description: The user who recorded the change
                       type: string
                     completed_at:
                       description: 'If specified, indicates the change occurred over a span of time'
@@ -1966,7 +1972,7 @@ paths:
                       type: string
                       format: iso8601-timestamp
                     recorded_by:
-                      description: When the entry was recorded
+                      description: The user who recorded the change
                       type: string
                     completed_at:
                       description: 'If specified, indicates the change occurred over a span of time'
@@ -2067,7 +2073,7 @@ paths:
                   type: string
                   format: iso8601-timestamp
                 recorded_by:
-                  description: When the entry was recorded
+                  description: The user who recorded the change
                   type: string
                 completed_at:
                   description: 'If specified, indicates the change occurred over a span of time'
@@ -2109,7 +2115,7 @@ paths:
                   description: An optional version that the change was made for
                   type: string
               required:
-                - recored_by
+                - recorded_by
                 - environment
                 - change_type
               additionalProperties: false
@@ -2203,8 +2209,6 @@ paths:
     get:
       summary: Get Entry
       description: |-
-        **NOT IMPLEMENTED**
-
         Retrieve an individual operations log entry
       tags:
         - Operations Log
@@ -2218,8 +2222,6 @@ paths:
     patch:
       summary: Update Entry
       description: |-
-        **NOT IMPLEMENTED**
-
         Update an operations log entry, providing a JSON Patch (RFC-6209) payload of update
         operations to apply.
       tags:
@@ -2255,8 +2257,6 @@ paths:
     delete:
       summary: Delete Entry
       description: |-
-        **NOT IMPLEMENTED**
-
         Remove an operations log entry
       tags:
         - Operations Log
