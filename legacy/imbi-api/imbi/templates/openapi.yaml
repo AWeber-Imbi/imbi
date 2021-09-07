@@ -1786,8 +1786,6 @@ paths:
   /operations-log:
     get:
       description: |-
-        **NOT IMPLEMENTED**
-
         Retrieve the collection of operational log entries
       summary: Get Entries
       tags:
@@ -2211,8 +2209,6 @@ paths:
     get:
       summary: Get Entry
       description: |-
-        **NOT IMPLEMENTED**
-
         Retrieve an individual operations log entry
       tags:
         - Operations Log
@@ -2226,8 +2222,6 @@ paths:
     patch:
       summary: Update Entry
       description: |-
-        **NOT IMPLEMENTED**
-
         Update an operations log entry, providing a JSON Patch (RFC-6209) payload of update
         operations to apply.
       tags:
@@ -2263,8 +2257,6 @@ paths:
     delete:
       summary: Delete Entry
       description: |-
-        **NOT IMPLEMENTED**
-
         Remove an operations log entry
       tags:
         - Operations Log
