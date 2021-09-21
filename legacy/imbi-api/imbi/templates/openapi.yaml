@@ -1274,16 +1274,27 @@ paths:
   /metrics:
     get:
       security: []
-      description: Returns runtime metrics including counters and durations.
+      description: |-
+        Returns runtime metrics including counters and durations in Prometheus
+        text-based exposition format.
       summary: Service metrics
       operationId: metrics
       parameters:
+        - in: query
+          name: all_hosts
+          description: Return metrics from all hosts
+          schema:
+            type: string
+            default: 'false'
+            enum:
+              - 'true'
+              - 'false'
         - in: query
           name: flush
           description: Flush the stats / metrics database of recorded values
           schema:
             type: string
-            default: 'false'
+            default: 'true'
             enum:
               - 'true'
               - 'false'
@@ -1293,68 +1304,31 @@ paths:
         '200':
           description: OK
           content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  counters:
-                    type: object
-                    additionalProperties:
-                      type: number
-                    description: A key-value pair of internal counters
-                  durations:
-                    type: object
-                    description: |-
-                      A key-value pair of recorded durations where the value is an array
-                      of timestamp and duration in seconds
-                    additionalProperties:
-                      type: array
-                      items:
-                        type: array
-                        items:
-                          oneOf:
-                            - type: string
-                              format: iso8601-timestamp
-                            - type: number
-                              format: float
-                        minItems: 2
-                        maxItems: 2
-                  postgres:
-                    type: object
-                    description: PostgreSQL pool information
-                    properties:
-                      pool_free:
-                        type: number
-                        description: |-
-                          Indicates the current number of idle connections available to
-                          process queries
-                      pool_size:
-                        type: number
-                        description: Indicates the current quantity of open connections to Postgres
-                  uptime:
-                    type: string
-                    description: ISO-8601 formatted duration indicating how long the service has been running
-              example:
-                counters:
-                  response.Base.GET.200: 10
-                durations:
-                  request.Base.GET.200:
-                    - - '2018-12-03 23:46:54+00:00'
-                      - 0.2566049098968506
-                    - - '2018-12-03 23:31:50+00:00'
-                      - 0.33482813835144043
-                    - - '2018-12-03 23:00:39+00:00'
-                      - 0.25607776641845703
-                postgres:
-                  available: true
-                  pool_size: 10
-                  pool_free: 9
-                uptime: PT6M9.053148S
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1metrics/get/responses/200/content/application~1json/schema'
-              example:
-                $ref: '#/paths/~1metrics/get/responses/200/content/application~1json/example'
+            text/plain; version=0.0.4:
+              example: |-
+                # TYPE http_requests_total counter
+                http_requests_total{endpoint="dashboard",hostname="example",method="GET",status="200"} 1
+                http_requests_total{endpoint="environments",hostname="example",method="GET",status="200"} 2
+                http_requests_total{endpoint="metrics",hostname="example",method="GET",status="200"} 5
+
+                # TYPE http_request_duration_seconds histogram
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.005"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.01"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.025"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.05"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.075"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.1"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.25"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.5"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.75"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="1.0"} 0
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="2.5"} 1
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="5.0"} 1
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="7.5"} 1
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="10.0"} 1
+                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="Inf+"} 1
+                http_request_duration_seconds_count{endpoint="dashboard",hostname="example",method="GET",status="200"} 1
+                http_request_duration_seconds_sum{endpoint="dashboard",hostname="example",method="GET",status="200"} 2.2017457485198975
   /namespaces:
     get:
       description: Retrieve the collection of namespaces
