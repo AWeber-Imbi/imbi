@@ -3,7 +3,7 @@ from imbi.endpoints import base
 
 class SettingsRequestHandler(base.RequestHandler):
 
-    ENDPOINT = 'ui-settings'
+    NAME = 'ui-settings'
 
     async def get(self, *args, **kwargs):
         settings = self.settings['automations']

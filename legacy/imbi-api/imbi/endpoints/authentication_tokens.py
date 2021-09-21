@@ -9,7 +9,7 @@ from . import base
 
 class RequestHandler(base.ValidatingRequestHandler):
 
-    ENDPOINT = 'authentication-tokens'
+    NAME = 'authentication-tokens'
 
     CREATE_SQL = re.sub(r'\s+', ' ', """
         INSERT INTO v1.authentication_tokens (token, "name", username)

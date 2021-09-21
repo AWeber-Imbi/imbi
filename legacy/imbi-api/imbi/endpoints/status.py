@@ -17,7 +17,7 @@ OK = 'ok'
 class RequestHandler(mediatype.ContentMixin,
                      web.RequestHandler):
     """Returns the current status"""
-    ENDPOINT = 'Status'
+    NAME = 'status'
 
     SYSTEM = {
         'language': {

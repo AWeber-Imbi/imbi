@@ -3,7 +3,7 @@ from imbi.endpoints import base
 
 class IndexRequestHandler(base.RequestHandler):
 
-    ENDPOINT = 'ui-index'
+    NAME = 'ui-index'
 
     def get(self, *args, **kwargs):
         if self.request.path == '/':
