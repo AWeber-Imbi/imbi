@@ -97,13 +97,23 @@ class RequestHandler(postgres.RequestHandlerMixin,
     def on_finish(self) -> None:
         """Invoked after a request has completed"""
         super().on_finish()
-        metric_id = '{}.{}'.format(self.NAME, self.request.method)
         self.application.loop.add_callback(
             self.application.stats.incr,
-            'response.{}.{}'.format(metric_id, self.get_status()))
+            {
+                'key': 'http_requests',
+                'endpoint': self.NAME,
+                'method': self.request.method,
+                'status': self.get_status()
+            })
+
         self.application.loop.add_callback(
             self.application.stats.add_duration,
-            'request.{}.{}'.format(metric_id, self.get_status()),
+            {
+                'key': 'http_request_duration',
+                'endpoint': self.NAME,
+                'method': self.request.method,
+                'status': self.get_status()
+            },
             self.request.request_time())
 
     def compute_etag(self) -> None:
@@ -132,6 +142,19 @@ class RequestHandler(postgres.RequestHandlerMixin,
         namespace = super(RequestHandler, self).get_template_namespace()
         namespace.update({'version': version})
         return namespace
+
+    def on_postgres_timing(self,
+                           metric_name: str,
+                           duration: float) -> None:
+        """Invoked by sprockets-postgres after each query"""
+        self.application.loop.add_callback(
+            self.application.stats.add_duration,
+            {
+                'key': 'postgres_query_duration',
+                'query': metric_name,
+                'endpoint': self.NAME
+            },
+            duration)
 
     def send_response(self, value: typing.Union[dict, list]) -> None:
         """Send the response to the client"""
@@ -181,14 +204,6 @@ class RequestHandler(postgres.RequestHandlerMixin,
     def _add_response_caching_headers(self, ttl: int) -> None:
         """Adds the cache response headers for the object being returned."""
         self.add_header('Cache-Control', 'public, max-age={}'.format(ttl))
-
-    def _on_postgres_timing(self,
-                            metric_name: str,
-                            duration: float) -> None:
-        """Invoked by sprockets-postgres after each query"""
-        self.application.loop.add_callback(
-            self.application.stats.add_duration,
-            'postgres.{}'.format(metric_name), duration)
 
     @property
     def _respond_with_html(self) -> bool:

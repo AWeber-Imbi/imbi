@@ -100,7 +100,7 @@ class Stats:
             'd:*' if all_hosts else f'd:*hostname={self._hostname}*')
         for key in keys:
             durations[key[2:].decode('utf-8')] = sorted(
-                [float(v) for v in await self._client.lrange(key, 0, -1)])
+                float(v) for v in await self._client.lrange(key, 0, -1))
             if flush:
                 await self._client.delete(key)
         return durations
