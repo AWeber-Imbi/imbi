@@ -4,6 +4,7 @@ from imbi.endpoints import base
 
 
 class CollectionRequestHandler(base.CollectionRequestHandler):
+
     NAME = 'integrations'
     ITEM_NAME = 'integration'
     ID_KEY = 'name'
@@ -36,6 +37,7 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 
 
 class RecordRequestHandler(base.CRUDRequestHandler):
+
     NAME = 'integration'
     ID_KEY = 'name'
 

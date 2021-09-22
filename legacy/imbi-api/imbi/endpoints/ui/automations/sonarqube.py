@@ -13,8 +13,7 @@ from imbi.endpoints.ui.automations import mixins
 class CreationRequestHandler(mixins.PrepareFailureMixin,
                              base.AuthenticatedRequestHandler):
 
-    NAME = 'CreationRequestHandler'
-    ENDPOINT = 'ui-sonarqube-create'
+    NAME = 'ui-sonarqube-create'
 
     async def post(self):
         request = self.get_request_body()

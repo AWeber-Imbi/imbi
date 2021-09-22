@@ -12,7 +12,7 @@ class RequestHandler(base.RequestHandler):
     system.
 
     """
-    ENDPOINT = 'OpenAPI'
+    NAME = 'openapi'
     TTL = 300
 
     def get(self, *args):

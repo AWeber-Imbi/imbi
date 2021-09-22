@@ -9,7 +9,7 @@ from imbi.endpoints import base
 
 class RequestHandler(base.RequestHandler):
 
-    ENDPOINT = 'not-found'
+    NAME = 'not-found'
 
     def get(self, *args, **kwargs):
         raise web.HTTPError(404)

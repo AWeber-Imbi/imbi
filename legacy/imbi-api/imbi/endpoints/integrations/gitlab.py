@@ -21,6 +21,8 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                       base.RequestHandler):
     integration: 'oauth2.OAuth2Integration'
 
+    NAME = 'gitlab-redirect'
+
     async def prepare(self) -> None:
         await super().prepare()
         if not self._finished:
@@ -100,6 +102,8 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 
 
 class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
+
+    NAME = 'gitlab-integrated'
     client: gitlab.GitLabClient
 
     async def prepare(self) -> None:
@@ -119,6 +123,9 @@ class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
 
 
 class UserNamespacesHandler(GitLabIntegratedHandler):
+
+    NAME = 'gitlab-user-namespace'
+
     async def get(self):
         entries = await self.client.fetch_all_pages(
             'groups', min_access_level=30)
@@ -129,6 +136,9 @@ class UserNamespacesHandler(GitLabIntegratedHandler):
 
 
 class ProjectsHandler(GitLabIntegratedHandler):
+
+    NAME = 'gitlab-projects'
+
     async def get(self):
         group_arg = self.get_query_argument('group_id')
         try:

@@ -3,7 +3,7 @@ from imbi.endpoints import base
 
 class LoginRequestHandler(base.RequestHandler):
 
-    ENDPOINT = 'ui-login'
+    NAME = 'ui-login'
 
     async def post(self, *args, **kwargs):
         body = self.get_request_body()
@@ -20,7 +20,7 @@ class LoginRequestHandler(base.RequestHandler):
 
 class LogoutRequestHandler(base.RequestHandler):
 
-    ENDPOINT = 'ui-logout'
+    NAME = 'ui-logout'
 
     async def get(self, *args, **kwargs):
         await self.session.clear()

@@ -10,8 +10,7 @@ from imbi.endpoints.ui.automations import mixins
 class GitLabAutomationRequestHandler(mixins.PrepareFailureMixin,
                                      base.AuthenticatedRequestHandler):
 
-    NAME = 'GitLabAutomationRequestHandler'
-    ENDPOINT = 'ui-gitlab'
+    NAME = 'ui-gitlab'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -36,8 +35,8 @@ class GitLabAutomationRequestHandler(mixins.PrepareFailureMixin,
 
 class CreationRequestHandler(GitLabAutomationRequestHandler,
                              base.ValidatingRequestHandler):
-    NAME = 'CreationRequestHandler'
-    ENDPOINT = 'ui-gitlab-create'
+
+    NAME = 'ui-gitlab-create'
 
     async def post(self):
         request = self.get_request_body()
@@ -59,8 +58,8 @@ class CreationRequestHandler(GitLabAutomationRequestHandler,
 
 
 class InitialCommitRequestHandler(GitLabAutomationRequestHandler):
-    NAME = 'InitialCommitRequestHandler'
-    ENDPOINT = 'ui-gitlab-commit'
+
+    NAME = 'ui-gitlab-commit'
 
     async def post(self):
         request = self.get_request_body()
