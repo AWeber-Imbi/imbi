@@ -118,9 +118,10 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
                 dsn=self.settings['sentry_backend_dsn'],
                 environment=os.environ.get('environment', 'production'),
                 integrations=[
+                    sentry_tornado.TornadoIntegration(),
                     sentry_logging.LoggingIntegration(
-                        event_level=logging.CRITICAL),
-                    sentry_tornado.TornadoIntegration()],
+                        event_level=logging.CRITICAL)
+                    ],
                 release=version)
 
         self.loop = ioloop.IOLoop.current()
