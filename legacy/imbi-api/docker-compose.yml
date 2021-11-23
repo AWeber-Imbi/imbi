@@ -14,6 +14,23 @@ services:
     healthcheck:
       test: /usr/bin/ldapsearch -x -h localhost -b dc=example,dc=org cn=test,ou=users,dc=example,dc=org
     command: --loglevel debug --copy-service
+
+  opensearch:
+    image: opensearchproject/opensearch:latest
+    environment:
+      - discovery.type=single-node
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+    ports:
+      - 9200
+      - 9600
+    healthcheck:
+      test: >-
+        curl --fail "http://localhost:9200/_cluster/health?wait_for_status=green&timeout=1s" || exit 1
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+
   postgres:
     image: aweber/imbi-postgres:0.14.0-1
     ports:

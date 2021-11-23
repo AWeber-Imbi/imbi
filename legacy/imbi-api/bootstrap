@@ -52,9 +52,9 @@ mkdir -p build ddl/build imbi/static/css imbi/static/fonts imbi/static/js
 # Stop any running instances and clean up after them, then pull images
 docker-compose down --volumes --remove-orphans
 docker-compose pull -q
-docker-compose up -d ldap postgres redis
+docker-compose up -d ldap opensearch postgres redis
 
-wait_for_healthy_containers 3
+wait_for_healthy_containers 4
 
 docker-compose exec -T postgres psql -U postgres -d postgres -f /tmp/postgres/dml.sql -q
 
