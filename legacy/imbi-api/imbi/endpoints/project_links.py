@@ -1,6 +1,6 @@
 import re
 
-from imbi.endpoints import base
+from imbi.endpoints import base, projects
 
 
 class _LinkRequestMixin:
@@ -27,7 +27,8 @@ class _LinkRequestMixin:
            AND a.link_type_id = %(link_type_id)s""")
 
 
-class CollectionRequestHandler(_LinkRequestMixin,
+class CollectionRequestHandler(projects.ProjectAttributeCollectionMixin,
+                               _LinkRequestMixin,
                                base.CollectionRequestHandler):
 
     NAME = 'project-links'
@@ -55,7 +56,8 @@ class CollectionRequestHandler(_LinkRequestMixin,
           RETURNING project_id, link_type_id""")
 
 
-class RecordRequestHandler(_LinkRequestMixin, base.CRUDRequestHandler):
+class RecordRequestHandler(projects.ProjectAttributeCRUDMixin,
+                           _LinkRequestMixin, base.CRUDRequestHandler):
 
     NAME = 'project-link'
 

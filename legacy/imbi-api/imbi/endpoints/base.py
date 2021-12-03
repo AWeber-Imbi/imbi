@@ -400,7 +400,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         # Send the new record as a response
         await self._get(self._get_query_kwargs(updated))
 
-    async def _post(self, kwargs) -> None:
+    async def _post(self, kwargs) -> dict:
         values = self.get_request_body()
 
         # Handle compound keys for child object CRUD
@@ -425,6 +425,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
 
             # Return the record as if it were a GET
         await self._get(self._get_query_kwargs(result.row))
+        return result.row
 
 
 class CollectionRequestHandler(CRUDRequestHandler):

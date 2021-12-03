@@ -1,7 +1,9 @@
 import asyncio
+import dataclasses
 import re
+import typing
 
-from imbi import errors
+from imbi import errors, models
 from imbi.endpoints import base
 
 
@@ -40,7 +42,41 @@ class _RequestHandlerMixin:
          WHERE a.id=%(id)s""")
 
 
-class CollectionRequestHandler(_RequestHandlerMixin,
+class OpensearchMixin:
+
+    SEARCH_INDEX = 'projects'
+
+    async def delete_from_index(self,
+                                project_id: typing.Union[int, str]) -> None:
+        await self.application.opensearch.delete_document(
+            self.SEARCH_INDEX, str(project_id))
+
+    async def index_document(self, project_id: typing.Union[int, str]) -> None:
+        value = await models.project(project_id, self.application)
+        await self.application.opensearch.index_document(
+            self.SEARCH_INDEX, str(project_id), dataclasses.asdict(value))
+
+
+class ProjectAttributeCollectionMixin(OpensearchMixin):
+
+    async def post(self, *_args, **kwargs):
+        result = await self._post(kwargs)
+        await self.index_document(result['project_id'])
+
+
+class ProjectAttributeCRUDMixin(OpensearchMixin):
+
+    async def delete(self, *args, **kwargs):
+        await super().delete(*args, **kwargs)
+        await self.index_document(kwargs['project_id'])
+
+    async def patch(self, *args, **kwargs):
+        await super().patch(*args, **kwargs)
+        await self.index_document(kwargs['project_id'])
+
+
+class CollectionRequestHandler(OpensearchMixin,
+                               _RequestHandlerMixin,
                                base.CollectionRequestHandler):
     NAME = 'projects'
     IS_COLLECTION = True
@@ -141,8 +177,14 @@ class CollectionRequestHandler(_RequestHandlerMixin,
             'rows': count.row['records'],
             'data': result.rows})
 
+    async def post(self, *_args, **kwargs):
+        result = await self._post(kwargs)
+        await self.index_document(result['id'])
 
-class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
+
+class RecordRequestHandler(OpensearchMixin,
+                           _RequestHandlerMixin,
+                           base.CRUDRequestHandler):
 
     NAME = 'project'
 
@@ -251,6 +293,10 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
                pagerduty_service_id=%(pagerduty_service_id)s
          WHERE id=%(id)s""")
 
+    async def delete(self, *args, **kwargs):
+        await super().delete(*args, **kwargs)
+        await self.delete_from_index(kwargs['id'])
+
     async def get(self, *args, **kwargs):
         if self.get_argument('full', 'false') == 'true':
             query_args = self._get_query_kwargs(kwargs)
@@ -276,3 +322,27 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
             self.send_response(output)
         else:
             await self._get(kwargs)
+
+    async def patch(self, *args, **kwargs):
+        await super().patch(*args, **kwargs)
+        await self.index_document(kwargs['id'])
+
+
+class SearchIndexRequestHandler(base.AuthenticatedRequestHandler):
+
+    SQL = re.sub(r'\s+', ' ', """\
+        SELECT id               
+          FROM v1.projects
+         ORDER BY id""")
+
+    async def get(self):
+        result = await self.postgres_execute(self.SQL)
+        ids = [row['id'] for row in result]
+        for project_id in ids:
+            project = await models.project(project_id, self.application)
+            await self.application.opensearch.index_document(
+                'projects', project_id, dataclasses.asdict(project))
+
+        self.send_response({
+            'status': 'ok',
+            'message': f'Queued {len(ids)} projects for indexing'})

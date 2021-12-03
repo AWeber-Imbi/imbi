@@ -63,6 +63,8 @@ URLS = [
     web.url(r'^/project-types/(?P<id>\d+)$',
             project_types.RecordRequestHandler,
             name='project-type'),
+    web.url(r'^/projects/build-search-index',
+            projects.SearchIndexRequestHandler),
     web.url(r'^/projects$', projects.CollectionRequestHandler,
             name='projects'),
     web.url(r'^/projects/(?P<id>\d+)$',

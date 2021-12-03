@@ -1,6 +1,6 @@
 import re
 
-from imbi.endpoints import base
+from imbi.endpoints import base, projects
 
 
 class _RequestMixin:
@@ -23,7 +23,8 @@ class _RequestMixin:
            AND environment = %(environment)s""")
 
 
-class CollectionRequestHandler(_RequestMixin,
+class CollectionRequestHandler(projects.ProjectAttributeCollectionMixin,
+                               _RequestMixin,
                                base.CollectionRequestHandler):
 
     NAME = 'project-urls'
@@ -47,7 +48,8 @@ class CollectionRequestHandler(_RequestMixin,
           RETURNING project_id, environment""")
 
 
-class RecordRequestHandler(_RequestMixin, base.CRUDRequestHandler):
+class RecordRequestHandler(projects.ProjectAttributeCRUDMixin,
+                           _RequestMixin, base.CRUDRequestHandler):
 
     NAME = 'project-url'
 

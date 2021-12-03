@@ -118,7 +118,7 @@ class ProjectFact:
             if self.value:
                 self.__setattr__('value', decimal.Decimal(self.value))
         elif self.data_type == 'integer':
-            self.__setattr__('value', int(self.value))
+            self.__setattr__('value', int(self.value if self.value else 0))
 
 
 @dataclasses.dataclass

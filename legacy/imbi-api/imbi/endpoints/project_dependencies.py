@@ -1,6 +1,6 @@
 import re
 
-from imbi.endpoints import base
+from imbi.endpoints import base, projects
 
 
 class _DependencyRequestMixin:
@@ -17,7 +17,8 @@ class _DependencyRequestMixin:
            AND dependency_id=%(dependency_id)s""")
 
 
-class CollectionRequestHandler(_DependencyRequestMixin,
+class CollectionRequestHandler(projects.ProjectAttributeCollectionMixin,
+                               _DependencyRequestMixin,
                                base.CollectionRequestHandler):
 
     NAME = 'project-dependencies'
@@ -35,7 +36,8 @@ class CollectionRequestHandler(_DependencyRequestMixin,
           RETURNING project_id, dependency_id""")
 
 
-class RecordRequestHandler(_DependencyRequestMixin, base.CRUDRequestHandler):
+class RecordRequestHandler(projects.ProjectAttributeCRUDMixin,
+                           _DependencyRequestMixin, base.CRUDRequestHandler):
 
     NAME = 'project-dependency'
 

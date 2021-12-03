@@ -4,10 +4,11 @@ import typing
 import psycopg2.errors
 
 from imbi import common, errors
-from imbi.endpoints import base
+from imbi.endpoints import base, projects
 
 
-class CollectionRequestHandler(base.CollectionRequestHandler):
+class CollectionRequestHandler(projects.OpensearchMixin,
+                               base.CollectionRequestHandler):
 
     NAME = 'project-fact-types'
     ID_KEY = 'project_id'
@@ -70,6 +71,7 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
             })
             await self.postgres_execute(
                 self.POST_SQL, fact, 'post-{}'.format(self.NAME))
+        await self.index_document(kwargs['project_id'])
         self.set_status(204)
 
     def on_postgres_error(self,
