@@ -226,6 +226,7 @@ class Project:
     facts: typing.Dict[str, str]
     links: typing.Dict[str, str]
     urls: typing.Dict[str, str]
+    project_score: int
 
     SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
         SELECT id,
@@ -243,7 +244,8 @@ class Project:
                gitlab_project_id,
                sentry_project_slug,
                sonarqube_project_key,
-               pagerduty_service_id
+               pagerduty_service_id,
+               v1.project_score(id) AS project_score
           FROM v1.projects
          WHERE id=%(id)s""")
 
