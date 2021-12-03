@@ -28,8 +28,8 @@ try:
 except ImportError:
     sentry_logging, sentry_tornado = None, None
 
-from imbi import (endpoints, errors, keychain, openapi, permissions, stats,
-                  transcoders, version)
+from imbi import (endpoints, errors, keychain, openapi, opensearch,
+                  permissions, stats, transcoders, version)
 from imbi.endpoints import default
 
 LOGGER = logging.getLogger(__name__)
@@ -51,7 +51,9 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         self.keychain = keychain.Keychain(self.settings['encryption_key'])
         self.loop: typing.Optional[ioloop.IOLoop] = None
         self.on_start_callbacks.append(self.on_start)
+        self.on_shutdown_callbacks.append(self.on_shutdown)
         self.openapi_validator = openapi.request_validator(self.settings)
+        self.opensearch: typing.Optional[opensearch.OpenSearch] = None
         self.session_redis: typing.Optional[aioredis.Redis] = None
         self.started_at = datetime.datetime.now(datetime.timezone.utc)
         self.started_at_str = self.started_at.isoformat()
@@ -149,9 +151,17 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         await self._postgres_connected.wait()
 
+        self.opensearch = opensearch.OpenSearch(self.settings['opensearch'])
+        if not await self.opensearch.initialize():
+            self.stop(self.loop)
+            return
+
         self.startup_complete.set()
         self._ready_to_serve = True
         LOGGER.info('Application startup complete, ready to serve requests')
+
+    def on_shutdown(self, *_args, **_kwargs) -> None:
+        self.opensearch.stop()
 
     def validate_request(self, request: httputil.HTTPServerRequest) -> None:
         """Validate the inbound request, raising any number of OpenAPI

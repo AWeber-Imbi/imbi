@@ -38,6 +38,9 @@ DEFAULT_LOG_CONFIG = {
         'imbi': {
             'level': 'INFO'
         },
+        'opensearch': {
+            'level': 'INFO'
+        },
         'tornado': {
             'level': 'INFO'
         }
@@ -171,6 +174,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'users_dn': ldap.get('users_dn')
         },
         'number_of_procs': http_settings.get('processes', 2),
+        'opensearch': config.get('opensearch', {}),
         'permissions': [],
         'port': http_settings.get('port', 8000),
         'postgres_url': postgres.get('url'),

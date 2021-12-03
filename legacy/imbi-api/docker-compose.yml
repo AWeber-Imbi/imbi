@@ -31,6 +31,19 @@ services:
       timeout: 3s
       start_period: 30s
 
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:latest
+    container_name: opensearch-dashboards
+    ports:
+      - 5601:5601
+    expose:
+      - "5601"
+    environment:
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+    links:
+      - opensearch
+
   postgres:
     image: aweber/imbi-postgres:0.14.0-1
     ports:
