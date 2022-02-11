@@ -331,7 +331,7 @@ class RecordRequestHandler(OpensearchMixin,
 class SearchIndexRequestHandler(base.AuthenticatedRequestHandler):
 
     SQL = re.sub(r'\s+', ' ', """\
-        SELECT id               
+        SELECT id
           FROM v1.projects
          ORDER BY id""")
 

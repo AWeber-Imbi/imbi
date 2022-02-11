@@ -102,14 +102,14 @@ class RequestHandler(base.RequestHandler):
         self.write(
             '# HELP postgres_pool_size The number of open connections '
             'in the pool\n')
-        self.write(f'# TYPE postgres_pool_size gauge\n')
+        self.write('# TYPE postgres_pool_size gauge\n')
         self.write(
             f'postgres_pool_size{{host="{socket.gethostname()}"}} '
             f'{postgres["pool_size"]}\n\n')
         self.write(
             '# HELP postgres_pool_free The number of free connections '
             'in the pool\n')
-        self.write(f'# TYPE postgres_pool_free gauge\n')
+        self.write('# TYPE postgres_pool_free gauge\n')
         self.write(
             f'postgres_pool_free{{host="{socket.gethostname()}"}} '
             f'{postgres["pool_free"]}\n\n')

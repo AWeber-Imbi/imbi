@@ -195,7 +195,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # insert record
         record = {
                 'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-                'recorded_at': f'2021-08-30T00:00:03+00:00',
+                'recorded_at': '2021-08-30T00:00:03+00:00',
                 'environment': self.environment,
                 'project_id': self.project['id'],
                 'change_type': 'Upgraded',
