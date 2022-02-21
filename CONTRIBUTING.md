@@ -28,7 +28,14 @@ Perform the following steps to run Imbi in the foreground in your development
 environment.
 
 ```bash
+git submodule update --init --recursive
+cd api
 make setup
+cd ..
+make setup
+cd ui
+yarn serve
+cd api # in a new terminal
 source env/bin/activate
 imbi --debug build/debug.yaml
 ```
