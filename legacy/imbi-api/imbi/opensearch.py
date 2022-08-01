@@ -93,7 +93,10 @@ class OpenSearch:
         LOGGER.debug('Deleting %s from %s', document_id, index)
         try:
             await self.client.delete(index, document_id)
-        except opensearchpy.exceptions.RequestError as err:
+        except (
+            opensearchpy.exceptions.NotFoundError,
+            opensearchpy.exceptions.RequestError
+        ) as err:
             LOGGER.warning('Deletion of %s:%s failed: %r',
                            index, document_id, err)
 
