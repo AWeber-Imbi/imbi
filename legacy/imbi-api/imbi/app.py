@@ -151,7 +151,9 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         await self._postgres_connected.wait()
 
-        self.opensearch = opensearch.OpenSearch(self.settings['opensearch'])
+        self.opensearch = opensearch.OpenSearch(
+            self.settings['opensearch'],
+            self.settings['postgres_url'])
         if not await self.opensearch.initialize():
             self.stop(self.loop)
             return

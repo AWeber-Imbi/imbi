@@ -7,6 +7,13 @@ from imbi import errors, models
 from imbi.endpoints import base
 
 
+def project_to_dict(project: models.Project) -> dict:
+    output = dataclasses.asdict(project)
+    for key in ('namespace', 'type'):
+        output[key] = output[key]['slug']
+    return output
+
+
 class _RequestHandlerMixin:
 
     ITEM_NAME = 'project'
@@ -52,9 +59,9 @@ class OpensearchMixin:
             self.SEARCH_INDEX, str(project_id))
 
     async def index_document(self, project_id: typing.Union[int, str]) -> None:
-        value = await models.project(project_id, self.application)
+        project = await models.project(project_id, self.application)
         await self.application.opensearch.index_document(
-            self.SEARCH_INDEX, str(project_id), dataclasses.asdict(value))
+            self.SEARCH_INDEX, str(project_id), project_to_dict(project))
 
 
 class ProjectAttributeCollectionMixin(OpensearchMixin):
@@ -328,10 +335,26 @@ class RecordRequestHandler(OpensearchMixin,
         await self.index_document(kwargs['id'])
 
 
+class SearchRequestHandler(base.AuthenticatedRequestHandler):
+
+    async def get(self):
+        result = await self.application.opensearch.client.search(
+            body={
+                'query': {
+                    'query_string': {
+                        'query': self.get_query_argument('s')}},
+                'size': 1000},
+            index='projects')
+        self.send_response({
+            'hits': [r['_source'] for r in result['hits']['hits']]})
+        import pprint
+        pprint.pprint(result)
+
+
 class SearchIndexRequestHandler(base.AuthenticatedRequestHandler):
 
     SQL = re.sub(r'\s+', ' ', """\
-        SELECT id               
+        SELECT id
           FROM v1.projects
          ORDER BY id""")
 
@@ -341,7 +364,7 @@ class SearchIndexRequestHandler(base.AuthenticatedRequestHandler):
         for project_id in ids:
             project = await models.project(project_id, self.application)
             await self.application.opensearch.index_document(
-                'projects', project_id, dataclasses.asdict(project))
+                'projects', project_id, project_to_dict(project))
 
         self.send_response({
             'status': 'ok',
