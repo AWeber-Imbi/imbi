@@ -142,9 +142,11 @@ class OpenSearch:
                         })
         return fields
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         if self.timer_handle and not self.timer_handle.cancelled():
             self.timer_handle.cancel()
+        if self.client is not None:
+            await self.client.close()
 
     async def _build_mappings(self) -> dict:
         definition = dict(mappings.PROJECT)

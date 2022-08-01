@@ -162,8 +162,8 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         self._ready_to_serve = True
         LOGGER.info('Application startup complete, ready to serve requests')
 
-    def on_shutdown(self, *_args, **_kwargs) -> None:
-        self.opensearch.stop()
+    async def on_shutdown(self, *_args, **_kwargs) -> None:
+        await self.opensearch.stop()
 
     def validate_request(self, request: httputil.HTTPServerRequest) -> None:
         """Validate the inbound request, raising any number of OpenAPI
