@@ -61,7 +61,9 @@ class TestCase(testing.AsyncHTTPTestCase):
 
     async def async_tear_down(self) -> None:
         for callback in self._app.runner_callbacks.get('shutdown', []):
-            await callback(self.loop)
+            maybe_coro = callback(self.loop)
+            if asyncio.iscoroutine(maybe_coro):
+                await maybe_coro
 
     async def postgres_execute(self,
                                sql: str,
