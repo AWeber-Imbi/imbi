@@ -7,6 +7,7 @@ import typing
 import uuid
 
 import sprockets_postgres as postgres
+import tornado_openapi3
 from ietfparse import headers
 from tornado import httpclient, testing
 
@@ -106,8 +107,11 @@ class TestCase(testing.AsyncHTTPTestCase):
 
     def validate_response(self, response):
         """Validate the response using the OpenAPI expectations"""
-        openapi.response_validator(
-            self.settings).validate(response).raise_for_errors()
+        validator = tornado_openapi3.ResponseValidator(
+            spec=openapi.create_spec(self.settings),
+            custom_formatters=openapi._openapi_formatters,
+            custom_media_type_deserializers=openapi._openapi_deserializers)
+        validator.validate(response).raise_for_errors()
 
 
 class TestCaseWithReset(TestCase):
