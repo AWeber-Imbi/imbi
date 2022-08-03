@@ -3,7 +3,7 @@ from tornado import web
 from imbi import constants
 from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                environments, fact_type_enums, fact_type_ranges, fact_types,
-               groups, integrations, metrics, namespaces, openapi,
+               groups, integrations, metrics, namespaces, openapi, opensearch,
                operations_log, permissions, project_activity_feed,
                project_dependencies, project_fact_types, project_facts,
                project_link_types, project_links, project_score_history,
@@ -36,6 +36,8 @@ URLS = [
     web.url(r'^/namespaces/(?P<id>\d+)$',
             namespaces.RecordRequestHandler,
             name='namespace'),
+    web.url(r'^/opensearch/(?P<index>[\w_\-%\+]+)$',
+            opensearch.RequestHandler),
     web.url(r'^/operations-log$', operations_log.CollectionRequestHandler),
     web.url(r'^/operations-log/(?P<id>\d+)$',
             operations_log.RecordRequestHandler,

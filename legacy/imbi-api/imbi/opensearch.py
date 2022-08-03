@@ -6,16 +6,20 @@ import logging
 import typing
 import uuid
 
+import aiopg
 import aioredis
 import opensearchpy
+from psycopg2 import extras
+
+from imbi import mappings
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _normalize(value_in: dict) -> dict:
+def normalize(value_in: dict) -> dict:
     for key, value in value_in.items():
         if isinstance(value, dict):
-            value_in[key] = _normalize(value)
+            value_in[key] = normalize(value)
         elif isinstance(value, datetime.date):
             value_in[key] = value.isoformat()
         elif isinstance(value, datetime.datetime):
@@ -29,7 +33,7 @@ def _normalize(value_in: dict) -> dict:
     return value_in
 
 
-def _sanitize_keys(value: dict) -> dict:
+def sanitize_keys(value: dict) -> dict:
     for key in list(value.keys()):
         sanitized = key.lower().replace(' ', '_')
         if key != sanitized:
@@ -37,7 +41,7 @@ def _sanitize_keys(value: dict) -> dict:
             del value[key]
     for key in value.keys():
         if isinstance(value[key], dict):
-            value[key] = _sanitize_keys(value[key])
+            value[key] = sanitize_keys(value[key])
     return value
 
 
@@ -46,9 +50,10 @@ class OpenSearch:
     PROCESS_DELAY = 5
     PENDING_KEY = 'documents-pending'
 
-    def __init__(self, settings: dict):
+    def __init__(self, settings: dict, postgres_url: str):
         self.client: typing.Optional[opensearchpy.AsyncOpenSearch] = None
         self.loop: typing.Optional[asyncio.AbstractEventLoop] = None
+        self.postgres_url = postgres_url
         self.redis: typing.Optional[aioredis.Redis] = None
         self.settings = settings
         self.timer_handle: typing.Optional[asyncio.TimerHandle] = None
@@ -73,6 +78,13 @@ class OpenSearch:
             if err.error != 'resource_already_exists_exception':
                 LOGGER.debug('Index creation error: %r', err)
 
+        try:
+            await self.client.indices.put_mapping(
+                index='projects',
+                body={'properties': await self._build_mappings()})
+        except opensearchpy.exceptions.RequestError as err:
+            LOGGER.debug('Mapping update failure: %r', err)
+
         self.timer_handle = self.loop.call_soon(
             lambda: asyncio.ensure_future(self._process()))
         return True
@@ -93,12 +105,75 @@ class OpenSearch:
         LOGGER.debug('Queueing %s:%s to be indexed', index, document_id)
         await self.redis.set(
             f'{index}:{document_id}',
-            json.dumps(_normalize(_sanitize_keys(document)), indent=0))
+            json.dumps(normalize(sanitize_keys(document)), indent=0))
         await self.redis.sadd(self.PENDING_KEY, f'{index}:{document_id}')
+
+    async def search_fields(self) -> typing.List[typing.Dict]:
+        fields = []
+        for key, defn in mappings.PROJECT.items():
+            try:
+                fields.append({
+                    'name': key,
+                    'type': defn['type'],
+                    'count': 0,
+                    'scripted': False,
+                    'searchable': True,
+                    'aggregatable': True,
+                    'readFromDocValues': True
+                })
+            except KeyError:
+                pass
+
+        async with aiopg.create_pool(self.postgres_url) as pool:
+            async with pool.acquire() as conn:
+                async with conn.cursor(
+                        cursor_factory=extras.RealDictCursor) as cursor:
+                    await cursor.execute(
+                        'SELECT name, data_type FROM v1.project_fact_types;')
+                    async for row in cursor:
+                        fields.append({
+                            'name': row['name'].lower().replace(' ', '_'),
+                            'type': mappings.FACT_DATA_TYPES[row['data_type']],
+                            'count': 0,
+                            'scripted': False,
+                            'searchable': True,
+                            'aggregatable': True,
+                            'readFromDocValues': True
+                        })
+        return fields
 
     def stop(self) -> None:
         if self.timer_handle and not self.timer_handle.cancelled():
             self.timer_handle.cancel()
+
+    async def _build_mappings(self) -> dict:
+        definition = dict(mappings.PROJECT)
+        facts = {}
+        links = {}
+        urls = {}
+        async with aiopg.create_pool(self.postgres_url) as pool:
+            async with pool.acquire() as conn:
+                async with conn.cursor(
+                        cursor_factory=extras.RealDictCursor) as cursor:
+                    await cursor.execute(
+                        'SELECT name, data_type FROM v1.project_fact_types;')
+                    async for row in cursor:
+                        facts[row['name'].lower().replace(' ', '_')] = {
+                            'type': mappings.FACT_DATA_TYPES[row['data_type']]
+                        }
+                    await cursor.execute(
+                        'SELECT link_type FROM v1.project_link_types;')
+                    async for row in cursor:
+                        links[row['link_type'].lower().replace(' ', '_')] = {
+                            'type': 'text'
+                        }
+                    await cursor.execute(
+                        'SELECT name FROM v1.environments;')
+                    async for row in cursor:
+                        urls[row['name'].lower().replace(' ', '_')] = {
+                            'type': 'text'
+                        }
+        return definition
 
     async def _process(self) -> None:
         if await self._process_document():
