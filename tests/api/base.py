@@ -1,6 +1,8 @@
 import asyncio
+import functools
 import json
 import logging
+import pathlib
 import typing
 import uuid
 
@@ -18,6 +20,14 @@ JSON_HEADERS = {'Accept': 'application/json',
                 'User-Agent': 'imbi-tests/{}'.format(version)}
 
 
+@functools.lru_cache(1)
+def read_config():
+    top_dir = pathlib.Path(__file__).parent.parent
+    settings, _ = server.load_configuration(
+        (top_dir / 'build' / 'test.yaml').as_posix(), False)
+    return settings
+
+
 class TestCase(testing.AsyncHTTPTestCase):
 
     ADMIN_ACCESS = False
@@ -33,8 +43,7 @@ class TestCase(testing.AsyncHTTPTestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.settings, logging_config = server.load_configuration(
-            'build/test.yaml', False)
+        cls.settings = read_config()
         logging.getLogger('openapi_spec_validator').setLevel(logging.CRITICAL)
 
     def setUp(self) -> None:
