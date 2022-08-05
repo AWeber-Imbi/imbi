@@ -1,10 +1,13 @@
 import asyncio
+import functools
 import json
 import logging
+import pathlib
 import typing
 import uuid
 
 import sprockets_postgres as postgres
+import tornado_openapi3
 from ietfparse import headers
 from tornado import httpclient, testing
 
@@ -16,6 +19,14 @@ JSON_HEADERS = {'Accept': 'application/json',
                 'Content-Type': 'application/json',
                 'Correlation-Id': str(uuid.uuid4()),
                 'User-Agent': 'imbi-tests/{}'.format(version)}
+
+
+@functools.lru_cache(1)
+def read_config():
+    top_dir = pathlib.Path(__file__).parent.parent
+    settings, _ = server.load_configuration(
+        (top_dir / 'build' / 'test.yaml').as_posix(), False)
+    return settings
 
 
 class TestCase(testing.AsyncHTTPTestCase):
@@ -33,8 +44,7 @@ class TestCase(testing.AsyncHTTPTestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.settings, logging_config = server.load_configuration(
-            'build/test.yaml', False)
+        cls.settings = read_config()
         logging.getLogger('openapi_spec_validator').setLevel(logging.CRITICAL)
 
     def setUp(self) -> None:
@@ -61,7 +71,9 @@ class TestCase(testing.AsyncHTTPTestCase):
 
     async def async_tear_down(self) -> None:
         for callback in self._app.runner_callbacks.get('shutdown', []):
-            await callback(self.loop)
+            maybe_coro = callback(self.loop)
+            if asyncio.iscoroutine(maybe_coro):
+                await maybe_coro
 
     async def postgres_execute(self,
                                sql: str,
@@ -95,8 +107,11 @@ class TestCase(testing.AsyncHTTPTestCase):
 
     def validate_response(self, response):
         """Validate the response using the OpenAPI expectations"""
-        openapi.response_validator(
-            self.settings).validate(response).raise_for_errors()
+        validator = tornado_openapi3.ResponseValidator(
+            spec=openapi.create_spec(self.settings),
+            custom_formatters=openapi._openapi_formatters,
+            custom_media_type_deserializers=openapi._openapi_deserializers)
+        validator.validate(response).raise_for_errors()
 
 
 class TestCaseWithReset(TestCase):

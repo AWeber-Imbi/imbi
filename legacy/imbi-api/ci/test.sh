@@ -1,7 +1,17 @@
 #!/bin/sh -e
-echo "Setting up tests"
-apk --update add curl-dev gcc git libffi-dev libpq openssl-dev make musl-dev postgresql-dev linux-headers tzdata cargo
+
+echo "Installing utilities"
+apk --update add curl-dev gcc make musl-dev tzdata
+
+# upgrade pip to make sure that we get the most modern wheel selection alg
+pip install --upgrade pip setuptools wheel
+
+echo "Creating directories"
+mkdir -p /tmp/test/build
+ls -lR /tmp/test
+
 cd /tmp/test
+echo "Copying files from /source to $(pwd)"
 tar c -C /source -f - \
     LICENSE \
     MANIFEST.in \
@@ -20,43 +30,7 @@ tar c -C /source -f - \
 cat > .env <<EOF
 export DEBUG=1
 EOF
-
-cat > build/test.yaml <<EOF
----
-http:
-  canonical_server_name: imbi.localhost
-ldap:
-  enabled: true
-  host: ldap
-  port: 389
-  ssl: false
-  groups_dn: ou=groups,dc=example,dc=org
-  users_dn: ou=users,dc=example,dc=org
-  username: cn
-  pool_size: 5
-postgres:
-  url: postgres://postgres@postgres:5432/postgres
-session:
-  redis_url: redis://redis:6379/0
-stats:
-  redis_url: redis://redis:6379/1
-logging:
-  version: 1
-  formatters:
-    verbose:
-      format: "%(levelname) -10s %(asctime)s %(name) -20s %(funcName) -25s: %(message)s"
-      datefmt: "%Y-%m-%d %H:%M:%S"
-  handlers:
-    console:
-      class: logging.StreamHandler
-      formatter: verbose
-  loggers: {}
-  root:
-    level: CRITICAL
-    propagate: true
-    handlers: [console]
-  disable_existing_loggers: true
-  incremental: false
-EOF
 ls -al
+
+echo "Running tests in $(pwd)"
 make test
