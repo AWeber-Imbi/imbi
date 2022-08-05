@@ -65,7 +65,7 @@ class OpenSearch:
             self.redis = aioredis.Redis(await aioredis.create_pool(
                 self.settings.get('redis_url', 'redis://localhost:6379/2')))
         except (OSError, ConnectionRefusedError) as error:
-            LOGGER.info('Error connecting to Stats redis: %r', error)
+            LOGGER.info('Error connecting to OpenSearch redis: %r', error)
             return False
 
         self.client = opensearchpy.AsyncOpenSearch(
