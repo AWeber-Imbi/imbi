@@ -1,3 +1,4 @@
+# Prebuilt configuration file for use INSIDE of the docker compose environment
 http:
   canonical_server_name: imbi
   cookie_secret: imbi

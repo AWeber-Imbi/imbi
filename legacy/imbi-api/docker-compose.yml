@@ -62,8 +62,8 @@ services:
       - postgres
       - redis
     volumes:
-      - ./build:/tmp/test/build:rw
       - ./:/source:ro
+      - ./ci/config.yaml:/tmp/test/build/test.yaml:ro
     command: /source/ci/test.sh
 
   imbi:
@@ -75,4 +75,4 @@ services:
     ports:
       - 8000
     volumes:
-      - ./docker-config.yaml:/etc/imbi/imbi.yaml
+      - ./ci/config.yaml:/etc/imbi/imbi.yaml
