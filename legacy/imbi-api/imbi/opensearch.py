@@ -62,8 +62,8 @@ class OpenSearch:
         self.loop = asyncio.get_running_loop()
 
         try:
-            self.redis = aioredis.Redis(
-                await aioredis.create_pool(self.settings['redis_url']))
+            self.redis = aioredis.Redis(await aioredis.create_pool(
+                self.settings.get('redis_url', 'redis://localhost:6379/2')))
         except (OSError, ConnectionRefusedError) as error:
             LOGGER.info('Error connecting to Stats redis: %r', error)
             return False
