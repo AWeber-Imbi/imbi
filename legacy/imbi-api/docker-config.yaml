@@ -1,7 +1,6 @@
 http:
-  compress_response: true
+  canonical_server_name: imbi
   cookie_secret: imbi
-  port: 8000
   processes: 2
   xheaders: true
 ldap:
@@ -12,7 +11,13 @@ ldap:
   groups_dn: ou=groups,dc=example,dc=org
   users_dn: ou=users,dc=example,dc=org
   username: cn
-  pool_size: 5
+opensearch:
+  redis_url: redis://redis:6379/2
+  connection:
+    hosts:
+      - host: opensearch
+        port: 9200
+    use_ssl: false
 postgres:
   url: postgres://postgres@postgres:5432/postgres
 session:
@@ -24,22 +29,24 @@ logging:
   formatters:
     verbose:
       format: "%(levelname) -10s %(asctime)s %(name) -15s %(funcName) -15s: %(message)s"
+      datefmt: "%Y-%m-%d %H:%M:%S"
   handlers:
     console:
       class: logging.StreamHandler
       formatter: verbose
   loggers:
-    imbi:
-      level: INFO
-      propagate: true
-      handlers: [console]
+    imbi.ldap:
+      level: WARNING
+    imbi.session:
+      level: WARNING
+    imbi.user:
+      level: WARNING
     sprockets_postgres:
       level: WARNING
       propagate: true
       handlers: [console]
-    tornado:
-      level: INFO
-      propagate: true
-      handlers: [console]
-  disable_existing_loggers: true
+  root:
+    level: INFO
+    handlers: [console]
+  disable_existing_loggers: false
   incremental: false
