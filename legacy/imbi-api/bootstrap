@@ -51,8 +51,10 @@ mkdir -p build ddl/build imbi/static/css imbi/static/fonts imbi/static/js
 
 # Stop any running instances and clean up after them, then pull images
 docker-compose down --volumes --remove-orphans
+printf "Pulling and starting containers ... "
 docker-compose pull -q
 docker-compose up -d ldap opensearch postgres redis
+report_done
 
 wait_for_healthy_containers 4
 
