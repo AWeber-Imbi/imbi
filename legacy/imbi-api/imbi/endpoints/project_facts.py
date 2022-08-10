@@ -64,7 +64,8 @@ class CollectionRequestHandler(projects.OpensearchMixin,
         self.send_response(common.coerce_project_fact_values(result.rows))
 
     async def post(self, *args, **kwargs):
-        for fact in self.get_request_body():
+        facts = await self._coerce_facts(self.get_request_body())
+        for fact in facts:
             fact.update({
                 'project_id': kwargs['project_id'],
                 'username': self._current_user.username
@@ -73,6 +74,35 @@ class CollectionRequestHandler(projects.OpensearchMixin,
                 self.POST_SQL, fact, 'post-{}'.format(self.NAME))
         await self.index_document(kwargs['project_id'])
         self.set_status(204)
+
+    async def _coerce_facts(self, facts: list[dict]) -> list[dict]:
+        """Take a list of project facts and coerce their values.
+
+        This method looks up the data types and then calls
+        :func:`common.coerce_project_fact_values` to perform
+        the coercion appropriately.
+
+        """
+        result = await self.postgres_execute(
+            'SELECT id, data_type'
+            '  FROM v1.project_fact_types'
+            ' WHERE id IN %(fact_type_ids)s',
+            {'fact_type_ids': tuple(fact['fact_type_id'] for fact in facts)},
+        )
+        fact_type_map = {row['id']: row['data_type'] for row in result.rows}
+        for fact in facts:
+            try:
+                fact_type = fact_type_map[fact['fact_type_id']]
+            except KeyError:
+                raise errors.BadRequest('%s is not a known fact type id',
+                                        fact['fact_type_id'])
+            else:
+                fact['data_type'] = fact_type
+
+        try:
+            return common.coerce_project_fact_values(facts)
+        except ValueError as error:
+            raise errors.BadRequest('invalid fact value: %s', error)
 
     def on_postgres_error(self,
                           metric_name: str,

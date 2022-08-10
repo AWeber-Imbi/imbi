@@ -122,6 +122,8 @@ class TestCaseWithReset(TestCase):
         super().tearDown()
 
     def create_project(self) -> dict:
+        if not self.environments:
+            self.environments = self.create_environments()
         if not self.namespace:
             self.namespace = self.create_namespace()
         if not self.project_type:
@@ -166,19 +168,21 @@ class TestCaseWithReset(TestCase):
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
-    def create_project_fact_type(self) -> dict:
+    def create_project_fact_type(self, **overrides) -> dict:
         if not self.project_type:
             self.project_type = self.create_project_type()
-        print(self.project_type['id'])
+        project_fact = {
+            'project_type_ids': [self.project_type['id']],
+            'name': str(uuid.uuid4()),
+            'fact_type': 'free-form',
+            'data_type': 'string',
+            'weight': 100
+        }
+        project_fact.update(overrides)
+
         result = self.fetch(
             '/project-fact-types', method='POST', headers=self.headers,
-            body=json.dumps({
-                'project_type_ids': [self.project_type['id']],
-                'name': str(uuid.uuid4()),
-                'fact_type': 'free-form',
-                'data_type': 'string',
-                'weight': 100
-            }).encode('utf-8'))
+            body=json.dumps(project_fact).encode('utf-8'))
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
