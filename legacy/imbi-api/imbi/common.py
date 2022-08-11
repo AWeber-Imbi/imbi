@@ -51,6 +51,8 @@ def coerce_project_fact(
         if value.tzinfo is None:
             value = value.replace(tzinfo=datetime.timezone.utc)
         value = value.isoformat()
+    elif data_type == 'string':
+        value = str(value)
     else:
         raise ValueError(f'{data_type!r} is not a known fact type')
 

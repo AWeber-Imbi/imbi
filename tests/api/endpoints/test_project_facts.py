@@ -19,12 +19,14 @@ class ProjectFactTests(base.TestCaseWithReset):
         date_fact = self.create_project_fact_type(data_type='date')
         decimal_fact = self.create_project_fact_type(data_type='decimal')
         integer_fact = self.create_project_fact_type(data_type='integer')
+        string_fact = self.create_project_fact_type(data_type='string')
         timestamp_fact = self.create_project_fact_type(data_type='timestamp')
         facts = [
             {'fact_type_id': boolean_fact['id'], 'value': 'yes'},
             {'fact_type_id': date_fact['id'], 'value': now.date().isoformat()},
             {'fact_type_id': decimal_fact['id'], 'value': math.pi},
             {'fact_type_id': integer_fact['id'], 'value': 42},
+            {'fact_type_id': string_fact['id'], 'value': 'hello world'},
             {'fact_type_id': timestamp_fact['id'], 'value': now.isoformat()},
         ]
         result = self.fetch(
@@ -45,6 +47,7 @@ class ProjectFactTests(base.TestCaseWithReset):
                 date_fact['id']: now.date().isoformat(),
                 decimal_fact['id']: float(math.pi),
                 integer_fact['id']: 42,
+                string_fact['id']: 'hello world',
                 timestamp_fact['id']: now.isoformat(),
             },
             {fact['fact_type_id']: fact['value'] for fact in data})
