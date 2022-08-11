@@ -3,7 +3,6 @@ from __future__ import annotations
 import datetime
 import decimal
 import typing
-from distutils import util
 
 import dateutil.parser
 
@@ -29,10 +28,13 @@ def coerce_project_fact(
     if not value and value != 0:
         value = None
     elif data_type == 'boolean':
-        if value is None:
+        value = 'false' if value is None else str(value).lower()
+        if value in ('y', 'yes', 't', 'true', 'on', '1'):
+            value = True
+        elif value in ('n', 'no', 'f', 'false', 'off', '0'):
             value = False
         else:
-            value = bool(util.strtobool(str(value)))
+            raise ValueError(f'{value!r} is not a valid Boolean')
     elif data_type == 'decimal':
         try:
             value = decimal.Decimal(value)
