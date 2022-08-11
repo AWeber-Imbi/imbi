@@ -1,4 +1,3 @@
-import asyncio
 import functools
 import json
 import logging
@@ -10,7 +9,7 @@ import sprockets_postgres as postgres
 import tornado_openapi3
 from ietfparse import headers
 from sprockets.http import testing
-from tornado import httpclient
+from tornado import gen, httpclient
 
 from imbi import app, openapi, server, version
 
@@ -54,13 +53,19 @@ class TestCase(testing.SprocketsHttpTestCase):
         self.postgres = None
         super().setUp()
 
-        self.aio_loop: asyncio.AbstractEventLoop = self.io_loop.asyncio_loop
+        # Run the Tornado IOLoop until the startup_complete object
+        # is created.  For some reason using the asyncio_loop does not
+        # work reliably here
         while self.app.startup_complete is None:
-            self.aio_loop.run_until_complete(asyncio.sleep(0.001))
-        self.aio_loop.run_until_complete(self.app.startup_complete.wait())
+            self.io_loop.add_future(gen.sleep(0.001),
+                                    lambda _: self.io_loop.stop())
+            self.io_loop.start()
+
+        # Now we can wait for the application to finish initializing
+        self.run_until_complete(self.app.startup_complete.wait())
 
     def run_until_complete(self, future):
-        return self.aio_loop.run_until_complete(future)
+        return self.io_loop.asyncio_loop.run_until_complete(future)
 
     async def postgres_execute(self,
                                sql: str,
