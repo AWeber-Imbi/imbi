@@ -4,6 +4,7 @@ OpenSearch Mapping Management
 """
 FACT_DATA_TYPES = {
     'boolean': 'boolean',
+    'date': 'date',
     'decimal': 'float',
     'integer': 'integer',
     'string': 'text',

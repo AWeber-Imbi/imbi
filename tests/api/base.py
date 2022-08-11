@@ -1,4 +1,3 @@
-import asyncio
 import functools
 import json
 import logging
@@ -9,7 +8,8 @@ import uuid
 import sprockets_postgres as postgres
 import tornado_openapi3
 from ietfparse import headers
-from tornado import httpclient, testing
+from sprockets.http import testing
+from tornado import gen, httpclient
 
 from imbi import app, openapi, server, version
 
@@ -29,7 +29,7 @@ def read_config():
     return settings
 
 
-class TestCase(testing.AsyncHTTPTestCase):
+class TestCase(testing.SprocketsHttpTestCase):
 
     ADMIN_ACCESS = False
 
@@ -52,38 +52,31 @@ class TestCase(testing.AsyncHTTPTestCase):
         self.headers = dict(JSON_HEADERS)
         self.postgres = None
         super().setUp()
-        self.loop = asyncio.get_event_loop()
-        self.loop.run_until_complete(self.async_setup())
 
-    def tearDown(self) -> None:
-        self.loop.run_until_complete(self.async_tear_down())
-        super().tearDown()
+        # Run the Tornado IOLoop until the startup_complete object
+        # is created.  For some reason using the asyncio_loop does not
+        # work reliably here
+        while self.app.startup_complete is None:
+            self.io_loop.add_future(gen.sleep(0.001),
+                                    lambda _: self.io_loop.stop())
+            self.io_loop.start()
 
-    async def async_setup(self) -> None:
-        LOGGER.info('async_setup start')
-        await asyncio.wait(
-            [asyncio.create_task(callback(self._app, self.loop))
-             for callback in self._app.on_start_callbacks])
-        while self._app.startup_complete is None:
-            await asyncio.sleep(0.001)
-        await self._app.startup_complete.wait()
-        LOGGER.info('async_setup end')
+        # Now we can wait for the application to finish initializing
+        self.run_until_complete(self.app.startup_complete.wait())
 
-    async def async_tear_down(self) -> None:
-        for callback in self._app.runner_callbacks.get('shutdown', []):
-            maybe_coro = callback(self.loop)
-            if asyncio.iscoroutine(maybe_coro):
-                await maybe_coro
+    def run_until_complete(self, future):
+        return self.io_loop.asyncio_loop.run_until_complete(future)
 
     async def postgres_execute(self,
                                sql: str,
                                parameters: postgres.QueryParameters) \
             -> postgres.QueryResult:
-        async with self._app.postgres_connector() as connector:
+        async with self.app.postgres_connector() as connector:
             return await connector.execute(sql, parameters)
 
     def get_app(self) -> app.Application:
-        return app.Application(**self.settings)
+        self.app = app.Application(**self.settings)
+        return self.app
 
     async def get_token(self, username: typing.Optional[str] = None) -> str:
         token_value = str(uuid.uuid4())
@@ -124,18 +117,18 @@ class TestCaseWithReset(TestCase):
         self.namespace: typing.Optional[typing.Dict] = None
         self.project_fact_type: typing.Optional[typing.Dict] = None
         self.project_type: typing.Optional[typing.Dict] = None
+        self.headers['Private-Token'] = self.run_until_complete(
+            self.get_token())
 
-    async def async_setup(self) -> None:
-        await super().async_setup()
-        self.headers['Private-Token'] = await self.get_token()
-
-    async def async_tear_down(self) -> None:
+    def tearDown(self) -> None:
         for table in self.TRUNCATE_TABLES:
-            await self.postgres_execute(
-                'TRUNCATE TABLE {} CASCADE'.format(table), {})
-        await super().async_tear_down()
+            self.run_until_complete(
+                self.postgres_execute(f'TRUNCATE TABLE {table} CASCADE', {}))
+        super().tearDown()
 
     def create_project(self) -> dict:
+        if not self.environments:
+            self.environments = self.create_environments()
         if not self.namespace:
             self.namespace = self.create_namespace()
         if not self.project_type:
@@ -180,19 +173,21 @@ class TestCaseWithReset(TestCase):
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
-    def create_project_fact_type(self) -> dict:
+    def create_project_fact_type(self, **overrides) -> dict:
         if not self.project_type:
             self.project_type = self.create_project_type()
-        print(self.project_type['id'])
+        project_fact = {
+            'project_type_ids': [self.project_type['id']],
+            'name': str(uuid.uuid4()),
+            'fact_type': 'free-form',
+            'data_type': 'string',
+            'weight': 100
+        }
+        project_fact.update(overrides)
+
         result = self.fetch(
             '/project-fact-types', method='POST', headers=self.headers,
-            body=json.dumps({
-                'project_type_ids': [self.project_type['id']],
-                'name': str(uuid.uuid4()),
-                'fact_type': 'free-form',
-                'data_type': 'string',
-                'weight': 100
-            }).encode('utf-8'))
+            body=json.dumps(project_fact).encode('utf-8'))
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
