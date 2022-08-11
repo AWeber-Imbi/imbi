@@ -75,8 +75,8 @@ class OpenSearch:
         try:
             await self.client.indices.create('projects')
         except opensearchpy.exceptions.RequestError as err:
-            if err.error != 'resource_already_exists_exception':
-                LOGGER.debug('Index creation error: %r', err)
+            if 'resource_already_exists_exception' not in err.error:
+                LOGGER.warning('Index creation error: %r', err)
 
         try:
             await self.client.indices.put_mapping(
