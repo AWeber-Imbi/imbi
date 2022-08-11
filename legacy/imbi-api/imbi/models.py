@@ -5,9 +5,8 @@ import decimal
 import logging
 import re
 import typing
-from distutils import util
 
-from imbi import errors
+from imbi import common, errors
 if typing.TYPE_CHECKING:
     from imbi import app
 
@@ -109,16 +108,12 @@ class ProjectFact:
       ORDER BY a.name""")
 
     def __post_init__(self):
-        if self.value is None:
-            return
-        if self.data_type == 'boolean':
-            self.__setattr__(
-                'value', bool(util.strtobool(self.value)))
-        elif self.data_type == 'decimal':
-            if self.value:
-                self.__setattr__('value', decimal.Decimal(self.value))
-        elif self.data_type == 'integer':
-            self.__setattr__('value', int(self.value if self.value else 0))
+        try:
+            value = common.coerce_project_fact(self.data_type, self.value)
+        except ValueError:
+            pass
+        else:
+            self.__setattr__('value', value)
 
 
 @dataclasses.dataclass
