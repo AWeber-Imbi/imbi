@@ -250,6 +250,8 @@ class RecordRequestHandler(OpensearchMixin,
                                            WHERE fact_type_id = b.fact_type_id
                                              AND b.value::NUMERIC(9,2)
                                          BETWEEN min_value AND max_value)
+                              WHEN a.data_type = 'boolean' AND b.value = 'true'
+                              THEN 100
                               ELSE 0
                           END
                 END AS score,
