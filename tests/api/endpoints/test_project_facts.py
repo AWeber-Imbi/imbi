@@ -184,6 +184,13 @@ class ProjectFactTests(base.TestCaseWithReset):
         fact = json.loads(result.body)[0]
         self.assertEqual(fact['score'], 100)
 
+        result = self.fetch(f'/projects/{self.project["id"]}?full=true',
+                            headers=self.headers)
+        self.assertEqual(200, result.code)
+        project = json.loads(result.body)
+        fact = project['facts'][0]
+        self.assertEqual(fact['score'], 100)
+
     def test_false_boolean_fact(self):
         boolean_fact_type = self.create_project_fact_type(data_type='boolean')
         result = self.fetch(
@@ -200,6 +207,13 @@ class ProjectFactTests(base.TestCaseWithReset):
         self.assertEqual(200, result.code)
 
         fact = json.loads(result.body)[0]
+        self.assertEqual(fact['score'], 0)
+
+        result = self.fetch(f'/projects/{self.project["id"]}?full=true',
+                            headers=self.headers)
+        self.assertEqual(200, result.code)
+        project = json.loads(result.body)
+        fact = project['facts'][0]
         self.assertEqual(fact['score'], 0)
 
     def test_unknown_fact_id(self):
