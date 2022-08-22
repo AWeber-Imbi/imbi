@@ -30,8 +30,5 @@ PROJECT = {
     'sentry_project_slug': {'type': 'text'},
     'sonarqube_project_key': {'type': 'text'},
     'pagerduty_service_id': {'type': 'text'},
-    'facts': {'properties': {}},
-    'links': {'properties': {}},
-    'urls': {'properties': {}},
     'project_score': {'type': 'integer'}
 }

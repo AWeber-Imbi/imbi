@@ -160,8 +160,6 @@ class OpenSearch:
 
     async def _build_mappings(self) -> dict:
         defn = dict(mappings.PROJECT)
-        for key in ['facts', 'links', 'urls']:
-            del defn[key]
         async with aiopg.create_pool(self.postgres_url) as pool:
             async with pool.acquire() as conn:
                 async with conn.cursor(
