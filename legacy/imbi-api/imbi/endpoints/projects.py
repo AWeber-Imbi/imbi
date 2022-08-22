@@ -9,8 +9,9 @@ from imbi.endpoints import base
 
 def project_to_dict(project: models.Project) -> dict:
     output = dataclasses.asdict(project)
-    for key in ('namespace', 'type'):
-        output[key] = output[key]['slug']
+    for key in ['namespace', 'project_type']:
+        output[f'{key}_slug'] = output[key]['slug']
+        output[key] = output[key]['name']
     return output
 
 
@@ -234,7 +235,16 @@ class RecordRequestHandler(OpensearchMixin,
                a.name,
                b.recorded_at,
                b.recorded_by,
-               b.value,
+               CASE WHEN a.data_type = 'boolean' THEN b.value::bool::text
+                    WHEN a.data_type = 'date' THEN b.value::date::text
+                    WHEN a.data_type = 'decimal'
+                         THEN b.value::numeric(9,2)::text
+                    WHEN a.data_type = 'integer'
+                         THEN b.value::integer::text
+                    WHEN a.data_type = 'timestamp'
+                         THEN b.value::timestamptz::text
+                    ELSE b.value
+                END AS value,
                a.data_type,
                a.fact_type,
                a.ui_options,
@@ -250,8 +260,8 @@ class RecordRequestHandler(OpensearchMixin,
                                            WHERE fact_type_id = b.fact_type_id
                                              AND b.value::NUMERIC(9,2)
                                          BETWEEN min_value AND max_value)
-                              WHEN a.data_type = 'boolean' AND b.value = 'true'
-                              THEN 100
+                              WHEN a.data_type = 'boolean'
+                               AND b.value = 'true' THEN 100
                               ELSE 0
                           END
                 END AS score,
@@ -349,8 +359,6 @@ class SearchRequestHandler(base.AuthenticatedRequestHandler):
             index='projects')
         self.send_response({
             'hits': [r['_source'] for r in result['hits']['hits']]})
-        import pprint
-        pprint.pprint(result)
 
 
 class SearchIndexRequestHandler(base.AuthenticatedRequestHandler):

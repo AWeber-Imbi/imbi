@@ -208,7 +208,7 @@ class Project:
     last_modified_at: typing.Optional[datetime.datetime]
     last_modified_by: typing.Optional[str]
     namespace: Namespace
-    type: ProjectType
+    project_type: ProjectType
     name: str
     slug: str
     description: typing.Optional[str]
@@ -312,7 +312,7 @@ async def project(project_id: int,
             del values['project_type_id']
             values.update({
                 'namespace': result[0],
-                'type': result[1],
+                'project_type': result[1],
                 'facts': {value.name: value.value for value in result[2]},
                 'links': {value.link_type: value.url for value in result[3]},
                 'urls': {value.environment: value.url for value in result[4]}})
