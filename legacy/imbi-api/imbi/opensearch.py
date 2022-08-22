@@ -3,6 +3,7 @@ import datetime
 import decimal
 import json
 import logging
+import re
 import typing
 import uuid
 
@@ -33,9 +34,14 @@ def normalize(value_in: dict) -> dict:
     return value_in
 
 
+def sanitize_key(value: str) -> str:
+    key = value.lower().replace(' ', '_').replace('/', '_')
+    return re.sub('_+', '_', key)
+
+
 def sanitize_keys(value: dict) -> dict:
     for key in list(value.keys()):
-        sanitized = key.lower().replace(' ', '_')
+        sanitized = sanitize_key(key)
         if key != sanitized:
             value[sanitized] = value[key]
             del value[key]
@@ -113,7 +119,8 @@ class OpenSearch:
 
     async def search_fields(self) -> typing.List[typing.Dict]:
         fields = []
-        for key, defn in mappings.PROJECT.items():
+        index_mappings = await self._build_mappings()
+        for key, defn in index_mappings.items():
             try:
                 fields.append({
                     'name': key,
@@ -152,10 +159,9 @@ class OpenSearch:
             await self.client.close()
 
     async def _build_mappings(self) -> dict:
-        definition = dict(mappings.PROJECT)
-        facts = {}
-        links = {}
-        urls = {}
+        defn = dict(mappings.PROJECT)
+        for key in ['facts', 'links', 'urls']:
+            del defn[key]
         async with aiopg.create_pool(self.postgres_url) as pool:
             async with pool.acquire() as conn:
                 async with conn.cursor(
@@ -163,22 +169,22 @@ class OpenSearch:
                     await cursor.execute(
                         'SELECT name, data_type FROM v1.project_fact_types;')
                     async for row in cursor:
-                        facts[row['name'].lower().replace(' ', '_')] = {
+                        defn[f'facts.{sanitize_key(row["name"])}'] = {
                             'type': mappings.FACT_DATA_TYPES[row['data_type']]
                         }
                     await cursor.execute(
                         'SELECT link_type FROM v1.project_link_types;')
                     async for row in cursor:
-                        links[row['link_type'].lower().replace(' ', '_')] = {
+                        defn[f'links.{sanitize_key(row["link_type"])}'] = {
                             'type': 'text'
                         }
                     await cursor.execute(
                         'SELECT name FROM v1.environments;')
                     async for row in cursor:
-                        urls[row['name'].lower().replace(' ', '_')] = {
+                        defn[f'urls.{sanitize_key(row["name"])}'] = {
                             'type': 'text'
                         }
-        return definition
+        return defn
 
     async def _process(self) -> None:
         if await self._process_document():
