@@ -2,6 +2,7 @@ import asyncio
 
 from imbi.endpoints import base, cookie_cutters, environments, groups, \
     namespaces, fact_types, project_link_types, project_types
+from imbi.endpoints.integrations import oauth2
 
 
 class RequestHandler(base.RequestHandler):
@@ -32,10 +33,32 @@ class RequestHandler(base.RequestHandler):
             self.postgres_execute(
                 project_types.CollectionRequestHandler.COLLECTION_SQL,
                 metric_name='project-types'),
-            self.application.opensearch.search_fields()
+            self.application.opensearch.search_fields(),
+            self.postgres_execute(
+                oauth2.CollectionRequestHandler.COLLECTION_SQL,
+                metric_name='integrations'),
         )
 
         automations = self.settings['automations']
+
+        oauth_details = results[8].rows
+        gitlab = {'enabled': False}
+        if cfg := automations.get('gitlab'):
+            gitlab['project_link_type_id'] = cfg.get('project_link_type_id')
+            gitlab_auth = [r for r in oauth_details if r['name'] == 'gitlab']
+            if gitlab_auth:
+                gitlab_auth = gitlab_auth[0]
+                gitlab.update({
+                    'authorizationEndpoint':
+                        gitlab_auth['authorization_endpoint'],
+                    'clientId': gitlab_auth['client_id'],
+                    'redirectURI': gitlab_auth['callback_url'],
+                })
+            gitlab['enabled'] = (
+                gitlab['project_link_type_id'] is not None and
+                gitlab['clientId'] is not None
+            )
+
         self.send_response({
             'integrations': {
                 'grafana': {
@@ -43,10 +66,7 @@ class RequestHandler(base.RequestHandler):
                     'project_link_type_id':
                         automations['grafana']['project_link_type_id']
                 },
-                'gitlab': {
-                    'project_link_type_id':
-                        automations['gitlab']['project_link_type_id']
-                },
+                'gitlab': gitlab,
                 'sentry': {
                     'enabled': automations['sentry']['enabled'],
                     'project_link_type_id':
