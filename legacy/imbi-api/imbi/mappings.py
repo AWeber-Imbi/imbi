@@ -12,17 +12,17 @@ FACT_DATA_TYPES = {
 }
 
 PROJECT = {
-    'id': {'type': 'keyword'},
+    'id': {'type': 'integer'},
     'created_at': {'type': 'date'},
     'created_by': {'type': 'text'},
     'last_modified_at': {'type': 'date'},
     'last_modified_by': {'type': 'text'},
     'namespace': {'type': 'text'},
-    'namespace_slug': {'type': 'keyword'},
+    'namespace_slug': {'type': 'text'},
     'project_type': {'type': 'text'},
-    'project_type_slug': {'type': 'keyword'},
-    'name': {'type': 'keyword'},
-    'slug': {'type': 'keyword'},
+    'project_type_slug': {'type': 'text'},
+    'name': {'type': 'text'},
+    'slug': {'type': 'text'},
     'description': {'type': 'text'},
     'environments': {'type': 'text'},
     'archived': {'type': 'boolean'},
