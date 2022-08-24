@@ -151,3 +151,23 @@ inside of imbi.  The first thing that you need to do is create the OAuth 2 appli
 7. After creating the integration, press the "" button on http://127.0.0.1:8000/ui/user/profile .  It will walk through
    the authorization flow for imbi, create the OAuth 2 token, save it in the database, and leave your user in the
    connected state.
+
+# Releasing a new version
+
+To release a new version of Imbi, update the submodules in the main repo and tag
+the release. GitHub Actions will perform all the build steps including:
+
+- Creating the production UI build
+- Copy the UI build into the Python project and build the Python package
+- Upload the Python package to PyPI
+- Create the Docker image and upload it to Docker Hub
+
+These are roughly the commands used:
+
+```bash
+git submodule update --remote --merge
+git commit -m 'Release version [VERSION]' -a
+git push origin main
+git tag [VERSION]
+git push origin [VERSION]
+```
