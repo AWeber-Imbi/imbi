@@ -21,12 +21,12 @@ jobs:
         shell: bash
       - name: Build
         run: make dist
-      # - name: Upload to PyPI
-      #  env:
-      #    TWINE_USERNAME: __token__
-      #    TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-      #  run: twine upload api/dist/imbi-${{ steps.get_version.outputs.version }}.tar.gz
-      #  shell: bash
+      - name: Upload to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+        run: twine upload api/dist/imbi-${{ steps.get_version.outputs.version }}.tar.gz
+        shell: bash
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Set up Docker Buildx
