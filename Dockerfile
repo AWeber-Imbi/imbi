@@ -1,11 +1,11 @@
-FROM python:3.9-alpine3.12
+FROM python:3.9-alpine3.16
 
 ARG VERSION=0.0.0
 
 ENV PORT=8000
 
 COPY api/dist/imbi-${VERSION}.tar.gz /tmp/
-COPY api/docker-config.yaml /etc/imbi/imbi.yaml
+COPY api/example.yaml /etc/imbi/imbi.yaml
 
 RUN apk add --no-cache --virtual install-deps cargo curl-dev gcc git libffi-dev libressl-dev linux-headers musl-dev postgresql-dev rust \
  && apk add --no-cache libcurl libpq \
