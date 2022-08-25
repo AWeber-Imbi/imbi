@@ -43,7 +43,8 @@ class RequestHandler(base.RequestHandler):
 
         oauth_details = results[8].rows
         gitlab = {'enabled': False}
-        if cfg := automations.get('gitlab'):
+        cfg = automations.get('gitlab')
+        if cfg:
             gitlab['project_link_type_id'] = cfg.get('project_link_type_id')
             gitlab_auth = [r for r in oauth_details if r['name'] == 'gitlab']
             if gitlab_auth:
