@@ -6,7 +6,7 @@ ifneq (,$(wildcard ./.env))
 endif
 
 .PHONY: all
-all: setup all-tests
+all: setup test
 
 .PHONY: clean
 clean:
