@@ -6,7 +6,7 @@ ifneq (,$(wildcard ./.env))
 endif
 
 .PHONY: all
-all: setup all-tests
+all: setup test
 
 .PHONY: clean
 clean:
@@ -14,7 +14,7 @@ clean:
 	@ rm -rf imbi/static/fonts/* imbi/static/js/*
 	@ rm -rf .env build dist imbi.egg-info env ui/node_modules
 
-.env: bootstrap docker-compose.yml
+.env: bootstrap docker-compose.yaml
 	@ ./bootstrap
 
 env: env/stamp
