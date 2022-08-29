@@ -4790,6 +4790,138 @@ paths:
         required: true
         schema:
           type: integer
+  '/projects/{id}/fact-history':
+    get:
+      description: Retrieve the fact history for the given project
+      summary: Get Fact History
+      tags:
+        - Project Fact History
+      parameters:
+        - name: id
+          in: path
+          description: Project ID
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Limit the number of records returned
+          schema:
+            type: number
+        - name: offset
+          in: query
+          description: The starting offset for the records returned
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    fact_type_id:
+                      description: The fact type ID
+                      type: number
+                    recorded_at:
+                      description: When the fact was recorded
+                      type: string
+                      format: iso8601-timestamp
+                    recorded_by:
+                      description: The user that set the fact value
+                      type: string
+                    value:
+                      description: The fact value
+                      oneOf:
+                        - type: boolean
+                        - type: integer
+                        - type: number
+                          format: double
+                        - type: string
+                    score:
+                      description: The score for the value of the fact
+                      type: integer
+                    weight:
+                      description: The weight of the score against all the other project facts
+                      type: integer
+                    icon_class:
+                      description: The Font Awesome icon class for the link
+                      type: string
+              example:
+                records:
+                  summary: Multiple facts
+                  value:
+                    - fact_type_id: 1
+                      recorded_at: 2021-03-01T12:00:00.000Z
+                      recorded_by: test_user
+                      value: Ansible
+                      score: 100
+                      weight: 5
+                      icon_class: fab ansible
+                    - fact_type_id: 7
+                      recorded_at: 2021-03-01T12:00:01.000Z
+                      recorded_by: test_user
+                      value: GitLab CI
+                      score: 100
+                      weight: 10
+                      icon_class: fab gitlab
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    fact_type_id:
+                      description: The fact type ID
+                      type: number
+                    recorded_at:
+                      description: When the fact was recorded
+                      type: string
+                      format: iso8601-timestamp
+                    recorded_by:
+                      description: The user that set the fact value
+                      type: string
+                    value:
+                      description: The fact value
+                      oneOf:
+                        - type: boolean
+                        - type: integer
+                        - type: number
+                          format: double
+                        - type: string
+                    score:
+                      description: The score for the value of the fact
+                      type: integer
+                    weight:
+                      description: The weight of the score against all the other project facts
+                      type: integer
+                    icon_class:
+                      description: The Font Awesome icon class for the link
+                      type: string
+              example:
+                records:
+                  summary: Multiple facts
+                  value:
+                    - fact_type_id: 1
+                      recorded_at: 2021-03-01T12:00:00.000Z
+                      recorded_by: test_user
+                      value: Ansible
+                      score: 100
+                      weight: 5
+                      icon_class: fab ansible
+                    - fact_type_id: 7
+                      recorded_at: 2021-03-01T12:00:01.000Z
+                      recorded_by: test_user
+                      value: GitLab CI
+                      score: 100
+                      weight: 10
+                      icon_class: fab gitlab
   '/projects/{id}/feed':
     get:
       description: Retrieve the most recent changes for a project ordered in descending order.
@@ -5981,6 +6113,8 @@ tags:
     description: Endpoints used to manage the relationships of projects to other projects
   - name: Project Facts
     description: Endpoints for managing the current facts describing the project
+  - name: Project Fact History
+    description: Endpoint for returning the project fact history for a specific project
   - name: Project Fact Types
     description: An endpoint for returning the project fact types for a specific project
   - name: Project Links
