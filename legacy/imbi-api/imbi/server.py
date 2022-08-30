@@ -84,7 +84,6 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     log_config = config.get('logging', DEFAULT_LOG_CONFIG)
 
     automations = config.get('automations', {})
-    automations_gitlab = automations.get('gitlab', {})
     automations_grafana = automations.get('grafana', {})
     if automations_grafana.get('url') \
             and automations_grafana.get('admin_token'):
@@ -99,6 +98,11 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     sentry = config.get('sentry', {})
     session = config.get('session', {})
     stats = config.get('stats', {})
+
+    automations_gitlab = automations.get('gitlab', {})
+    automations_gitlab.setdefault(
+        'enabled',
+        automations_gitlab.get('project_link_type_id') is not None)
 
     automations_sentry = automations.get('sentry', {})
     automations_sentry.setdefault(
@@ -123,12 +127,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
 
     settings = {
         'automations': {
-            'gitlab': {
-                'project_link_type_id':
-                    automations_gitlab.get('project_link_type_id'),
-                'restrict_to_user':
-                    automations_grafana.get('restrict_to_user', False)
-            },
+            'gitlab': automations_gitlab,
             'grafana': {
                 'enabled': automations_grafana.get('enabled', False),
                 'project_link_type_id':

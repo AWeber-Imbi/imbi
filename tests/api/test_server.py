@@ -74,7 +74,7 @@ class SentryConfigurationTests(ConfigurationTestCase):
         config, _ = server.load_configuration(self.temp_file.name, False)
         self.assertFalse(config['automations']['sentry']['enabled'])
 
-    def test_that_sentry_is_enabled_fully_configured(self):
+    def test_that_sentry_is_enabled_when_fully_configured(self):
         self.config['automations'] = {'sentry': {}}
         yaml.dump(self.config, self.temp_file)
         loaded, _ = server.load_configuration(self.temp_file.name, False)
@@ -97,3 +97,23 @@ class SentryConfigurationTests(ConfigurationTestCase):
         config, _ = server.load_configuration(self.temp_file.name, False)
         self.assertEqual(
             'https://sentry.io/', config['automations']['sentry']['url'])
+
+
+class GitLabConfiguratTests(ConfigurationTestCase):
+
+    def test_that_default_is_disabled(self):
+        yaml.dump(self.config, self.temp_file)
+        config, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertFalse(config['automations']['gitlab']['enabled'])
+
+    def test_that_gitlab_is_enabled_when_fully_configured(self):
+        self.config['automations'] = {'gitlab': {}}
+        yaml.dump(self.config, self.temp_file)
+        loaded, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertFalse(loaded['automations']['gitlab']['enabled'])
+        self.temp_file.seek(0)
+
+        self.config['automations']['gitlab']['project_link_type_id'] = 1
+        yaml.dump(self.config, self.temp_file)
+        loaded, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertTrue(loaded['automations']['gitlab']['enabled'])
