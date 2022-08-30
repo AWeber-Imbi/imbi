@@ -60,6 +60,16 @@ class RequestHandler(base.RequestHandler):
                 gitlab['clientId'] is not None
             )
 
+        sentry = {'enabled': False}
+        cfg = automations.get('sentry')
+        if cfg:
+            sentry['project_link_type_id'] = cfg.get('project_link_type_id')
+            sentry['auth_token'] = cfg.get('auth_token')
+            sentry['enabled'] = (
+                sentry['project_link_type_id'] is not None and
+                sentry['auth_token'] is not None
+            )
+
         self.send_response({
             'integrations': {
                 'grafana': {
