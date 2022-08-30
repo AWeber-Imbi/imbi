@@ -5,9 +5,10 @@ from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                environments, fact_type_enums, fact_type_ranges, fact_types,
                groups, integrations, metrics, namespaces, openapi, opensearch,
                operations_log, permissions, project_activity_feed,
-               project_dependencies, project_fact_types, project_facts,
-               project_link_types, project_links, project_score_history,
-               project_types, project_urls, projects, reports, status, ui)
+               project_dependencies, project_fact_history, project_fact_types,
+               project_facts, project_link_types, project_links,
+               project_score_history, project_types, project_urls, projects,
+               reports, status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -85,6 +86,9 @@ URLS = [
     web.url(r'^/projects/(?P<project_id>\d+)/fact-types$',
             project_fact_types.CollectionRequestHandler,
             name='project-fact-types'),
+    web.url(r'^/projects/(?P<project_id>\d+)/fact-history$',
+            project_fact_history.CollectionRequestHandler,
+            name='project-fact-history'),
     web.url(r'^/projects/(?P<project_id>\d+)/feed$',
             project_activity_feed.CollectionRequestHandler,
             name='project-activity-feed'),

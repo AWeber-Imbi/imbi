@@ -90,37 +90,40 @@ paths:
                         - created
                         - updated
                         - updated facts
-              example:
-                - when: 2021-05-21T20:43:08.639Z
-                  namespace: Example
-                  namespace_id: 1
-                  project_id: 1
-                  project_name: Imbi
-                  project_type: Web Application
-                  who: gmr
-                  display_name: Gavin M. Roy
-                  email_address: gmr@imbi.co
-                  what: updated facts
-                - when: 2021-05-21T20:41:06.423Z
-                  namespace: Example
-                  namespace_id: 1
-                  project_id: 1
-                  project_name: Imbi
-                  project_type: Web Application
-                  who: gmr
-                  display_name: Gavin M. Roy
-                  email_address: gmr@imbi.co
-                  what: updated
-                - when: 2021-05-20T20:30:21.987Z
-                  namespace: Example
-                  namespace_id: 1
-                  project_id: 1
-                  project_name: Imbi
-                  project_type: Web Application
-                  who: gmr
-                  display_name: Gavin M. Roy
-                  email_address: gmr@imbi.co
-                  what: created
+              examples:
+                records:
+                  summary: IMBI project changes
+                  value:
+                    - when: 2021-05-21T20:43:08.639Z
+                      namespace: Example
+                      namespace_id: 1
+                      project_id: 1
+                      project_name: Imbi
+                      project_type: Web Application
+                      who: gmr
+                      display_name: Gavin M. Roy
+                      email_address: gmr@imbi.co
+                      what: updated facts
+                    - when: 2021-05-21T20:41:06.423Z
+                      namespace: Example
+                      namespace_id: 1
+                      project_id: 1
+                      project_name: Imbi
+                      project_type: Web Application
+                      who: gmr
+                      display_name: Gavin M. Roy
+                      email_address: gmr@imbi.co
+                      what: updated
+                    - when: 2021-05-20T20:30:21.987Z
+                      namespace: Example
+                      namespace_id: 1
+                      project_id: 1
+                      project_name: Imbi
+                      project_type: Web Application
+                      who: gmr
+                      display_name: Gavin M. Roy
+                      email_address: gmr@imbi.co
+                      what: created
             application/msgpack:
               schema:
                 type: array
@@ -163,37 +166,40 @@ paths:
                         - created
                         - updated
                         - updated facts
-              example:
-                - when: 2021-05-21T20:43:08.639Z
-                  namespace: Example
-                  namespace_id: 1
-                  project_id: 1
-                  project_name: Imbi
-                  project_type: Web Application
-                  who: gmr
-                  display_name: Gavin M. Roy
-                  email_address: gmr@imbi.co
-                  what: updated facts
-                - when: 2021-05-21T20:41:06.423Z
-                  namespace: Example
-                  namespace_id: 1
-                  project_id: 1
-                  project_name: Imbi
-                  project_type: Web Application
-                  who: gmr
-                  display_name: Gavin M. Roy
-                  email_address: gmr@imbi.co
-                  what: updated
-                - when: 2021-05-20T20:30:21.987Z
-                  namespace: Example
-                  namespace_id: 1
-                  project_id: 1
-                  project_name: Imbi
-                  project_type: Web Application
-                  who: gmr
-                  display_name: Gavin M. Roy
-                  email_address: gmr@imbi.co
-                  what: created
+              examples:
+                records:
+                  summary: IMBI project changes
+                  value:
+                    - when: 2021-05-21T20:43:08.639Z
+                      namespace: Example
+                      namespace_id: 1
+                      project_id: 1
+                      project_name: Imbi
+                      project_type: Web Application
+                      who: gmr
+                      display_name: Gavin M. Roy
+                      email_address: gmr@imbi.co
+                      what: updated facts
+                    - when: 2021-05-21T20:41:06.423Z
+                      namespace: Example
+                      namespace_id: 1
+                      project_id: 1
+                      project_name: Imbi
+                      project_type: Web Application
+                      who: gmr
+                      display_name: Gavin M. Roy
+                      email_address: gmr@imbi.co
+                      what: updated
+                    - when: 2021-05-20T20:30:21.987Z
+                      namespace: Example
+                      namespace_id: 1
+                      project_id: 1
+                      project_name: Imbi
+                      project_type: Web Application
+                      who: gmr
+                      display_name: Gavin M. Roy
+                      email_address: gmr@imbi.co
+                      what: created
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
   /authentication-tokens:
@@ -217,15 +223,19 @@ paths:
               required:
                 - name
               additionalProperties: false
-            example:
+            examples:
               record:
-                name: Test Integration
+                summary: New token
+                value:
+                  name: Test Integration
           application/msgpack:
             schema:
               $ref: '#/paths/~1authentication-tokens/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
-                name: Test Integration
+                summary: New token
+                value:
+                  name: Test Integration
       responses:
         '200':
           description: Success
@@ -260,7 +270,7 @@ paths:
                     format: iso8601-timestamp
                     nullable: true
                 additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: The newly created authentication token
                   value:
@@ -273,7 +283,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: The newly created authentication token
                   value:
@@ -301,7 +311,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple authentication tokens
                   value:
@@ -322,7 +332,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1authentication-tokens/post/responses/200/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple authentication tokens
                   value:
@@ -379,7 +389,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple cookie cutter records
                   value:
@@ -403,7 +413,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple cookie cutter records
                   value:
@@ -461,7 +471,7 @@ paths:
                 - project_type_id
                 - url
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A full cookie cutter record
                 value:
@@ -473,7 +483,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A full cookie cutter record
                 value:
@@ -498,15 +508,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 record:
-                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/example/record'
+                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 record:
-                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/example/record'
+                  $ref: '#/paths/~1cookie-cutters/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
@@ -599,7 +609,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple environment records
                   value:
@@ -618,7 +628,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple environment records
                   value:
@@ -660,7 +670,7 @@ paths:
                 - name
                 - icon_class
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A full environment record
                 value:
@@ -672,7 +682,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A full environment record
                 value:
@@ -697,15 +707,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 record:
-                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/example/record'
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 record:
-                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/example/record'
+                  $ref: '#/paths/~1environments/post/requestBody/content/application~1json/examples/record'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
@@ -891,7 +901,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple group records
                   value:
@@ -911,7 +921,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple group records
                   value:
@@ -1009,7 +1019,7 @@ paths:
                 - name
                 - group_type
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A full group record
                 value:
@@ -1022,7 +1032,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A full group record
                 value:
@@ -1056,15 +1066,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 record:
-                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/example/record'
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/examples/record'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/post/requestBody/content/application~1json/schema'
-              example:
+              examples:
                 record:
-                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/example/record'
+                  $ref: '#/paths/~1groups/post/requestBody/content/application~1json/examples/record'
         '400':
           description: The request data could not be validated or contained an error
           content:
@@ -1305,30 +1315,33 @@ paths:
           description: OK
           content:
             text/plain; version=0.0.4:
-              example: |-
-                # TYPE http_requests_total counter
-                http_requests_total{endpoint="dashboard",hostname="example",method="GET",status="200"} 1
-                http_requests_total{endpoint="environments",hostname="example",method="GET",status="200"} 2
-                http_requests_total{endpoint="metrics",hostname="example",method="GET",status="200"} 5
+              examples:
+                metrics:
+                  summary: Metrics
+                  value: |-
+                    # TYPE http_requests_total counter
+                    http_requests_total{endpoint="dashboard",hostname="example",method="GET",status="200"} 1
+                    http_requests_total{endpoint="environments",hostname="example",method="GET",status="200"} 2
+                    http_requests_total{endpoint="metrics",hostname="example",method="GET",status="200"} 5
 
-                # TYPE http_request_duration_seconds histogram
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.005"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.01"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.025"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.05"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.075"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.1"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.25"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.5"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.75"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="1.0"} 0
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="2.5"} 1
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="5.0"} 1
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="7.5"} 1
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="10.0"} 1
-                http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="Inf+"} 1
-                http_request_duration_seconds_count{endpoint="dashboard",hostname="example",method="GET",status="200"} 1
-                http_request_duration_seconds_sum{endpoint="dashboard",hostname="example",method="GET",status="200"} 2.2017457485198975
+                    # TYPE http_request_duration_seconds histogram
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.005"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.01"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.025"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.05"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.075"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.1"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.25"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.5"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="0.75"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="1.0"} 0
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="2.5"} 1
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="5.0"} 1
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="7.5"} 1
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="10.0"} 1
+                    http_request_duration_seconds_bucket{endpoint="dashboard",hostname="example",method="GET",status="200",le="Inf+"} 1
+                    http_request_duration_seconds_count{endpoint="dashboard",hostname="example",method="GET",status="200"} 1
+                    http_request_duration_seconds_sum{endpoint="dashboard",hostname="example",method="GET",status="200"} 2.2017457485198975
   /namespaces:
     get:
       description: Retrieve the collection of namespaces
@@ -1383,7 +1396,7 @@ paths:
                     - slug
                     - icon_class
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple namespace records
                   value:
@@ -1442,7 +1455,7 @@ paths:
                     - slug
                     - icon_class
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple namespace records
                   value:
@@ -1498,7 +1511,7 @@ paths:
                 - slug
                 - icon_class
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A full namespace record
                 value:
@@ -1511,7 +1524,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1namespaces/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A full namespace record
                 value:
@@ -1537,7 +1550,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A full namespace record
                   value:
@@ -1553,7 +1566,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A full namespace record
                   value:
@@ -1759,8 +1772,7 @@ paths:
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
   /operations-log:
     get:
-      description: |-
-        Retrieve the collection of operational log entries
+      description: Retrieve the collection of operational log entries
       summary: Get Entries
       tags:
         - Operations Log
@@ -1783,7 +1795,7 @@ paths:
             format: iso8601-timestamp
         - name: order
           in: query
-          description: Specify the order to return entries by using the `recored_at` value.
+          description: Specify the order to return entries by using the `recorded_at` value.
           schema:
             type: string
             enum:
@@ -1810,19 +1822,23 @@ paths:
             pattern: ^\d+$
         - name: recorded_at_anchor
           in: query
-          description: Defined in Link header URLs, specifying the `recorded_at` value of the row closest to, but outside of, the linked page's result set.
+          description: |-
+            Defined in Link header URLs, specifying the `recorded_at` value of
+            the row closest to, but outside of, the linked page's result set.
           schema:
             type: string
             format: iso8601-timestamp
         - name: id_anchor
           in: query
-          description: Defined in Link header URLs, specifying the `id` of the row which `recorded_at_anchor` comes from.
+          description: |-
+            Defined in Link header URLs, specifying the `id` of the row which
+            `recorded_at_anchor` comes from.
           schema:
             type: string
             pattern: ^\d+$
         - name: page_direction
           in: query
-          description: Defined in Link header URLs, specifying whether it is a next or a previous link.
+          description: 'Defined in Link header URLs, specifying whether it is a next or a previous link.'
           schema:
             type: string
             enum:
@@ -1890,7 +1906,7 @@ paths:
                       description: An optional version that the change was made for
                       type: string
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple operations log entries
                   value:
@@ -1988,7 +2004,7 @@ paths:
                       description: An optional version that the change was made for
                       type: string
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple operations log entries
                   value:
@@ -2093,7 +2109,7 @@ paths:
                 - environment
                 - change_type
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: An operations log entry example
                 value:
@@ -2111,7 +2127,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1operations-log/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: An operations log entry example
                 value:
@@ -2138,7 +2154,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1operations-log/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: An operations log entry example
                   value:
@@ -2157,7 +2173,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1operations-log/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: An operations log entry example
                   value:
@@ -2182,8 +2198,7 @@ paths:
   '/operations-log/{id}':
     get:
       summary: Get Entry
-      description: |-
-        Retrieve an individual operations log entry
+      description: Retrieve an individual operations log entry
       tags:
         - Operations Log
       responses:
@@ -2230,8 +2245,7 @@ paths:
           $ref: '#/paths/~1groups/post/responses/409'
     delete:
       summary: Delete Entry
-      description: |-
-        Remove an operations log entry
+      description: Remove an operations log entry
       tags:
         - Operations Log
       responses:
@@ -2267,7 +2281,7 @@ paths:
                 type: array
                 items:
                   type: string
-              example:
+              examples:
                 records:
                   summary: Multiple permissions
                   value:
@@ -2278,7 +2292,7 @@ paths:
                 type: array
                 items:
                   type: string
-              example:
+              examples:
                 records:
                   summary: Multiple permissions
                   value:
@@ -2304,7 +2318,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple project fact type records
                   value:
@@ -2381,7 +2395,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
-              example:
+              examples:
                 records:
                   summary: Multiple project fact type records
                   value:
@@ -2518,7 +2532,7 @@ paths:
                 - data_type
                 - weight
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A full project fact type record
                 value:
@@ -2533,7 +2547,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1project-fact-types/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A full project fact type record
                 value:
@@ -2561,7 +2575,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
-              example:
+              examples:
                 record:
                   summary: A full project fact type record
                   value:
@@ -2579,7 +2593,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
-              example:
+              examples:
                 record:
                   summary: A full project fact type record
                   value:
@@ -2710,7 +2724,7 @@ paths:
                       type: number
                       default: 0
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project fact type enum records
                   value:
@@ -2771,7 +2785,7 @@ paths:
                       type: number
                       default: 0
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project fact type enum records
                   value:
@@ -2834,7 +2848,7 @@ paths:
                 - value
                 - score
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A full project fact type enum record
                 value:
@@ -2845,7 +2859,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1project-fact-type-enums/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A full project fact type enum record
                 value:
@@ -2869,7 +2883,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1project-fact-type-enums/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A full project fact type enum record
                   value:
@@ -2883,7 +2897,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1project-fact-type-enums/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A full project fact type enum record
                   value:
@@ -3010,7 +3024,7 @@ paths:
                       type: number
                       default: 0
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project fact type range records
                   value:
@@ -3066,7 +3080,7 @@ paths:
                       type: number
                       default: 0
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project fact type range records
                   value:
@@ -3124,7 +3138,7 @@ paths:
                 - max_value
                 - score
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A full project fact type range record
                 value:
@@ -3135,7 +3149,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1project-fact-type-ranges/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A full project fact type range record
                 value:
@@ -3159,7 +3173,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1project-fact-type-ranges/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A full project fact type range record
                   value:
@@ -3173,7 +3187,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1project-fact-type-ranges/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A full project fact type range record
                   value:
@@ -3292,7 +3306,7 @@ paths:
                       description: Font Awesome UI icon class
                       type: string
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project link type records
                   value:
@@ -3326,7 +3340,7 @@ paths:
                       description: Font Awesome UI icon class
                       type: string
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project link type records
                   value:
@@ -3360,7 +3374,7 @@ paths:
                 - link_type
                 - icon_class
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A full link type record
                 value:
@@ -3369,7 +3383,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1project-link-types/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A full link type record
                 value:
@@ -3391,7 +3405,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: The record when returned from the API
                   value:
@@ -3403,7 +3417,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1project-link-types/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: The record when returned from the API
                   value:
@@ -3538,7 +3552,7 @@ paths:
                       type: string
                       nullable: true
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project type records
                   value:
@@ -3594,7 +3608,7 @@ paths:
                       type: string
                       nullable: true
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project type records
                   value:
@@ -3655,7 +3669,7 @@ paths:
                 - icon_class
                 - environment_urls
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A full project type record
                 value:
@@ -3667,7 +3681,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1project-types/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A full project type record
                 value:
@@ -3690,7 +3704,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A full project type record
                   value:
@@ -3705,7 +3719,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1project-types/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A full project type record
                   value:
@@ -3925,7 +3939,7 @@ paths:
                       type: string
                       nullable: true
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project records
                   value:
@@ -4010,7 +4024,7 @@ paths:
                       type: string
                       nullable: true
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple project records
                   value:
@@ -4075,7 +4089,7 @@ paths:
                 - name
                 - slug
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: An example of the payload for creating a record
                 value:
@@ -4091,7 +4105,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: An example of the payload for creating a record
                 value:
@@ -4118,7 +4132,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: An example of a project record
                   value:
@@ -4140,7 +4154,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: An example of a project record
                   value:
@@ -4275,7 +4289,7 @@ paths:
                       description: The weight of the score against all the other project facts
                       type: integer
                   additionalProperties: false
-              example:
+              examples:
                 facts:
                   summary: All the current facts for a project
                   value:
@@ -4328,7 +4342,7 @@ paths:
                       description: The weight of the score against all the other project facts
                       type: integer
                   additionalProperties: false
-              example:
+              examples:
                 facts:
                   summary: All the current facts for a project
                   value:
@@ -4376,7 +4390,7 @@ paths:
                   - fact_type_id
                   - value
                 additionalProperties: false
-            example:
+            examples:
               facts:
                 summary: A payload example for setting multiple project facts
                 value:
@@ -4407,7 +4421,7 @@ paths:
                   - fact_type_id
                   - value
                 additionalProperties: false
-            example:
+            examples:
               facts:
                 summary: A payload example for setting multiple project facts
                 value:
@@ -4482,15 +4496,15 @@ paths:
                     type: number
                     default: 0
                 additionalProperties: false
-              example:
+              examples:
                 record:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/example/facts'
+                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
-              example:
+              examples:
                 record:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/example/facts'
+                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
@@ -4576,7 +4590,7 @@ paths:
                       description: The weight of the fact type when computing a project score
                       type: number
                       default: 0
-              example:
+              examples:
                 records:
                   summary: Multiple project fact type records
                   value:
@@ -4708,7 +4722,7 @@ paths:
                       description: The weight of the fact type when computing a project score
                       type: number
                       default: 0
-              example:
+              examples:
                 records:
                   summary: Multiple project fact type records
                   value:
@@ -4790,6 +4804,140 @@ paths:
         required: true
         schema:
           type: integer
+  '/projects/{id}/fact-history':
+    get:
+      description: Retrieve the fact history for the given project
+      summary: Get Fact History
+      tags:
+        - Project Fact History
+      parameters:
+        - name: id
+          in: path
+          description: Project ID
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          description: Limit the number of records returned
+          schema:
+            type: number
+        - name: offset
+          in: query
+          description: The starting offset for the records returned
+          schema:
+            type: number
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    fact_type_id:
+                      description: The fact type ID
+                      type: number
+                    recorded_at:
+                      description: When the fact was recorded
+                      type: string
+                      format: iso8601-timestamp
+                    recorded_by:
+                      description: The user that set the fact value
+                      type: string
+                    value:
+                      description: The fact value
+                      oneOf:
+                        - type: boolean
+                        - type: integer
+                        - type: number
+                          format: double
+                        - type: string
+                    score:
+                      description: The score for the value of the fact
+                      type: integer
+                    weight:
+                      description: The weight of the score against all the other project facts
+                      type: integer
+                    icon_class:
+                      description: The Font Awesome icon class for the link
+                      type: string
+              example:
+                records:
+                  summary: Multiple facts
+                  value:
+                    - fact_type_id: 1
+                      recorded_at: 2021-03-01T12:00:00.000Z
+                      recorded_by: test_user
+                      value: Ansible
+                      score: 100
+                      weight: 5
+                      icon_class: fab ansible
+                    - fact_type_id: 7
+                      recorded_at: 2021-03-01T12:00:01.000Z
+                      recorded_by: test_user
+                      value: GitLab CI
+                      score: 100
+                      weight: 10
+                      icon_class: fab gitlab
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    fact_type_id:
+                      description: The fact type ID
+                      type: number
+                    recorded_at:
+                      description: When the fact was recorded
+                      type: string
+                      format: iso8601-timestamp
+                    recorded_by:
+                      description: The user that set the fact value
+                      type: string
+                    value:
+                      description: The fact value
+                      oneOf:
+                        - type: boolean
+                        - type: integer
+                        - type: number
+                          format: double
+                        - type: string
+                    score:
+                      description: The score for the value of the fact
+                      type: integer
+                    weight:
+                      description: The weight of the score against all the other project facts
+                      type: integer
+                    icon_class:
+                      description: The Font Awesome icon class for the link
+                      type: string
+              example:
+                records:
+                  summary: Multiple facts
+                  value:
+                    - fact_type_id: 1
+                      recorded_at: 2021-03-01T12:00:00.000Z
+                      recorded_by: test_user
+                      value: Ansible
+                      score: 100
+                      weight: 5
+                      icon_class: fab ansible
+                    - fact_type_id: 7
+                      recorded_at: 2021-03-01T12:00:01.000Z
+                      recorded_by: test_user
+                      value: GitLab CI
+                      score: 100
+                      weight: 10
+                      icon_class: fab gitlab
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   '/projects/{id}/feed':
     get:
       description: Retrieve the most recent changes for a project ordered in descending order.
@@ -4837,19 +4985,22 @@ paths:
                     value:
                       description: 'If the action was `updated fact`, the value of the updated fact'
                       type: string
-              example:
-                - when: 2021-03-18T03:02:00.912Z
-                  who: Gavin Roy
-                  username: gavinr
-                  what: updated fact
-                  fact_name: Programming Language
-                  value: ES2015+
-                - when: 2021-03-18T02:55:50.865Z
-                  who: Gavin Roy
-                  username: gavinr
-                  what: created
-                  fact_name: null
-                  value: null
+              examples:
+                records:
+                  summary: Feed entries
+                  value:
+                    - when: 2021-03-18T03:02:00.912Z
+                      who: Gavin Roy
+                      username: gavinr
+                      what: updated fact
+                      fact_name: Programming Language
+                      value: ES2015+
+                    - when: 2021-03-18T02:55:50.865Z
+                      who: Gavin Roy
+                      username: gavinr
+                      what: created
+                      fact_name: null
+                      value: null
             application/msgpack:
               schema:
                 type: array
@@ -4880,19 +5031,22 @@ paths:
                     value:
                       description: 'If the action was `updated fact`, the value of the updated fact'
                       type: string
-              example:
-                - when: 2021-03-18T03:02:00.912Z
-                  who: Gavin Roy
-                  username: gavinr
-                  what: updated fact
-                  fact_name: Programming Language
-                  value: ES2015+
-                - when: 2021-03-18T02:55:50.865Z
-                  who: Gavin Roy
-                  username: gavinr
-                  what: created
-                  fact_name: null
-                  value: null
+              examples:
+                records:
+                  summary: Feed entries
+                  value:
+                    - when: 2021-03-18T03:02:00.912Z
+                      who: Gavin Roy
+                      username: gavinr
+                      what: updated fact
+                      fact_name: Programming Language
+                      value: ES2015+
+                    - when: 2021-03-18T02:55:50.865Z
+                      who: Gavin Roy
+                      username: gavinr
+                      what: created
+                      fact_name: null
+                      value: null
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
   '/projects/{id}/links':
@@ -4939,7 +5093,7 @@ paths:
                       type: string
                       format: uri
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple group records
                   value:
@@ -4988,7 +5142,7 @@ paths:
                       type: string
                       format: uri
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple group records
                   value:
@@ -5037,7 +5191,7 @@ paths:
                 - link_type_id
                 - url
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A project link record
                 value:
@@ -5047,7 +5201,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects~1%7Bid%7D~1links/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A project link record
                 value:
@@ -5068,7 +5222,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1links/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A project link record
                   value:
@@ -5081,7 +5235,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1links/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A project link record
                   value:
@@ -5206,7 +5360,7 @@ paths:
                       description: The ID of the project that is depended upon
                       type: number
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple records
                   value:
@@ -5234,7 +5388,7 @@ paths:
                       description: The ID of the project that is depended upon
                       type: number
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple records
                   value:
@@ -5266,7 +5420,7 @@ paths:
               required:
                 - dependency_id
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: The payload used when creating a project dependency
                 value:
@@ -5274,7 +5428,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects~1%7Bid%7D~1dependencies/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: The payload used when creating a project dependency
                 value:
@@ -5293,7 +5447,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1dependencies/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A project dependency record
                   value:
@@ -5303,7 +5457,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1dependencies/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A project dependency record
                   value:
@@ -5391,15 +5545,18 @@ paths:
                     score:
                       description: The username of the user who acted on the project
                       type: number
-              example:
-                - date: 2021-03-01T00:00:00.000Z
-                  score: 70
-                - date: 2021-03-12T00:00:00.000Z
-                  score: 72
-                - date: 2021-04-01T00:00:00.000Z
-                  score: 75
-                - date: 2021-05-21T00:00:00.000Z
-                  score: 91
+              examples:
+                records:
+                  summary: Project score by day
+                  value:
+                    - date: 2021-03-01T00:00:00.000Z
+                      score: 70
+                    - date: 2021-03-12T00:00:00.000Z
+                      score: 72
+                    - date: 2021-04-01T00:00:00.000Z
+                      score: 75
+                    - date: 2021-05-21T00:00:00.000Z
+                      score: 91
             application/msgpack:
               schema:
                 type: array
@@ -5413,15 +5570,18 @@ paths:
                     score:
                       description: The username of the user who acted on the project
                       type: number
-              example:
-                - date: 2021-03-01T00:00:00.000Z
-                  score: 70
-                - date: 2021-03-12T00:00:00.000Z
-                  score: 72
-                - date: 2021-04-01T00:00:00.000Z
-                  score: 75
-                - date: 2021-05-21T00:00:00.000Z
-                  score: 91
+              examples:
+                records:
+                  summary: Project score by day
+                  value:
+                    - date: 2021-03-01T00:00:00.000Z
+                      score: 70
+                    - date: 2021-03-12T00:00:00.000Z
+                      score: 72
+                    - date: 2021-04-01T00:00:00.000Z
+                      score: 75
+                    - date: 2021-05-21T00:00:00.000Z
+                      score: 91
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
   '/projects/{id}/urls':
@@ -5462,7 +5622,7 @@ paths:
                       type: string
                       format: uri
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple group records
                   value:
@@ -5506,7 +5666,7 @@ paths:
                       type: string
                       format: uri
                   additionalProperties: false
-              example:
+              examples:
                 records:
                   summary: Multiple group records
                   value:
@@ -5556,7 +5716,7 @@ paths:
                 - environment
                 - url
               additionalProperties: false
-            example:
+            examples:
               record:
                 summary: A project URL record
                 value:
@@ -5566,7 +5726,7 @@ paths:
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects~1%7Bid%7D~1urls/post/requestBody/content/application~1json/schema'
-            example:
+            examples:
               record:
                 summary: A project URL record
                 value:
@@ -5587,7 +5747,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1urls/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A project URL record
                   value:
@@ -5598,7 +5758,7 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1urls/get/responses/200/content/application~1json/schema/items'
-              example:
+              examples:
                 record:
                   summary: A project URL record
                   value:
@@ -5716,22 +5876,25 @@ paths:
                     health_score:
                       description: The aggregate health score for the namespace
                       type: number
-              example:
-                - namespace_id: 1
-                  scored_on: 2021-01-01T00:00:00.000Z
-                  health_score: 10.53
-                - namespace_id: 1
-                  scored_on: 2021-02-01T00:00:00.000Z
-                  health_score: 21.53
-                - namespace_id: 1
-                  scored_on: 2021-03-01T00:00:00.000Z
-                  health_score: 31.43
-                - namespace_id: 1
-                  scored_on: 2021-04-01T00:00:00.000Z
-                  health_score: 51.49
-                - namespace_id: 1
-                  scored_on: 2021-05-01T00:00:00.000Z
-                  health_score: 72.5
+              examples:
+                records:
+                  summary: Stack health scores by namespace by day
+                  value:
+                    - namespace_id: 1
+                      scored_on: 2021-01-01T00:00:00.000Z
+                      health_score: 10.53
+                    - namespace_id: 1
+                      scored_on: 2021-02-01T00:00:00.000Z
+                      health_score: 21.53
+                    - namespace_id: 1
+                      scored_on: 2021-03-01T00:00:00.000Z
+                      health_score: 31.43
+                    - namespace_id: 1
+                      scored_on: 2021-04-01T00:00:00.000Z
+                      health_score: 51.49
+                    - namespace_id: 1
+                      scored_on: 2021-05-01T00:00:00.000Z
+                      health_score: 72.5
             application/msgpack:
               schema:
                 type: array
@@ -5748,22 +5911,25 @@ paths:
                     health_score:
                       description: The aggregate health score for the namespace
                       type: number
-              example:
-                - namespace_id: 1
-                  scored_on: 2021-01-01T00:00:00.000Z
-                  health_score: 10.53
-                - namespace_id: 1
-                  scored_on: 2021-02-01T00:00:00.000Z
-                  health_score: 21.53
-                - namespace_id: 1
-                  scored_on: 2021-03-01T00:00:00.000Z
-                  health_score: 31.43
-                - namespace_id: 1
-                  scored_on: 2021-04-01T00:00:00.000Z
-                  health_score: 51.49
-                - namespace_id: 1
-                  scored_on: 2021-05-01T00:00:00.000Z
-                  health_score: 72.5
+              examples:
+                records:
+                  summary: Stack health scores by namespace by day
+                  value:
+                    - namespace_id: 1
+                      scored_on: 2021-01-01T00:00:00.000Z
+                      health_score: 10.53
+                    - namespace_id: 1
+                      scored_on: 2021-02-01T00:00:00.000Z
+                      health_score: 21.53
+                    - namespace_id: 1
+                      scored_on: 2021-03-01T00:00:00.000Z
+                      health_score: 31.43
+                    - namespace_id: 1
+                      scored_on: 2021-04-01T00:00:00.000Z
+                      health_score: 51.49
+                    - namespace_id: 1
+                      scored_on: 2021-05-01T00:00:00.000Z
+                      health_score: 72.5
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
   /reports/system-shs-history:
@@ -5789,17 +5955,20 @@ paths:
                     health_score:
                       description: The aggregate health score
                       type: number
-              example:
-                - scored_on: 2021-01-01T00:00:00.000Z
-                  health_score: 10.53
-                - scored_on: 2021-02-01T00:00:00.000Z
-                  health_score: 21.53
-                - scored_on: 2021-03-01T00:00:00.000Z
-                  health_score: 31.43
-                - scored_on: 2021-04-01T00:00:00.000Z
-                  health_score: 51.49
-                - scored_on: 2021-05-01T00:00:00.000Z
-                  health_score: 72.5
+              examples:
+                records:
+                  summary: System-wide stack health score by month
+                  value:
+                    - scored_on: 2021-01-01T00:00:00.000Z
+                      health_score: 10.53
+                    - scored_on: 2021-02-01T00:00:00.000Z
+                      health_score: 21.53
+                    - scored_on: 2021-03-01T00:00:00.000Z
+                      health_score: 31.43
+                    - scored_on: 2021-04-01T00:00:00.000Z
+                      health_score: 51.49
+                    - scored_on: 2021-05-01T00:00:00.000Z
+                      health_score: 72.5
             application/msgpack:
               schema:
                 type: array
@@ -5813,17 +5982,20 @@ paths:
                     health_score:
                       description: The aggregate health score
                       type: number
-              example:
-                - scored_on: 2021-01-01T00:00:00.000Z
-                  health_score: 10.53
-                - scored_on: 2021-02-01T00:00:00.000Z
-                  health_score: 21.53
-                - scored_on: 2021-03-01T00:00:00.000Z
-                  health_score: 31.43
-                - scored_on: 2021-04-01T00:00:00.000Z
-                  health_score: 51.49
-                - scored_on: 2021-05-01T00:00:00.000Z
-                  health_score: 72.5
+              examples:
+                records:
+                  summary: System-wide stack health score by month
+                  value:
+                    - scored_on: 2021-01-01T00:00:00.000Z
+                      health_score: 10.53
+                    - scored_on: 2021-02-01T00:00:00.000Z
+                      health_score: 21.53
+                    - scored_on: 2021-03-01T00:00:00.000Z
+                      health_score: 31.43
+                    - scored_on: 2021-04-01T00:00:00.000Z
+                      health_score: 51.49
+                    - scored_on: 2021-05-01T00:00:00.000Z
+                      health_score: 72.5
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
   /status:
@@ -5855,46 +6027,78 @@ paths:
                   version:
                     type: string
                     description: The version
-              example:
-                started_at: 2020-01-01T00:00:00.000Z
-                status: ok
-                system:
-                  language:
-                    name: python
-                    implementation: CPython
-                    version: 3.7.6
-                  os:
-                    name: Alpine Linux
-                    version: 3.11.6
-                version: '{{ settings["version"] }}'
+              examples:
+                record:
+                  summary: Example when the service is available and processing requests
+                  value:
+                    started_at: 2020-01-01T00:00:00.000Z
+                    status: ok
+                    system:
+                      language:
+                        name: python
+                        implementation: CPython
+                        version: 3.7.6
+                      os:
+                        name: Alpine Linux
+                        version: 3.11.6
+                    version: '{{ settings["version"] }}'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1status/get/responses/200/content/application~1json/schema'
-              example:
-                $ref: '#/paths/~1status/get/responses/200/content/application~1json/example'
+              examples:
+                record:
+                  summary: Example when the service is available and processing requests
+                  value:
+                    started_at: 2020-01-01T00:00:00.000Z
+                    status: ok
+                    system:
+                      language:
+                        name: python
+                        implementation: CPython
+                        version: 3.7.6
+                      os:
+                        name: Alpine Linux
+                        version: 3.11.6
+                    version: '{{ settings["version"] }}'
         '503':
           description: Service Unavailable
           content:
             application/json:
               schema:
                 $ref: '#/paths/~1status/get/responses/200/content/application~1json/schema'
-              example:
-                started_at: 2020-01-01T00:00:00.000Z
-                status: unavailable
-                system:
-                  language:
-                    name: python
-                    implementation: CPython
-                    version: 3.7.6
-                  os:
-                    name: Alpine Linux
-                    version: 3.11.6
-                version: '{{ settings["version"] }}'
+              examples:
+                record:
+                  summary: Example when the service is unavailable
+                  value:
+                    started_at: 2020-01-01T00:00:00.000Z
+                    status: unavailable
+                    system:
+                      language:
+                        name: python
+                        implementation: CPython
+                        version: 3.7.6
+                      os:
+                        name: Alpine Linux
+                        version: 3.11.6
+                    version: '{{ settings["version"] }}'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1status/get/responses/200/content/application~1json/schema'
-              example:
-                $ref: '#/paths/~1status/get/responses/503/content/application~1json/example'
+              examples:
+                record:
+                  summary: Example when the service is unavailable
+                  value:
+                    started_at: 2020-01-01T00:00:00.000Z
+                    status: unavailable
+                    system:
+                      language:
+                        name: python
+                        implementation: CPython
+                        version: 3.7.6
+                      os:
+                        name: Alpine Linux
+                        version: 3.11.6
+                    version: '{{ settings["version"] }}'
   /ui/automations/gitlab/create:
     post:
       summary: Create GitLab Project
@@ -5983,6 +6187,8 @@ tags:
     description: Endpoints for managing the current facts describing the project
   - name: Project Fact Types
     description: An endpoint for returning the project fact types for a specific project
+  - name: Project Fact History
+    description: Endpoint for returning the project fact history for a specific project
   - name: Project Links
     description: Endpoints used to manage links to external resources for a project
   - name: Project Scores
