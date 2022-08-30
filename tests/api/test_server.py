@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import os
 import tempfile
@@ -9,21 +11,26 @@ import yaml
 from imbi import server
 
 
-class LoadConfigurationTests(unittest.TestCase):
-    def setUp(self):
+class ConfigurationTestCase(unittest.TestCase):
+    def setUp(self) -> None:
         super().setUp()
         self._patchers = []
-        self.mock_stderr = self.add_patch(server.sys, 'stderr')
+        self.mock_stderr = self.patch_object(server.sys, 'stderr')
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         for patcher in self._patchers:
             patcher.stop()
         super().tearDown()
 
-    def add_patch(self, target, attribute, **kwargs):
-        self._patchers.append(
-            unittest.mock.patch.object(target, attribute, **kwargs))
-        return self._patchers[-1].start()
+    def patch_object(
+            self, target: object, attribute: str, **kwargs
+    ) -> unittest.mock.MagicMock | unittest.mock.AsyncMock:
+        patcher = unittest.mock.patch.object(target, attribute, **kwargs)
+        self._patchers.append(patcher)
+        return patcher.start()
+
+
+class LoadConfigurationTests(ConfigurationTestCase):
 
     def test_missing_configuration_file(self):
         with self.assertRaises(SystemExit):
