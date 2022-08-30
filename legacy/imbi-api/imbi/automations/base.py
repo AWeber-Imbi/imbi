@@ -35,16 +35,7 @@ class Automation:
         project = await models.project(project_id, self.application)
         if not project:
             self._add_error('project not found for {}', project_id)
-        else:
-            if project.namespace.gitlab_group_name is None:
-                self._add_error('missing GitLab group for namespace {}',
-                                project.namespace.slug)
-            if project.type.gitlab_project_prefix is None:
-                self._add_error('missing no GitLab prefix for project type {}',
-                                project.type.slug)
-
-        if not self._has_error():
-            return project
+        return None if self._has_error() else project
 
     async def _get_gitlab_token(self) \
             -> typing.Optional[oauth2.IntegrationToken]:

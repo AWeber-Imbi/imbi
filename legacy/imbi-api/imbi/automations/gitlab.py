@@ -83,15 +83,27 @@ class GitLabCreateProjectAutomation(base.Automation):
                 })
         return project
 
+    async def _get_project(
+            self, project_id: int) -> typing.Optional[models.Project]:
+        project = await super()._get_project(project_id)
+        if project is not None:
+            if project.namespace.gitlab_group_name is None:
+                self._add_error('missing GitLab group for namespace {}',
+                                project.namespace.slug)
+            if project.project_type.gitlab_project_prefix is None:
+                self._add_error('missing no GitLab prefix for project type {}',
+                                project.project_type.slug)
+        return None if self._has_error() else project
+
     async def _get_gitlab_parent(self, project:  models.Project) -> dict:
         gitlab_parent = await self._gitlab.fetch_group(
             project.namespace.gitlab_group_name,
-            project.type.gitlab_project_prefix)
+            project.project_type.gitlab_project_prefix)
         if not gitlab_parent:
             self._add_error(
                 'GitLab path {}/{} does not exist',
                 project.namespace.gitlab_group_name,
-                project.type.gitlab_project_prefix)
+                project.project_type.gitlab_project_prefix)
         return gitlab_parent
 
 
