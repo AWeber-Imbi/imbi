@@ -46,24 +46,26 @@ class SentryCreateProjectAutomation(base.Automation):
                     'username': self.user.username,
                 }
             )
-            await self.db.execute(
-                '  INSERT INTO v1.project_links(project_id, link_type_id,'
-                '                               created_by, url)'
-                '       VALUES (%(imbi_project_id)s, %(project_link_type_id)s,'
-                '               %(username)s, %(url)s) '
-                '  ON CONFLICT '
-                'ON CONSTRAINT project_links_pkey'
-                '    DO UPDATE'
-                '          SET last_modified_at = CURRENT_TIMESTAMP,'
-                '              last_modified_by = %(username)s,'
-                '              url = %(url)s', {
-                    'imbi_project_id': self.imbi_project_id,
-                    'project_link_type_id':
-                        self.settings['project_link_type_id'],
-                    'url': project.link,
-                    'username': self.user.username,
-                }
-            )
+            if self.settings.get('project_link_type_id'):
+                await self.db.execute(
+                    '  INSERT INTO v1.project_links(project_id, link_type_id,'
+                    '                               created_by, url)'
+                    '       VALUES (%(imbi_project_id)s,'
+                    '               %(project_link_type_id)s, %(username)s,'
+                    '               %(url)s) '
+                    '  ON CONFLICT '
+                    'ON CONSTRAINT project_links_pkey'
+                    '    DO UPDATE'
+                    '          SET last_modified_at = CURRENT_TIMESTAMP,'
+                    '              last_modified_by = %(username)s,'
+                    '              url = %(url)s', {
+                        'imbi_project_id': self.imbi_project_id,
+                        'project_link_type_id':
+                            self.settings['project_link_type_id'],
+                        'url': project.link,
+                        'username': self.user.username,
+                    }
+                )
             for name, value in project.keys.items():
                 await self.db.execute(
                     '  INSERT INTO v1.project_secrets(project_id, name, value,'
