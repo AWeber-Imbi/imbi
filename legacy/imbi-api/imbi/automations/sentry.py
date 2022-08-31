@@ -85,7 +85,12 @@ class SentryCreateProjectAutomation(base.Automation):
                     }
                 )
 
-        except Exception:
+        # Using a wide catch of Exception here to ensure that we remove
+        # the sentry project if we fail to save it for any reason.  This
+        # prevents orphaning sentry projects when we have a DB problem.
+        except Exception as error:
+            self.logger.error('removing sentry project %s due to error: %s',
+                              project.slug, error)
             await self.client.remove_project(project.slug)
             raise
 
