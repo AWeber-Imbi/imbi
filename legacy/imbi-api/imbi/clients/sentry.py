@@ -106,18 +106,15 @@ class SentryClient(sprockets.mixins.http.HTTPClientMixin):
             keys={}
         )
 
-        url = yarl.URL('/projects') / self.organization / project.slug
+        # TODO update the project platform based on the project details
+        #      so that python projects use "platform=python" and
+        #      JS projects use "platform=javascript"
+        # Not sure if this is actually necessary so I'm omitting it.
+        # https://github.com/AWeber-Imbi/imbi/issues/73
+        # ref: https://docs.sentry.io/api/projects/update-a-project/
+        # ref: https://docs.sentry.io/platforms/
 
-        try:
-            response = await self.api(url, method='PUT',
-                                      body={'platform': 'python'})
-            if not response.ok:
-                raise errors.InternalServerError(
-                    'Failed to set platform for project: %s', response.code,
-                    title='Sentry API Error')
-        except Exception:
-            await self.remove_project(project.slug)
-            raise
+        url = yarl.URL('/projects') / self.organization / project.slug
 
         try:
             response = await self.api(url / 'keys')
