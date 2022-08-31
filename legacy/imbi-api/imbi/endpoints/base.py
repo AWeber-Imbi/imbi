@@ -229,6 +229,7 @@ class AuthenticatedRequestHandler(RequestHandler):
                         'javascript_url'))
             self.set_status(401)
             await self.finish()
+            raise web.Finish()
 
 
 class ValidatingRequestHandler(AuthenticatedRequestHandler):
