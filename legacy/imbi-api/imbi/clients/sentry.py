@@ -135,7 +135,12 @@ class SentryClient(sprockets.mixins.http.HTTPClientMixin):
                     'public': data.dsn.public,
                     'secret': data.dsn.secret,
                 })
-        except Exception:
+
+        # If we fail to fetch or extract the keys that the client
+        # needs, then remove the project since we cannot use it.
+        except errors.ApplicationError as error:
+            self.logger.error('removing Sentry project %s due to error: %s',
+                              project.slug, error)
             await self.remove_project(project.slug)
             raise
 
