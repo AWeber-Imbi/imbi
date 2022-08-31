@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 import base64
+import contextlib
+import io
 import os
 import tempfile
 import unittest.mock
@@ -9,21 +13,26 @@ import yaml
 from imbi import server
 
 
-class LoadConfigurationTests(unittest.TestCase):
-    def setUp(self):
+class ConfigurationTestCase(unittest.TestCase):
+    temp_file: io.FileIO
+
+    def setUp(self) -> None:
         super().setUp()
-        self._patchers = []
-        self.mock_stderr = self.add_patch(server.sys, 'stderr')
+        self._exit_stack = contextlib.ExitStack()
+        self.addCleanup(self._exit_stack.close)
+        self.mock_stderr = self.patch_object(server.sys, 'stderr')
+        self.temp_file = self._exit_stack.enter_context(
+            tempfile.NamedTemporaryFile(mode='w+t', encoding='utf-8'))
+        self.config = {'http': {'canonical_server_name': 'server.example.com'}}
 
-    def tearDown(self):
-        for patcher in self._patchers:
-            patcher.stop()
-        super().tearDown()
-
-    def add_patch(self, target, attribute, **kwargs):
-        self._patchers.append(
+    def patch_object(
+            self, target: object, attribute: str, **kwargs
+    ) -> unittest.mock.MagicMock | unittest.mock.AsyncMock:
+        return self._exit_stack.enter_context(
             unittest.mock.patch.object(target, attribute, **kwargs))
-        return self._patchers[-1].start()
+
+
+class LoadConfigurationTests(ConfigurationTestCase):
 
     def test_missing_configuration_file(self):
         with self.assertRaises(SystemExit):
@@ -31,39 +40,80 @@ class LoadConfigurationTests(unittest.TestCase):
         self.mock_stderr.write.assert_called()
 
     def test_yaml_load_failure(self):
-        with tempfile.NamedTemporaryFile() as config_file:
-            config_file.write(b'\x00\x01\x02\x03')
-            config_file.flush()
-            with self.assertRaises(SystemExit):
-                server.load_configuration(config_file.name, False)
-            self.mock_stderr.write.assert_called()
+        self.temp_file.write('\x00\x01\x02\x03')
+        self.temp_file.flush()
+        with self.assertRaises(SystemExit):
+            server.load_configuration(self.temp_file.name, False)
+        self.mock_stderr.write.assert_called()
 
     def test_bad_yaml_doc(self):
-        with tempfile.NamedTemporaryFile() as config_file:
-            config_file.write(b'<config/>')
-            config_file.flush()
-            with self.assertRaises(SystemExit):
-                server.load_configuration(config_file.name, False)
-            self.mock_stderr.write.assert_called()
+        self.temp_file.write('<config/>')
+        self.temp_file.flush()
+        with self.assertRaises(SystemExit):
+            server.load_configuration(self.temp_file.name, False)
+        self.mock_stderr.write.assert_called()
 
     def test_encryption_key_encoding(self):
         secret = os.urandom(32)
-        with tempfile.NamedTemporaryFile(
-                mode='w+t', encoding='utf-8') as config_file:
-            yaml.dump(
-                {
-                    'encryption_key': base64.b64encode(secret).decode(),
-                    'http': {'canonical_server_name': 'server.example.com'},
-                }, config_file)
-            config, _ = server.load_configuration(config_file.name, False)
-            self.assertEqual(secret, config['encryption_key'])
+        self.config['encryption_key'] = base64.b64encode(secret).decode()
+        yaml.dump(self.config, self.temp_file)
+        config, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertEqual(secret, config['encryption_key'])
 
-            config_file.seek(0)
-            secret = b'not valid base64'
-            yaml.dump(
-                {
-                    'encryption_key': secret.decode(),
-                    'http': {'canonical_server_name': 'server.example.com'},
-                }, config_file)
-            config, _ = server.load_configuration(config_file.name, False)
-            self.assertEqual(secret, config['encryption_key'])
+        self.temp_file.seek(0)
+        self.config['encryption_key'] = 'not valid base64'
+        yaml.dump(self.config, self.temp_file)
+        config, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertEqual('not valid base64'.encode(), config['encryption_key'])
+
+
+class SentryConfigurationTests(ConfigurationTestCase):
+
+    def test_that_default_is_disabled(self):
+        yaml.dump(self.config, self.temp_file)
+        config, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertFalse(config['automations']['sentry']['enabled'])
+
+    def test_that_sentry_is_enabled_when_fully_configured(self):
+        self.config['automations'] = {'sentry': {}}
+        yaml.dump(self.config, self.temp_file)
+        loaded, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertFalse(loaded['automations']['sentry']['enabled'])
+        self.temp_file.seek(0)
+
+        self.config['automations']['sentry']['auth_token'] = '12345'
+        yaml.dump(self.config, self.temp_file)
+        loaded, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertFalse(loaded['automations']['sentry']['enabled'])
+        self.temp_file.seek(0)
+
+        self.config['automations']['sentry']['organization'] = 'example-com'
+        yaml.dump(self.config, self.temp_file)
+        loaded, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertTrue(loaded['automations']['sentry']['enabled'])
+
+    def test_that_sentry_url_has_sensible_default(self):
+        yaml.dump(self.config, self.temp_file)
+        config, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertEqual(
+            'https://sentry.io/', config['automations']['sentry']['url'])
+
+
+class GitLabConfiguratTests(ConfigurationTestCase):
+
+    def test_that_default_is_disabled(self):
+        yaml.dump(self.config, self.temp_file)
+        config, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertFalse(config['automations']['gitlab']['enabled'])
+
+    def test_that_gitlab_is_enabled_when_fully_configured(self):
+        self.config['automations'] = {'gitlab': {}}
+        yaml.dump(self.config, self.temp_file)
+        loaded, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertFalse(loaded['automations']['gitlab']['enabled'])
+        self.temp_file.seek(0)
+
+        self.config['automations']['gitlab']['project_link_type_id'] = 1
+        yaml.dump(self.config, self.temp_file)
+        loaded, _ = server.load_configuration(self.temp_file.name, False)
+        self.assertTrue(loaded['automations']['gitlab']['enabled'])

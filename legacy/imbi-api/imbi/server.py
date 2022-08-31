@@ -84,15 +84,10 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     log_config = config.get('logging', DEFAULT_LOG_CONFIG)
 
     automations = config.get('automations', {})
-    automations_gitlab = automations.get('gitlab', {})
     automations_grafana = automations.get('grafana', {})
     if automations_grafana.get('url') \
             and automations_grafana.get('admin_token'):
         automations_grafana['enabled'] = True
-    automations_sentry = automations.get('sentry', {})
-    if automations_sentry.get('url') \
-            and automations_sentry.get('admin_token'):
-        automations_sentry['enabled'] = True
     automations_sonar = automations.get('sonarqube', {})
     if automations_sonar.get('url') and automations_sonar.get('admin_token'):
         automations_sonar['enabled'] = True
@@ -103,6 +98,18 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     sentry = config.get('sentry', {})
     session = config.get('session', {})
     stats = config.get('stats', {})
+
+    automations_gitlab = automations.get('gitlab', {})
+    automations_gitlab.setdefault(
+        'enabled',
+        automations_gitlab.get('project_link_type_id') is not None)
+
+    automations_sentry = automations.get('sentry', {})
+    automations_sentry.setdefault(
+        'enabled',
+        (automations_sentry.get('auth_token') is not None and
+         automations_sentry.get('organization') is not None))
+    automations_sentry.setdefault('url', 'https://sentry.io/')
 
     module_path = pathlib.Path(sys.modules['imbi'].__file__).parent
 
@@ -120,12 +127,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
 
     settings = {
         'automations': {
-            'gitlab': {
-                'project_link_type_id':
-                    automations_gitlab.get('project_link_type_id'),
-                'restrict_to_user':
-                    automations_grafana.get('restrict_to_user', False)
-            },
+            'gitlab': automations_gitlab,
             'grafana': {
                 'enabled': automations_grafana.get('enabled', False),
                 'project_link_type_id':
@@ -133,11 +135,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             },
             # see https://pycqa.github.io/isort/reference/isort/settings.html
             'isort': automations.get('isort', {}),
-            'sentry': {
-                'enabled': automations_sentry.get('enabled', False),
-                'project_link_type_id':
-                    automations_sentry.get('project_link_type_id')
-            },
+            'sentry': automations_sentry,
             'sonarqube': {
                 'enabled': automations_sonar.get('enabled', False),
                 'admin_token': automations_sonar.get('admin_token'),

@@ -55,10 +55,14 @@ class RequestHandler(base.RequestHandler):
                     'clientId': gitlab_auth['client_id'],
                     'redirectURI': gitlab_auth['callback_url'],
                 })
-            gitlab['enabled'] = (
-                gitlab['project_link_type_id'] is not None and
-                gitlab['clientId'] is not None
-            )
+            gitlab['enabled'] = (cfg['enabled'] and
+                                 gitlab.get('clientId') is not None)
+
+        sentry = {'enabled': False}
+        cfg = automations.get('sentry')
+        if cfg:
+            sentry['project_link_type_id'] = cfg.get('project_link_type_id')
+            sentry['enabled'] = cfg['enabled']
 
         self.send_response({
             'integrations': {

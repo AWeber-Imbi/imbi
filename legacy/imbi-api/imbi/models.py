@@ -33,6 +33,7 @@ class Namespace:
     icon_class: str
     maintained_by: typing.Optional[typing.List[str]]
     gitlab_group_name: str
+    sentry_team_slug: typing.Optional[str]
 
     SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
         SELECT id,
@@ -44,7 +45,8 @@ class Namespace:
                slug,
                icon_class,
                maintained_by,
-               gitlab_group_name
+               gitlab_group_name,
+               sentry_team_slug
           FROM v1.namespaces
          WHERE id=%(id)s""")
 

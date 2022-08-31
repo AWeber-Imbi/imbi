@@ -968,9 +968,9 @@ paths:
                     type: string
                     format: url
                 additionalProperties: false
-              example:
+              examples:
                 problemDetail:
-                  description: An example of the response body
+                  summary: '401'
                   value:
                     type: HTTPError
                     traceback: []
@@ -978,9 +978,9 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              example:
+              examples:
                 problemDetail:
-                  description: An example of the response body
+                  summary: '401'
                   value:
                     type: HTTPError
                     traceback: []
@@ -1081,9 +1081,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              example:
+              examples:
                 problemDetail:
-                  description: An example of the response body
+                  summary: '400'
                   value:
                     type: HTTPError
                     traceback: []
@@ -1091,9 +1091,9 @@ paths:
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              example:
+              examples:
                 problemDetail:
-                  description: An example of the response body
+                  summary: '400'
                   value:
                     type: HTTPError
                     traceback: []
@@ -1106,23 +1106,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              example:
+              examples:
                 problemDetail:
-                  description: An example of the response body
+                  summary: '409'
                   value:
                     type: HTTPError
                     traceback: []
-                    message: 'HTTP 409: Conflict'
+                    message: HTTP 409 Conflict
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              example:
+              examples:
                 problemDetail:
-                  description: An example of the response body
+                  summary: '409'
                   value:
                     type: HTTPError
                     traceback: []
-                    message: 'HTTP 409: Conflict'
+                    message: HTTP 409 Conflict
   '/groups/{name}':
     get:
       summary: Get Record
@@ -1140,23 +1140,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              example:
+              examples:
                 problemDetail:
-                  description: An example of the response body
+                  summary: '404'
                   value:
                     type: HTTPError
                     traceback: []
-                    message: 'HTTP 404: Resource not found'
+                    message: HTTP 404 Resource not found
             application/msgpack:
               schema:
                 $ref: '#/paths/~1groups/get/responses/401/content/application~1json/schema'
-              example:
+              examples:
                 problemDetail:
-                  description: An example of the response body
+                  summary: '404'
                   value:
                     type: HTTPError
                     traceback: []
-                    message: 'HTTP 404: Resource not found'
+                    message: HTTP 404 Resource not found
     patch:
       summary: Update Record
       description: 'Update a group, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
@@ -1391,6 +1391,10 @@ paths:
                       description: Optional name of associated GitLab group
                       type: string
                       nullable: true
+                    sentry_team_slug:
+                      description: Optional name of associated Sentry team
+                      type: string
+                      nullable: true
                   required:
                     - name
                     - slug
@@ -1404,6 +1408,7 @@ paths:
                       name: Platform Support Engineering
                       slug: PSE
                       icon_class: fas fa-blind
+                      sentry_team_slug: pse
                       maintained_by:
                         - Developers
                         - Operations
@@ -1450,6 +1455,10 @@ paths:
                       description: Optional name of associated GitLab group
                       type: string
                       nullable: true
+                    sentry_team_slug:
+                      description: Optional name of associated Sentry team
+                      type: string
+                      nullable: true
                   required:
                     - name
                     - slug
@@ -1463,6 +1472,7 @@ paths:
                       name: Platform Support Engineering
                       slug: PSE
                       icon_class: fas fa-blind
+                      sentry_team_slug: pse
                       maintained_by:
                         - Developers
                         - Operations
@@ -1506,6 +1516,10 @@ paths:
                   description: Optional name of associated GitLab group
                   type: string
                   nullable: true
+                sentry_team_slug:
+                  description: Optional name of associated Sentry team
+                  type: string
+                  nullable: true
               required:
                 - name
                 - slug
@@ -1518,7 +1532,8 @@ paths:
                   name: Platform Support Engineering
                   slug: PSE
                   icon_class: fas fa-blind
-                  maintainted_by:
+                  sentry_team_slug: pse
+                  maintained_by:
                     - Developers
                     - Operations
           application/msgpack:
@@ -1531,7 +1546,8 @@ paths:
                   name: Platform Support Engineering
                   slug: PSE
                   icon_class: fas fa-blind
-                  maintainted_by:
+                  sentry_team_slug: pse
+                  maintained_by:
                     - Developers
                     - Operations
       tags:
@@ -1560,9 +1576,10 @@ paths:
                     name: Platform Support Engineering
                     slug: PSE
                     icon_class: fas fa-blind
-                    maintainted_by:
+                    maintained_by:
                       - Developers
                       - Operations
+                    sentry_team_slug: pse
             application/msgpack:
               schema:
                 $ref: '#/paths/~1namespaces/get/responses/200/content/application~1json/schema/items'
@@ -1576,9 +1593,10 @@ paths:
                     name: Platform Support Engineering
                     slug: PSE
                     icon_class: fas fa-blind
-                    maintainted_by:
+                    maintained_by:
                       - Developers
                       - Operations
+                    sentry_team_slug: pse
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
@@ -3662,6 +3680,7 @@ paths:
                 gitlab_project_prefix:
                   description: Prefix for this project type in GitLab
                   type: string
+                  nullable: true
               required:
                 - name
                 - plural_name
@@ -4867,9 +4886,9 @@ paths:
                     icon_class:
                       description: The Font Awesome icon class for the link
                       type: string
-              example:
+              examples:
                 records:
-                  summary: Multiple facts
+                  summary: Fact history
                   value:
                     - fact_type_id: 1
                       recorded_at: 2021-03-01T12:00:00.000Z
@@ -4918,9 +4937,9 @@ paths:
                     icon_class:
                       description: The Font Awesome icon class for the link
                       type: string
-              example:
+              examples:
                 records:
-                  summary: Multiple facts
+                  summary: Fact history
                   value:
                     - fact_type_id: 1
                       recorded_at: 2021-03-01T12:00:00.000Z
@@ -5515,6 +5534,77 @@ paths:
         required: true
         schema:
           type: number
+  '/projects/{id}/secrets':
+    parameters:
+      - name: id
+        in: path
+        description: ID of the project for the secrets
+        required: true
+        schema:
+          type: number
+    get:
+      description: Retrieve the collection of secrets for a project
+      summary: Get Secrets
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  title: Project Secret
+                  description: Secrets related to the project
+                  type: object
+                  properties:
+                    project_id:
+                      description: Identifies the project associated with this secret
+                      type: number
+                    name:
+                      description: Name of this secret
+                      type: string
+                    project_slug:
+                      description: The "slug" of the associated project
+                      type: string
+                    value:
+                      description: Plaintext value of this secret
+                      type: string
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                      format: datetime
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  title: Project Secret
+                  description: Secrets related to the project
+                  type: object
+                  properties:
+                    project_id:
+                      description: Identifies the project associated with this secret
+                      type: number
+                    name:
+                      description: Name of this secret
+                      type: string
+                    project_slug:
+                      description: The "slug" of the associated project
+                      type: string
+                    value:
+                      description: Plaintext value of this secret
+                      type: string
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                      format: datetime
   '/projects/{id}/score-history':
     get:
       description: Retrieve the score history for a specific project.
@@ -6136,6 +6226,35 @@ paths:
                     type: integer
         '400':
           description: Request could not be processed
+  /ui/automations/sentry/create:
+    post:
+      summary: Create Sentry Project
+      description: Creates a new Sentry project using the info from the project.
+      tags:
+        - Automations
+      requestBody:
+        description: Project details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_id:
+                  description: Imbi project ID to create the Sonarqube Project for
+                  type: integer
+              required:
+                - project_id
+      responses:
+        '200':
+          description: Sentry project was created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sentry_project_url:
+                    type: string
+                    format: url
 tags:
   - name: Activity Feed
     description: Endpoints that detail changes to projects and other entities in Imbi
@@ -6236,6 +6355,7 @@ x-tagGroups:
       - Project Dependencies
       - Project Facts
       - Project Fact Types
+      - Project Fact History
       - Project Links
       - Project Scores
       - Project URLs
