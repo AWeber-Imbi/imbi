@@ -6,10 +6,11 @@ import typing
 import psycopg2.errors
 
 from imbi import common, errors
-from imbi.endpoints import base, projects
+from imbi.endpoints import base
+from imbi.opensearch import project
 
 
-class CollectionRequestHandler(projects.OpensearchMixin,
+class CollectionRequestHandler(project.RequestHandlerMixin,
                                base.CollectionRequestHandler):
 
     NAME = 'project-fact-types'

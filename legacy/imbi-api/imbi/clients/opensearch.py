@@ -1,3 +1,11 @@
+"""
+Async OpenSearch Client Wrapper
+===============================
+
+Wraps OpenSearch client operations to use Redis as queue to perform indexing
+operations asynchronously.
+
+"""
 import asyncio
 import datetime
 import decimal
@@ -7,12 +15,8 @@ import re
 import typing
 import uuid
 
-import aiopg
 import aioredis
 import opensearchpy
-from psycopg2 import extras
-
-from imbi import mappings
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,10 +60,9 @@ class OpenSearch:
     PROCESS_DELAY = 5
     PENDING_KEY = 'documents-pending'
 
-    def __init__(self, settings: dict, postgres_url: str):
+    def __init__(self, settings: dict):
         self.client: typing.Optional[opensearchpy.AsyncOpenSearch] = None
         self.loop: typing.Optional[asyncio.AbstractEventLoop] = None
-        self.postgres_url = postgres_url
         self.redis: typing.Optional[aioredis.Redis] = None
         self.settings = settings
         self.timer_handle: typing.Optional[asyncio.TimerHandle] = None
@@ -77,22 +80,27 @@ class OpenSearch:
         self.client = opensearchpy.AsyncOpenSearch(
             **self.settings['connection'])
 
-        LOGGER.debug('Creating projects index in OpenSearch')
+        self.timer_handle = self.loop.call_soon(
+            lambda: asyncio.ensure_future(self._process()))
+        return True
+
+    async def create_index(self, index: str) -> bool:
+        LOGGER.debug('Creating %s index in OpenSearch', index)
         try:
-            await self.client.indices.create('projects')
+            await self.client.indices.create(index)
         except opensearchpy.exceptions.RequestError as err:
             if 'resource_already_exists_exception' not in err.error:
                 LOGGER.warning('Index creation error: %r', err)
+                return False
+        return True
 
+    async def create_mapping(self, index: str, mappings: dict) -> bool:
         try:
             await self.client.indices.put_mapping(
-                index='projects',
-                body={'properties': await self._build_mappings()})
+                index=index, body={'properties': mappings})
         except opensearchpy.exceptions.RequestError as err:
             LOGGER.debug('Mapping update failure: %r', err)
-
-        self.timer_handle = self.loop.call_soon(
-            lambda: asyncio.ensure_future(self._process()))
+            return False
         return True
 
     async def delete_document(self, index: str, document_id: str) -> None:
@@ -106,6 +114,10 @@ class OpenSearch:
             LOGGER.warning('Deletion of %s:%s failed: %r',
                            index, document_id, err)
 
+    async def documents_pending(self) -> int:
+        """Return the number of documents pending indexing"""
+        return await self.redis.scard(self.PENDING_KEY)
+
     async def index_document(self,
                              index: str,
                              document_id: str,
@@ -117,72 +129,20 @@ class OpenSearch:
             json.dumps(normalize(sanitize_keys(document)), indent=0))
         await self.redis.sadd(self.PENDING_KEY, f'{index}:{document_id}')
 
-    async def search_fields(self) -> typing.List[typing.Dict]:
-        fields = []
-        index_mappings = await self._build_mappings()
-        for key, defn in index_mappings.items():
-            try:
-                fields.append({
-                    'name': key,
-                    'type': defn['type'],
-                    'count': 0,
-                    'scripted': False,
-                    'searchable': True,
-                    'aggregatable': True,
-                    'readFromDocValues': True
-                })
-            except KeyError:
-                pass
-
-        async with aiopg.create_pool(self.postgres_url) as pool:
-            async with pool.acquire() as conn:
-                async with conn.cursor(
-                        cursor_factory=extras.RealDictCursor) as cursor:
-                    await cursor.execute(
-                        'SELECT name, data_type FROM v1.project_fact_types;')
-                    async for row in cursor:
-                        fields.append({
-                            'name': row['name'].lower().replace(' ', '_'),
-                            'type': mappings.FACT_DATA_TYPES[row['data_type']],
-                            'count': 0,
-                            'scripted': False,
-                            'searchable': True,
-                            'aggregatable': True,
-                            'readFromDocValues': True
-                        })
-        return fields
+    async def search(self, index: str, query: str, max_results: int = 1000) \
+            -> typing.Dict[str, typing.List[dict]]:
+        result = await self.client.search(
+            body={
+                'query': {
+                    'query_string': {'query': query, 'size': max_results}}},
+            index=index)
+        return {'hits': [r['_source'] for r in result['hits']['hits']]}
 
     async def stop(self) -> None:
         if self.timer_handle and not self.timer_handle.cancelled():
             self.timer_handle.cancel()
         if self.client is not None:
             await self.client.close()
-
-    async def _build_mappings(self) -> dict:
-        defn = dict(mappings.PROJECT)
-        async with aiopg.create_pool(self.postgres_url) as pool:
-            async with pool.acquire() as conn:
-                async with conn.cursor(
-                        cursor_factory=extras.RealDictCursor) as cursor:
-                    await cursor.execute(
-                        'SELECT name, data_type FROM v1.project_fact_types;')
-                    async for row in cursor:
-                        defn[f'facts.{sanitize_key(row["name"])}'] = {
-                            'type': mappings.FACT_DATA_TYPES[row['data_type']]
-                        }
-                    await cursor.execute(
-                        'SELECT link_type FROM v1.project_link_types;')
-                    async for row in cursor:
-                        defn[f'links.{sanitize_key(row["link_type"])}'] = {
-                            'type': 'text'
-                        }
-                    await cursor.execute(
-                        'SELECT name FROM v1.environments;')
-                    async for row in cursor:
-                        defn[f'urls.{sanitize_key(row["name"])}'] = {
-                            'type': 'text'
-                        }
-        return defn
 
     async def _process(self) -> None:
         if await self._process_document():
