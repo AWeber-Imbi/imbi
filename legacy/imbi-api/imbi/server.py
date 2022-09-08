@@ -206,7 +206,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'postgres_connection_ttl': postgres.get('connection_ttl'),
         'postgres_query_timeout': postgres.get('query_timeout'),
         'project_url_template': config.get('project_url_template', None),
-        'sentry_backend_dsn': sentry.get('backend_dsn', 'false'),
+        'sentry_backend_dsn': sentry.get('backend_dsn'),
         'sentry_ui_dsn': sentry.get('ui_dsn', 'false'),
         'server_header': 'imbi/{}'.format(version),
         'session_duration': int(session.get('duration', '7')),

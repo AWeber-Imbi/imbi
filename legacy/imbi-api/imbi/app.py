@@ -114,8 +114,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         """Invoked on startup of the application"""
         self.startup_complete = asyncio.Event()
-
-        if sentry_sdk and self.settings['sentry_backend_dsn']:
+        if sentry_sdk and self.settings.get('sentry_backend_dsn'):
             sentry_sdk.init(
                 debug=self.settings['debug'],
                 dsn=self.settings['sentry_backend_dsn'],
