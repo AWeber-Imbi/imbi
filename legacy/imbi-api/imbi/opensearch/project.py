@@ -146,7 +146,7 @@ class ProjectIndex:
 class RequestHandlerMixin:
 
     def __init__(self, *args, **kwargs):
-        super(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.search_index = ProjectIndex(self.application)
 
     async def index_document(self, project_id: typing.Union[int, str]) -> None:
