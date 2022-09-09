@@ -3,6 +3,7 @@ import asyncio
 from imbi.endpoints import base, cookie_cutters, environments, groups, \
     namespaces, fact_types, project_link_types, project_types
 from imbi.endpoints.integrations import oauth2
+from imbi.opensearch import project
 
 
 class RequestHandler(base.RequestHandler):
@@ -11,6 +12,7 @@ class RequestHandler(base.RequestHandler):
 
     async def get(self) -> None:
         """Return all metadata in a single request"""
+        project_index = project.ProjectIndex(self.application)
         results = await asyncio.gather(
             self.postgres_execute(
                 cookie_cutters.CollectionRequestHandler.COLLECTION_SQL,
@@ -33,7 +35,7 @@ class RequestHandler(base.RequestHandler):
             self.postgres_execute(
                 project_types.CollectionRequestHandler.COLLECTION_SQL,
                 metric_name='project-types'),
-            self.application.opensearch.search_fields(),
+            project_index.searchable_fields(),
             self.postgres_execute(
                 oauth2.CollectionRequestHandler.COLLECTION_SQL,
                 metric_name='integrations'),

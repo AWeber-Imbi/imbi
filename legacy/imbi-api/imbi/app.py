@@ -28,8 +28,9 @@ try:
 except ImportError:
     sentry_logging, sentry_tornado = None, None
 
-from imbi import (endpoints, errors, keychain, openapi, opensearch,
+from imbi import (endpoints, errors, keychain, openapi,
                   permissions, stats, transcoders, version)
+from imbi.clients import opensearch
 from imbi.endpoints import default
 
 LOGGER = logging.getLogger(__name__)
@@ -113,8 +114,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         """Invoked on startup of the application"""
         self.startup_complete = asyncio.Event()
-
-        if sentry_sdk and self.settings['sentry_backend_dsn']:
+        if sentry_sdk and self.settings.get('sentry_backend_dsn'):
             sentry_sdk.init(
                 debug=self.settings['debug'],
                 dsn=self.settings['sentry_backend_dsn'],
@@ -151,16 +151,14 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         await self._postgres_connected.wait()
 
-        self.opensearch = opensearch.OpenSearch(
-            self.settings['opensearch'],
-            self.settings['postgres_url'])
+        self.opensearch = opensearch.OpenSearch(self.settings['opensearch'])
         if not await self.opensearch.initialize():
             self.stop(self.loop)
             return
 
         self.startup_complete.set()
         self._ready_to_serve = True
-        LOGGER.info('Application startup complete, ready to serve requests')
+        LOGGER.info('Application startup complete')
 
     async def on_shutdown(self, *_args, **_kwargs) -> None:
         await self.opensearch.stop()

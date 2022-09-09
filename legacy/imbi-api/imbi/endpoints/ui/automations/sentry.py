@@ -1,10 +1,11 @@
 from imbi.automations import sentry
-from imbi.endpoints import base, projects
+from imbi.endpoints import base
 from imbi.endpoints.ui.automations import mixins
+from imbi.opensearch import project
 
 
 class ProjectCreationRequestHandler(mixins.PrepareFailureMixin,
-                                    projects.OpensearchMixin,
+                                    project.RequestHandlerMixin,
                                     base.ValidatingRequestHandler):
     NAME = 'ui-sentry-create-project'
 

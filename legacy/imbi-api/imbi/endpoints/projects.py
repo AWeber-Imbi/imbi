@@ -1,18 +1,9 @@
 import asyncio
-import dataclasses
 import re
-import typing
 
 from imbi import errors, models
 from imbi.endpoints import base
-
-
-def project_to_dict(project: models.Project) -> dict:
-    output = dataclasses.asdict(project)
-    for key in ['namespace', 'project_type']:
-        output[f'{key}_slug'] = output[key]['slug']
-        output[key] = output[key]['name']
-    return output
+from imbi.opensearch import project
 
 
 class _RequestHandlerMixin:
@@ -50,29 +41,14 @@ class _RequestHandlerMixin:
          WHERE a.id=%(id)s""")
 
 
-class OpensearchMixin:
-
-    SEARCH_INDEX = 'projects'
-
-    async def delete_from_index(self,
-                                project_id: typing.Union[int, str]) -> None:
-        await self.application.opensearch.delete_document(
-            self.SEARCH_INDEX, str(project_id))
-
-    async def index_document(self, project_id: typing.Union[int, str]) -> None:
-        project = await models.project(project_id, self.application)
-        await self.application.opensearch.index_document(
-            self.SEARCH_INDEX, str(project_id), project_to_dict(project))
-
-
-class ProjectAttributeCollectionMixin(OpensearchMixin):
+class ProjectAttributeCollectionMixin(project.RequestHandlerMixin):
 
     async def post(self, *_args, **kwargs):
         result = await self._post(kwargs)
         await self.index_document(result['project_id'])
 
 
-class ProjectAttributeCRUDMixin(OpensearchMixin):
+class ProjectAttributeCRUDMixin(project.RequestHandlerMixin):
 
     async def delete(self, *args, **kwargs):
         await super().delete(*args, **kwargs)
@@ -83,7 +59,7 @@ class ProjectAttributeCRUDMixin(OpensearchMixin):
         await self.index_document(kwargs['project_id'])
 
 
-class CollectionRequestHandler(OpensearchMixin,
+class CollectionRequestHandler(project.RequestHandlerMixin,
                                _RequestHandlerMixin,
                                base.CollectionRequestHandler):
     NAME = 'projects'
@@ -190,7 +166,7 @@ class CollectionRequestHandler(OpensearchMixin,
         await self.index_document(result['id'])
 
 
-class RecordRequestHandler(OpensearchMixin,
+class RecordRequestHandler(project.RequestHandlerMixin,
                            _RequestHandlerMixin,
                            base.CRUDRequestHandler):
 
@@ -314,7 +290,7 @@ class RecordRequestHandler(OpensearchMixin,
 
     async def delete(self, *args, **kwargs):
         await super().delete(*args, **kwargs)
-        await self.delete_from_index(kwargs['id'])
+        await self.search_index.delete_document(kwargs['id'])
 
     async def get(self, *args, **kwargs):
         if self.get_argument('full', 'false') == 'true':
@@ -347,21 +323,16 @@ class RecordRequestHandler(OpensearchMixin,
         await self.index_document(kwargs['id'])
 
 
-class SearchRequestHandler(base.AuthenticatedRequestHandler):
+class SearchRequestHandler(project.RequestHandlerMixin,
+                           base.AuthenticatedRequestHandler):
 
     async def get(self):
-        result = await self.application.opensearch.client.search(
-            body={
-                'query': {
-                    'query_string': {
-                        'query': self.get_query_argument('s')}},
-                'size': 1000},
-            index='projects')
-        self.send_response({
-            'hits': [r['_source'] for r in result['hits']['hits']]})
+        result = await self.search_index.search(self.get_query_argument('s'))
+        self.send_response(result)
 
 
-class SearchIndexRequestHandler(base.AuthenticatedRequestHandler):
+class SearchIndexRequestHandler(project.RequestHandlerMixin,
+                                base.AuthenticatedRequestHandler):
 
     SQL = re.sub(r'\s+', ' ', """\
         SELECT id
@@ -372,9 +343,8 @@ class SearchIndexRequestHandler(base.AuthenticatedRequestHandler):
         result = await self.postgres_execute(self.SQL)
         ids = [row['id'] for row in result]
         for project_id in ids:
-            project = await models.project(project_id, self.application)
-            await self.application.opensearch.index_document(
-                'projects', project_id, project_to_dict(project))
+            value = await models.project(project_id, self.application)
+            await self.search_index.index_document(value)
 
         self.send_response({
             'status': 'ok',

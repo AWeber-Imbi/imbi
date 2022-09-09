@@ -3,18 +3,22 @@ Imbi CLI application
 
 """
 import argparse
+import asyncio
 import base64
 import binascii
 import logging
 import pathlib
 import sys
 import typing
+from logging import config as logging_config
 
 import yaml
 from sprockets import http
+from tornado import ioloop
 
 from imbi import app, pkgfiles, version
 from imbi.endpoints import static
+from imbi.opensearch import project
 
 LOGGER = logging.getLogger(__name__)
 
@@ -56,11 +60,31 @@ DEFAULT_LOG_CONFIG = {
 
 def run() -> None:
     args = _parse_cli_args()
-    http.run(app.Application, *load_configuration(args.config[0], args.debug))
+    config = load_configuration(args.config[0], args.debug)
+    if args.initialize:
+        return asyncio.run(initialize(config[0], config[1], args.build))
+    http.run(app.Application, *config)
+
+
+async def initialize(settings: dict, logging_settings: dict, build: bool):
+    logging_config.dictConfig(logging_settings)
+    loop = ioloop.IOLoop.current()
+
+    """Initialize the OpenSearch Indexes"""
+    application = app.Application(**settings)
+    await application._postgres_on_start(application, loop)
+    await application.on_start(application, loop)
+
+    # Initialize the Projects Index
+    await project.initialize(application, build)
+
+    LOGGER.info('Initialization is complete')
+    await application._postgres_shutdown(loop)
+    await application.on_shutdown()
 
 
 def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
-    """Load the configuration file and apply all of the default settings"""
+    """Load the configuration file and apply the default settings"""
     config_file = pathlib.Path(config)
     if not config_file.exists():
         sys.stderr.write(
@@ -182,7 +206,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'postgres_connection_ttl': postgres.get('connection_ttl'),
         'postgres_query_timeout': postgres.get('query_timeout'),
         'project_url_template': config.get('project_url_template', None),
-        'sentry_backend_dsn': sentry.get('backend_dsn', 'false'),
+        'sentry_backend_dsn': sentry.get('backend_dsn'),
         'sentry_ui_dsn': sentry.get('ui_dsn', 'false'),
         'server_header': 'imbi/{}'.format(version),
         'session_duration': int(session.get('duration', '7')),
@@ -211,6 +235,11 @@ def _parse_cli_args() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         '--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument(
+        '--initialize', action='store_true', help='Initialize Search Indexes')
+    parser.add_argument(
+        '--build', action='store_true',
+        help='Build the search index when initializing')
     parser.add_argument('-V', '--version', action='version', version=version)
     parser.add_argument(
         'config', metavar='CONFIG FILE', nargs=1,
