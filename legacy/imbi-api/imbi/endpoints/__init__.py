@@ -7,8 +7,8 @@ from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                operations_log, permissions, project_activity_feed,
                project_dependencies, project_fact_history, project_fact_types,
                project_facts, project_link_types, project_links,
-               project_score_history, project_secrets, project_types,
-               project_urls, projects, reports, status, ui)
+               project_notes, project_score_history, project_secrets,
+               project_types, project_urls, projects, reports, status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -99,6 +99,12 @@ URLS = [
             r'(?P<link_type_id>\d+)$',
             project_links.RecordRequestHandler,
             name='project-link'),
+    web.url(r'^/projects/(?P<project_id>\d+)/notes$',
+            project_notes.CollectionRequestHandler,
+            name='project-notes'),
+    web.url(r'^/projects/(?P<project_id>\d+)/notes/(?P<id>\d+)$',
+            project_notes.RecordHandler,
+            name='project-note'),
     web.url(r'^/projects/(?P<project_id>\d+)/score-history$',
             project_score_history.CollectionRequestHandler,
             name='project-score-history'),
