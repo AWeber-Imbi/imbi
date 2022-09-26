@@ -121,13 +121,18 @@ class OpenSearch:
     async def index_document(self,
                              index: str,
                              document_id: str,
-                             document: dict) -> None:
+                             document: dict,
+                             sync: bool = False) -> None:
         """Queue a document to be added the OpenSearch index"""
         LOGGER.debug('Queueing %s:%s to be indexed', index, document_id)
-        await self.redis.set(
-            f'{index}:{document_id}',
-            json.dumps(normalize(sanitize_keys(document)), indent=0))
-        await self.redis.sadd(self.PENDING_KEY, f'{index}:{document_id}')
+        if not sync:
+            await self.redis.set(
+                f'{index}:{document_id}',
+                json.dumps(normalize(sanitize_keys(document)), indent=0))
+            await self.redis.sadd(self.PENDING_KEY, f'{index}:{document_id}')
+            return
+        await self._index_document(
+            index, document_id, normalize(sanitize_keys(document)))
 
     async def search(self, index: str, query: str, max_results: int = 1000) \
             -> typing.Dict[str, typing.List[dict]]:
@@ -165,12 +170,8 @@ class OpenSearch:
             LOGGER.warning('Failed to load %s from redis', key)
             return False
 
-        try:
-            await self.client.index(
-                index, body=json.loads(document), id=document_id)
-        except opensearchpy.RequestError as err:
-            LOGGER.warning('Failed to index %s in %s: %s',
-                           document_id, index, err)
+        if not await self._index_document(
+                index, document_id, json.loads(document)):
             return False
 
         result = await asyncio.gather(
@@ -179,4 +180,18 @@ class OpenSearch:
         LOGGER.debug(
             'Processing of %s:%s is complete with %i documents pending',
             index, document_id, result[1])
+        return True
+
+    async def _index_document(self,
+                              index: str,
+                              document_id: str,
+                              document: dict) -> bool:
+        """Invoked to index a document in ElasticSearch"""
+        try:
+            await self.client.index(
+                index, body=document, id=document_id)
+        except opensearchpy.RequestError as err:
+            LOGGER.warning('Failed to index %s in %s: %s',
+                           document_id, index, err)
+            return False
         return True
