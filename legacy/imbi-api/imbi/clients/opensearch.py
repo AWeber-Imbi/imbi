@@ -131,7 +131,8 @@ class OpenSearch:
                 json.dumps(normalize(sanitize_keys(document)), indent=0))
             await self.redis.sadd(self.PENDING_KEY, f'{index}:{document_id}')
             return
-        await self._index_document(index, document_id, document)
+        await self._index_document(
+            index, document_id, normalize(sanitize_keys(document)))
 
     async def search(self, index: str, query: str, max_results: int = 1000) \
             -> typing.Dict[str, typing.List[dict]]:
