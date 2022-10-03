@@ -503,7 +503,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -544,20 +544,7 @@ paths:
       tags:
         - Cookie Cutters
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1cookie-cutters/post/responses/200'
@@ -702,7 +689,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -741,20 +728,7 @@ paths:
       tags:
         - Environments
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1environments/post/responses/200'
@@ -1055,13 +1029,7 @@ paths:
               schema:
                 type: string
             Link:
-              description: |
-                Links to related resources, in the format defined by
-                [RFC 5988](https://tools.ietf.org/html/rfc5988#section-5).
-                This will include a link with relation type `canonical` with the
-                canonical link to the item.
-              schema:
-                type: string
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -1163,91 +1131,20 @@ paths:
       tags:
         - Groups
       requestBody:
-        description: JSON Patch Payload
+        description: 'JSON Patch document as defined by [RFC 6902](https://www.rfc-editor.org/rfc/rfc6902)'
         content:
           application/json:
             schema:
-              title: JSON Patch
-              description: A JSONPatch document as defined by RFC 6902
-              type: array
-              items:
-                anyOf:
-                  - title: Add / Replace / Test
-                    type: object
-                    properties:
-                      path:
-                        description: A JSON Pointer path to apply the operation to
-                        type: string
-                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
-                      op:
-                        description: The operation to perform
-                        type: string
-                        enum:
-                          - add
-                          - replace
-                          - test
-                      value:
-                        description: 'The value to add, replace or test'
-                        oneOf:
-                          - type: array
-                          - type: boolean
-                          - type: number
-                          - type: object
-                          - type: string
-                        nullable: true
-                    required:
-                      - path
-                      - op
-                      - value
-                  - title: Copy / Move
-                    type: object
-                    properties:
-                      path:
-                        description: A JSON Pointer path to apply the operation to
-                        type: string
-                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
-                      op:
-                        description: The operation to perform
-                        type: string
-                        enum:
-                          - copy
-                          - move
-                      from:
-                        description: A JSON Pointer path to the referenced value
-                        type: string
-                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
-                    required:
-                      - path
-                      - op
-                      - from
-                  - title: Remove
-                    type: object
-                    properties:
-                      path:
-                        description: A JSON Pointer path to apply the operation to
-                        type: string
-                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
-                      op:
-                        description: The operation to perform
-                        type: string
-                        enum:
-                          - remove
-                    required:
-                      - path
-                      - op
-              example:
-                - op: replace
-                  path: icon_class
-                  value: fas fa-microscope
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes~1%7Bnote_id%7D/patch/requestBody/content/application~1json/schema'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes~1%7Bnote_id%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+json:
             schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes~1%7Bnote_id%7D/patch/requestBody/content/application~1json/schema'
           application/json-patch+msgpack:
             schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes~1%7Bnote_id%7D/patch/requestBody/content/application~1json/schema'
       responses:
         '200':
           $ref: '#/paths/~1groups/post/responses/200'
@@ -1561,7 +1458,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -1622,20 +1519,7 @@ paths:
       tags:
         - Namespaces
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1namespaces/post/responses/200'
@@ -2087,9 +1971,11 @@ paths:
                   description: 'If specified, indicates the change occurred over a span of time'
                   type: string
                   format: iso8601-timestamp
+                  nullable: true
                 project_id:
                   description: The ID of the project that was changed
                   type: number
+                  nullable: true
                 environment:
                   description: The environment that the change occurred in
                   type: string
@@ -2109,19 +1995,24 @@ paths:
                 description:
                   description: The single line description of the change
                   type: string
+                  nullable: true
                 link:
                   description: An optional link for additional context to the link
                   type: string
+                  nullable: true
                 notes:
                   description: Optional notes for the change in markdown format
                   type: string
+                  nullable: true
                 ticket_slug:
                   description: An optional slug of the ticket that the change was made for
                   type: string
                   pattern: '^[\w-]+$'
+                  nullable: true
                 version:
                   description: An optional version that the change was made for
                   type: string
+                  nullable: true
               required:
                 - recorded_by
                 - environment
@@ -2167,7 +2058,7 @@ paths:
           description: 'The request to create, update, or update the operations-log entry was successful'
           headers:
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -2234,20 +2125,7 @@ paths:
       tags:
         - Operations Log
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1operations-log/post/responses/200'
@@ -2539,6 +2417,7 @@ paths:
                       - display-as-badge
                       - display-as-percentage
                       - hidden
+                      - read-only
                   uniqueItems: true
                 weight:
                   description: The weight of the fact type when computing a project score
@@ -2588,7 +2467,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -2651,20 +2530,7 @@ paths:
       tags:
         - Fact Types
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1project-fact-types/post/responses/200'
@@ -2896,7 +2762,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -2951,20 +2817,7 @@ paths:
       tags:
         - Fact Type Enums
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1project-fact-type-enums/post/responses/200'
@@ -3186,7 +3039,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -3241,20 +3094,7 @@ paths:
       tags:
         - Fact Type Ranges
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1project-fact-type-ranges/post/responses/200'
@@ -3418,7 +3258,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -3469,20 +3309,7 @@ paths:
       tags:
         - Project Link Types
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1project-link-types/post/responses/200'
@@ -3718,7 +3545,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -3775,20 +3602,7 @@ paths:
       tags:
         - Project Types
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1project-types/post/responses/200'
@@ -4146,7 +3960,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -4217,20 +4031,7 @@ paths:
       tags:
         - Projects
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1projects/post/responses/200'
@@ -4509,6 +4310,7 @@ paths:
                         - display-as-badge
                         - display-as-percentage
                         - hidden
+                        - read-only
                     uniqueItems: true
                   weight:
                     description: The weight of the fact type when computing a project score
@@ -4590,7 +4392,9 @@ paths:
                         type: string
                         enum:
                           - display-as-badge
+                          - display-as-percentage
                           - hidden
+                          - read-only
                       uniqueItems: true
                     enum_values:
                       description: An array of the possible values if the fact type is an enum
@@ -4602,7 +4406,7 @@ paths:
                       type: number
                       nullable: true
                     max_value:
-                      description: The maximim value if this is a range fact type
+                      description: The maximum value if this is a range fact type
                       type: number
                       nullable: true
                     weight:
@@ -4722,7 +4526,9 @@ paths:
                         type: string
                         enum:
                           - display-as-badge
+                          - display-as-percentage
                           - hidden
+                          - read-only
                       uniqueItems: true
                     enum_values:
                       description: An array of the possible values if the fact type is an enum
@@ -4734,7 +4540,7 @@ paths:
                       type: number
                       nullable: true
                     max_value:
-                      description: The maximim value if this is a range fact type
+                      description: The maximum value if this is a range fact type
                       type: number
                       nullable: true
                     weight:
@@ -5236,7 +5042,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -5296,20 +5102,7 @@ paths:
       tags:
         - Project Links
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1projects~1%7Bid%7D~1links/post/responses/200'
@@ -5348,6 +5141,288 @@ paths:
         required: true
         schema:
           type: number
+  '/projects/{id}/notes':
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Project ID
+        schema:
+          type: number
+    get:
+      summary: Get Collection
+      description: Retrieve the notes for a project
+      tags:
+        - Project Notes
+      parameters:
+        - name: limit
+          description: Maximum number of items to return
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            default: 100
+          required: false
+        - name: page_token
+          description: opaque pagination token
+          in: query
+          schema:
+            type: string
+          required: false
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1projects~1%7Bid%7D~1notes~1%7Bnote_id%7D/patch/responses/200/content/application~1json/schema'
+              example:
+                - content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean at libero mauris. Donec a erat malesuada dolor congue ullamcorper non et risus. Etiam vehicula bibendum convallis. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Suspendisse posuere purus in odio bibendum cursus. Curabitur vitae iaculis urna. Mauris in urna luctus, interdum sapien nec, ultrices nisl. Aenean pulvinar blandit massa, et sodales nibh accumsan vel. Sed a arcu nisi. Nulla efficitur diam eu diam finibus faucibus eget in dolor. Donec quis euismod nisi. Donec placerat, leo nec elementum pretium, tellus lorem tristique ante, eget malesuada justo diam eu magna. Pellentesque mattis bibendum dapibus. Duis sed nisl eu erat fermentum vehicula vel a urna. Nullam lectus neque, egestas id eleifend et, tincidunt ut est. In sollicitudin elementum pharetra.'
+                  created_by: test
+                  id: 1
+                  project_id: 1
+                  updated_by: null
+          headers:
+            Link:
+              description: |
+                Links to related resources, in the format defined by
+                [RFC 5988](https://tools.ietf.org/html/rfc5988#section-5).  The following
+                link relation types are used in this API.
+
+                | "rel" value | Description                                      |
+                |:-----------:| -----------                                      |
+                | canonical   | the canonical URL for the resource if one exists |
+                | first       | link to the first page in a collection           |
+                | next        | link to the next page in the collection          |
+              schema:
+                type: string
+    post:
+      summary: Create Record
+      description: Create a new note for a project
+      tags:
+        - Project Notes
+      requestBody:
+        description: Note content
+        content:
+          application/json:
+            schema:
+              title: Project Note
+              description: User generated note about a project
+              type: object
+              properties:
+                content:
+                  description: The note content
+                  type: string
+              required:
+                - content
+            example:
+              content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean at libero mauris. Donec a erat malesuada dolor congue ullamcorper non et risus. Etiam vehicula bibendum convallis. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Suspendisse posuere purus in odio bibendum cursus. Curabitur vitae iaculis urna. Mauris in urna luctus, interdum sapien nec, ultrices nisl. Aenean pulvinar blandit massa, et sodales nibh accumsan vel. Sed a arcu nisi. Nulla efficitur diam eu diam finibus faucibus eget in dolor. Donec quis euismod nisi. Donec placerat, leo nec elementum pretium, tellus lorem tristique ante, eget malesuada justo diam eu magna. Pellentesque mattis bibendum dapibus. Duis sed nisl eu erat fermentum vehicula vel a urna. Nullam lectus neque, egestas id eleifend et, tincidunt ut est. In sollicitudin elementum pharetra.'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/post/requestBody/content/application~1json/schema'
+            example:
+              content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean at libero mauris. Donec a erat malesuada dolor congue ullamcorper non et risus. Etiam vehicula bibendum convallis. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Suspendisse posuere purus in odio bibendum cursus. Curabitur vitae iaculis urna. Mauris in urna luctus, interdum sapien nec, ultrices nisl. Aenean pulvinar blandit massa, et sodales nibh accumsan vel. Sed a arcu nisi. Nulla efficitur diam eu diam finibus faucibus eget in dolor. Donec quis euismod nisi. Donec placerat, leo nec elementum pretium, tellus lorem tristique ante, eget malesuada justo diam eu magna. Pellentesque mattis bibendum dapibus. Duis sed nisl eu erat fermentum vehicula vel a urna. Nullam lectus neque, egestas id eleifend et, tincidunt ut est. In sollicitudin elementum pharetra.'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1projects~1%7Bid%7D~1notes~1%7Bnote_id%7D/patch/responses/200/content/application~1json/schema'
+              example:
+                content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean at libero mauris. Donec a erat malesuada dolor congue ullamcorper non et risus. Etiam vehicula bibendum convallis. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Suspendisse posuere purus in odio bibendum cursus. Curabitur vitae iaculis urna. Mauris in urna luctus, interdum sapien nec, ultrices nisl. Aenean pulvinar blandit massa, et sodales nibh accumsan vel. Sed a arcu nisi. Nulla efficitur diam eu diam finibus faucibus eget in dolor. Donec quis euismod nisi. Donec placerat, leo nec elementum pretium, tellus lorem tristique ante, eget malesuada justo diam eu magna. Pellentesque mattis bibendum dapibus. Duis sed nisl eu erat fermentum vehicula vel a urna. Nullam lectus neque, egestas id eleifend et, tincidunt ut est. In sollicitudin elementum pharetra.'
+                created_by: test
+                id: 1
+                project_id: 1
+                updated_by: null
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1projects~1%7Bid%7D~1notes~1%7Bnote_id%7D/patch/responses/200/content/application~1json/schema'
+              example:
+                content: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean at libero mauris. Donec a erat malesuada dolor congue ullamcorper non et risus. Etiam vehicula bibendum convallis. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Suspendisse posuere purus in odio bibendum cursus. Curabitur vitae iaculis urna. Mauris in urna luctus, interdum sapien nec, ultrices nisl. Aenean pulvinar blandit massa, et sodales nibh accumsan vel. Sed a arcu nisi. Nulla efficitur diam eu diam finibus faucibus eget in dolor. Donec quis euismod nisi. Donec placerat, leo nec elementum pretium, tellus lorem tristique ante, eget malesuada justo diam eu magna. Pellentesque mattis bibendum dapibus. Duis sed nisl eu erat fermentum vehicula vel a urna. Nullam lectus neque, egestas id eleifend et, tincidunt ut est. In sollicitudin elementum pharetra.'
+                created_by: test
+                id: 1
+                project_id: 1
+                updated_by: null
+  '/projects/{id}/notes/{note_id}':
+    parameters:
+      - $ref: '#/paths/~1projects~1%7Bid%7D~1notes/parameters/0'
+      - name: note_id
+        description: Unique identifier for the note
+        in: path
+        required: true
+        schema:
+          type: number
+    get:
+      summary: Get Record
+      description: Retrieve a note by its ID
+      tags:
+        - Project Notes
+      responses:
+        '200':
+          $ref: '#/paths/~1projects~1%7Bid%7D~1notes/post/responses/200'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+    patch:
+      summary: Update Record
+      description: Update a specific note
+      tags:
+        - Project Notes
+      requestBody:
+        description: 'JSON Patch document as defined by [RFC 6902](https://www.rfc-editor.org/rfc/rfc6902)'
+        content:
+          application/json:
+            schema:
+              title: JSON Patch
+              description: 'A JSONPatch document as defined by [RFC 6902](https://www.rfc-editor.org/rfc/rfc6902)'
+              type: array
+              items:
+                anyOf:
+                  - title: Add / Replace / Test
+                    type: object
+                    properties:
+                      path:
+                        description: A JSON Pointer path to apply the operation to
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                      op:
+                        description: The operation to perform
+                        type: string
+                        enum:
+                          - add
+                          - replace
+                          - test
+                      value:
+                        description: 'The value to add, replace, or test'
+                        oneOf:
+                          - type: array
+                            items:
+                              $ref: '#/paths/~1projects~1%7Bid%7D~1notes~1%7Bnote_id%7D/patch/requestBody/content/application~1json/schema/items/anyOf/0/properties/value'
+                          - type: boolean
+                          - type: number
+                          - type: object
+                          - type: string
+                        nullable: true
+                    required:
+                      - path
+                      - op
+                      - value
+                  - title: Copy / Move
+                    type: object
+                    properties:
+                      path:
+                        description: A JSON Pointer path to apply the operation to
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                      op:
+                        description: The operation to perform
+                        type: string
+                        enum:
+                          - copy
+                          - move
+                      from:
+                        description: A JSON Pointer path to the referenced value
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                    required:
+                      - path
+                      - op
+                      - from
+                  - title: Remove
+                    type: object
+                    properties:
+                      path:
+                        description: A JSON Pointer path to apply the operation to
+                        type: string
+                        pattern: '^(/[^/~]*(~[01][^/~]*)*)*$'
+                      op:
+                        description: The operation to perform
+                        type: string
+                        enum:
+                          - remove
+                    required:
+                      - path
+                      - op
+              example:
+                - op: replace
+                  path: /icon_class
+                  value: fas fa-microscope
+            example:
+              - op: replace
+                path: /content
+                value: 'Bacon ipsum dolor amet alcatra tongue shankle, beef ribs ribeye filet mignon drumstick landjaeger capicola andouille pancetta meatloaf cupim bresaola rump. Pork belly ham turkey, salami prosciutto ribeye beef ribs swine ground round pork loin leberkas tri-tip pig cow pastrami. Prosciutto tri-tip strip steak cow. Shankle hamburger kevin, pig meatloaf burgdoggen kielbasa ball tip pastrami tongue sirloin corned beef turducken flank porchetta. Filet mignon bacon chislic, chicken burgdoggen cow pig. Landjaeger chicken jowl kielbasa bresaola bacon. Spare ribs turkey prosciutto boudin pastrami pancetta leberkas.'
+      responses:
+        '200':
+          description: Note was updated
+          content:
+            application/json:
+              schema:
+                title: Project Note
+                description: User generated note about a project
+                type: object
+                properties:
+                  id:
+                    description: The note identifier
+                    type: integer
+                  project_id:
+                    description: Identifies the project that this note is associated with
+                    type: integer
+                  content:
+                    description: The note content
+                    type: string
+                  created_by:
+                    description: The user that created the note
+                    type: string
+                  updated_by:
+                    description: The user that most recently modified the note
+                    type: string
+                    nullable: true
+                required:
+                  - content
+                  - created_by
+                  - id
+                  - project_id
+              example:
+                content: 'Bacon ipsum dolor amet alcatra tongue shankle, beef ribs ribeye filet mignon drumstick landjaeger capicola andouille pancetta meatloaf cupim bresaola rump. Pork belly ham turkey, salami prosciutto ribeye beef ribs swine ground round pork loin leberkas tri-tip pig cow pastrami. Prosciutto tri-tip strip steak cow. Shankle hamburger kevin, pig meatloaf burgdoggen kielbasa ball tip pastrami tongue sirloin corned beef turducken flank porchetta. Filet mignon bacon chislic, chicken burgdoggen cow pig. Landjaeger chicken jowl kielbasa bresaola bacon. Spare ribs turkey prosciutto boudin pastrami pancetta leberkas.'
+                created_by: test
+                id: 1
+                project_id: 1
+                updated_by: test
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1projects~1%7Bid%7D~1notes~1%7Bnote_id%7D/patch/responses/200/content/application~1json/schema'
+              example:
+                content: 'Bacon ipsum dolor amet alcatra tongue shankle, beef ribs ribeye filet mignon drumstick landjaeger capicola andouille pancetta meatloaf cupim bresaola rump. Pork belly ham turkey, salami prosciutto ribeye beef ribs swine ground round pork loin leberkas tri-tip pig cow pastrami. Prosciutto tri-tip strip steak cow. Shankle hamburger kevin, pig meatloaf burgdoggen kielbasa ball tip pastrami tongue sirloin corned beef turducken flank porchetta. Filet mignon bacon chislic, chicken burgdoggen cow pig. Landjaeger chicken jowl kielbasa bresaola bacon. Spare ribs turkey prosciutto boudin pastrami pancetta leberkas.'
+                created_by: test
+                id: 1
+                project_id: 1
+                updated_by: test
+        '304':
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1groups/post/responses/409'
+    delete:
+      summary: Delete Record
+      description: Remove a project note
+      tags:
+        - Project Notes
+      responses:
+        '204':
+          description: Success
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   '/projects/{id}/dependencies':
     get:
       description: Retrieve the collection of dependencies for a project
@@ -5461,7 +5536,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -5832,7 +5907,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1groups/post/responses/200/headers/Link'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -5888,20 +5963,7 @@ paths:
       tags:
         - Project URLs
       requestBody:
-        description: JSON Patch Payload
-        content:
-          application/json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+json:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
-          application/json-patch+msgpack:
-            schema:
-              $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody/content/application~1json/schema'
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
         '200':
           $ref: '#/paths/~1projects~1%7Bid%7D~1urls/post/responses/200'
@@ -6310,6 +6372,8 @@ tags:
     description: Endpoint for returning the project fact history for a specific project
   - name: Project Links
     description: Endpoints used to manage links to external resources for a project
+  - name: Project Notes
+    description: Endpoints used to manage notes for a project
   - name: Project Scores
     description: Endpoints detailing information about project scores
   - name: Project URLs
@@ -6357,6 +6421,7 @@ x-tagGroups:
       - Project Fact Types
       - Project Fact History
       - Project Links
+      - Project Notes
       - Project Scores
       - Project URLs
   - name: Reports

@@ -268,7 +268,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     ID_KEY: typing.Union[str, list] = 'id'
     IS_COLLECTION = False
     FIELDS = None
-    GET_NAME = None  # Used to create link headers for POST requests
+    ITEM_NAME = None  # Used to create link headers for POST requests
     TTL = 300
 
     DELETE_SQL: typing.Optional[str] = None
@@ -435,7 +435,7 @@ class CollectionRequestHandler(CRUDRequestHandler):
     ID_KEY: typing.Union[str, list] = 'id'
     IS_COLLECTION: True
     FIELDS = None
-    GET_NAME = None  # Used to create link headers for POST requests
+    ITEM_NAME = None  # Used to create link headers for POST requests
     COLLECTION_SQL = """SELECT * FROM pg_tables WHERE schemaname = 'v1';"""
     TTL = 300
 
