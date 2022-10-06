@@ -22,7 +22,7 @@ from sprockets.http import mixins
 from sprockets.mixins import mediatype
 from tornado import httputil, web
 
-from imbi import errors, session, user, version
+from imbi import cors, errors, session, user, version
 
 LOGGER = logging.getLogger(__name__)
 
@@ -51,7 +51,8 @@ def require_permission(permission):
     return _require_permission
 
 
-class RequestHandler(postgres.RequestHandlerMixin,
+class RequestHandler(cors.CORSMixin,
+                     postgres.RequestHandlerMixin,
                      mixins.ErrorLogger,
                      problemdetails.ErrorWriter,
                      mediatype.ContentMixin,
@@ -82,9 +83,6 @@ class RequestHandler(postgres.RequestHandlerMixin,
         the current user and cookie is cleared.
 
         """
-        if self.application.settings.get('javascript_url'):
-            self.set_header('Access-Control-Allow-Origin', '*')
-
         if not self.application.ready_to_serve:
             return self.send_error(503, reason='Application not ready')
         self.session = session.Session(self)
@@ -221,6 +219,11 @@ class AuthenticatedRequestHandler(RequestHandler):
 
     async def prepare(self) -> None:
         await super().prepare()
+
+        # Don't require authorization for pre-flight requests
+        if self.cors.is_preflight:
+            return
+
         if not self._current_user:
             if self._respond_with_html:
                 return await self.render(
@@ -236,6 +239,13 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
     """Validates the request against the OpenAPI spec"""
     async def prepare(self) -> None:
         await super().prepare()
+
+        # Don't validate preflight OPTIONS requests... otherwise,
+        # we need to include the OPTIONS stanza in every OpenAPI
+        # path spec
+        if self.cors.is_preflight:
+            return
+
         try:
             self.application.validate_request(self.request)
         except DeserializeError as err:
