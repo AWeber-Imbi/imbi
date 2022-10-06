@@ -173,6 +173,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'canonical_server_name': http_settings['canonical_server_name'],
         'compress_response': http_settings.get('compress_response', True),
         'cookie_secret': http_settings.get('cookie_secret', 'imbi'),
+        'cors': config.get('cors', None),
         'debug': debug,
         'encryption_key': encryption_key,
         'footer_link': {

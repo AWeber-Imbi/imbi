@@ -28,7 +28,7 @@ try:
 except ImportError:
     sentry_logging, sentry_tornado = None, None
 
-from imbi import (endpoints, errors, keychain, openapi,
+from imbi import (cors, endpoints, errors, keychain, openapi,
                   permissions, stats, transcoders, version)
 from imbi.clients import opensearch
 from imbi.endpoints import default
@@ -73,6 +73,20 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
             umsgpack.packb, umsgpack.unpackb)
 
         errors.set_canonical_server(self.settings['canonical_server_name'])
+
+        if self.settings.get('cors'):
+            kwargs = {
+                name: self.settings['cors'][name]
+                for name in {'allow_any_origin', 'allow_credentials',
+                             'allow_methods', 'exposed_headers',
+                             'max_age'}
+                if name in self.settings['cors']
+            }
+            self.cors_config = cors.CORSConfig(**kwargs)
+        else:
+            self.cors_config = cors.CORSConfig()
+        for allowed_origin in self.settings.get('cors', {}).get('origins', []):
+            self.cors_config.allowed_origins.add(allowed_origin)
 
     def hash_password(self, password: str) -> str:
         """Generate a HMAC-SHA512 hash of `password`."""
