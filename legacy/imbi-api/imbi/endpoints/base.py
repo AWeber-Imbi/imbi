@@ -91,7 +91,7 @@ class RequestHandler(postgres.RequestHandlerMixin,
         await self.session.initialize()
         self._current_user = await self.get_current_user()
         future = super().prepare()
-        if asyncio.isfuture(future):
+        if asyncio.isfuture(future) or asyncio.iscoroutine(future):
             await future
 
     def on_finish(self) -> None:
