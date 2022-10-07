@@ -171,3 +171,6 @@ git push origin main
 git tag [VERSION]
 git push origin [VERSION]
 ```
+
+What it does not currently do is update the VERSION file in imbi-api.  You
+must do this manually before updating this repository.
