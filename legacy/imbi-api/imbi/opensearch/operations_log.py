@@ -3,8 +3,7 @@ import dataclasses
 import logging
 import typing
 
-from imbi import errors, models
-from imbi.clients import opensearch
+from imbi import models
 if typing.TYPE_CHECKING:
     from imbi import app
 

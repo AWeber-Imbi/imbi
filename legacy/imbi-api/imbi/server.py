@@ -18,7 +18,7 @@ from tornado import ioloop
 
 from imbi import app, pkgfiles, version
 from imbi.endpoints import static
-from imbi.opensearch import project, operations_log
+from imbi.opensearch import operations_log, project
 
 LOGGER = logging.getLogger(__name__)
 

@@ -183,7 +183,8 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
         await super().patch(*args, **kwargs)
         await self.index_document(kwargs['id'])
 
-class SearchIndexRequestHandler(project.RequestHandlerMixin,
+
+class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
                                 base.AuthenticatedRequestHandler):
     SQL = re.sub(r'\s+', ' ', """\
             SELECT a.id,
@@ -213,4 +214,5 @@ class SearchIndexRequestHandler(project.RequestHandlerMixin,
 
         self.send_response({
             'status': 'ok',
-            'message': f'Queued {len(ids)} operations log entries for indexing'})
+            'message': f'Queued {len(ids)} operations log entries for '
+                       'indexing'})
