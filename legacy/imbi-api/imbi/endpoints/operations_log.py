@@ -4,6 +4,7 @@ from urllib import parse
 import yarl
 
 from imbi.endpoints import base
+from imbi.opensearch import operations_log
 
 
 class _RequestHandlerMixin:
@@ -21,7 +22,8 @@ class _RequestHandlerMixin:
          WHERE id = %(id)s""")
 
 
-class CollectionRequestHandler(_RequestHandlerMixin,
+class CollectionRequestHandler(operations_log.RequestHandlerMixin,
+                               _RequestHandlerMixin,
                                base.CollectionRequestHandler):
 
     NAME = 'operations-logs'
@@ -145,8 +147,13 @@ class CollectionRequestHandler(_RequestHandlerMixin,
 
         self.send_response(rows)
 
+    async def post(self, *_args, **kwargs):
+        result = await self._post(kwargs)
+        await self.index_document(result['id'])
 
-class RecordRequestHandler(_RequestHandlerMixin,
+
+class RecordRequestHandler(operations_log.RequestHandlerMixin,
+                           _RequestHandlerMixin,
                            base.AdminCRUDRequestHandler):
     NAME = 'operations-log'
 
@@ -166,3 +173,11 @@ class RecordRequestHandler(_RequestHandlerMixin,
                ticket_slug = %(ticket_slug)s,
                version = %(version)s
          WHERE id = %(id)s""")
+
+    async def delete(self, *args, **kwargs):
+        await super().delete(*args, **kwargs)
+        await self.search_index.delete_document(kwargs['id'])
+
+    async def patch(self, *args, **kwargs):
+        await super().patch(*args, **kwargs)
+        await self.index_document(kwargs['id'])

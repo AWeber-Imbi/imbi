@@ -18,7 +18,7 @@ from tornado import ioloop
 
 from imbi import app, pkgfiles, version
 from imbi.endpoints import static
-from imbi.opensearch import project
+from imbi.opensearch import project, operations_log
 
 LOGGER = logging.getLogger(__name__)
 
@@ -77,6 +77,9 @@ async def initialize(settings: dict, logging_settings: dict, build: bool):
 
     # Initialize the Projects Index
     await project.initialize(application, build)
+
+    # Initialize the OperationsLog Index
+    await operations_log.initialize(application, build)
 
     LOGGER.info('Initialization is complete')
     await application._postgres_shutdown(loop)
