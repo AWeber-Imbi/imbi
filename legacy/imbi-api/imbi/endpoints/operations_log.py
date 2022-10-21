@@ -187,22 +187,9 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
 class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
                                 base.AuthenticatedRequestHandler):
     SQL = re.sub(r'\s+', ' ', """\
-            SELECT a.id,
-                   a.recorded_at,
-                   a.recorded_by,
-                   a.completed_at,
-                   a.project_id,
-                   b.name AS project_name,
-                   a.environment,
-                   a.change_type,
-                   a.description,
-                   a.link,
-                   a.notes,
-                   a.ticket_slug,
-                   a.version
-              FROM v1.operations_log AS a
-         LEFT JOIN v1.projects AS b
-                ON a.project_id = b.id""")
+        SELECT id
+          FROM v1.operations_log
+         ORDER BY id""")
 
     async def get(self):
         result = await self.postgres_execute(self.SQL)
