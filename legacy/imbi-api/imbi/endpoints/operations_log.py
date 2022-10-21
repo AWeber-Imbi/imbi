@@ -3,6 +3,7 @@ from urllib import parse
 
 import yarl
 
+from imbi import models
 from imbi.endpoints import base
 from imbi.opensearch import operations_log
 
@@ -181,3 +182,35 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
     async def patch(self, *args, **kwargs):
         await super().patch(*args, **kwargs)
         await self.index_document(kwargs['id'])
+
+class SearchIndexRequestHandler(project.RequestHandlerMixin,
+                                base.AuthenticatedRequestHandler):
+    SQL = re.sub(r'\s+', ' ', """\
+            SELECT a.id,
+                   a.recorded_at,
+                   a.recorded_by,
+                   a.completed_at,
+                   a.project_id,
+                   b.name AS project_name,
+                   a.environment,
+                   a.change_type,
+                   a.description,
+                   a.link,
+                   a.notes,
+                   a.ticket_slug,
+                   a.version
+              FROM v1.operations_log AS a
+         LEFT JOIN v1.projects AS b
+                ON a.project_id = b.id""")
+
+    async def get(self):
+        result = await self.postgres_execute(self.SQL)
+        ids = [row['id'] for row in result]
+        for operations_log_id in ids:
+            value = await models.operations_log(operations_log_id,
+                                                self.application)
+            await self.search_index.index_document(value)
+
+        self.send_response({
+            'status': 'ok',
+            'message': f'Queued {len(ids)} operations log entries for indexing'})
