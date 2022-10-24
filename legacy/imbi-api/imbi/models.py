@@ -247,6 +247,42 @@ class Project:
          WHERE id=%(id)s""")
 
 
+@dataclasses.dataclass
+class OperationsLog:
+    id: int
+    recorded_at: datetime.datetime
+    recorded_by: str
+    completed_at: typing.Optional[datetime.datetime]
+    project_id: typing.Optional[int]
+    project_name: typing.Optional[str]
+    environment: str
+    change_type: str
+    description: typing.Optional[str]
+    link: typing.Optional[str]
+    notes: typing.Optional[str]
+    ticket_slug: typing.Optional[str]
+    version: typing.Optional[str]
+
+    SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
+        SELECT a.id,
+               a.recorded_at,
+               a.recorded_by,
+               a.completed_at,
+               a.project_id,
+               b.name AS project_name,
+               a.environment,
+               a.change_type,
+               a.description,
+               a.link,
+               a.notes,
+               a.ticket_slug,
+               a.version
+          FROM v1.operations_log AS a
+     LEFT JOIN v1.projects AS b
+            ON a.project_id = b.id
+         WHERE a.id=%(id)s""")
+
+
 async def _load(model: dataclasses.dataclass, obj_id: int,
                 application: 'app.Application') -> dataclasses.dataclass:
 
@@ -287,6 +323,11 @@ async def _load_collection(model: dataclasses.dataclass,
 async def namespace(namespace_id: int,
                     application: 'app.Application') -> Namespace:
     return await _load(Namespace, namespace_id, application)
+
+
+async def operations_log(ops_log_id: int,
+                         application: 'app.Application') -> OperationsLog:
+    return await _load(OperationsLog, ops_log_id, application)
 
 
 async def project(project_id: int,

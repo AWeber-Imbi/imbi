@@ -43,6 +43,8 @@ URLS = [
     web.url(r'^/operations-log/(?P<id>\d+)$',
             operations_log.RecordRequestHandler,
             name='operations-log'),
+    web.url(r'^/operations-log/build-search-index',
+            operations_log.SearchIndexRequestHandler),
     web.url(r'^/permissions$', permissions.RequestHandler),
     web.url(r'^/project-fact-types$', fact_types.CollectionRequestHandler),
     web.url(r'^/project-fact-types/(?P<id>\d+)$',

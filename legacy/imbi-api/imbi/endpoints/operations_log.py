@@ -3,11 +3,12 @@ from urllib import parse
 
 import yarl
 
+from imbi import models
 from imbi.endpoints import base
+from imbi.opensearch import operations_log
 
 
 class _RequestHandlerMixin:
-
     ID_KEY = 'id'
     FIELDS = ['id', 'recorded_at', 'recorded_by', 'completed_at', 'project_id',
               'environment', 'change_type', 'description', 'link', 'notes',
@@ -21,9 +22,9 @@ class _RequestHandlerMixin:
          WHERE id = %(id)s""")
 
 
-class CollectionRequestHandler(_RequestHandlerMixin,
+class CollectionRequestHandler(operations_log.RequestHandlerMixin,
+                               _RequestHandlerMixin,
                                base.CollectionRequestHandler):
-
     NAME = 'operations-logs'
     ITEM_NAME = 'operations-log'
 
@@ -145,8 +146,13 @@ class CollectionRequestHandler(_RequestHandlerMixin,
 
         self.send_response(rows)
 
+    async def post(self, *_args, **kwargs):
+        result = await self._post(kwargs)
+        await self.index_document(result['id'])
 
-class RecordRequestHandler(_RequestHandlerMixin,
+
+class RecordRequestHandler(operations_log.RequestHandlerMixin,
+                           _RequestHandlerMixin,
                            base.AdminCRUDRequestHandler):
     NAME = 'operations-log'
 
@@ -166,3 +172,31 @@ class RecordRequestHandler(_RequestHandlerMixin,
                ticket_slug = %(ticket_slug)s,
                version = %(version)s
          WHERE id = %(id)s""")
+
+    async def delete(self, *args, **kwargs):
+        await super().delete(*args, **kwargs)
+        await self.search_index.delete_document(kwargs['id'])
+
+    async def patch(self, *args, **kwargs):
+        await super().patch(*args, **kwargs)
+        await self.index_document(kwargs['id'])
+
+
+class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
+                                base.ValidatingRequestHandler):
+    SQL = re.sub(r'\s+', ' ', """\
+        SELECT id
+          FROM v1.operations_log
+         ORDER BY id""")
+
+    async def post(self):
+        result = await self.postgres_execute(self.SQL)
+        for row in result:
+            value = await models.operations_log(row['id'],
+                                                self.application)
+            await self.search_index.index_document(value)
+
+        self.send_response({
+            'status': 'ok',
+            'message': f'Queued {len(result)} operations log entries for '
+                       'indexing'})
