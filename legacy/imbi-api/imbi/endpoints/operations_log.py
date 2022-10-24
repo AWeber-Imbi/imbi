@@ -191,13 +191,12 @@ class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
 
     async def post(self):
         result = await self.postgres_execute(self.SQL)
-        ids = [row['id'] for row in result]
-        for operations_log_id in ids:
-            value = await models.operations_log(operations_log_id,
+        for row in result:
+            value = await models.operations_log(row['id'],
                                                 self.application)
             await self.search_index.index_document(value)
 
         self.send_response({
             'status': 'ok',
-            'message': f'Queued {len(ids)} operations log entries for '
+            'message': f'Queued {len(result)} operations log entries for '
                        'indexing'})

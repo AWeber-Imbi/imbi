@@ -338,11 +338,10 @@ class SearchIndexRequestHandler(project.RequestHandlerMixin,
 
     async def post(self):
         result = await self.postgres_execute(self.SQL)
-        ids = [row['id'] for row in result]
-        for project_id in ids:
-            value = await models.project(project_id, self.application)
+        for row in result:
+            value = await models.project(row['id'], self.application)
             await self.search_index.index_document(value)
 
         self.send_response({
             'status': 'ok',
-            'message': f'Queued {len(ids)} projects for indexing'})
+            'message': f'Queued {len(result)} projects for indexing'})
