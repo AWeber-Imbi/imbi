@@ -2159,6 +2159,42 @@ paths:
         schema:
           type: string
           pattern: ^\d+$
+  /operations-log/build-search-index:
+    post:
+      summary: Index the operations log
+      description: Queue all operations log entries to be added to the opensearch index
+      tags:
+        - Operations Log
+      responses:
+        '200':
+          description: The request to index the operations log was successful
+          content:
+            application/json:
+              schema:
+                title: Success
+                description: How many operations log entries were queued for indexing
+                type: object
+                properties:
+                  status:
+                    description: Whether the operation succeeded
+                    type: string
+                  message:
+                    description: How many operations log entries were queued for indexing
+                    type: string
+            application/msgpack:
+              schema:
+                title: Success
+                description: How many operations log entries were queued for indexing
+                type: object
+                properties:
+                  status:
+                    description: Whether the operation succeeded
+                    type: string
+                  message:
+                    description: How many operations log entries were queued for indexing
+                    type: string
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   /permissions:
     get:
       description: Retrieve the collection of available permissions
@@ -6002,6 +6038,42 @@ paths:
         required: true
         schema:
           type: string
+  /projects/build-search-index:
+    post:
+      summary: Index all projects
+      description: Queue all projects to be added to the opensearch index
+      tags:
+        - Projects
+      responses:
+        '200':
+          description: The request to index all projects was successful
+          content:
+            application/json:
+              schema:
+                title: Success
+                description: How many project were queued for indexing
+                type: object
+                properties:
+                  status:
+                    description: Whether the operation succeeded
+                    type: string
+                  message:
+                    description: How many projects were queued for indexing
+                    type: string
+            application/msgpack:
+              schema:
+                title: Success
+                description: How many project were queued for indexing
+                type: object
+                properties:
+                  status:
+                    description: Whether the operation succeeded
+                    type: string
+                  message:
+                    description: How many projects were queued for indexing
+                    type: string
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   /reports/namespace-shs-history:
     get:
       description: The history of stack health scores for all namespaces for the last 12 months
