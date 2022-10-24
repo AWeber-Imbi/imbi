@@ -330,7 +330,7 @@ class SearchRequestHandler(project.RequestHandlerMixin,
 
 
 class SearchIndexRequestHandler(project.RequestHandlerMixin,
-                                base.AuthenticatedRequestHandler):
+                                base.ValidatingRequestHandler):
     SQL = re.sub(r'\s+', ' ', """\
         SELECT id
           FROM v1.projects
