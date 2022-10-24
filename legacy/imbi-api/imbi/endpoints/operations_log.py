@@ -183,7 +183,7 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
 
 
 class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
-                                base.AuthenticatedRequestHandler):
+                                base.ValidatingRequestHandler):
     SQL = re.sub(r'\s+', ' ', """\
         SELECT id
           FROM v1.operations_log
