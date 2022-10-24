@@ -7,7 +7,6 @@ from imbi.opensearch import project
 
 
 class _RequestHandlerMixin:
-
     ITEM_NAME = 'project'
     ID_KEY = ['id']
     FIELDS = ['id', 'namespace_id', 'project_type_id', 'name', 'slug',
@@ -169,7 +168,6 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
 class RecordRequestHandler(project.RequestHandlerMixin,
                            _RequestHandlerMixin,
                            base.CRUDRequestHandler):
-
     NAME = 'project'
 
     DELETE_SQL = 'DELETE FROM v1.projects WHERE id=%(id)s'
@@ -333,13 +331,12 @@ class SearchRequestHandler(project.RequestHandlerMixin,
 
 class SearchIndexRequestHandler(project.RequestHandlerMixin,
                                 base.AuthenticatedRequestHandler):
-
     SQL = re.sub(r'\s+', ' ', """\
         SELECT id
           FROM v1.projects
          ORDER BY id""")
 
-    async def get(self):
+    async def post(self):
         result = await self.postgres_execute(self.SQL)
         ids = [row['id'] for row in result]
         for project_id in ids:

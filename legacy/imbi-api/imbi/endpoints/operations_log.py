@@ -9,7 +9,6 @@ from imbi.opensearch import operations_log
 
 
 class _RequestHandlerMixin:
-
     ID_KEY = 'id'
     FIELDS = ['id', 'recorded_at', 'recorded_by', 'completed_at', 'project_id',
               'environment', 'change_type', 'description', 'link', 'notes',
@@ -26,7 +25,6 @@ class _RequestHandlerMixin:
 class CollectionRequestHandler(operations_log.RequestHandlerMixin,
                                _RequestHandlerMixin,
                                base.CollectionRequestHandler):
-
     NAME = 'operations-logs'
     ITEM_NAME = 'operations-log'
 
@@ -191,7 +189,7 @@ class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
           FROM v1.operations_log
          ORDER BY id""")
 
-    async def get(self):
+    async def post(self):
         result = await self.postgres_execute(self.SQL)
         ids = [row['id'] for row in result]
         for operations_log_id in ids:
