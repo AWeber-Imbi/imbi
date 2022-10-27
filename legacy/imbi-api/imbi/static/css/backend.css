@@ -24,7 +24,7 @@ body > div > h1 > img {
   width: 32px;
 }
 
-body > div > div {
+#initializing {
   color: #888;
   font-family: monospace;
   font-size: 1.5em;
@@ -32,16 +32,16 @@ body > div > div {
   padding: 8px 12px;
 }
 
-body > div > div > p {
+#initializing p {
   margin: 0 0 .25em 0;
   padding: 0;
 }
 
-body > div > div > p.loading {
+#initializing .italic {
   font-style: italic;
 }
 
-body > div > div > p > span.blink {
+#initializing .blink {
   animation: blinker 1s linear infinite;
 }
 
