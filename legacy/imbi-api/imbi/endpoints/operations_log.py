@@ -153,7 +153,7 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
 
 class RecordRequestHandler(operations_log.RequestHandlerMixin,
                            _RequestHandlerMixin,
-                           base.AdminCRUDRequestHandler):
+                           base.CRUDRequestHandler):
     NAME = 'operations-log'
 
     DELETE_SQL = 'DELETE FROM v1.operations_log WHERE id = %(id)s;'
