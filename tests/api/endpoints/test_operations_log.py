@@ -42,13 +42,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'ticket_slug': str(uuid.uuid4()),
                 'version': str(uuid.uuid4()),
             }
-            records.append(record)
             result = self.fetch(
                 '/operations-log', method='POST', headers=self.headers,
                 body=json.dumps(record).encode('utf-8'))
             self.assertEqual(result.code, 200)
-            records[i]['id'] = json.loads(result.body.decode('utf-8'))['id']
-            records[i]['completed_at'] = None
+            records.append(json.loads(result.body.decode('utf-8')))
 
         # page 1
         namespace_id = self.namespace['id']
@@ -152,13 +150,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'ticket_slug': str(uuid.uuid4()),
                 'version': str(uuid.uuid4()),
             }
-            records.append(record)
             result = self.fetch(
                 '/operations-log', method='POST', headers=self.headers,
                 body=json.dumps(record).encode('utf-8'))
             self.assertEqual(result.code, 200)
-            records[i]['id'] = json.loads(result.body.decode('utf-8'))['id']
-            records[i]['completed_at'] = None
+            records.append(json.loads(result.body.decode('utf-8')))
 
         # page 1
         result = self.fetch('/operations-log?limit=3', headers=self.headers)
@@ -209,9 +205,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             '/operations-log', method='POST', headers=self.headers,
             body=json.dumps(record).encode('utf-8'))
         self.assertEqual(result.code, 200)
-        record['id'] = json.loads(result.body.decode('utf-8'))['id']
-        record['completed_at'] = None
-        records.insert(4, record)
+        records.insert(4, json.loads(result.body.decode('utf-8')))
 
         # previous page (now page 2/3)
         result = self.fetch(previous_link, headers=self.headers)
@@ -272,11 +266,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 operations_log.RecordRequestHandler.TTL))
-        record.update({
-            'id': response['id'],
-            'completed_at': response['completed_at'],
-            'project_id': response['project_id'],
-        })
+        record.update(response)
         self.assertDictEqual(response, record)
 
         # PATCH
