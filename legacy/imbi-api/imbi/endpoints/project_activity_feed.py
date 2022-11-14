@@ -48,7 +48,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
                b.display_name,
                a.what,
                a.fact_name,
-               a.value
+               a.value,
+               'ProjectFeedEntry' as "type"
           FROM combined AS a
           JOIN v1.users AS b
             ON b.username = a.who
