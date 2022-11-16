@@ -78,6 +78,9 @@ class TestCase(testing.SprocketsHttpTestCase):
         request_headers.update(kwargs.pop('headers', {}))
         if json_body is not None:
             kwargs['body'] = json.dumps(json_body).encode('utf-8')
+        if (kwargs.get('method') in {'PATCH', 'POST', 'PUT'}
+                and not kwargs.get('body')):
+            kwargs.setdefault('allow_nonstandard_methods', True)
         return super().fetch(path, raise_error=raise_error,
                              headers=request_headers, **kwargs)
 

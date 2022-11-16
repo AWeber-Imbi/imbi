@@ -111,11 +111,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_method_not_implemented(self):
         for method in {'DELETE', 'PATCH'}:
-            result = self.fetch(
-                '/cookie-cutters', method=method,
-                allow_nonstandard_methods=True)
+            result = self.fetch('/cookie-cutters', method=method)
             self.assertEqual(result.code, 405)
-        result = self.fetch(
-            '/cookie-cutters/' + str(uuid.uuid4()), method='POST',
-            allow_nonstandard_methods=True)
+        result = self.fetch('/cookie-cutters/{}'.format(uuid.uuid4()),
+                            method='POST')
         self.assertEqual(result.code, 405)

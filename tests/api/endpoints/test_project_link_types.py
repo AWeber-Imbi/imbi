@@ -99,12 +99,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_method_not_implemented(self):
         for method in {'DELETE', 'PATCH'}:
-            result = self.fetch(
-                '/project-link-types', method=method,
-                allow_nonstandard_methods=True)
+            result = self.fetch('/project-link-types', method=method)
             self.assertEqual(result.code, 405)
         url = '/project-link-types/' + str(uuid.uuid4())
-        result = self.fetch(
-            url, method='POST', body='{}',
-            allow_nonstandard_methods=True)
+        result = self.fetch(url, method='POST', body='{}')
         self.assertEqual(result.code, 405)
