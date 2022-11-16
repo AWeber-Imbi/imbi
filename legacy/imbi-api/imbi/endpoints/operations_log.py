@@ -17,7 +17,8 @@ class _RequestHandlerMixin:
     GET_SQL = re.sub(r'\s+', ' ', """\
         SELECT id, recorded_at, recorded_by, completed_at,
                project_id, environment, change_type, description,
-               link, notes, ticket_slug, version
+               link, notes, ticket_slug, version,
+               'OperationsLogEntry' AS "type"
           FROM v1.operations_log
          WHERE id = %(id)s""")
 
@@ -31,7 +32,8 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
     COLLECTION_SQL = re.sub(r'\s+', ' ', """\
         SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
                o.project_id, o.environment, o.change_type, o.description,
-               o.link, o.notes, o.ticket_slug, o.version
+               o.link, o.notes, o.ticket_slug, o.version,
+               'OperationsLogEntry' as "type"
           FROM v1.operations_log AS o
           {{JOIN}} {{WHERE}}
       ORDER BY o.recorded_at {{ORDER}}, o.id {{ORDER}}

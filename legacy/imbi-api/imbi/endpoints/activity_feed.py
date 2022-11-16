@@ -10,8 +10,9 @@ class RequestHandler(base.ValidatingRequestHandler):
     NAME = 'activity-feed'
 
     SQL = re.sub(r'\s+', ' ', """\
-        SELECT "when", namespace_id, namespace, project_id, project_name,
-                project_type, who, display_name, email_address, what
+        SELECT 'ProjectFeedEntry' AS "type", "when", namespace_id,
+               namespace, project_id, project_name, project_type, who,
+               display_name, email_address, what
           FROM v1.activity_feed
          ORDER BY "when" DESC
         OFFSET {offset}
