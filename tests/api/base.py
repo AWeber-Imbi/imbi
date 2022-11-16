@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 import json
 import logging
@@ -9,7 +11,7 @@ import sprockets_postgres as postgres
 import tornado_openapi3
 from ietfparse import headers
 from sprockets.http import testing
-from tornado import gen, httpclient
+from tornado import gen, httpclient, httputil
 
 from imbi import app, openapi, server, version
 
@@ -66,6 +68,21 @@ class TestCase(testing.SprocketsHttpTestCase):
 
     def run_until_complete(self, future):
         return self.io_loop.asyncio_loop.run_until_complete(future)
+
+    def fetch(
+            self, path: str, raise_error: bool = False,
+            json_body: list | dict | None = None, **kwargs: typing.Any
+    ) -> httpclient.HTTPResponse:
+        """Extended version of fetch that injects self.headers"""
+        request_headers = httputil.HTTPHeaders(self.headers)
+        request_headers.update(kwargs.pop('headers', {}))
+        if json_body is not None:
+            kwargs['body'] = json.dumps(json_body).encode('utf-8')
+        if (kwargs.get('method') in {'PATCH', 'POST', 'PUT'}
+                and not kwargs.get('body')):
+            kwargs.setdefault('allow_nonstandard_methods', True)
+        return super().fetch(path, raise_error=raise_error,
+                             headers=request_headers, **kwargs)
 
     async def postgres_execute(self,
                                sql: str,
@@ -134,15 +151,15 @@ class TestCaseWithReset(TestCase):
         if not self.project_type:
             self.project_type = self.create_project_type()
         result = self.fetch(
-            '/projects', method='POST', headers=self.headers,
-            body=json.dumps({
+            '/projects', method='POST',
+            json_body={
                 'namespace_id': self.namespace['id'],
                 'project_type_id': self.project_type['id'],
                 'name': str(uuid.uuid4()),
                 'slug': str(uuid.uuid4().hex),
                 'description': str(uuid.uuid4()),
                 'environments': self.environments,
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
@@ -150,12 +167,12 @@ class TestCaseWithReset(TestCase):
         environments = []
         for iteration in range(0, 2):
             result = self.fetch(
-                '/environments', method='POST', headers=self.headers,
-                body=json.dumps({
+                '/environments', method='POST',
+                json_body={
                     'name': str(uuid.uuid4()),
                     'description': str(uuid.uuid4()),
                     'icon_class': 'fas fa-blind'
-                }).encode('utf-8'))
+                })
             self.assertEqual(result.code, 200)
             environments.append(
                 json.loads(result.body.decode('utf-8'))['name'])
@@ -164,12 +181,12 @@ class TestCaseWithReset(TestCase):
     def create_namespace(self) -> dict:
         namespace_name = str(uuid.uuid4())
         result = self.fetch(
-            '/namespaces', method='POST', headers=self.headers,
-            body=json.dumps({
+            '/namespaces', method='POST',
+            json_body={
                 'name': namespace_name,
                 'slug': str(uuid.uuid4()),
                 'icon_class': 'fas fa-blind'
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
@@ -185,33 +202,32 @@ class TestCaseWithReset(TestCase):
         }
         project_fact.update(overrides)
 
-        result = self.fetch(
-            '/project-fact-types', method='POST', headers=self.headers,
-            body=json.dumps(project_fact).encode('utf-8'))
+        result = self.fetch('/project-fact-types', method='POST',
+                            json_body=project_fact)
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
     def create_project_link_type(self) -> dict:
         result = self.fetch(
-            '/project-link-types', method='POST', headers=self.headers,
-            body=json.dumps({
+            '/project-link-types', method='POST',
+            json_body={
                 'link_type': str(uuid.uuid4()),
                 'icon_class': 'fas fa-blind'
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
     def create_project_type(self) -> dict:
         project_type_name = str(uuid.uuid4())
         result = self.fetch(
-            '/project-types', method='POST', headers=self.headers,
-            body=json.dumps({
+            '/project-types', method='POST',
+            json_body={
                 'name': project_type_name,
                 'plural_name': '{}s'.format(project_type_name),
                 'slug': str(uuid.uuid4()),
                 'description': str(uuid.uuid4()),
                 'icon_class': 'fas fa-blind',
                 'environment_urls': False
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))

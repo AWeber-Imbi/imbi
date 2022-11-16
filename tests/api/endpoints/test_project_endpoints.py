@@ -35,9 +35,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch(
-            '/projects', method='POST', headers=self.headers,
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/projects/{}'.format(response['id']))
@@ -67,8 +65,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         patch = jsonpatch.make_patch(record, updated)
         patch_value = patch.to_string().encode('utf-8')
 
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
         record['description'] = updated['description']
@@ -76,12 +73,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(record, new_value)
 
         # Patch no change
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 304)
 
         # GET
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
@@ -95,15 +91,15 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(record, new_value)
 
         # DELETE
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
@@ -116,9 +112,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch(
-            '/projects', method='POST', headers=self.headers,
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/projects/{}'.format(response['id']))
@@ -150,9 +144,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'slug': str(uuid.uuid4().hex),
             'environments': self.environments
         }
-        result = self.fetch(
-            '/projects', method='POST', headers=self.headers,
-            body=json.dumps(project_a).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=project_a)
         self.assertEqual(result.code, 200)
         project_a = json.loads(result.body.decode('utf-8'))
 
@@ -163,24 +155,19 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'slug': str(uuid.uuid4().hex),
             'environments': self.environments
         }
-        result = self.fetch(
-            '/projects', method='POST', headers=self.headers,
-            body=json.dumps(project_b).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=project_b)
         self.assertEqual(result.code, 200)
         project_b = json.loads(result.body.decode('utf-8'))
 
         # Create the dependency
         result = self.fetch(
             '/projects/{}/dependencies'.format(project_b['id']),
-            method='POST', headers=self.headers,
-            body=json.dumps({
-                'dependency_id': project_a['id']
-            }).encode('utf-8'))
+            method='POST', json_body={'dependency_id': project_a['id']})
         self.assertEqual(result.code, 200)
 
         result = self.fetch(
             '/projects/{}/dependencies'.format(project_b['id']),
-            method='GET', headers=self.headers)
+            method='GET')
         self.assertEqual(result.code, 200)
         self.assertListEqual(
             json.loads(result.body.decode('utf-8')),
@@ -191,9 +178,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             }])
 
         result = self.fetch(
-            '/projects/{}/dependencies/{}'.format(
-                project_b['id'], project_a['id']),
-            method='GET', headers=self.headers)
+            '/projects/{}/dependencies/{}'.format(project_b['id'],
+                                                  project_a['id']),
+            method='GET')
         self.assertEqual(result.code, 200)
         self.assertDictEqual(
             json.loads(result.body.decode('utf-8')),
@@ -206,13 +193,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         result = self.fetch(
             '/projects/{}/dependencies/{}'.format(
                 project_b['id'], project_a['id']),
-            method='DELETE', headers=self.headers)
+            method='DELETE')
         self.assertEqual(result.code, 204)
 
         result = self.fetch(
             '/projects/{}/dependencies/{}'.format(
                 project_b['id'], project_a['id']),
-            method='GET', headers=self.headers)
+            method='GET')
         self.assertEqual(result.code, 404)
 
     def test_links(self):
@@ -224,9 +211,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'environments': self.environments
         }
 
-        result = self.fetch(
-            '/projects', method='POST', headers=self.headers,
-            body=json.dumps(project_record).encode('utf-8'))
+        result = self.fetch('/projects', method='POST',
+                            json_body=project_record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
 
@@ -241,9 +227,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             response['id'], self.project_link_type['id']))
 
         # Create
-        result = self.fetch(
-            links_url, headers=self.headers, method='POST',
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch(links_url, method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         link_record = json.loads(result.body.decode('utf-8'))
         self.assert_link_header_equals(result, url)
@@ -255,7 +239,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(link_record['url'], record['url'])
 
         # Get links
-        result = self.fetch(links_url, headers=self.headers)
+        result = self.fetch(links_url)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, links_url)
         records = []
@@ -271,8 +255,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         patch = jsonpatch.make_patch(record, updated)
         patch_value = patch.to_string().encode('utf-8')
 
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         record = json.loads(result.body.decode('utf-8'))
@@ -284,13 +267,12 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(record, updated)
 
         # Patch no change
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 304)
         self.assert_link_header_equals(result, url)
 
         # Get
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 200)
         record = json.loads(result.body.decode('utf-8'))
         for field in {'link_type', 'icon_class'}:
@@ -301,11 +283,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(record, updated)
 
         # Delete
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 204)
 
         # Get 404
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 404)
 
     def test_urls(self):
@@ -317,9 +299,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'environments': self.environments
         }
 
-        result = self.fetch(
-            '/projects', method='POST', headers=self.headers,
-            body=json.dumps(project_record).encode('utf-8'))
+        result = self.fetch('/projects', method='POST',
+                            json_body=project_record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
 
@@ -334,9 +315,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             response['id'], self.environments[0]))
 
         # Create
-        result = self.fetch(
-            urls_url, headers=self.headers, method='POST',
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch(urls_url, method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         url_record = json.loads(result.body.decode('utf-8'))
         self.assert_link_header_equals(result, url)
@@ -348,7 +327,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(url_record['url'], record['url'])
 
         # Get URLs
-        result = self.fetch(urls_url, headers=self.headers)
+        result = self.fetch(urls_url)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, urls_url)
         records = []
@@ -364,8 +343,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         patch = jsonpatch.make_patch(record, updated)
         patch_value = patch.to_string().encode('utf-8')
 
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         record = json.loads(result.body.decode('utf-8'))
@@ -374,21 +352,19 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(record, updated)
 
         # Patch no change
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 304)
         self.assert_link_header_equals(result, url)
 
         # Feed
-        result = self.fetch(
-            f'/projects/{record["project_id"]}/feed', headers=self.headers)
+        result = self.fetch(f'/projects/{record["project_id"]}/feed')
         self.assertEqual(result.code, 200)
         records = json.loads(result.body.decode('utf-8'))
         self.assertGreaterEqual(len(records), 1)
         self.assertEqual(records[0]['who'], self.USERNAME[self.ADMIN_ACCESS])
 
         # Get
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 200)
         record = json.loads(result.body.decode('utf-8'))
         for field in {'created_by', 'last_modified_by'}:
@@ -396,11 +372,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(record, updated)
 
         # Delete
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 204)
 
         # Get 404
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 404)
 
     def test_project_search(self):
@@ -420,16 +396,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             return False
 
         # Create
-        result = self.fetch(
-            '/projects', method='POST', headers=self.headers,
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         proj_id = response['id']
 
         # Search by name
         part = record['name'].split('-')[4]
-        result = self.fetch(f'/projects?name={part}', method='GET',
-                            headers=self.headers)
+        result = self.fetch(f'/projects?name={part}', method='GET')
         self.assertTrue(in_results(proj_id,
                                    json.loads(result.body.decode('utf-8'))))

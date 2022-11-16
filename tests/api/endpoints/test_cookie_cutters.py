@@ -29,9 +29,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch(
-            '/cookie-cutters', method='POST', headers=self.headers,
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/cookie-cutters', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         url = self.get_url('/cookie-cutters/{}'.format(record['name']))
         self.assert_link_header_equals(result, url)
@@ -57,19 +55,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'last_modified_by': self.USERNAME[self.ADMIN_ACCESS]
         })
 
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(new_value, record)
 
         # Patch no change
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 304)
 
         # GET
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
@@ -81,7 +77,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(new_value, record)
 
         # Collection
-        result = self.fetch('/cookie-cutters', headers=self.headers)
+        result = self.fetch('/cookie-cutters')
         self.assertEqual(result.code, 200)
         self.assertListEqual(
             json.loads(result.body.decode('utf-8')),
@@ -89,15 +85,15 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
               if k not in ['created_by', 'last_modified_by']}])
 
         # DELETE
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
@@ -107,9 +103,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type_id': self.project_type['id'],
             'url': 'http://{}/{}.git'.format(uuid.uuid4(), uuid.uuid4())
         }
-        result = self.fetch(
-            '/cookie-cutters', method='POST', headers=self.headers,
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/cookie-cutters', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertEqual(new_value['name'], record['name'])
@@ -117,11 +111,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_method_not_implemented(self):
         for method in {'DELETE', 'PATCH'}:
-            result = self.fetch(
-                '/cookie-cutters', method=method, headers=self.headers,
-                allow_nonstandard_methods=True)
+            result = self.fetch('/cookie-cutters', method=method)
             self.assertEqual(result.code, 405)
-        result = self.fetch(
-            '/cookie-cutters/' + str(uuid.uuid4()), method='POST',
-            allow_nonstandard_methods=True, headers=self.headers)
+        result = self.fetch('/cookie-cutters/{}'.format(uuid.uuid4()),
+                            method='POST')
         self.assertEqual(result.code, 405)

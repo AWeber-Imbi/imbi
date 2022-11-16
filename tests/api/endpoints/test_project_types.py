@@ -30,9 +30,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         })
 
         # Create
-        result = self.fetch(
-            '/project-types', method='POST', headers=self.headers,
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/project-types', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/project-types/{}'.format(response['id']))
@@ -59,20 +57,18 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'last_modified_by': self.USERNAME[self.ADMIN_ACCESS]
         })
 
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(new_value, record)
 
         # Patch no change
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 304)
 
         # GET
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 200)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
@@ -84,7 +80,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(new_value, record)
 
         # Collection
-        result = self.fetch('/project-types', headers=self.headers)
+        result = self.fetch('/project-types')
         self.assertEqual(result.code, 200)
         self.assertListEqual(
             json.loads(result.body.decode('utf-8')),
@@ -92,37 +88,32 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
               if k not in ['created_by', 'last_modified_by']}])
 
         # DELETE
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
-        result = self.fetch(url,  method='DELETE', headers=self.headers)
+        result = self.fetch(url,  method='DELETE')
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
         result = self.fetch(
-            '/project-types', method='POST', headers=self.headers,
-            body=json.dumps({
+            '/project-types', method='POST',
+            json_body={
                 'name': str(uuid.uuid4()),
                 'plural_name': str(uuid.uuid4()),
                 'slug': str(uuid.uuid4())
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 400)
 
     def test_method_not_implemented(self):
         for method in {'DELETE', 'PATCH'}:
-            result = self.fetch(
-                '/project-types', method=method,
-                allow_nonstandard_methods=True,
-                headers=self.headers)
+            result = self.fetch('/project-types', method=method)
             self.assertEqual(result.code, 405)
 
         url = '/project-types/' + str(uuid.uuid4())
-        result = self.fetch(
-            url, method='POST', headers=self.headers,
-            allow_nonstandard_methods=True)
+        result = self.fetch(url, method='POST')
         self.assertEqual(result.code, 405)

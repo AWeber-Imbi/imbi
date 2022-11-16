@@ -42,17 +42,15 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'ticket_slug': str(uuid.uuid4()),
                 'version': str(uuid.uuid4()),
             }
-            result = self.fetch(
-                '/operations-log', method='POST', headers=self.headers,
-                body=json.dumps(record).encode('utf-8'))
+            result = self.fetch('/operations-log', method='POST',
+                                json_body=record)
             self.assertEqual(result.code, 200)
             records.append(json.loads(result.body.decode('utf-8')))
 
         # page 1
         namespace_id = self.namespace['id']
         result = self.fetch(
-            f'/operations-log?limit=4&namespace_id={namespace_id}',
-            headers=self.headers)
+            f'/operations-log?limit=4&namespace_id={namespace_id}')
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 4)
@@ -68,7 +66,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(next_link)
 
         # page 2
-        result = self.fetch(next_link, headers=self.headers)
+        result = self.fetch(next_link)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 4)
@@ -86,7 +84,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(previous_link)
 
         # page 3
-        result = self.fetch(next_link, headers=self.headers)
+        result = self.fetch(next_link)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 2)
@@ -102,7 +100,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(previous_link)
 
         # page 2
-        result = self.fetch(previous_link, headers=self.headers)
+        result = self.fetch(previous_link)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 4)
@@ -120,7 +118,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(previous_link)
 
         # page 1
-        result = self.fetch(previous_link, headers=self.headers)
+        result = self.fetch(previous_link)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 4)
@@ -150,14 +148,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'ticket_slug': str(uuid.uuid4()),
                 'version': str(uuid.uuid4()),
             }
-            result = self.fetch(
-                '/operations-log', method='POST', headers=self.headers,
-                body=json.dumps(record).encode('utf-8'))
+            result = self.fetch('/operations-log', method='POST',
+                                json_body=record)
             self.assertEqual(result.code, 200)
             records.append(json.loads(result.body.decode('utf-8')))
 
         # page 1
-        result = self.fetch('/operations-log?limit=3', headers=self.headers)
+        result = self.fetch('/operations-log?limit=3')
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 3)
@@ -173,7 +170,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(next_link)
 
         # page 2
-        result = self.fetch(next_link, headers=self.headers)
+        result = self.fetch(next_link)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 3)
@@ -201,14 +198,12 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'ticket_slug': str(uuid.uuid4()),
                 'version': str(uuid.uuid4()),
             }
-        result = self.fetch(
-            '/operations-log', method='POST', headers=self.headers,
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/operations-log', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         records.insert(4, json.loads(result.body.decode('utf-8')))
 
         # previous page (now page 2/3)
-        result = self.fetch(previous_link, headers=self.headers)
+        result = self.fetch(previous_link)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 3)
@@ -226,7 +221,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(previous_link)
 
         # previous page (now page 1/3)
-        result = self.fetch(previous_link, headers=self.headers)
+        result = self.fetch(previous_link)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         self.assertEqual(len(response), 1)
@@ -254,9 +249,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch(
-            '/operations-log', method='POST', headers=self.headers,
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/operations-log', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/operations-log/{}'.format(response['id']))
@@ -278,20 +271,18 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'description': updated['description'],
         })
 
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         response = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(response, record)
 
         # Patch no change
-        result = self.fetch(
-            url, method='PATCH', body=patch_value, headers=self.headers)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 304)
 
         # GET
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         self.assertEqual(
@@ -301,22 +292,22 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertDictEqual(response, record)
 
         # Collection
-        result = self.fetch('/operations-log', headers=self.headers)
+        result = self.fetch('/operations-log')
         self.assertEqual(result.code, 200)
         self.assertListEqual(
             json.loads(result.body.decode('utf-8')),
             [{k: v for k, v in record.items()}])
 
         # DELETE
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
@@ -326,9 +317,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'environment': self.environment,
             'change_type': 'Upgraded',
         }
-        result = self.fetch('/operations-log', method='POST',
-                            body=json.dumps(record).encode('utf-8'),
-                            headers=self.headers)
+        result = self.fetch('/operations-log', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/operations-log/{}'.format(response['id']))
@@ -337,23 +326,18 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(response['change_type'], record['change_type'])
 
         # DELETE
-        result = self.fetch(url, method='DELETE', headers=self.headers)
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 204)
 
         # GET record should not exist
-        result = self.fetch(url, headers=self.headers)
+        result = self.fetch(url)
         self.assertEqual(result.code, 404)
 
     def test_method_not_implemented(self):
         for method in {'DELETE', 'PATCH'}:
-            result = self.fetch(
-                '/operations-log', method=method,
-                allow_nonstandard_methods=True,
-                headers=self.headers)
+            result = self.fetch('/operations-log', method=method)
             self.assertEqual(result.code, 405)
 
         url = '/operations-log/' + str(uuid.uuid4())
-        result = self.fetch(url, method='POST',
-                            allow_nonstandard_methods=True,
-                            headers=self.headers)
+        result = self.fetch(url, method='POST')
         self.assertEqual(result.code, 405)
