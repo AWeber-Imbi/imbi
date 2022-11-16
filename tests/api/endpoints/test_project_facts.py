@@ -34,12 +34,10 @@ class ProjectFactTests(base.TestCaseWithReset):
         result = self.fetch(
             f'/projects/{self.project["id"]}/facts',
             method='POST',
-            body=json.dumps(facts).encode('utf-8'),
-            headers=self.headers)
+            body=json.dumps(facts).encode('utf-8'))
         self.assertEqual(204, result.code)
 
-        result = self.fetch(f'/projects/{self.project["id"]}/facts',
-                            headers=self.headers)
+        result = self.fetch(f'/projects/{self.project["id"]}/facts')
         self.assertEqual(200, result.code)
 
         data = json.loads(result.body)
@@ -61,12 +59,10 @@ class ProjectFactTests(base.TestCaseWithReset):
             body[0]['value'] = input_value
             result = self.fetch(
                 f'/projects/{self.project["id"]}/facts',
-                method='POST', body=json.dumps(body).encode('utf-8'),
-                headers=self.headers)
+                method='POST', body=json.dumps(body).encode('utf-8'))
             self.assertEqual(204, result.code, f'Failure for {input_value!r}')
 
-            result = self.fetch(f'/projects/{self.project["id"]}/facts',
-                                headers=self.headers)
+            result = self.fetch(f'/projects/{self.project["id"]}/facts')
             self.assertEqual(200, result.code)
             data = json.loads(result.body)
             self.assertEqual(expected_value, data[0]['value'])
@@ -160,8 +156,7 @@ class ProjectFactTests(base.TestCaseWithReset):
             result = self.fetch(
                 f'/projects/{self.project["id"]}/facts',
                 method='POST',
-                body=json.dumps([invalid_fact]).encode('utf-8'),
-                headers=self.headers)
+                body=json.dumps([invalid_fact]).encode('utf-8'))
             self.assertEqual(
                 400, result.code,
                 f'Unexpected response for {invalid_fact["value"]}')
@@ -173,19 +168,16 @@ class ProjectFactTests(base.TestCaseWithReset):
             method='POST',
             body=json.dumps([{
                 'fact_type_id': boolean_fact_type['id'],
-                'value': 'true'}]).encode('utf-8'),
-            headers=self.headers)
+                'value': 'true'}]).encode('utf-8'))
         self.assertEqual(204, result.code)
 
-        result = self.fetch(f'/projects/{self.project["id"]}/facts',
-                            headers=self.headers)
+        result = self.fetch(f'/projects/{self.project["id"]}/facts')
         self.assertEqual(200, result.code)
 
         fact = json.loads(result.body)[0]
         self.assertEqual(fact['score'], 100)
 
-        result = self.fetch(f'/projects/{self.project["id"]}?full=true',
-                            headers=self.headers)
+        result = self.fetch(f'/projects/{self.project["id"]}?full=true')
         self.assertEqual(200, result.code)
         project = json.loads(result.body)
         fact = project['facts'][0]
@@ -198,19 +190,16 @@ class ProjectFactTests(base.TestCaseWithReset):
             method='POST',
             body=json.dumps([{
                 'fact_type_id': boolean_fact_type['id'],
-                'value': 'false'}]).encode('utf-8'),
-            headers=self.headers)
+                'value': 'false'}]).encode('utf-8'))
         self.assertEqual(204, result.code)
 
-        result = self.fetch(f'/projects/{self.project["id"]}/facts',
-                            headers=self.headers)
+        result = self.fetch(f'/projects/{self.project["id"]}/facts')
         self.assertEqual(200, result.code)
 
         fact = json.loads(result.body)[0]
         self.assertEqual(fact['score'], 0)
 
-        result = self.fetch(f'/projects/{self.project["id"]}?full=true',
-                            headers=self.headers)
+        result = self.fetch(f'/projects/{self.project["id"]}?full=true')
         self.assertEqual(200, result.code)
         project = json.loads(result.body)
         fact = project['facts'][0]
@@ -219,6 +208,5 @@ class ProjectFactTests(base.TestCaseWithReset):
     def test_unknown_fact_id(self):
         result = self.fetch(f'/projects/{self.project["id"]}/facts',
                             method='POST',
-                            body=b'[{"fact_type_id":-1,"value":""}]',
-                            headers=self.headers)
+                            body=b'[{"fact_type_id":-1,"value":""}]')
         self.assertEqual(400, result.code)
