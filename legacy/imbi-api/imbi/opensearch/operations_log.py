@@ -10,19 +10,45 @@ if typing.TYPE_CHECKING:
 LOGGER = logging.getLogger(__name__)
 
 OPS_LOG = {
-    'id': {'type': 'integer'},
-    'recorded_at': {'type': 'date'},
-    'recorded_by': {'type': 'text'},
-    'completed_at': {'type': 'date'},
-    'project_id': {'type': 'integer'},
-    'project_name': {'type': 'text'},
-    'environment': {'type': 'text'},
-    'change_type': {'type': 'text'},
-    'description': {'type': 'text'},
-    'link': {'type': 'text'},
-    'notes': {'type': 'text'},
-    'ticket_slug': {'type': 'text'},
-    'version': {'type': 'text'}
+    'id': {
+        'type': 'integer'
+    },
+    'recorded_at': {
+        'type': 'date'
+    },
+    'recorded_by': {
+        'type': 'text'
+    },
+    'completed_at': {
+        'type': 'date'
+    },
+    'project_id': {
+        'type': 'integer'
+    },
+    'project_name': {
+        'type': 'text'
+    },
+    'environment': {
+        'type': 'text'
+    },
+    'change_type': {
+        'type': 'text'
+    },
+    'description': {
+        'type': 'text'
+    },
+    'link': {
+        'type': 'text'
+    },
+    'notes': {
+        'type': 'text'
+    },
+    'ticket_slug': {
+        'type': 'text'
+    },
+    'version': {
+        'type': 'text'
+    }
 }
 
 
@@ -65,7 +91,6 @@ class OperationsLogIndex:
 
 
 class RequestHandlerMixin:
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.search_index = OperationsLogIndex(self.application)

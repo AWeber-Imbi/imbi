@@ -14,8 +14,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_project_type_lifecycle(self):
         record = {
-            field: project_types.CollectionRequestHandler.DEFAULTS.get(
-                field, None)
+            field:
+            project_types.CollectionRequestHandler.DEFAULTS.get(field, None)
             for field in project_types.CollectionRequestHandler.FIELDS
             if field != project_types.CollectionRequestHandler.ID_KEY
         }
@@ -82,10 +82,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # Collection
         result = self.fetch('/project-types')
         self.assertEqual(result.code, 200)
-        self.assertListEqual(
-            json.loads(result.body.decode('utf-8')),
-            [{k: v for k, v in record.items()
-              if k not in ['created_by', 'last_modified_by']}])
+        self.assertListEqual(json.loads(result.body.decode('utf-8')), [{
+            k: v
+            for k, v in record.items()
+            if k not in ['created_by', 'last_modified_by']
+        }])
 
         # DELETE
         result = self.fetch(url, method='DELETE')
@@ -96,17 +97,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 404)
 
         # DELETE should fail as record should not exist
-        result = self.fetch(url,  method='DELETE')
+        result = self.fetch(url, method='DELETE')
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
-        result = self.fetch(
-            '/project-types', method='POST',
-            json_body={
-                'name': str(uuid.uuid4()),
-                'plural_name': str(uuid.uuid4()),
-                'slug': str(uuid.uuid4())
-            })
+        result = self.fetch('/project-types',
+                            method='POST',
+                            json_body={
+                                'name': str(uuid.uuid4()),
+                                'plural_name': str(uuid.uuid4()),
+                                'slug': str(uuid.uuid4())
+                            })
         self.assertEqual(result.code, 400)
 
     def test_method_not_implemented(self):

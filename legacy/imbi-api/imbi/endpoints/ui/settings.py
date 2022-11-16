@@ -51,13 +51,13 @@ class RequestHandler(base.RequestHandler):
             if gitlab_auth:
                 gitlab_auth = gitlab_auth[0]
                 gitlab.update({
-                    'authorizationEndpoint':
-                        gitlab_auth['authorization_endpoint'],
+                    'authorizationEndpoint': gitlab_auth[
+                        'authorization_endpoint'],
                     'clientId': gitlab_auth['client_id'],
                     'redirectURI': gitlab_auth['callback_url'],
                 })
-            gitlab['enabled'] = (cfg['enabled'] and
-                                 gitlab.get('clientId') is not None)
+            gitlab['enabled'] = (cfg['enabled']
+                                 and gitlab.get('clientId') is not None)
 
         sentry = {'enabled': False}
         cfg = automations.get('sentry')
@@ -69,19 +69,19 @@ class RequestHandler(base.RequestHandler):
             'integrations': {
                 'grafana': {
                     'enabled': automations['grafana']['enabled'],
-                    'project_link_type_id':
-                        automations['grafana']['project_link_type_id']
+                    'project_link_type_id': automations['grafana']
+                    ['project_link_type_id']
                 },
                 'gitlab': gitlab,
                 'sentry': {
                     'enabled': automations['sentry']['enabled'],
-                    'project_link_type_id':
-                        automations['sentry']['project_link_type_id']
+                    'project_link_type_id': automations['sentry']
+                    ['project_link_type_id']
                 },
                 'sonarqube': {
                     'enabled': automations['sonarqube']['enabled'],
-                    'project_link_type_id':
-                        automations['sonarqube']['project_link_type_id']
+                    'project_link_type_id': automations['sonarqube']
+                    ['project_link_type_id']
                 }
             },
             'metadata': {
@@ -96,7 +96,7 @@ class RequestHandler(base.RequestHandler):
             'opensearch': {
                 'fields': results[7]
             },
-            'ops_log_ticket_slug_template': self.settings[
-                'ops_log_ticket_slug_template'],
+            'ops_log_ticket_slug_template': self.
+            settings['ops_log_ticket_slug_template'],
             'project_url_template': self.settings['project_url_template']
         })

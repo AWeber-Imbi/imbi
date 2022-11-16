@@ -50,8 +50,8 @@ class Client:
         self._settings = Settings(**settings)
         self._executor = futures.ThreadPoolExecutor(
             max_workers=self._settings.pool_size)
-        self._server = ldap3.Server(
-            self._settings.host, self._settings.port, self._settings.ssl)
+        self._server = ldap3.Server(self._settings.host, self._settings.port,
+                                    self._settings.ssl)
 
     def __exit__(self, _exc_type, _exc_val, _exc_tb) -> None:
         """Shutdown the executor when the class is destroyed"""
@@ -116,15 +116,15 @@ class Client:
         """
         if not self._settings.enabled:
             raise RuntimeError('LDAP not enabled')
-        dn = ','.join(['{}={}'.format(self._settings.username, username),
-                       self._settings.users_dn])
-        LOGGER.debug(
-            'Connecting to %s://%s:%s as %s',
-            'ldaps' if self._settings.ssl else 'ldap',
-            self._settings.host, self._settings.port, dn)
+        dn = ','.join([
+            '{}={}'.format(self._settings.username, username),
+            self._settings.users_dn
+        ])
+        LOGGER.debug('Connecting to %s://%s:%s as %s',
+                     'ldaps' if self._settings.ssl else 'ldap',
+                     self._settings.host, self._settings.port, dn)
         try:
-            return ldap3.Connection(
-                self._server, dn, password, auto_bind=True)
+            return ldap3.Connection(self._server, dn, password, auto_bind=True)
         except exceptions.LDAPException as error:
             LOGGER.warning('Authentication error for %s: %s', username, error)
 
@@ -135,12 +135,15 @@ class Client:
         :param dn: The DN of the user to return the groups for
 
         """
-        conn.search(
-            dn, '(objectClass={})'.format(self._settings.user_object_type),
-            attributes=[ldap3.ALL_ATTRIBUTES,
-                        ldap3.ALL_OPERATIONAL_ATTRIBUTES])
-        return {k: v[0] if isinstance(v, list) and len(v) == 1 else v
-                for k, v in conn.response[0]['attributes'].items()}
+        conn.search(dn,
+                    '(objectClass={})'.format(self._settings.user_object_type),
+                    attributes=[
+                        ldap3.ALL_ATTRIBUTES, ldap3.ALL_OPERATIONAL_ATTRIBUTES
+                    ])
+        return {
+            k: v[0] if isinstance(v, list) and len(v) == 1 else v
+            for k, v in conn.response[0]['attributes'].items()
+        }
 
     def _groups(self, conn: ldap3.Connection, dn: str) -> typing.List[str]:
         """Return the groups for the specified username.
@@ -150,8 +153,8 @@ class Client:
 
         """
         query = '(&(objectClass={})({}={}))'.format(
-            self._settings.group_object_type,
-            self._settings.group_member_attr, dn)
+            self._settings.group_object_type, self._settings.group_member_attr,
+            dn)
         LOGGER.debug('User groups query: %r', query)
         conn.search(self._settings.groups_dn, query)
         groups = set({})

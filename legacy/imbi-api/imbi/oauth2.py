@@ -22,28 +22,29 @@ class IntegrationToken:
 
 
 class OAuth2Integration:
-    SQL_REFRESH = re.sub(r'\s+', ' ', """\
+    SQL_REFRESH = re.sub(
+        r'\s+', ' ', """\
         SELECT api_endpoint, authorization_endpoint, token_endpoint,
                revoke_endpoint, client_id, client_secret, public_client,
                callback_url
           FROM v1.oauth2_integrations
          WHERE name = %(name)s""")
 
-    SQL_ADD_TOKEN = re.sub(r'\s+', ' ', """\
+    SQL_ADD_TOKEN = re.sub(
+        r'\s+', ' ', """\
         INSERT INTO v1.user_oauth2_tokens(username, integration, external_id,
                                           access_token, refresh_token)
              VALUES (%(username)s, %(integration)s, %(external_id)s,
                      %(access_token)s, %(refresh_token)s)""")
 
-    SQL_GET_TOKENS = re.sub(r'\s+', ' ', """\
+    SQL_GET_TOKENS = re.sub(
+        r'\s+', ' ', """\
         SELECT access_token, refresh_token, external_id
           FROM v1.user_oauth2_tokens
          WHERE username = %(username)s
            AND integration = %(integration)s""")
 
-    def __init__(self,
-                 application: 'app.Application',
-                 name: str) -> None:
+    def __init__(self, application: 'app.Application', name: str) -> None:
         self._application = application
         self.logger = LOGGER.getChild(self.__class__.__name__)
         self.name = name
@@ -57,8 +58,7 @@ class OAuth2Integration:
         self.callback_url: typing.Optional[yarl.URL] = UNSET_URL
 
     @classmethod
-    async def by_name(cls,
-                      application: 'app.Application',
+    async def by_name(cls, application: 'app.Application',
                       name: str) -> typing.Optional['OAuth2Integration']:
         instance = cls(application, name)
         await instance.refresh()
@@ -94,16 +94,12 @@ class OAuth2Integration:
         else:
             self._reset()
 
-    async def add_user_token(self,
-                             user_info: 'user.User',
-                             external_id: str,
-                             access_token: str,
-                             refresh_token: str) -> None:
+    async def add_user_token(self, user_info: 'user.User', external_id: str,
+                             access_token: str, refresh_token: str) -> None:
         async with self._application.postgres_connector(
                 on_error=self._on_postgres_error) as conn:
             await conn.execute(
-                self.SQL_ADD_TOKEN,
-                {
+                self.SQL_ADD_TOKEN, {
                     'integration': self.name,
                     'username': user_info.username,
                     'external_id': external_id,
@@ -116,19 +112,19 @@ class OAuth2Integration:
         async with self._application.postgres_connector(
                 on_error=self._on_postgres_error) as conn:
             result = await conn.execute(self.SQL_GET_TOKENS, {
-                'integration': self.name, 'username': user_info.username})
+                'integration': self.name,
+                'username': user_info.username
+            })
         return [
-            IntegrationToken(
-                self,  row['access_token'], row['refresh_token'],
-                row['external_id'])
-            for row in result
+            IntegrationToken(self, row['access_token'], row['refresh_token'],
+                             row['external_id']) for row in result
         ]
 
     @property
     def is_valid(self) -> bool:
-        return (self.authorization_endpoint != UNSET_URL and
-                self.token_endpoint != UNSET_URL and
-                self.client_id and (self.client_secret or self.public_client))
+        return (self.authorization_endpoint != UNSET_URL
+                and self.token_endpoint != UNSET_URL and self.client_id
+                and (self.client_secret or self.public_client))
 
     @staticmethod
     def _on_postgres_error(_metric_name: str, exc: Exception) -> None:

@@ -20,7 +20,6 @@ DEFAULT_POOL_SIZE = 5
 
 class Session:
     """Session object manages session state and the user object."""
-
     def __init__(self, handler: web.RequestHandler) -> None:
         self._handler = handler
         self.authenticated = False
@@ -36,8 +35,9 @@ class Session:
         :param password: The password to use when authenticating
 
         """
-        self.user = user.User(
-            self._handler.application, username=username, password=password)
+        self.user = user.User(self._handler.application,
+                              username=username,
+                              password=password)
         self.authenticated = await self.user.authenticate()
         if not self.authenticated:
             self.user = None
@@ -78,15 +78,17 @@ class Session:
         """Save session data to redis"""
         LOGGER.debug('Saving session %s', self.id)
         user_data = {} if not self.user else self.user.as_dict()
-        await self._redis.set(
-            self._redis_key,
-            json.dumps({
-                'user': user_data,
-                'last_save': timestamp.isoformat(),
-                'start': self.start}),
-            expire=self._settings['session_duration'] * 86400)
+        await self._redis.set(self._redis_key,
+                              json.dumps({
+                                  'user': user_data,
+                                  'last_save': timestamp.isoformat(),
+                                  'start': self.start
+                              }),
+                              expire=self._settings['session_duration'] *
+                              86400)
         self._handler.set_secure_cookie(
-            'session', self.id,
+            'session',
+            self.id,
             expires_days=self._settings['session_duration'])
 
     @property

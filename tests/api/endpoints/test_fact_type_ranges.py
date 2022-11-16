@@ -10,8 +10,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
     TRUNCATE_TABLES = [
-        'v1.project_types',
-        'v1.project_fact_types',
+        'v1.project_types', 'v1.project_fact_types',
         'v1.project_fact_type_ranges'
     ]
 
@@ -28,12 +27,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch('/project-fact-type-ranges', method='POST',
+        result = self.fetch('/project-fact-type-ranges',
+                            method='POST',
                             json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
-        url = self.get_url(
-            '/project-fact-type-ranges/{}'.format(response['id']))
+        url = self.get_url('/project-fact-type-ranges/{}'.format(
+            response['id']))
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
@@ -53,8 +53,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         patch = jsonpatch.make_patch(record, updated)
         patch_value = patch.to_string().encode('utf-8')
 
-        result = self.fetch(
-            url, method='PATCH', body=patch_value)
+        result = self.fetch(url, method='PATCH', body=patch_value)
         self.assertEqual(result.code, 200)
         self.assert_link_header_equals(result, url)
         record.update({
@@ -83,10 +82,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # Collection
         result = self.fetch('/project-fact-type-ranges')
         self.assertEqual(result.code, 200)
-        self.assertListEqual(
-            json.loads(result.body.decode('utf-8')),
-            [{k: v for k, v in record.items()
-              if k not in ['created_by', 'last_modified_by']}])
+        self.assertListEqual(json.loads(result.body.decode('utf-8')), [{
+            k: v
+            for k, v in record.items()
+            if k not in ['created_by', 'last_modified_by']
+        }])
 
         # DELETE
         result = self.fetch(url, method='DELETE')

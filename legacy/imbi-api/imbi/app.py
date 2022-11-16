@@ -28,8 +28,8 @@ try:
 except ImportError:
     sentry_logging, sentry_tornado = None, None
 
-from imbi import (cors, endpoints, errors, keychain, openapi,
-                  permissions, stats, transcoders, version)
+from imbi import (cors, endpoints, errors, keychain, openapi, permissions,
+                  stats, transcoders, version)
 from imbi.clients import opensearch
 from imbi.endpoints import default
 
@@ -41,7 +41,6 @@ SIGNED_VALUE_PATTERN = re.compile(r'^(?:[1-9][0-9]*)\|(?:.*)$')
 
 
 class Application(sprockets_postgres.ApplicationMixin, app.Application):
-
     def __init__(self, **settings):
         LOGGER.info('imbi v%s starting', settings['version'])
         settings['default_handler_class'] = default.RequestHandler
@@ -65,22 +64,20 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         content.add_transcoder(self, transcoders.FormTranscoder())
         content.add_transcoder(self, transcoders.JSONTranscoder())
         content.add_transcoder(self, transcoders.MsgPackTranscoder())
-        content.add_text_content_type(
-            self, 'application/json-patch+json', 'utf-8',
-            json.dumps, json.loads)
-        content.add_binary_content_type(
-            self, 'application/json-patch+msgpack',
-            umsgpack.packb, umsgpack.unpackb)
+        content.add_text_content_type(self, 'application/json-patch+json',
+                                      'utf-8', json.dumps, json.loads)
+        content.add_binary_content_type(self, 'application/json-patch+msgpack',
+                                        umsgpack.packb, umsgpack.unpackb)
 
         errors.set_canonical_server(self.settings['canonical_server_name'])
 
         if self.settings.get('cors'):
             kwargs = {
                 name: self.settings['cors'][name]
-                for name in {'allow_any_origin', 'allow_credentials',
-                             'allow_methods', 'exposed_headers',
-                             'max_age'}
-                if name in self.settings['cors']
+                for name in {
+                    'allow_any_origin', 'allow_credentials', 'allow_methods',
+                    'exposed_headers', 'max_age'
+                } if name in self.settings['cors']
             }
             self.cors_config = cors.CORSConfig(**kwargs)
         else:
@@ -122,40 +119,36 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
                 REQUEST_LOG_FORMAT, status_code, handler._request_summary(),
                 request_time, handler.request.headers.get('User-Agent'))
 
-    async def on_start(self,
-                       _app: http.app.Application,
+    async def on_start(self, _app: http.app.Application,
                        _loop: ioloop.IOLoop) -> None:
-
         """Invoked on startup of the application"""
         self.startup_complete = asyncio.Event()
         if sentry_sdk and self.settings.get('sentry_backend_dsn'):
-            sentry_sdk.init(
-                debug=self.settings['debug'],
-                dsn=self.settings['sentry_backend_dsn'],
-                environment=os.environ.get('environment', 'production'),
-                integrations=[
-                    sentry_tornado.TornadoIntegration(),
-                    sentry_logging.LoggingIntegration(
-                        event_level=logging.CRITICAL)
-                    ],
-                release=version)
+            sentry_sdk.init(debug=self.settings['debug'],
+                            dsn=self.settings['sentry_backend_dsn'],
+                            environment=os.environ.get('environment',
+                                                       'production'),
+                            integrations=[
+                                sentry_tornado.TornadoIntegration(),
+                                sentry_logging.LoggingIntegration(
+                                    event_level=logging.CRITICAL)
+                            ],
+                            release=version)
 
         self.loop = ioloop.IOLoop.current()
         try:
-            self.session_redis = aioredis.Redis(
-                await aioredis.create_pool(
-                    self.settings['session_redis_url'],
-                    maxsize=self.settings['session_pool_size']))
+            self.session_redis = aioredis.Redis(await aioredis.create_pool(
+                self.settings['session_redis_url'],
+                maxsize=self.settings['session_pool_size']))
         except (OSError, ConnectionRefusedError) as error:
             LOGGER.info('Error connecting to Session redis: %r', error)
             self.stop(self.loop)
             return
 
         try:
-            pool = aioredis.Redis(
-                await aioredis.create_pool(
-                    self.settings['stats_redis_url'],
-                    maxsize=self.settings['stats_pool_size']))
+            pool = aioredis.Redis(await aioredis.create_pool(
+                self.settings['stats_redis_url'],
+                maxsize=self.settings['stats_pool_size']))
         except (OSError, ConnectionRefusedError) as error:
             LOGGER.info('Error connecting to Stats redis: %r', error)
             self.stop(self.loop)

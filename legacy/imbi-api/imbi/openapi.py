@@ -18,7 +18,6 @@ LOGGER = logging.getLogger(__name__)
 
 
 class EMailFormatter:
-
     @staticmethod
     def validate(value) -> bool:
         return validators.email(value)
@@ -29,7 +28,6 @@ class EMailFormatter:
 
 
 class ISO8601Formatter:
-
     @staticmethod
     def validate(value) -> bool:
         try:
@@ -44,7 +42,6 @@ class ISO8601Formatter:
 
 
 class URIFormatter:
-
     @staticmethod
     def validate(value) -> bool:
         return validators.url(value)
@@ -78,16 +75,18 @@ def create_spec(settings: dict) -> models.Spec:
     """Create and return the OpenAPI v3 Spec Model"""
     if not _openapi_spec_dict:
         loader = template.Loader(str(settings['template_path']))
-        _openapi_spec_dict.update(yaml.safe_load(
-            loader.load('openapi.yaml').generate(settings=settings)))
+        _openapi_spec_dict.update(
+            yaml.safe_load(
+                loader.load('openapi.yaml').generate(settings=settings)))
         # Remove servers for validation to prevent hostname validation errors
         _openapi_spec_dict.pop('servers', None)
 
     spec_resolver = jsonschema_validators.RefResolver(
-        '', _openapi_spec_dict,
+        '',
+        _openapi_spec_dict,
         handlers=openapi_spec_validator.default_handlers)
-    spec_factory = factories.SpecFactory(
-        spec_resolver, config={'validate_spec': False})
+    spec_factory = factories.SpecFactory(spec_resolver,
+                                         config={'validate_spec': False})
     return spec_factory.create(_openapi_spec_dict, spec_url='')
 
 

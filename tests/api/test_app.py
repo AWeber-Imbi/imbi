@@ -4,7 +4,6 @@ from tests import base
 
 
 class EncryptionTestCase(base.TestCase):
-
     def test_lifecycle(self):
         value = str(uuid.uuid4())
         encrypted = self._app.encrypt_value(value)

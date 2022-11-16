@@ -28,8 +28,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
-            result.headers['Cache-Control'], 'public, max-age={}'.format(
-                groups.RecordRequestHandler.TTL))
+            result.headers['Cache-Control'],
+            'public, max-age={}'.format(groups.RecordRequestHandler.TTL))
         record.update({
             'created_by': self.USERNAME[self.ADMIN_ACCESS],
             'last_modified_by': None
@@ -65,19 +65,22 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assert_link_header_equals(result, url)
         self.assertEqual(
-            result.headers['Cache-Control'], 'public, max-age={}'.format(
-                groups.RecordRequestHandler.TTL))
+            result.headers['Cache-Control'],
+            'public, max-age={}'.format(groups.RecordRequestHandler.TTL))
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(new_value, record)
 
         # Collection
         result = self.fetch('/groups')
         self.assertEqual(result.code, 200)
-        self.assertListEqual(
-            [row for row in json.loads(result.body.decode('utf-8'))
-             if row['name'] == record['name']],
-            [{k: v for k, v in record.items()
-              if k not in ['created_by', 'last_modified_by']}])
+        self.assertListEqual([
+            row for row in json.loads(result.body.decode('utf-8'))
+            if row['name'] == record['name']
+        ], [{
+            k: v
+            for k, v in record.items()
+            if k not in ['created_by', 'last_modified_by']
+        }])
 
         # DELETE
         result = self.fetch(url, method='DELETE')
@@ -92,10 +95,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
-        record = {
-            'name': str(uuid.uuid4()),
-            'group_type': 'internal'
-        }
+        record = {'name': str(uuid.uuid4()), 'group_type': 'internal'}
         result = self.fetch('/groups', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))

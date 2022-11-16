@@ -9,7 +9,8 @@ class RequestHandler(base.ValidatingRequestHandler):
 
     NAME = 'activity-feed'
 
-    SQL = re.sub(r'\s+', ' ', """\
+    SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT 'ProjectFeedEntry' AS "type", "when", namespace_id,
                namespace, project_id, project_name, project_type, who,
                display_name, email_address, what
@@ -21,8 +22,9 @@ class RequestHandler(base.ValidatingRequestHandler):
     @web.authenticated
     async def get(self):
         result = await self.postgres_execute(
-            self.SQL.format(
-                limit=int(self.get_query_argument('limit', '25')),
-                offset=int(self.get_query_argument('offset', '0'))),
-            metric_name='reports-compliance')
+            self.SQL.format(limit=int(self.get_query_argument('limit', '25')),
+                            offset=int(self.get_query_argument('offset',
+                                                               '0'))),
+            metric_name='reports-compliance',
+        )
         self.send_response(result.rows)

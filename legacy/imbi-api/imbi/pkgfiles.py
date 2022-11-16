@@ -13,7 +13,6 @@ LOGGER = logging.getLogger(__name__)
 
 class TemplateLoader(template.BaseLoader):
     """A template loader that loads from Python package data."""
-
     def __init__(self, debug=False, **kwargs):
         """Create a new instance of the loader, respecting the debug flag
         so that when set, templates are not cached, since changing templates
@@ -67,7 +66,7 @@ class TemplateLoader(template.BaseLoader):
 
         """
         LOGGER.debug('Loading %s', path.join(self.root, name))
-        return template.Template(
-            pkgutil.get_data(
-                __name__.split('.')[0], path.join(self.root, name)),
-            name=name, loader=self)
+        return template.Template(pkgutil.get_data(
+            __name__.split('.')[0], path.join(self.root, name)),
+                                 name=name,
+                                 loader=self)

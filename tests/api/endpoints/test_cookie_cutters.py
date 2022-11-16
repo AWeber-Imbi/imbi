@@ -10,10 +10,7 @@ from tests import base
 class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
-    TRUNCATE_TABLES = [
-        'v1.cookie_cutters',
-        'v1.project_types'
-    ]
+    TRUNCATE_TABLES = ['v1.cookie_cutters', 'v1.project_types']
 
     def setUp(self):
         super().setUp()
@@ -79,10 +76,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # Collection
         result = self.fetch('/cookie-cutters')
         self.assertEqual(result.code, 200)
-        self.assertListEqual(
-            json.loads(result.body.decode('utf-8')),
-            [{k: v for k, v in record.items()
-              if k not in ['created_by', 'last_modified_by']}])
+        self.assertListEqual(json.loads(result.body.decode('utf-8')), [{
+            k: v
+            for k, v in record.items()
+            if k not in ['created_by', 'last_modified_by']
+        }])
 
         # DELETE
         result = self.fetch(url, method='DELETE')

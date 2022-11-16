@@ -28,13 +28,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch('/project-fact-types', method='POST',
+        result = self.fetch('/project-fact-types',
+                            method='POST',
                             json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         record['id'] = response['id']
-        url = self.get_url(
-            '/project-fact-types/{}'.format(response['id']))
+        url = self.get_url('/project-fact-types/{}'.format(response['id']))
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
@@ -82,10 +82,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # Collection
         result = self.fetch('/project-fact-types')
         self.assertEqual(result.code, 200)
-        self.assertListEqual(
-            json.loads(result.body.decode('utf-8')),
-            [{k: v for k, v in record.items()
-              if k not in ['created_by', 'last_modified_by']}])
+        self.assertListEqual(json.loads(result.body.decode('utf-8')), [{
+            k: v
+            for k, v in record.items()
+            if k not in ['created_by', 'last_modified_by']
+        }])
 
         # DELETE
         result = self.fetch(url, method='DELETE')
@@ -104,7 +105,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type_ids': [self.project_type['id']],
             'name': str(uuid.uuid4())
         }
-        result = self.fetch('/project-fact-types', method='POST',
+        result = self.fetch('/project-fact-types',
+                            method='POST',
                             json_body=record)
         self.assertEqual(result.code, 400)
 
@@ -117,28 +119,28 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 405)
 
     def test_missing_project_type_id(self):
-        result = self.fetch(
-            '/project-fact-types', method='POST',
-            json_body={
-                'name': str(uuid.uuid4()),
-                'fact_type': 'free-form',
-                'data_type': 'string',
-                'description': 'Test description',
-                'ui_options': ['hidden'],
-                'weight': 100
-            })
+        result = self.fetch('/project-fact-types',
+                            method='POST',
+                            json_body={
+                                'name': str(uuid.uuid4()),
+                                'fact_type': 'free-form',
+                                'data_type': 'string',
+                                'description': 'Test description',
+                                'ui_options': ['hidden'],
+                                'weight': 100
+                            })
         self.assertEqual(result.code, 200)
 
     def test_empty_ui_options(self):
-        result = self.fetch(
-            '/project-fact-types', method='POST',
-            json_body={
-                'project_type_ids': [],
-                'name': str(uuid.uuid4()),
-                'fact_type': 'free-form',
-                'data_type': 'string',
-                'description': 'Test description',
-                'ui_options': [],
-                'weight': 100
-            })
+        result = self.fetch('/project-fact-types',
+                            method='POST',
+                            json_body={
+                                'project_type_ids': [],
+                                'name': str(uuid.uuid4()),
+                                'fact_type': 'free-form',
+                                'data_type': 'string',
+                                'description': 'Test description',
+                                'ui_options': [],
+                                'weight': 100
+                            })
         self.assertEqual(result.code, 200)

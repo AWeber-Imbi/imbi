@@ -31,11 +31,10 @@ class EncryptionTests(unittest.TestCase):
 
     def test_symmetric_encryption(self):
         # generate some random "words"
-        plaintext = ' '.join(
-            ''.join(random.choice(string.ascii_letters)
-                    for _ in range(random.randint(5, 10)))
-            for _ in range(random.randint(10, 15))
-        ).encode()
+        plaintext = ' '.join(''.join(
+            random.choice(string.ascii_letters)
+            for _ in range(random.randint(5, 10)))
+                             for _ in range(random.randint(10, 15))).encode()
 
         # round trip them through the keychain
         keychain = imbi.keychain.Keychain(self.key)

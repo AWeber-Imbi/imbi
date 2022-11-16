@@ -20,20 +20,20 @@ if typing.TYPE_CHECKING:
 
 class GitLabCreateProjectAutomation(base.Automation):
 
-    INSERT_SQL = re.sub(r'\s+', ' ', """\
+    INSERT_SQL = re.sub(
+        r'\s+', ' ', """\
         INSERT INTO v1.project_links
                     (project_id, link_type_id, created_by, url)
              VALUES (%(project_id)s, %(link_type_id)s,
                      %(username)s, %(url)s)""")
 
-    UPDATE_SQL = re.sub(r'\s+', ' ', """\
+    UPDATE_SQL = re.sub(
+        r'\s+', ' ', """\
         UPDATE v1.projects
            SET gitlab_project_id = %(gitlab_project_id)s
          WHERE id = %(project_id)s""")
 
-    def __init__(self,
-                 application: 'app.Application',
-                 project_id: int,
+    def __init__(self, application: 'app.Application', project_id: int,
                  current_user: 'user.User',
                  db: sprockets_postgres.PostgresConnector):
         super().__init__(application, current_user, db)
@@ -46,12 +46,10 @@ class GitLabCreateProjectAutomation(base.Automation):
         project: models.Project
         token: oauth2.IntegrationToken
         project, token = await asyncio.gather(
-            self._get_project(self.imbi_project_id),
-            self._get_gitlab_token())
+            self._get_project(self.imbi_project_id), self._get_gitlab_token())
         if project is not None and project.gitlab_project_id is not None:
-            self._add_error(
-                'GitLab project {} already exists for {}',
-                project.gitlab_project_id, project.slug)
+            self._add_error('GitLab project {} already exists for {}',
+                            project.gitlab_project_id, project.slug)
         elif project is not None and token is not None:
             self._gitlab = gitlab.GitLabClient(token, self.application)
             self._gitlab_parent = await self._get_gitlab_parent(project)
@@ -63,19 +61,16 @@ class GitLabCreateProjectAutomation(base.Automation):
             self._gitlab_parent,
             self._project.name,
             description=self._project.description)
-        await self.db.execute(
-            self.UPDATE_SQL,
-            {
-                'project_id': self._project.id,
-                'gitlab_project_id': project.id,
-            })
+        await self.db.execute(self.UPDATE_SQL, {
+            'project_id': self._project.id,
+            'gitlab_project_id': project.id,
+        })
 
         link_id = self.automation_settings['gitlab'].get(
             'project_link_type_id')
         if link_id:
             await self.db.execute(
-                self.INSERT_SQL,
-                {
+                self.INSERT_SQL, {
                     'link_type_id': link_id,
                     'project_id': self._project.id,
                     'url': project.web_url,
@@ -83,8 +78,8 @@ class GitLabCreateProjectAutomation(base.Automation):
                 })
         return project
 
-    async def _get_project(
-            self, project_id: int) -> typing.Optional[models.Project]:
+    async def _get_project(self,
+                           project_id: int) -> typing.Optional[models.Project]:
         project = await super()._get_project(project_id)
         if project is not None:
             if project.namespace.gitlab_group_name is None:
@@ -95,15 +90,14 @@ class GitLabCreateProjectAutomation(base.Automation):
                                 project.project_type.slug)
         return None if self._has_error() else project
 
-    async def _get_gitlab_parent(self, project:  models.Project) -> dict:
+    async def _get_gitlab_parent(self, project: models.Project) -> dict:
         gitlab_parent = await self._gitlab.fetch_group(
             project.namespace.gitlab_group_name,
             project.project_type.gitlab_project_prefix)
         if not gitlab_parent:
-            self._add_error(
-                'GitLab path {}/{} does not exist',
-                project.namespace.gitlab_group_name,
-                project.project_type.gitlab_project_prefix)
+            self._add_error('GitLab path {}/{} does not exist',
+                            project.namespace.gitlab_group_name,
+                            project.project_type.gitlab_project_prefix)
         return gitlab_parent
 
 
@@ -117,17 +111,15 @@ class InitialCommitError(Exception):
 
 class GitLabInitialCommitAutomation(base.Automation):
 
-    GET_COOKIE_CUTTER = re.sub(r'\s+', ' ', """\
+    GET_COOKIE_CUTTER = re.sub(
+        r'\s+', ' ', """\
         SELECT name, project_type_id, url
           FROM v1.cookie_cutters
          WHERE type='project'
            AND url = %(url)s""")
 
-    def __init__(self,
-                 application: 'app.Application',
-                 project_id: int,
-                 cookie_cutter: str,
-                 current_user: 'user.User',
+    def __init__(self, application: 'app.Application', project_id: int,
+                 cookie_cutter: str, current_user: 'user.User',
                  db: sprockets_postgres.PostgresConnector):
         super().__init__(application, current_user, db)
         self._cookie_cutter_name = cookie_cutter
@@ -167,10 +159,14 @@ class GitLabInitialCommitAutomation(base.Automation):
                          self._project.slug, self._project.id,
                          self._cookie_cutter.url)
         context = dataclasses.asdict(self._project)
-        links = {k.lower().replace(' ', '_'): v
-                 for k, v in context['links'].items()}
-        urls = {k.lower().replace(' ', '_'): v
-                for k, v in context['urls'].items()}
+        links = {
+            k.lower().replace(' ', '_'): v
+            for k, v in context['links'].items()
+        }
+        urls = {
+            k.lower().replace(' ', '_'): v
+            for k, v in context['urls'].items()
+        }
         context.update({
             'environments': ','.join(self._project.environments),
             'gitlab': {
@@ -188,16 +184,21 @@ class GitLabInitialCommitAutomation(base.Automation):
                 'slug': self._project.sentry_project_slug,
                 'team': None
             },
-            'sonarqube': {'key': None},
+            'sonarqube': {
+                'key': None
+            },
             'urls': urls
         })
         if self.automation_settings['sonarqube'].get('url'):
-            context.update({
-                'sonarqube': {'key': sonarqube.generate_key(self._project)}
-            })
+            context.update(
+                {'sonarqube': {
+                    'key': sonarqube.generate_key(self._project)
+                }})
 
-        for var in ['gitlab_project_id', 'pagerduty_service_id',
-                    'sentry_project_slug', 'sonarqube_project_key']:
+        for var in [
+                'gitlab_project_id', 'pagerduty_service_id',
+                'sentry_project_slug', 'sonarqube_project_key'
+        ]:
             del context[var]
 
         self.logger.debug('Context %r', {'project': context})
@@ -219,7 +220,6 @@ class GitLabInitialCommitAutomation(base.Automation):
                 raise CookieCutterError(str(error))
 
             project_dir = pathlib.Path(project_dir)
-
             """Disabling for the time being
             self.logger.debug('reformatting project files')
             isort_cfg = self.automation_settings['isort']
@@ -243,8 +243,7 @@ class GitLabInitialCommitAutomation(base.Automation):
 
     async def _get_cookie_cutter(self, url: str) \
             -> typing.Optional[models.CookieCutter]:
-        result = await self.db.execute(
-            self.GET_COOKIE_CUTTER, {'url': url})
+        result = await self.db.execute(self.GET_COOKIE_CUTTER, {'url': url})
         if result.row_count != 0:
             return models.CookieCutter(**result.row)
         else:

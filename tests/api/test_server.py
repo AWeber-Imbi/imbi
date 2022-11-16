@@ -26,14 +26,13 @@ class ConfigurationTestCase(unittest.TestCase):
         self.config = {'http': {'canonical_server_name': 'server.example.com'}}
 
     def patch_object(
-            self, target: object, attribute: str, **kwargs
-    ) -> unittest.mock.MagicMock | unittest.mock.AsyncMock:
+            self, target: object, attribute: str,
+            **kwargs) -> unittest.mock.MagicMock | unittest.mock.AsyncMock:
         return self._exit_stack.enter_context(
             unittest.mock.patch.object(target, attribute, **kwargs))
 
 
 class LoadConfigurationTests(ConfigurationTestCase):
-
     def test_missing_configuration_file(self):
         with self.assertRaises(SystemExit):
             server.load_configuration(str(uuid.uuid4()), False)
@@ -68,7 +67,6 @@ class LoadConfigurationTests(ConfigurationTestCase):
 
 
 class SentryConfigurationTests(ConfigurationTestCase):
-
     def test_that_default_is_disabled(self):
         yaml.dump(self.config, self.temp_file)
         config, _ = server.load_configuration(self.temp_file.name, False)
@@ -95,12 +93,11 @@ class SentryConfigurationTests(ConfigurationTestCase):
     def test_that_sentry_url_has_sensible_default(self):
         yaml.dump(self.config, self.temp_file)
         config, _ = server.load_configuration(self.temp_file.name, False)
-        self.assertEqual(
-            'https://sentry.io/', config['automations']['sentry']['url'])
+        self.assertEqual('https://sentry.io/',
+                         config['automations']['sentry']['url'])
 
 
 class GitLabConfiguratTests(ConfigurationTestCase):
-
     def test_that_default_is_disabled(self):
         yaml.dump(self.config, self.temp_file)
         config, _ = server.load_configuration(self.temp_file.name, False)

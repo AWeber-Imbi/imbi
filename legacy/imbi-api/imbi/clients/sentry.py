@@ -51,8 +51,7 @@ class SentryClient(sprockets.mixins.http.HTTPClientMixin):
             'Authorization': f'Bearer {self.token}',
         }
 
-    async def api(self, url: yarl.URL | str, *,
-                  method: str = 'GET', **kwargs):
+    async def api(self, url: yarl.URL | str, *, method: str = 'GET', **kwargs):
         if not self.enabled:
             raise errors.InternalServerError('Sentry client is not enabled',
                                              title='Sentry Client Error')
@@ -80,13 +79,15 @@ class SentryClient(sprockets.mixins.http.HTTPClientMixin):
     async def create_project(self, team_slug: str,
                              project_name: str) -> ProjectInfo:
         url = yarl.URL('/teams') / self.organization / team_slug / 'projects'
-        response = await self.api(url, method='POST',
+        response = await self.api(url,
+                                  method='POST',
                                   body={'name': project_name})
         if not response.ok:
             self.logger.error('Sentry API failure: body %r', response.body)
-            raise errors.InternalServerError(
-                'POST %s failed: %s', url, response.code,
-                title='Sentry API Failure')
+            raise errors.InternalServerError('POST %s failed: %s',
+                                             url,
+                                             response.code,
+                                             title='Sentry API Failure')
         else:
             try:
                 data = _ProjectCreationResponse.parse_obj(response.body)
@@ -95,7 +96,8 @@ class SentryClient(sprockets.mixins.http.HTTPClientMixin):
                                   response.body)
                 raise errors.InternalServerError(
                     'Failed to parse sentry create_project response: %s',
-                    error, title='Sentry Client Failure')
+                    error,
+                    title='Sentry Client Failure')
 
         project = ProjectInfo(
             id=data.id,
@@ -103,8 +105,7 @@ class SentryClient(sprockets.mixins.http.HTTPClientMixin):
             slug=data.slug,
             link=str(self.url / 'organizations' / self.organization /
                      'projects' / data.slug),
-            keys={}
-        )
+            keys={})
 
         # TODO update the project platform based on the project details
         #      so that python projects use "platform=python" and
@@ -121,7 +122,8 @@ class SentryClient(sprockets.mixins.http.HTTPClientMixin):
             if not response.ok:
                 raise errors.InternalServerError(
                     'Failed to retrieve sentry project keys: %s',
-                    response.code, title='Sentry API Error')
+                    response.code,
+                    title='Sentry API Error')
             try:
                 data = _ProjectKeysResponse.parse_obj(response.body[0])
             except pydantic.ValidationError as error:
@@ -129,7 +131,8 @@ class SentryClient(sprockets.mixins.http.HTTPClientMixin):
                                   response.body)
                 raise errors.InternalServerError(
                     'Failed to parse sentry project keys response: %s',
-                    error, title='Sentry Client Failure')
+                    error,
+                    title='Sentry Client Failure')
             else:
                 project.keys.update({
                     'public': data.dsn.public,
@@ -147,6 +150,6 @@ class SentryClient(sprockets.mixins.http.HTTPClientMixin):
         return project
 
     async def remove_project(self, project_slug: str) -> None:
-        await self.api(
-            yarl.URL('/projects') / self.organization / project_slug,
-            method='DELETE')
+        await self.api(yarl.URL('/projects') / self.organization /
+                       project_slug,
+                       method='DELETE')

@@ -50,8 +50,7 @@ class Origins:
 
     def __str__(self) -> str:
         return '<{} allow_any:{} origins:{}>'.format(
-            self.__class__.__name__,
-            self.allow_any,
+            self.__class__.__name__, self.allow_any,
             ','.join(str(s) for s in self._origins))
 
     def __copy__(self) -> Origins:
@@ -82,15 +81,14 @@ class CORSConfig:
         layer may cache the CORS response
 
     """
-
     def __init__(
-            self,
-            *,
-            allow_any_origin: bool = True,
-            allow_credentials: bool = True,
-            allow_methods: set[str] | None = None,
-            exposed_headers: set[str] | None = None,
-            max_age: int = 5,
+        self,
+        *,
+        allow_any_origin: bool = True,
+        allow_credentials: bool = True,
+        allow_methods: set[str] | None = None,
+        exposed_headers: set[str] | None = None,
+        max_age: int = 5,
     ):
         # allow_credentials is True by default to ensure that any
         # cookies we set will be returned to the JS client
@@ -102,8 +100,9 @@ class CORSConfig:
 
         self.allowed_origins = Origins(allow_any=allow_any_origin)
 
-        self.exposed_headers: set[str] = {'Cache-Control', 'Date',
-                                          'Last-Modified', 'Link'}
+        self.exposed_headers: set[str] = {
+            'Cache-Control', 'Date', 'Last-Modified', 'Link'
+        }
         if exposed_headers:
             self.exposed_headers.update(exposed_headers)
 
@@ -112,34 +111,35 @@ class CORSConfig:
     def __str__(self) -> str:
         return (('<{} allow_credentials:{} max_age:{} allowed_methods:{!r}'
                  ' exposed_headers:{!r} origins:{}>').format(
-            self.__class__.__name__,
-            self.allow_credentials,
-            self.max_age,
-            self.allowed_methods,
-            self.exposed_headers,
-            self.allowed_origins,
-        ))
+                     self.__class__.__name__,
+                     self.allow_credentials,
+                     self.max_age,
+                     self.allowed_methods,
+                     self.exposed_headers,
+                     self.allowed_origins,
+                 ))
 
     def __copy__(self) -> CORSConfig:
-        clone = CORSConfig(
-            allow_credentials=self.allow_credentials,
-            allow_methods=self.allowed_methods,
-            exposed_headers=self.exposed_headers,
-            max_age=self.max_age)
+        clone = CORSConfig(allow_credentials=self.allow_credentials,
+                           allow_methods=self.allowed_methods,
+                           exposed_headers=self.exposed_headers,
+                           max_age=self.max_age)
         clone.allowed_origins = copy.deepcopy(self.allowed_origins)
         return clone
 
     def __deepcopy__(self, *args, **kwargs) -> CORSConfig:
         return self.__copy__()
 
-    def update(self, *,
-               allow_any_origin: bool | Unspecified = Unspecified(),
-               allow_credentials: bool | Unspecified = Unspecified(),
-               allow_methods: set[str] | Unspecified = Unspecified(),
-               allow_origins: set[str] | Unspecified = Unspecified(),
-               exposed_headers: set[str] | Unspecified = Unspecified(),
-               max_age: int | Unspecified = Unspecified(),
-               ) -> None:
+    def update(
+            self,
+            *,
+            allow_any_origin: bool | Unspecified = Unspecified(),
+            allow_credentials: bool | Unspecified = Unspecified(),
+            allow_methods: set[str] | Unspecified = Unspecified(),
+            allow_origins: set[str] | Unspecified = Unspecified(),
+            exposed_headers: set[str] | Unspecified = Unspecified(),
+            max_age: int | Unspecified = Unspecified(),
+    ) -> None:
         """Update selected attributes"""
         if not isinstance(allow_any_origin, Unspecified):
             self.allowed_origins.allow_any = allow_any_origin
@@ -231,15 +231,17 @@ class CORSProcessor:
 
         """
         if self.is_preflight and self.ok:
+
             def add_headers(name, values):
                 for value in values:
                     handler.add_header(name, value)
 
             add_headers('Access-Control-Allow-Methods',
                         self.config.allowed_methods)
-            add_headers('Access-Control-Allow-Headers',
-                        handler.request.headers.get_list(
-                            'Access-Control-Request-Headers'))
+            add_headers(
+                'Access-Control-Allow-Headers',
+                handler.request.headers.get_list(
+                    'Access-Control-Request-Headers'))
             add_headers('Access-Control-Expose-Headers',
                         self.config.exposed_headers)
             handler.set_header('Access-Control-Max-Age',
@@ -272,7 +274,6 @@ class CORSMixin(web.RequestHandler):
 
     cors_overrides = {}
     """Add specific overrides for CORSProcessor here"""
-
     def __init__(self, application, request, **kwargs):
         super().__init__(application, request, **kwargs)
         cors_config = getattr(application, 'cors_config', CORSConfig())

@@ -6,9 +6,9 @@ from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                groups, integrations, metrics, namespaces, openapi, opensearch,
                operations_log, permissions, project_activity_feed,
                project_dependencies, project_fact_history, project_fact_types,
-               project_facts, project_link_types, project_links,
-               project_notes, project_score_history, project_secrets,
-               project_types, project_urls, projects, reports, status, ui)
+               project_facts, project_link_types, project_links, project_notes,
+               project_score_history, project_secrets, project_types,
+               project_urls, projects, reports, status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -16,9 +16,11 @@ URLS = [
     web.url(r'^/api-docs/$', openapi.RequestHandler),
     web.url(r'^/api-docs/(openapi.yaml)$', openapi.RequestHandler),
     web.url(r'^/authentication-tokens$', authentication_tokens.RequestHandler),
-    web.url(r'^/authentication-tokens/(?P<token>{})$'.format(
-                constants.UUID_PATTERN),
-            authentication_tokens.RequestHandler),
+    web.url(
+        r'^/authentication-tokens/(?P<token>{})$'.format(
+            constants.UUID_PATTERN),
+        authentication_tokens.RequestHandler,
+    ),
     web.url(r'^/cookie-cutters$', cookie_cutters.CollectionRequestHandler),
     web.url(r'^/cookie-cutters/(?P<name>[\w_\-%\+]+)$',
             cookie_cutters.RecordRequestHandler,
@@ -48,7 +50,8 @@ URLS = [
     web.url(r'^/permissions$', permissions.RequestHandler),
     web.url(r'^/project-fact-types$', fact_types.CollectionRequestHandler),
     web.url(r'^/project-fact-types/(?P<id>\d+)$',
-            fact_types.RecordRequestHandler, name='fact-type'),
+            fact_types.RecordRequestHandler,
+            name='fact-type'),
     web.url(r'^/project-fact-type-enums$',
             fact_type_enums.CollectionRequestHandler),
     web.url(r'^/project-fact-type-enums/(?P<id>\d+)$',
@@ -78,10 +81,11 @@ URLS = [
     web.url(r'^/projects/(?P<project_id>\d+)/dependencies$',
             project_dependencies.CollectionRequestHandler,
             name='project-dependencies'),
-    web.url(r'^/projects/(?P<project_id>\d+)/dependencies/'
-            r'(?P<dependency_id>\d+)$',
-            project_dependencies.RecordRequestHandler,
-            name='project-dependency'),
+    web.url(
+        r'^/projects/(?P<project_id>\d+)/dependencies/'
+        r'(?P<dependency_id>\d+)$',
+        project_dependencies.RecordRequestHandler,
+        name='project-dependency'),
     web.url(r'^/projects/(?P<project_id>\d+)/facts$',
             project_facts.CollectionRequestHandler,
             name='project-facts'),
@@ -116,9 +120,10 @@ URLS = [
     web.url(r'^/projects/(?P<project_id>\d+)/urls$',
             project_urls.CollectionRequestHandler,
             name='project-urls'),
-    web.url(r'^/projects/(?P<project_id>\d+)/urls/'
-            r'(?P<environment>[\w_\-%\+]+)$',
-            project_urls.RecordRequestHandler,
-            name='project-url'),
+    web.url(
+        r'^/projects/(?P<project_id>\d+)/urls/'
+        r'(?P<environment>[\w_\-%\+]+)$',
+        project_urls.RecordRequestHandler,
+        name='project-url'),
     web.url(r'^/status$', status.RequestHandler),
 ] + integrations.URLS + ui.URLS + reports.URLS

@@ -7,7 +7,8 @@ class RequestHandler(base.AuthenticatedRequestHandler):
 
     NAME = 'dashboard'
 
-    NAMESPACE_COUNTS = re.sub(r'\s+', ' ', """\
+    NAMESPACE_COUNTS = re.sub(
+        r'\s+', ' ', """\
         SELECT a.namespace_id,
                b.name AS name,
                b.icon_class AS icon,
@@ -19,7 +20,8 @@ class RequestHandler(base.AuthenticatedRequestHandler):
          GROUP BY a.namespace_id, b.name, b.icon_class
          ORDER BY b.name ASC""")
 
-    PROJECT_COUNTS = re.sub(r'\s+', ' ', """\
+    PROJECT_COUNTS = re.sub(
+        r'\s+', ' ', """\
         SELECT a.project_type_id,
                b.name AS name,
                b.plural_name AS plural,
@@ -41,4 +43,5 @@ class RequestHandler(base.AuthenticatedRequestHandler):
             self.PROJECT_COUNTS, metric_name='dashboard-project-types')
         self.send_response({
             'namespaces': namespaces.rows,
-            'project_types': project_types.rows})
+            'project_types': project_types.rows
+        })

@@ -6,11 +6,14 @@ from imbi.endpoints import base
 class _RequestHandlerMixin:
 
     ID_KEY = 'id'
-    FIELDS = ['id', 'name', 'plural_name', 'description', 'icon_class',
-              'environment_urls', 'gitlab_project_prefix']
+    FIELDS = [
+        'id', 'name', 'plural_name', 'description', 'icon_class',
+        'environment_urls', 'gitlab_project_prefix'
+    ]
     DEFAULTS = {'icon_class': 'fas fa-folder'}
 
-    GET_SQL = re.sub(r'\s+', ' ', """\
+    GET_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT id, "name", created_at, created_by,
                last_modified_at, last_modified_by,
                description, plural_name, slug, icon_class,
@@ -25,13 +28,15 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     NAME = 'project-types'
     ITEM_NAME = 'project-type'
 
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT id, "name", plural_name, description, slug, icon_class,
                environment_urls, gitlab_project_prefix
           FROM v1.project_types
          ORDER BY "name" ASC""")
 
-    POST_SQL = re.sub(r'\s+', ' ', """\
+    POST_SQL = re.sub(
+        r'\s+', ' ', """\
         INSERT INTO v1.project_types
                     ("name", created_by, plural_name, description,
                      slug, icon_class, environment_urls, gitlab_project_prefix)
@@ -47,7 +52,8 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
 
     DELETE_SQL = 'DELETE FROM v1.project_types WHERE id=%(id)s;'
 
-    PATCH_SQL = re.sub(r'\s+', ' ', """\
+    PATCH_SQL = re.sub(
+        r'\s+', ' ', """\
         UPDATE v1.project_types
            SET "name"=%(name)s,
                last_modified_at=CURRENT_TIMESTAMP,

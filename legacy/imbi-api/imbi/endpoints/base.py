@@ -47,16 +47,15 @@ def require_permission(permission):
                 raise errors.Forbidden('%r does not have the "%s" permission',
                                        self._current_user, permission)
             return f(self, *args, **kwargs)
+
         return wrapped
+
     return _require_permission
 
 
-class RequestHandler(cors.CORSMixin,
-                     postgres.RequestHandlerMixin,
-                     mixins.ErrorLogger,
-                     problemdetails.ErrorWriter,
-                     mediatype.ContentMixin,
-                     web.RequestHandler):
+class RequestHandler(cors.CORSMixin, postgres.RequestHandlerMixin,
+                     mixins.ErrorLogger, problemdetails.ErrorWriter,
+                     mediatype.ContentMixin, web.RequestHandler):
     """Base RequestHandler class used for recipients and subscribers."""
 
     APPLICATION_JSON = 'application/json'
@@ -64,9 +63,7 @@ class RequestHandler(cors.CORSMixin,
     NAME = 'Base'
     ITEM_NAME = ''
 
-    def __init__(self,
-                 application,
-                 request: httputil.HTTPServerRequest,
+    def __init__(self, application, request: httputil.HTTPServerRequest,
                  **kwargs):
         super().__init__(application, request, **kwargs)
         self.logger = logging.getLogger(f'imbi.endpoints.{self.NAME}')
@@ -96,8 +93,7 @@ class RequestHandler(cors.CORSMixin,
         """Invoked after a request has completed"""
         super().on_finish()
         self.application.loop.add_callback(
-            self.application.stats.incr,
-            {
+            self.application.stats.incr, {
                 'key': 'http_requests',
                 'endpoint': self.NAME,
                 'method': self.request.method,
@@ -105,14 +101,12 @@ class RequestHandler(cors.CORSMixin,
             })
 
         self.application.loop.add_callback(
-            self.application.stats.add_duration,
-            {
+            self.application.stats.add_duration, {
                 'key': 'http_request_duration',
                 'endpoint': self.NAME,
                 'method': self.request.method,
                 'status': self.get_status()
-            },
-            self.request.request_time())
+            }, self.request.request_time())
 
     def compute_etag(self) -> None:
         """Override Tornado's built-in ETag generation"""
@@ -141,18 +135,14 @@ class RequestHandler(cors.CORSMixin,
         namespace.update({'version': version})
         return namespace
 
-    def on_postgres_timing(self,
-                           metric_name: str,
-                           duration: float) -> None:
+    def on_postgres_timing(self, metric_name: str, duration: float) -> None:
         """Invoked by sprockets-postgres after each query"""
         self.application.loop.add_callback(
-            self.application.stats.add_duration,
-            {
+            self.application.stats.add_duration, {
                 'key': 'postgres_query_duration',
                 'query': metric_name,
                 'endpoint': self.NAME
-            },
-            duration)
+            }, duration)
 
     def send_response(self, value: typing.Union[dict, list]) -> None:
         """Send the response to the client"""
@@ -174,7 +164,8 @@ class RequestHandler(cors.CORSMixin,
             return self.render(
                 'error.html',
                 javascript_url=self.application.settings.get('javascript_url'),
-                status_code=status_code, **kwargs)
+                status_code=status_code,
+                **kwargs)
         super().write_error(status_code, **kwargs)
 
     def _add_last_modified_header(self, value: datetime.datetime) -> None:
@@ -216,7 +207,6 @@ class RequestHandler(cors.CORSMixin,
 
 class AuthenticatedRequestHandler(RequestHandler):
     """RequestHandler base class for authenticated requests"""
-
     async def prepare(self) -> None:
         await super().prepare()
 
@@ -249,25 +239,29 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
         try:
             self.application.validate_request(self.request)
         except DeserializeError as err:
-            raise errors.BadRequest('Failed to deserialize body: %s', err,
+            raise errors.BadRequest('Failed to deserialize body: %s',
+                                    err,
                                     detail=str(err))
         except InvalidSecurity as err:
             raise errors.InternalServerError(
-                'Invalid OpenAPI spec security: %s', err,
+                'Invalid OpenAPI spec security: %s',
+                err,
                 title='OpenAPI Security Error')
         except OperationNotFound as err:
             raise errors.MethodNotAllowed(err.method.upper())
         except InvalidContentType as err:
             raise errors.UnsupportedMediaType(err.mimetype)
         except PathNotFound as err:
-            raise errors.InternalServerError('OpenAPI Spec Error: %s', err,
+            raise errors.InternalServerError('OpenAPI Spec Error: %s',
+                                             err,
                                              title='OpenAPI Spec Error',
                                              detail=str(err))
         except ValidateError as err:
-            raise errors.BadRequest('Request failed to validate: %s', err,
-                                    detail='The request did not validate',
-                                    errors=[str(e).split('\n')[0]
-                                            for e in err.schema_errors])
+            raise errors.BadRequest(
+                'Request failed to validate: %s',
+                err,
+                detail='The request did not validate',
+                errors=[str(e).split('\n')[0] for e in err.schema_errors])
 
 
 class CRUDRequestHandler(ValidatingRequestHandler):
@@ -341,17 +335,17 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         super().send_response(value)
 
     async def _delete(self, kwargs):
-        result = await self.postgres_execute(
-            self.DELETE_SQL, self._get_query_kwargs(kwargs),
-            'delete-{}'.format(self.NAME))
+        result = await self.postgres_execute(self.DELETE_SQL,
+                                             self._get_query_kwargs(kwargs),
+                                             'delete-{}'.format(self.NAME))
         if not result.row_count:
             raise errors.ItemNotFound(instance=self.request.uri)
         self.set_status(204, reason='Item Deleted')
 
     async def _get(self, kwargs):
-        result = await self.postgres_execute(
-            self.GET_SQL, self._get_query_kwargs(kwargs),
-            'get-{}'.format(self.NAME))
+        result = await self.postgres_execute(self.GET_SQL,
+                                             self._get_query_kwargs(kwargs),
+                                             'get-{}'.format(self.NAME))
         if not result.row_count or not result.row:
             raise errors.ItemNotFound(instance=self.request.uri)
         for key, value in result.row.items():
@@ -367,15 +361,17 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     async def _patch(self, kwargs):
         patch_value = self.get_request_body()
 
-        result = await self.postgres_execute(
-            self.GET_SQL, self._get_query_kwargs(kwargs),
-            'get-{}'.format(self.NAME))
+        result = await self.postgres_execute(self.GET_SQL,
+                                             self._get_query_kwargs(kwargs),
+                                             'get-{}'.format(self.NAME))
         if not result.row_count:
             raise errors.ItemNotFound(instance=self.request.uri)
 
         original = dict(result.row)
-        for key in {'created_at', 'created_by',
-                    'last_modified_at', 'last_modified_by'}:
+        for key in {
+                'created_at', 'created_by', 'last_modified_at',
+                'last_modified_by'
+        }:
             if key in original:
                 del original[key]
 
@@ -388,8 +384,10 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         updated = patch.apply(original)
 
         # Bail early if there are no changes
-        if not {k: original[k] for k in original
-                if k in updated and original[k] != updated[k]}:
+        if not {
+                k: original[k]
+                for k in original if k in updated and original[k] != updated[k]
+        }:
             self._add_self_link(self.request.path)
             self._add_link_header()
             return self.set_status(304)
@@ -401,9 +399,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
             updated['current_{}'.format(self.ID_KEY)] = kwargs[self.ID_KEY]
         updated['username'] = self._current_user.username
 
-        result = await self.postgres_execute(
-            self.PATCH_SQL, updated,
-            'patch-{}'.format(self.NAME))
+        result = await self.postgres_execute(self.PATCH_SQL, updated,
+                                             'patch-{}'.format(self.NAME))
         if not result.row_count:
             raise errors.DatabaseError('No rows returned from PATCH_SQL',
                                        title='Failed to update record')
@@ -428,8 +425,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
                 values[name] = self.DEFAULTS.get(name)
 
         values['username'] = self._current_user.username
-        result = await self.postgres_execute(
-            self.POST_SQL, values, 'post-{}'.format(self.NAME))
+        result = await self.postgres_execute(self.POST_SQL, values,
+                                             'post-{}'.format(self.NAME))
         if not result.row_count:
             raise errors.DatabaseError('No rows returned from POST_SQL',
                                        title='Failed to create record')
@@ -450,14 +447,14 @@ class CollectionRequestHandler(CRUDRequestHandler):
     TTL = 300
 
     async def get(self, *args, **kwargs):
-        result = await self.postgres_execute(
-            self.COLLECTION_SQL, kwargs,
-            metric_name='get-{}'.format(self.NAME))
+        result = await self.postgres_execute(self.COLLECTION_SQL,
+                                             kwargs,
+                                             metric_name='get-{}'.format(
+                                                 self.NAME))
         self.send_response(result.rows)
 
 
 class AdminCRUDRequestHandler(CRUDRequestHandler):
-
     @require_permission('admin')
     async def delete(self, *args, **kwargs):
         await super().delete(*args, **kwargs)

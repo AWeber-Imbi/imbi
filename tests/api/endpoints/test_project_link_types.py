@@ -13,26 +13,23 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
     TRUNCATE_TABLES = ['v1.project_types', 'v1.project_link_types']
 
     def test_project_link_type_lifecycle(self):
-        record = {
-            'link_type': str(uuid.uuid4()),
-            'icon_class': 'fas fa-blind'
-        }
+        record = {'link_type': str(uuid.uuid4()), 'icon_class': 'fas fa-blind'}
 
         # Create
-        result = self.fetch('/project-link-types', method='POST',
+        result = self.fetch('/project-link-types',
+                            method='POST',
                             json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
-        url = self.get_url(
-            '/project-link-types/{}'.format(response['id']))
+        url = self.get_url('/project-link-types/{}'.format(response['id']))
         self.assert_link_header_equals(result, url)
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 project_link_types.RecordRequestHandler.TTL))
-        self.assertEqual(
-            response['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+        self.assertEqual(response['created_by'],
+                         self.USERNAME[self.ADMIN_ACCESS])
         record.update({
             'id': response['id'],
             'created_by': self.USERNAME[self.ADMIN_ACCESS],
@@ -74,10 +71,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # Collection
         result = self.fetch('/project-link-types')
         self.assertEqual(result.code, 200)
-        self.assertListEqual(
-            json.loads(result.body.decode('utf-8')),
-            [{k: v for k, v in record.items()
-              if k not in ['created_by', 'last_modified_by']}])
+        self.assertListEqual(json.loads(result.body.decode('utf-8')), [{
+            k: v
+            for k, v in record.items()
+            if k not in ['created_by', 'last_modified_by']
+        }])
 
         # DELETE
         result = self.fetch(url, method='DELETE')
@@ -92,9 +90,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
-        result = self.fetch(
-            '/project-link-types', method='POST',
-            json_body={'link_type': str(uuid.uuid4())})
+        result = self.fetch('/project-link-types',
+                            method='POST',
+                            json_body={'link_type': str(uuid.uuid4())})
         self.assertEqual(result.code, 400)
 
     def test_method_not_implemented(self):

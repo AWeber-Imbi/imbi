@@ -33,8 +33,8 @@ class CreationRequestHandler(mixins.PrepareFailureMixin,
 
         async with self.postgres_transaction() as transaction:
             automation = sonarqube.SonarCreateProject(
-                self.application, imbi_project_id, public_url,
-                await self.get_current_user(), transaction)
+                self.application, imbi_project_id, public_url, await
+                self.get_current_user(), transaction)
             failures = await automation.prepare()
             if failures:
                 raise self.handle_prepare_failures('Create SonarQube Project',

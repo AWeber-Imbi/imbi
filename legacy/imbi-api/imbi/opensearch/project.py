@@ -20,25 +20,63 @@ FACT_DATA_TYPES = {
 }
 
 PROJECT = {
-    'id': {'type': 'integer'},
-    'created_at': {'type': 'date'},
-    'created_by': {'type': 'text'},
-    'last_modified_at': {'type': 'date'},
-    'last_modified_by': {'type': 'text'},
-    'namespace': {'type': 'text'},
-    'namespace_slug': {'type': 'text'},
-    'project_type': {'type': 'text'},
-    'project_type_slug': {'type': 'text'},
-    'name': {'type': 'text'},
-    'slug': {'type': 'text'},
-    'description': {'type': 'text'},
-    'environments': {'type': 'text'},
-    'archived': {'type': 'boolean'},
-    'gitlab_project_id': {'type': 'text'},
-    'sentry_project_slug': {'type': 'text'},
-    'sonarqube_project_key': {'type': 'text'},
-    'pagerduty_service_id': {'type': 'text'},
-    'project_score': {'type': 'integer'}
+    'id': {
+        'type': 'integer'
+    },
+    'created_at': {
+        'type': 'date'
+    },
+    'created_by': {
+        'type': 'text'
+    },
+    'last_modified_at': {
+        'type': 'date'
+    },
+    'last_modified_by': {
+        'type': 'text'
+    },
+    'namespace': {
+        'type': 'text'
+    },
+    'namespace_slug': {
+        'type': 'text'
+    },
+    'project_type': {
+        'type': 'text'
+    },
+    'project_type_slug': {
+        'type': 'text'
+    },
+    'name': {
+        'type': 'text'
+    },
+    'slug': {
+        'type': 'text'
+    },
+    'description': {
+        'type': 'text'
+    },
+    'environments': {
+        'type': 'text'
+    },
+    'archived': {
+        'type': 'boolean'
+    },
+    'gitlab_project_id': {
+        'type': 'text'
+    },
+    'sentry_project_slug': {
+        'type': 'text'
+    },
+    'sonarqube_project_key': {
+        'type': 'text'
+    },
+    'pagerduty_service_id': {
+        'type': 'text'
+    },
+    'project_score': {
+        'type': 'integer'
+    }
 }
 
 
@@ -60,7 +98,7 @@ class ProjectIndex:
 
     async def delete_document(self, project_id: typing.Union[int, str]):
         await self.application.opensearch.delete_document(
-                self.INDEX, str(project_id))
+            self.INDEX, str(project_id))
 
     async def index_document(self, project: models.Project):
         await self.application.opensearch.index_document(
@@ -109,13 +147,13 @@ class ProjectIndex:
         async with self.application.postgres_connector(
                 on_error=self._on_postgres_error) as cursor:
             result = await cursor.execute(
-                        'SELECT name, data_type FROM v1.project_fact_types;')
+                'SELECT name, data_type FROM v1.project_fact_types;')
             for row in result:
                 defn[f'facts.{opensearch.sanitize_key(row["name"])}'] = {
                     'type': FACT_DATA_TYPES[row['data_type']]
                 }
             result = await cursor.execute(
-                        'SELECT link_type FROM v1.project_link_types;')
+                'SELECT link_type FROM v1.project_link_types;')
             for row in result:
                 defn[f'links.{opensearch.sanitize_key(row["link_type"])}'] = {
                     'type': 'text'
@@ -131,8 +169,7 @@ class ProjectIndex:
     def _on_postgres_error(metric_name: str, exc: Exception) -> None:
         LOGGER.error('Failed to execute query for collection %s: %s',
                      metric_name, exc)
-        raise errors.DatabaseError(
-            f'Error executing {metric_name}', error=exc)
+        raise errors.DatabaseError(f'Error executing {metric_name}', error=exc)
 
     @staticmethod
     def _project_to_dict(value: models.Project) -> dict:
@@ -144,7 +181,6 @@ class ProjectIndex:
 
 
 class RequestHandlerMixin:
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.search_index = ProjectIndex(self.application)

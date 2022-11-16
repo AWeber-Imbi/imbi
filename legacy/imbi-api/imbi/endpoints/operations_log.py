@@ -10,11 +10,14 @@ from imbi.opensearch import operations_log
 
 class _RequestHandlerMixin:
     ID_KEY = 'id'
-    FIELDS = ['id', 'recorded_at', 'recorded_by', 'completed_at', 'project_id',
-              'environment', 'change_type', 'description', 'link', 'notes',
-              'ticket_slug', 'version']
+    FIELDS = [
+        'id', 'recorded_at', 'recorded_by', 'completed_at', 'project_id',
+        'environment', 'change_type', 'description', 'link', 'notes',
+        'ticket_slug', 'version'
+    ]
 
-    GET_SQL = re.sub(r'\s+', ' ', """\
+    GET_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT id, recorded_at, recorded_by, completed_at,
                project_id, environment, change_type, description,
                link, notes, ticket_slug, version,
@@ -29,7 +32,8 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
     NAME = 'operations-logs'
     ITEM_NAME = 'operations-log'
 
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
@@ -39,7 +43,8 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
       ORDER BY o.recorded_at {{ORDER}}, o.id {{ORDER}}
          LIMIT %(limit)s""")
 
-    VALUE_FILTER_CHUNK = re.sub(r'\s+', ' ', """\
+    VALUE_FILTER_CHUNK = re.sub(
+        r'\s+', ' ', """\
         ((o.recorded_at = %(recorded_at_anchor)s AND o.id {{OP}} %(id_anchor)s)
         OR o.recorded_at {{OP}} %(recorded_at_anchor)s)""")
 
@@ -50,7 +55,8 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
         'namespace_id': 'p.namespace_id = %(namespace_id)s',
     }
 
-    POST_SQL = re.sub(r'\s+', ' ', """\
+    POST_SQL = re.sub(
+        r'\s+', ' ', """\
         INSERT INTO v1.operations_log
                     (recorded_by, recorded_at, completed_at,
                      project_id, environment, change_type, description,
@@ -69,8 +75,7 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
         kwargs['namespace_id'] = self.get_query_argument('namespace_id', None)
         kwargs['project_id'] = self.get_query_argument('project_id', None)
         kwargs['recorded_at_anchor'] = self.get_query_argument(
-            'recorded_at_anchor',
-            None)
+            'recorded_at_anchor', None)
         kwargs['id_anchor'] = self.get_query_argument('id_anchor', None)
         page_direction = self.get_query_argument('page_direction', None)
         is_link = (page_direction is not None
@@ -104,8 +109,10 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
             .replace('{{WHERE}}', where_sql) \
             .replace('{{ORDER}}', order)
 
-        result = await self.postgres_execute(
-            sql, kwargs, metric_name='get-{}'.format(self.NAME))
+        result = await self.postgres_execute(sql,
+                                             kwargs,
+                                             metric_name='get-{}'.format(
+                                                 self.NAME))
         rows = result.rows
 
         if page_direction == 'previous':
@@ -154,13 +161,13 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
 
 
 class RecordRequestHandler(operations_log.RequestHandlerMixin,
-                           _RequestHandlerMixin,
-                           base.CRUDRequestHandler):
+                           _RequestHandlerMixin, base.CRUDRequestHandler):
     NAME = 'operations-log'
 
     DELETE_SQL = 'DELETE FROM v1.operations_log WHERE id = %(id)s;'
 
-    PATCH_SQL = re.sub(r'\s+', ' ', """\
+    PATCH_SQL = re.sub(
+        r'\s+', ' ', """\
         UPDATE v1.operations_log
            SET recorded_by = %(recorded_by)s,
                recorded_at = %(recorded_at)s,
@@ -186,7 +193,8 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
 
 class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
                                 base.ValidatingRequestHandler):
-    SQL = re.sub(r'\s+', ' ', """\
+    SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT id
           FROM v1.operations_log
          ORDER BY id""")
@@ -194,11 +202,11 @@ class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
     async def post(self):
         result = await self.postgres_execute(self.SQL)
         for row in result:
-            value = await models.operations_log(row['id'],
-                                                self.application)
+            value = await models.operations_log(row['id'], self.application)
             await self.search_index.index_document(value)
 
         self.send_response({
             'status': 'ok',
             'message': f'Queued {len(result)} operations log entries for '
-                       'indexing'})
+            'indexing'
+        })

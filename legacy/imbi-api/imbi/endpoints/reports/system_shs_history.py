@@ -9,7 +9,8 @@ class RequestHandler(base.RequestHandler):
 
     NAME = 'reports-system-shs-history'
 
-    SQL = re.sub(r'\s+', ' ', """\
+    SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT scored_on,
                ((sum(total_project_score) / sum(total_possible_score))
                     * 100::FLOAT)::NUMERIC(9,2) AS health_score

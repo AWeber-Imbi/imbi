@@ -17,8 +17,8 @@ TAGS = re.compile(r'(([\w_-]+)=([\w_\+\.-]+))')
 
 class RequestHandler(base.RequestHandler):
     """Returns internal metrics in Prometheus line format"""
-    BUCKETS = (.005, .01, .025, .05, .075, .1, .25, .5, .75, 1.0, 2.5,
-               5.0, 7.5, 10.0, INF)
+    BUCKETS = (.005, .01, .025, .05, .075, .1, .25, .5, .75, 1.0, 2.5, 5.0,
+               7.5, 10.0, INF)
     NAME = 'metrics'
 
     @staticmethod
@@ -80,8 +80,8 @@ class RequestHandler(base.RequestHandler):
             for bucket in self.BUCKETS:
                 if bucket == INF:
                     continue
-                key = self._build_output_key(
-                    f'{timer}:le={bucket}', 'seconds_bucket')
+                key = self._build_output_key(f'{timer}:le={bucket}',
+                                             'seconds_bucket')
                 values[chunk_key].append(f'{key} {buckets[bucket]}\n')
 
             key = self._build_output_key(f'{timer}:le=Inf+', 'seconds_bucket')
@@ -99,17 +99,13 @@ class RequestHandler(base.RequestHandler):
             self.write('\n')
 
         postgres = await self.application.postgres_status()
-        self.write(
-            '# HELP postgres_pool_size The number of open connections '
-            'in the pool\n')
+        self.write('# HELP postgres_pool_size The number of open connections '
+                   'in the pool\n')
         self.write('# TYPE postgres_pool_size gauge\n')
-        self.write(
-            f'postgres_pool_size{{host="{socket.gethostname()}"}} '
-            f'{postgres["pool_size"]}\n\n')
-        self.write(
-            '# HELP postgres_pool_free The number of free connections '
-            'in the pool\n')
+        self.write(f'postgres_pool_size{{host="{socket.gethostname()}"}} '
+                   f'{postgres["pool_size"]}\n\n')
+        self.write('# HELP postgres_pool_free The number of free connections '
+                   'in the pool\n')
         self.write('# TYPE postgres_pool_free gauge\n')
-        self.write(
-            f'postgres_pool_free{{host="{socket.gethostname()}"}} '
-            f'{postgres["pool_free"]}\n\n')
+        self.write(f'postgres_pool_free{{host="{socket.gethostname()}"}} '
+                   f'{postgres["pool_free"]}\n\n')

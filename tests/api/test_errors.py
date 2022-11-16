@@ -33,7 +33,9 @@ class DefaultFunctionalityTests(unittest.TestCase):
 
     def test_that_type_can_be_overridden(self):
         err = errors.ApplicationError(
-            500, 'error-fragment', '',
+            500,
+            'error-fragment',
+            '',
             type='https://example.com/troubleshooting')
         self.assertEqual('https://example.com/troubleshooting',
                          err.document['type'])

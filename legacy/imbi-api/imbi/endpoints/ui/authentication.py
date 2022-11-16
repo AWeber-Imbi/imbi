@@ -7,8 +7,8 @@ class LoginRequestHandler(base.RequestHandler):
 
     async def post(self, *args, **kwargs):
         body = self.get_request_body()
-        if not await self.session.authenticate(
-                body.get('username'), body.get('password')):
+        if not await self.session.authenticate(body.get('username'),
+                                               body.get('password')):
             self.logger.debug('Session failed to authenticate')
             self.set_status(401)
             self.send_response({'message': 'Authentication Failure'})

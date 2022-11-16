@@ -8,17 +8,21 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
     NAME = 'integrations'
     ITEM_NAME = 'integration'
     ID_KEY = 'name'
-    FIELDS = ['name', 'api_endpoint', 'callback_url', 'authirization_endpoint',
-              'token_endpoint', 'revoke_endpoint', 'client_id',
-              'client_secret', 'public_client']
+    FIELDS = [
+        'name', 'api_endpoint', 'callback_url', 'authirization_endpoint',
+        'token_endpoint', 'revoke_endpoint', 'client_id', 'client_secret',
+        'public_client'
+    ]
 
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT name, api_endpoint, callback_url, authorization_endpoint,
                token_endpoint, revoke_endpoint, client_id
           FROM v1.oauth2_integrations
          ORDER BY "name" ASC""")
 
-    POST_SQL = re.sub(r'\s+', ' ', """\
+    POST_SQL = re.sub(
+        r'\s+', ' ', """\
         INSERT INTO v1.oauth2_integrations
                     (name, api_endpoint, callback_url, authorization_endpoint,
                      token_endpoint, revoke_endpoint, client_id, client_secret,
@@ -29,7 +33,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
                      %(public_client)s)
           RETURNING name""")
 
-    GET_SQL = re.sub(r'\s+', ' ', """\
+    GET_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT name, api_endpoint, callback_url, authorization_endpoint,
                token_endpoint, revoke_endpoint, client_id
           FROM v1.oauth2_integrations
@@ -41,11 +46,13 @@ class RecordRequestHandler(base.CRUDRequestHandler):
     NAME = 'integration'
     ID_KEY = 'name'
 
-    GET_SQL = re.sub(r'\s+', ' ', """\
+    GET_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT name, api_endpoint, callback_url, authorization_endpoint,
                token_endpoint, revoke_endpoint, client_id
           FROM v1.oauth2_integrations
          WHERE name = %(name)s""")
 
-    DELETE_SQL = re.sub(r'\s+', ' ', """\
+    DELETE_SQL = re.sub(
+        r'\s+', ' ', """\
         DELETE FROM v1.oauth2_integrations WHERE name = %(name)s""")

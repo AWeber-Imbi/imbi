@@ -8,13 +8,13 @@ from tests import base
 
 
 class GroupTestCase(unittest.TestCase):
-
     def test_as_dict(self):
         name = str(uuid.uuid4())
         permissions = [str(uuid.uuid4()), str(uuid.uuid4())]
-        self.assertDictEqual(
-            dict(user.Group(name, permissions)),
-            {'name': name, 'permissions': sorted(permissions)})
+        self.assertDictEqual(dict(user.Group(name, permissions)), {
+            'name': name,
+            'permissions': sorted(permissions)
+        })
 
     def test_repr(self):
         name = str(uuid.uuid4())
@@ -49,23 +49,25 @@ class InternalTestCase(base.TestCase):
         if not values:
             values = {}
         values.setdefault('name', str(uuid.uuid4()))
-        values.setdefault(
-            'permissions', sorted([str(uuid.uuid4()), str(uuid.uuid4())]))
+        values.setdefault('permissions',
+                          sorted([str(uuid.uuid4()),
+                                  str(uuid.uuid4())]))
         await self.postgres_execute(self.SQL_INSERT_GROUP, values)
         return values
 
     async def setup_group_membership(self, username, group):
-        await self.postgres_execute(
-            self.SQL_INSERT_GROUP_MEMBERSHIP,
-            {'group': group, 'username': username})
+        await self.postgres_execute(self.SQL_INSERT_GROUP_MEMBERSHIP, {
+            'group': group,
+            'username': username
+        })
 
     async def setup_user(self, values=None):
         if not values:
             values = {}
         values.setdefault('username', str(uuid.uuid4()))
         values.setdefault('display_name', str(uuid.uuid4()))
-        values.setdefault('email_address', '{}@{}'.format(
-            str(uuid.uuid4()), str(uuid.uuid4())))
+        values.setdefault('email_address',
+                          '{}@{}'.format(str(uuid.uuid4()), str(uuid.uuid4())))
         values.setdefault('last_seen_at', timestamp.utcnow())
         password = values.get('password', str(uuid.uuid4()))
         values['password'] = self._app.hash_password(password)
@@ -77,16 +79,17 @@ class InternalTestCase(base.TestCase):
     async def test_authenticate_happy_path(self):
         user_value = await self.setup_user()
         group_value = await self.setup_group()
-        await self.setup_group_membership(
-            user_value['username'], group_value['name'])
+        await self.setup_group_membership(user_value['username'],
+                                          group_value['name'])
 
-        obj = user.User(
-            self._app, user_value['username'], user_value['password'])
+        obj = user.User(self._app, user_value['username'],
+                        user_value['password'])
         self.assertTrue(await obj.authenticate())
 
         values = obj.as_dict()
         for key in {
-                'created_at', 'last_refreshed_at', 'last_seen_at', 'password'}:
+                'created_at', 'last_refreshed_at', 'last_seen_at', 'password'
+        }:
             self.assertIn(key, values)
             del values[key]
 
@@ -110,25 +113,27 @@ class InternalTestCase(base.TestCase):
     async def test_refresh(self):
         user_value = await self.setup_user()
         group_value = await self.setup_group()
-        await self.setup_group_membership(
-            user_value['username'], group_value['name'])
+        await self.setup_group_membership(user_value['username'],
+                                          group_value['name'])
 
-        obj = user.User(
-            self._app, user_value['username'], user_value['password'])
+        obj = user.User(self._app, user_value['username'],
+                        user_value['password'])
         self.assertTrue(await obj.authenticate())
 
         display_name = str(uuid.uuid4())
         self.assertNotEqual(display_name, user_value['display_name'])
 
-        await self.postgres_execute(
-            self.SQL_UPDATE_DISPLAY_NAME,
-            {'display_name': display_name, 'username': user_value['username']})
+        await self.postgres_execute(self.SQL_UPDATE_DISPLAY_NAME, {
+            'display_name': display_name,
+            'username': user_value['username']
+        })
 
         await obj.refresh()
 
         values = obj.as_dict()
         for key in {
-                'created_at', 'last_refreshed_at', 'last_seen_at', 'password'}:
+                'created_at', 'last_refreshed_at', 'last_seen_at', 'password'
+        }:
             self.assertIn(key, values)
             del values[key]
 
@@ -147,8 +152,8 @@ class InternalTestCase(base.TestCase):
     @testing.gen_test
     async def test_reset_on_authentication_failure(self):
         user_value = await self.setup_user()
-        obj = user.User(
-            self._app, user_value['username'], user_value['password'])
+        obj = user.User(self._app, user_value['username'],
+                        user_value['password'])
         self.assertTrue(await obj.authenticate())
         for key in {'display_name', 'email_address'}:
             self.assertEqual(user_value[key], getattr(obj, key))
@@ -179,16 +184,16 @@ class InternalTestCase(base.TestCase):
     @testing.gen_test
     async def test_should_refresh_false(self):
         user_value = await self.setup_user()
-        obj = user.User(
-            self._app, user_value['username'], user_value['password'])
+        obj = user.User(self._app, user_value['username'],
+                        user_value['password'])
         self.assertTrue(await obj.authenticate())
         self.assertFalse(obj.should_refresh)
 
     @testing.gen_test
     async def test_should_refresh_true(self):
         user_value = await self.setup_user()
-        obj = user.User(
-            self._app, user_value['username'], user_value['password'])
+        obj = user.User(self._app, user_value['username'],
+                        user_value['password'])
         self.assertTrue(await obj.authenticate())
         self.assertFalse(obj.should_refresh)
         obj.last_refreshed_at = timestamp.utcnow() - (obj.REFRESH_AFTER * 2)
@@ -197,8 +202,8 @@ class InternalTestCase(base.TestCase):
     @testing.gen_test
     async def test_update_last_seen_at(self):
         user_value = await self.setup_user()
-        obj = user.User(
-            self._app, user_value['username'], user_value['password'])
+        obj = user.User(self._app, user_value['username'],
+                        user_value['password'])
         self.assertTrue(await obj.authenticate())
         last_seen_at = obj.last_seen_at
         await obj.update_last_seen_at()
@@ -224,7 +229,8 @@ class LDAPTestCase(base.TestCase):
 
         values = obj.as_dict()
         for key in {
-                'created_at', 'last_refreshed_at', 'last_seen_at', 'password'}:
+                'created_at', 'last_refreshed_at', 'last_seen_at', 'password'
+        }:
             self.assertIn(key, values)
             del values[key]
 

@@ -9,7 +9,8 @@ class RequestHandler(base.RequestHandler):
 
     NAME = 'reports-namespace-kpis'
 
-    SQL = re.sub(r'\s+', ' ', """\
+    SQL = re.sub(
+        r'\s+', ' ', """\
         WITH projects_with_facts AS (
             SELECT a.id, a.namespace_id
               FROM v1.projects AS a
