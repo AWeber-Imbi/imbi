@@ -43,7 +43,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'version': str(uuid.uuid4()),
             }
             result = self.fetch('/operations-log', method='POST',
-                                body=json.dumps(record).encode('utf-8'))
+                                json_body=record)
             self.assertEqual(result.code, 200)
             records.append(json.loads(result.body.decode('utf-8')))
 
@@ -149,7 +149,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'version': str(uuid.uuid4()),
             }
             result = self.fetch('/operations-log', method='POST',
-                                body=json.dumps(record).encode('utf-8'))
+                                json_body=record)
             self.assertEqual(result.code, 200)
             records.append(json.loads(result.body.decode('utf-8')))
 
@@ -198,8 +198,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'ticket_slug': str(uuid.uuid4()),
                 'version': str(uuid.uuid4()),
             }
-        result = self.fetch('/operations-log', method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/operations-log', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         records.insert(4, json.loads(result.body.decode('utf-8')))
 
@@ -250,8 +249,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch('/operations-log', method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/operations-log', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/operations-log/{}'.format(response['id']))
@@ -319,8 +317,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'environment': self.environment,
             'change_type': 'Upgraded',
         }
-        result = self.fetch('/operations-log', method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/operations-log', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/operations-log/{}'.format(response['id']))

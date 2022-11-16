@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 import json
 import logging
@@ -68,11 +70,14 @@ class TestCase(testing.SprocketsHttpTestCase):
         return self.io_loop.asyncio_loop.run_until_complete(future)
 
     def fetch(
-            self, path: str, raise_error: bool = False, **kwargs: typing.Any
+            self, path: str, raise_error: bool = False,
+            json_body: list | dict | None = None, **kwargs: typing.Any
     ) -> httpclient.HTTPResponse:
         """Extended version of fetch that injects self.headers"""
         request_headers = httputil.HTTPHeaders(self.headers)
         request_headers.update(kwargs.pop('headers', {}))
+        if json_body is not None:
+            kwargs['body'] = json.dumps(json_body).encode('utf-8')
         return super().fetch(path, raise_error=raise_error,
                              headers=request_headers, **kwargs)
 
@@ -144,14 +149,14 @@ class TestCaseWithReset(TestCase):
             self.project_type = self.create_project_type()
         result = self.fetch(
             '/projects', method='POST',
-            body=json.dumps({
+            json_body={
                 'namespace_id': self.namespace['id'],
                 'project_type_id': self.project_type['id'],
                 'name': str(uuid.uuid4()),
                 'slug': str(uuid.uuid4().hex),
                 'description': str(uuid.uuid4()),
                 'environments': self.environments,
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
@@ -160,11 +165,11 @@ class TestCaseWithReset(TestCase):
         for iteration in range(0, 2):
             result = self.fetch(
                 '/environments', method='POST',
-                body=json.dumps({
+                json_body={
                     'name': str(uuid.uuid4()),
                     'description': str(uuid.uuid4()),
                     'icon_class': 'fas fa-blind'
-                }).encode('utf-8'))
+                })
             self.assertEqual(result.code, 200)
             environments.append(
                 json.loads(result.body.decode('utf-8'))['name'])
@@ -174,11 +179,11 @@ class TestCaseWithReset(TestCase):
         namespace_name = str(uuid.uuid4())
         result = self.fetch(
             '/namespaces', method='POST',
-            body=json.dumps({
+            json_body={
                 'name': namespace_name,
                 'slug': str(uuid.uuid4()),
                 'icon_class': 'fas fa-blind'
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
@@ -194,19 +199,18 @@ class TestCaseWithReset(TestCase):
         }
         project_fact.update(overrides)
 
-        result = self.fetch(
-            '/project-fact-types', method='POST',
-            body=json.dumps(project_fact).encode('utf-8'))
+        result = self.fetch('/project-fact-types', method='POST',
+                            json_body=project_fact)
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
     def create_project_link_type(self) -> dict:
         result = self.fetch(
             '/project-link-types', method='POST',
-            body=json.dumps({
+            json_body={
                 'link_type': str(uuid.uuid4()),
                 'icon_class': 'fas fa-blind'
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
@@ -214,13 +218,13 @@ class TestCaseWithReset(TestCase):
         project_type_name = str(uuid.uuid4())
         result = self.fetch(
             '/project-types', method='POST',
-            body=json.dumps({
+            json_body={
                 'name': project_type_name,
                 'plural_name': '{}s'.format(project_type_name),
                 'slug': str(uuid.uuid4()),
                 'description': str(uuid.uuid4()),
                 'icon_class': 'fas fa-blind',
                 'environment_urls': False
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))

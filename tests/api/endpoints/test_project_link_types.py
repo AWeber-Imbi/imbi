@@ -19,9 +19,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch(
-            '/project-link-types', method='POST',
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/project-link-types', method='POST',
+                            json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url(
@@ -95,9 +94,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
     def test_create_with_missing_fields(self):
         result = self.fetch(
             '/project-link-types', method='POST',
-            body=json.dumps({
-                'link_type': str(uuid.uuid4())
-            }).encode('utf-8'))
+            json_body={'link_type': str(uuid.uuid4())})
         self.assertEqual(result.code, 400)
 
     def test_method_not_implemented(self):

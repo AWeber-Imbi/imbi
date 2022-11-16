@@ -26,8 +26,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         })
 
         # Create
-        result = self.fetch('/namespaces', method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/namespaces', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/namespaces/{}'.format(response['id']))
@@ -102,8 +101,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'slug': str(uuid.uuid4().hex),
             'icon_class': 'fas fa-blind'
         }
-        result = self.fetch('/namespaces', method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/namespaces', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/namespaces/{}'.format(response['id']))

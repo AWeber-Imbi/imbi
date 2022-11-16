@@ -29,9 +29,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch(
-            '/cookie-cutters', method='POST',
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/cookie-cutters', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         url = self.get_url('/cookie-cutters/{}'.format(record['name']))
         self.assert_link_header_equals(result, url)
@@ -105,9 +103,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type_id': self.project_type['id'],
             'url': 'http://{}/{}.git'.format(uuid.uuid4(), uuid.uuid4())
         }
-        result = self.fetch(
-            '/cookie-cutters', method='POST',
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/cookie-cutters', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertEqual(new_value['name'], record['name'])

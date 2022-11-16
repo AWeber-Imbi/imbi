@@ -28,9 +28,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch(
-            '/project-fact-types', method='POST',
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/project-fact-types', method='POST',
+                            json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         record['id'] = response['id']
@@ -105,38 +104,35 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_type_ids': [self.project_type['id']],
             'name': str(uuid.uuid4())
         }
-        result = self.fetch(
-            '/project-fact-types', method='POST',
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/project-fact-types', method='POST',
+                            json_body=record)
         self.assertEqual(result.code, 400)
 
     def test_method_not_implemented(self):
         for method in {'DELETE', 'PATCH'}:
-            result = self.fetch('/project-fact-types', method=method,
-                                allow_nonstandard_methods=True)
+            result = self.fetch('/project-fact-types', method=method)
             self.assertEqual(result.code, 405)
 
-        result = self.fetch('/project-fact-types/99999', method='POST',
-                            allow_nonstandard_methods=True)
+        result = self.fetch('/project-fact-types/99999', method='POST')
         self.assertEqual(result.code, 405)
 
     def test_missing_project_type_id(self):
         result = self.fetch(
             '/project-fact-types', method='POST',
-            body=json.dumps({
+            json_body={
                 'name': str(uuid.uuid4()),
                 'fact_type': 'free-form',
                 'data_type': 'string',
                 'description': 'Test description',
                 'ui_options': ['hidden'],
                 'weight': 100
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)
 
     def test_empty_ui_options(self):
         result = self.fetch(
             '/project-fact-types', method='POST',
-            body=json.dumps({
+            json_body={
                 'project_type_ids': [],
                 'name': str(uuid.uuid4()),
                 'fact_type': 'free-form',
@@ -144,5 +140,5 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'description': 'Test description',
                 'ui_options': [],
                 'weight': 100
-            }).encode('utf-8'))
+            })
         self.assertEqual(result.code, 200)

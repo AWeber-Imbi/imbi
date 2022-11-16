@@ -29,9 +29,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch(
-            '/project-fact-type-enums',
-            method='POST', body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/project-fact-type-enums', method='POST',
+                            json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url(

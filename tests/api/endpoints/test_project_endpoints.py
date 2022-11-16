@@ -35,8 +35,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch('/projects', method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/projects/{}'.format(response['id']))
@@ -113,8 +112,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch('/projects', method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         url = self.get_url('/projects/{}'.format(response['id']))
@@ -146,8 +144,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'slug': str(uuid.uuid4().hex),
             'environments': self.environments
         }
-        result = self.fetch('/projects', method='POST',
-                            body=json.dumps(project_a).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=project_a)
         self.assertEqual(result.code, 200)
         project_a = json.loads(result.body.decode('utf-8'))
 
@@ -158,18 +155,14 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'slug': str(uuid.uuid4().hex),
             'environments': self.environments
         }
-        result = self.fetch('/projects', method='POST',
-                            body=json.dumps(project_b).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=project_b)
         self.assertEqual(result.code, 200)
         project_b = json.loads(result.body.decode('utf-8'))
 
         # Create the dependency
         result = self.fetch(
             '/projects/{}/dependencies'.format(project_b['id']),
-            method='POST',
-            body=json.dumps({
-                'dependency_id': project_a['id']
-            }).encode('utf-8'))
+            method='POST', json_body={'dependency_id': project_a['id']})
         self.assertEqual(result.code, 200)
 
         result = self.fetch(
@@ -219,7 +212,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         result = self.fetch('/projects', method='POST',
-                            body=json.dumps(project_record).encode('utf-8'))
+                            json_body=project_record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
 
@@ -234,8 +227,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             response['id'], self.project_link_type['id']))
 
         # Create
-        result = self.fetch(links_url, method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch(links_url, method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         link_record = json.loads(result.body.decode('utf-8'))
         self.assert_link_header_equals(result, url)
@@ -308,7 +300,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         result = self.fetch('/projects', method='POST',
-                            body=json.dumps(project_record).encode('utf-8'))
+                            json_body=project_record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
 
@@ -323,8 +315,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             response['id'], self.environments[0]))
 
         # Create
-        result = self.fetch(urls_url, method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch(urls_url, method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         url_record = json.loads(result.body.decode('utf-8'))
         self.assert_link_header_equals(result, url)
@@ -405,8 +396,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             return False
 
         # Create
-        result = self.fetch('/projects', method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/projects', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
         proj_id = response['id']

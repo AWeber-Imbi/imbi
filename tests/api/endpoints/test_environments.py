@@ -22,9 +22,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         }
 
         # Create
-        result = self.fetch(
-            '/environments', method='POST',
-            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/environments', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         url = self.get_url('/environments/{}'.format(record['name']))
         self.assert_link_header_equals(result, url)
@@ -96,8 +94,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'name': str(uuid.uuid4()),
             'icon_class': 'fas fa-blind'
         }
-        result = self.fetch('/environments', method='POST',
-                            body=json.dumps(record).encode('utf-8'))
+        result = self.fetch('/environments', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertEqual(new_value['name'], record['name'])
