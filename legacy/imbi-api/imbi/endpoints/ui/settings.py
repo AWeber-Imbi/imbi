@@ -7,7 +7,6 @@ from imbi.opensearch import project
 
 
 class RequestHandler(base.RequestHandler):
-
     NAME = 'metadata'
 
     async def get(self) -> None:
@@ -97,5 +96,7 @@ class RequestHandler(base.RequestHandler):
             'opensearch': {
                 'fields': results[7]
             },
+            'ops_log_ticket_slug_template': self.settings[
+                'ops_log_ticket_slug_template'],
             'project_url_template': self.settings['project_url_template']
         })

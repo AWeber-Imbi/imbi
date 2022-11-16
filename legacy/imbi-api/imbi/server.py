@@ -201,6 +201,8 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         },
         'number_of_procs': http_settings.get('processes', 2),
         'opensearch': config.get('opensearch', {}),
+        'ops_log_ticket_slug_template': config.get(
+            'ops_log_ticket_slug_template', None),
         'permissions': [],
         'port': http_settings.get('port', 8000),
         'postgres_url': postgres.get('url'),
