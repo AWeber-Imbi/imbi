@@ -14,8 +14,7 @@ MAINTENANCE = 'maintenance'
 OK = 'ok'
 
 
-class RequestHandler(mediatype.ContentMixin,
-                     web.RequestHandler):
+class RequestHandler(mediatype.ContentMixin, web.RequestHandler):
     """Returns the current status"""
     NAME = 'status'
 
@@ -38,7 +37,8 @@ class RequestHandler(mediatype.ContentMixin,
             'started_at': self.application.started_at_str,
             'status': OK if self.application.ready_to_serve else MAINTENANCE,
             'system': self.SYSTEM,
-            'version': version})
+            'version': version
+        })
 
     def set_default_headers(self) -> None:
         """Override the default headers, setting the Server response header"""

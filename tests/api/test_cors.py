@@ -57,8 +57,7 @@ class ConfigTests(unittest.TestCase):
                               allow_credentials=True,
                               allow_methods={'POST'})
 
-        cfg.update(allow_any_origin=False,
-                   allow_credentials=False)
+        cfg.update(allow_any_origin=False, allow_credentials=False)
         self.assertFalse(cfg.allowed_origins.allow_any)
         self.assertFalse(cfg.allow_credentials)
         self.assertSetEqual({'POST'}, cfg.allowed_methods)
@@ -141,8 +140,8 @@ class PreflightProcessingTests(RequestProcessingTestCase):
         self.assertIn('Origin', self.response_headers.get_list('Vary'))
 
     def test_correct_cors_preflight_with_request_headers(self):
-        self.request.headers.add(
-            'Access-Control-Request-Headers', 'Cache-Control')
+        self.request.headers.add('Access-Control-Request-Headers',
+                                 'Cache-Control')
         self.cors_processor.process_request(self.handler)
         self.assertTrue(self.cors_processor.ok)
         self.assertIn(
@@ -161,15 +160,15 @@ class PreflightProcessingTests(RequestProcessingTestCase):
         del self.request.headers['Access-Control-Request-Method']
         self.cors_processor.process_request(self.handler)
         self.assert_preflight_failure()
-        self.assertEqual(
-            '*', self.response_headers['Access-Control-Allow-Origin'])
+        self.assertEqual('*',
+                         self.response_headers['Access-Control-Allow-Origin'])
 
     def test_preflight_without_origin(self):
         del self.request.headers['Origin']
         self.cors_processor.process_request(self.handler)
         self.assert_preflight_failure()
-        self.assertEqual(
-            '*', self.response_headers['Access-Control-Allow-Origin'])
+        self.assertEqual('*',
+                         self.response_headers['Access-Control-Allow-Origin'])
 
     def test_preflight_with_explicit_allowed_origin(self):
         self.cors_processor.config.allowed_origins.allow_any = False
@@ -219,8 +218,8 @@ class RequestProcessingTests(RequestProcessingTestCase):
     def test_request_without_origin(self):
         del self.request.headers['Origin']
         self.process_request()
-        self.assertEqual(
-            '*', self.response_headers['Access-Control-Allow-Origin'])
+        self.assertEqual('*',
+                         self.response_headers['Access-Control-Allow-Origin'])
         self.assertNotIn('Access-Control-Allow-Credentials',
                          self.response_headers)
 
@@ -231,8 +230,8 @@ class RequestProcessingTests(RequestProcessingTestCase):
 
     def test_that_allowed_origin_is_widened_without_credentials(self):
         self.process_request(allow_any_origin=True, allow_credentials=False)
-        self.assertEqual(
-            '*', self.response_headers['Access-Control-Allow-Origin'])
+        self.assertEqual('*',
+                         self.response_headers['Access-Control-Allow-Origin'])
 
         self.process_request(allow_credentials=False,
                              allow_origins={self.request.headers['Origin']})
@@ -241,7 +240,6 @@ class RequestProcessingTests(RequestProcessingTestCase):
 
 
 class MixinTests(unittest.IsolatedAsyncioTestCase):
-
     class Handler(cors.CORSMixin):
         def delete(self) -> None:
             self.set_status(204)
@@ -251,16 +249,19 @@ class MixinTests(unittest.IsolatedAsyncioTestCase):
         self.origin = 'https://example.com'
         self.application = web.Application()
 
-    async def run_handler(self, method: str, *, headers: None | dict = None,
+    async def run_handler(self,
+                          method: str,
+                          *,
+                          headers: None | dict = None,
                           **cors_overrides) -> httputil.HTTPHeaders:
         self.Handler.cors_overrides.clear()
         self.Handler.cors_overrides.update(cors_overrides)
 
-        request = httputil.HTTPServerRequest(
-            method=method,
-            headers=httputil.HTTPHeaders({'Origin': self.origin}),
-            connection=unittest.mock.Mock(),
-            uri='/')
+        request = httputil.HTTPServerRequest(method=method,
+                                             headers=httputil.HTTPHeaders(
+                                                 {'Origin': self.origin}),
+                                             connection=unittest.mock.Mock(),
+                                             uri='/')
         if headers:
             for name, value in headers.items():
                 request.headers[name] = value
@@ -275,10 +276,9 @@ class MixinTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_preflight_request_without_configuration(self):
         response_headers = await self.run_handler(
-            'OPTIONS',
-            headers={'Access-Control-Request-Method': 'DELETE'})
-        self.assertEqual(
-            self.origin, response_headers['Access-Control-Allow-Origin'])
+            'OPTIONS', headers={'Access-Control-Request-Method': 'DELETE'})
+        self.assertEqual(self.origin,
+                         response_headers['Access-Control-Allow-Origin'])
         self.assertCountEqual(
             ['DELETE'],
             response_headers.get_list('Access-Control-Allow-Methods'))
@@ -288,19 +288,20 @@ class MixinTests(unittest.IsolatedAsyncioTestCase):
             'OPTIONS',
             headers={'Access-Control-Request-Method': 'GET'},
             allow_methods={'GET'})
-        self.assertEqual(
-            self.origin, response_headers['Access-Control-Allow-Origin'])
+        self.assertEqual(self.origin,
+                         response_headers['Access-Control-Allow-Origin'])
         self.assertCountEqual(
             ['GET'], response_headers.get_list('Access-Control-Allow-Methods'))
 
     async def test_preflight_request_with_application_config(self):
-        self.application.cors_config = cors.CORSConfig(
-            allow_any_origin=False, allow_credentials=True, max_age=300)
+        self.application.cors_config = cors.CORSConfig(allow_any_origin=False,
+                                                       allow_credentials=True,
+                                                       max_age=300)
         self.application.cors_config.allowed_origins.add(self.origin)
         response_headers = await self.run_handler(
             'OPTIONS', headers={'Access-Control-Request-Method': 'DELETE'})
-        self.assertEqual(
-            self.origin, response_headers['Access-Control-Allow-Origin'])
+        self.assertEqual(self.origin,
+                         response_headers['Access-Control-Allow-Origin'])
         self.assertCountEqual(
             ['DELETE'],
             response_headers.get_list('Access-Control-Allow-Methods'))
@@ -310,17 +311,17 @@ class MixinTests(unittest.IsolatedAsyncioTestCase):
     async def test_non_preflight_response_headers(self):
         response_headers = await self.run_handler('DELETE')
         self.assertIn('Origin', response_headers.get('Vary'))
-        self.assertEqual(
-            self.origin, response_headers['Access-Control-Allow-Origin'])
+        self.assertEqual(self.origin,
+                         response_headers['Access-Control-Allow-Origin'])
 
     async def test_cors_headers_on_request_failure(self):
         with unittest.mock.patch.object(
-                self.Handler, 'delete', new_callable=unittest.mock.MagicMock
-        ) as delete:
+                self.Handler, 'delete',
+                new_callable=unittest.mock.MagicMock) as delete:
             delete.__name__ = 'delete'
             delete.side_effect = RuntimeError('injected failure')
             response_headers = await self.run_handler('DELETE')
 
         self.assertIn('Origin', response_headers.get('Vary'))
-        self.assertEqual(
-            self.origin, response_headers['Access-Control-Allow-Origin'])
+        self.assertEqual(self.origin,
+                         response_headers['Access-Control-Allow-Origin'])

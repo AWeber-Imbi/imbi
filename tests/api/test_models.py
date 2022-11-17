@@ -6,9 +6,7 @@ from tests import base
 
 class NamespaceTestCase(base.TestCaseWithReset):
 
-    TRUNCATE_TABLES = [
-        'v1.namespaces'
-    ]
+    TRUNCATE_TABLES = ['v1.namespaces']
 
     def setUp(self) -> None:
         super().setUp()
@@ -24,9 +22,7 @@ class NamespaceTestCase(base.TestCaseWithReset):
 
 class ProjectTypeTestCase(base.TestCaseWithReset):
 
-    TRUNCATE_TABLES = [
-        'v1.project_types'
-    ]
+    TRUNCATE_TABLES = ['v1.project_types']
 
     def setUp(self) -> None:
         super().setUp()

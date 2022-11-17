@@ -20,9 +20,10 @@ def generate_dashboard_link(project: models.Project,
     """Generate a link to the SonarQube dashboard for `project`."""
     if sonar_settings['url']:
         root = yarl.URL(sonar_settings['url'])
-        return str(root.with_path('/dashboard').with_query({
-            'id': generate_key(project),
-        }))
+        return str(
+            root.with_path('/dashboard').with_query({
+                'id': generate_key(project),
+            }))
 
 
 class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
@@ -46,9 +47,9 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
             self.sonar_url = yarl.URL(self.settings['url'])
         except KeyError as error:
             if self.__class__.enabled is None:
-                self.logger.warning('disabling SonarQube integration due to'
-                                    ' missing configuration: %s',
-                                    error.args[0])
+                self.logger.warning(
+                    'disabling SonarQube integration due to'
+                    ' missing configuration: %s', error.args[0])
                 self.__class__.enabled = False
             self.api_root = None
             self.admin_token = None
@@ -56,9 +57,11 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
             self.enabled = True
             self.api_root = self.sonar_url / 'api'
 
-    async def api(self, url: typing.Union[yarl.URL, str], *,
-                  method: str = 'GET', **kwargs
-                  ) -> sprockets.mixins.http.HTTPResponse:
+    async def api(self,
+                  url: typing.Union[yarl.URL, str],
+                  *,
+                  method: str = 'GET',
+                  **kwargs) -> sprockets.mixins.http.HTTPResponse:
         """Make an authenticated API call."""
         if not self.enabled:
             raise RuntimeError('SonarQube integration is not enabled')
@@ -88,7 +91,9 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                 self.logger.warning('response body: %r', response.body)
         return response
 
-    async def create_project(self, project: models.Project, *,
+    async def create_project(self,
+                             project: models.Project,
+                             *,
                              main_branch_name='main',
                              public_url: yarl.URL) -> typing.Tuple[str, str]:
         """Create a SonarQube project for `project`.
@@ -98,14 +103,18 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
 
         """
         self.logger.info('creating SonarQube project for %s', project.slug)
-        response = await self.api('/projects/create', method='POST', body={
-            'name': project.name,
-            'project': generate_key(project),
-        })
+        response = await self.api('/projects/create',
+                                  method='POST',
+                                  body={
+                                      'name': project.name,
+                                      'project': generate_key(project),
+                                  })
         if not response.ok:
-            raise errors.InternalServerError(
-                'failed to create project %s: %s', project.name, response.code,
-                title='SonarQube API Failure', sonar_response=response.body)
+            raise errors.InternalServerError('failed to create project %s: %s',
+                                             project.name,
+                                             response.code,
+                                             title='SonarQube API Failure',
+                                             sonar_response=response.body)
         project_key = response.body['project']['key']
         dashboard_url = self.sonar_url.with_path('/dashboard').with_query({
             'id': project_key,
@@ -140,22 +149,22 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
 
         self.logger.debug('making sure that main branch is %s for %s',
                           main_branch_name, project_key)
-        main_branches = [branch
-                         for branch in response.body['branches']
-                         if branch['isMain']]
+        main_branches = [
+            branch for branch in response.body['branches'] if branch['isMain']
+        ]
         if main_branches and main_branches[0]['name'] != main_branch_name:
             branch = main_branches[0]
             self.logger.info('resetting main branch from %s to %s for %s',
                              branch['name'], main_branch_name, project_key)
-            response = await self.api(
-                '/project_branches/rename', method='POST', body={
-                    'project': project_key,
-                    'name': main_branch_name,
-                })
+            response = await self.api('/project_branches/rename',
+                                      method='POST',
+                                      body={
+                                          'project': project_key,
+                                          'name': main_branch_name,
+                                      })
             if not response.ok:
-                self.logger.error(
-                    'failed to rename main branch %s for %s: %s',
-                    branch['name'], project_key, response.code)
+                self.logger.error('failed to rename main branch %s for %s: %s',
+                                  branch['name'], project_key, response.code)
 
     async def _enable_pr_decoration(self, project_key: str,
                                     gitlab_project_id: int):
@@ -168,8 +177,7 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
         response = await self.api(
             yarl.URL('/alm_settings/get_binding').with_query({
                 'project': project_key,
-            })
-        )
+            }))
         if response.code == 404:  # not configured or doesn't exist
             response = await self.api(
                 yarl.URL('/alm_settings/set_gitlab_binding'),
@@ -178,12 +186,10 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                     'almSetting': self.gitlab_alm_key,
                     'project': project_key,
                     'repository': gitlab_project_id,
-                }
-            )
+                })
             if not response.ok:
-                self.logger.error(
-                    'failed to enable PR decoration for %s: %s',
-                    project_key, response.code)
+                self.logger.error('failed to enable PR decoration for %s: %s',
+                                  project_key, response.code)
         elif not response.ok:
             self.logger.error(
                 'failed to check for GitLab integration for %s: %s',
@@ -215,8 +221,7 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                         response.body)
             else:
                 self.logger.warning(
-                    'failed to list alm_settings for sonar: %s',
-                    response.code)
+                    'failed to list alm_settings for sonar: %s', response.code)
                 return False  # don't cache failures for now
 
         return bool(self.gitlab_alm_key)
@@ -225,10 +230,13 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                                  url: yarl.URL):
         """Add a named link to the SonarQube dashboard."""
         self.logger.debug('adding link to Imbi project for %s', project_key)
-        response = await self.api(
-            yarl.URL('/project_links/create'),
-            method='POST',
-            body={'name': name, 'projectKey': project_key, 'url': str(url)})
+        response = await self.api(yarl.URL('/project_links/create'),
+                                  method='POST',
+                                  body={
+                                      'name': name,
+                                      'projectKey': project_key,
+                                      'url': str(url)
+                                  })
         if not response.ok:
             self.logger.error('failed to set the Imbi project link for %s: %s',
                               project_key, response.code)

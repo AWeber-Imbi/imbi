@@ -9,7 +9,8 @@ class RequestHandler(base.RequestHandler):
 
     NAME = 'reports-namespace-shs-history'
 
-    SQL = re.sub(r'\s+', ' ', """\
+    SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT a.namespace_id,
                a.scored_on,
                a.health_score

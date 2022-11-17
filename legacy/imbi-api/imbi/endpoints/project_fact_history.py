@@ -7,7 +7,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 
     NAME = 'project-fact-history'
     ID = 'project_id'
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT a.fact_type_id,
                a.recorded_at,
                a.value,
@@ -29,7 +30,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
         kwargs['limit'] = int(self.get_query_argument('limit', '25'))
         kwargs['offset'] = int(self.get_query_argument('offset', '0'))
 
-        result = await self.postgres_execute(
-            self.COLLECTION_SQL, kwargs,
-            metric_name='get-{}'.format(self.NAME))
+        result = await self.postgres_execute(self.COLLECTION_SQL,
+                                             kwargs,
+                                             metric_name='get-{}'.format(
+                                                 self.NAME))
         self.send_response(result.rows)

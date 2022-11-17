@@ -129,6 +129,6 @@ async def create(redis_url):
 
     """
     redis_client = await aioredis.create_pool(
-        redis_url, maxsize=int(os.environ.get(
-            'STATS_POOL_SIZE', DEFAULT_POOL_SIZE)))
+        redis_url,
+        maxsize=int(os.environ.get('STATS_POOL_SIZE', DEFAULT_POOL_SIZE)))
     return Stats(redis_client)

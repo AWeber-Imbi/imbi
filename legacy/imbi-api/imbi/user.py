@@ -30,8 +30,8 @@ class Group:
         return iter([('name', self.name), ('permissions', self.permissions)])
 
     def __repr__(self):
-        return '<Group name={} permissions={}>'.format(
-            self.name, self.permissions)
+        return '<Group name={} permissions={}>'.format(self.name,
+                                                       self.permissions)
 
 
 @dataclasses.dataclass
@@ -46,7 +46,8 @@ class User:
 
     REFRESH_AFTER = datetime.timedelta(minutes=5)
 
-    SQL_AUTHENTICATE = re.sub(r'\s+', ' ', """\
+    SQL_AUTHENTICATE = re.sub(
+        r'\s+', ' ', """\
            UPDATE v1.users
               SET last_seen_at = CURRENT_TIMESTAMP
             WHERE username = %(username)s
@@ -64,35 +65,41 @@ class User:
                        AND expires_at > CURRENT_TIMESTAMP)
         RETURNING username, user_type, external_id""")  # nosec
 
-    SQL_GROUPS = re.sub(r'\s+', ' ', """\
+    SQL_GROUPS = re.sub(
+        r'\s+', ' ', """\
         SELECT a.name, a.permissions
           FROM v1.groups AS a
           JOIN v1.group_members AS b ON b.group = a.name
          WHERE b.username = %(username)s""")
 
-    SQL_INTEGRATIONS = re.sub(r'\s+', ' ', """\
+    SQL_INTEGRATIONS = re.sub(
+        r'\s+', ' ', """\
         SELECT integration AS name, external_id
           FROM v1.user_oauth2_tokens
          WHERE username = %(username)s""")
 
-    SQL_REFRESH = re.sub(r'\s+', ' ', """\
+    SQL_REFRESH = re.sub(
+        r'\s+', ' ', """\
         SELECT username, created_at, last_seen_at, user_type, external_id,
                email_address, display_name
           FROM v1.users
          WHERE username = %(username)s""")
 
-    SQL_UPDATE_GROUP_MEMBERSHIPS_FROM_LDAP = re.sub(r'\s+', ' ', """\
+    SQL_UPDATE_GROUP_MEMBERSHIPS_FROM_LDAP = re.sub(
+        r'\s+', ' ', """\
         SELECT maintain_group_membership_from_ldap_groups AS groups
           FROM maintain_group_membership_from_ldap_groups(%(username)s,
                                                           %(groups)s)""")
 
-    SQL_UPDATE_LAST_SEEN_AT = re.sub(r'\s+', ' ', """\
+    SQL_UPDATE_LAST_SEEN_AT = re.sub(
+        r'\s+', ' ', """\
             UPDATE v1.users
                SET last_seen_at = CURRENT_TIMESTAMP
              WHERE username = %(username)s
          RETURNING last_seen_at""")
 
-    SQL_UPDATE_USER_FROM_LDAP = re.sub(r'\s+', ' ', """\
+    SQL_UPDATE_USER_FROM_LDAP = re.sub(
+        r'\s+', ' ', """\
         INSERT INTO v1.users (username, user_type, external_id,
                               display_name, email_address, last_seen_at)
              VALUES (%(username)s,
@@ -110,7 +117,8 @@ class User:
                         WHERE users.username = EXCLUDED.username
           RETURNING last_seen_at""")
 
-    def __init__(self, application,
+    def __init__(self,
+                 application,
                  username: typing.Optional[str] = None,
                  password: typing.Optional[str] = None,
                  token: typing.Optional[str] = None) -> None:
@@ -159,8 +167,9 @@ class User:
                 '' if self.password is None else self.password),
             'permissions': self.permissions,
             'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at),
-            'integrations': sorted({
-                app.name for app in self.connected_integrations}),
+            'integrations': sorted(
+                {app.name
+                 for app in self.connected_integrations}),
         }
 
     async def authenticate(self) -> bool:
@@ -213,24 +222,23 @@ class User:
                      self.REFRESH_AFTER, age, self.REFRESH_AFTER < age,
                      self.last_refreshed_at, self.last_seen_at,
                      self.last_refreshed_at < self.last_seen_at)
-        return ((self.REFRESH_AFTER < age) or
-                (self.last_refreshed_at < self.last_seen_at))
+        return ((self.REFRESH_AFTER < age)
+                or (self.last_refreshed_at < self.last_seen_at))
 
     async def update_last_seen_at(self) -> None:
         """Update the last_seen_at column in the database for the user"""
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
-            result = await conn.execute(
-                self.SQL_UPDATE_LAST_SEEN_AT,
-                {'username': self.username},
-                'user-update-last-seen-at')
+            result = await conn.execute(self.SQL_UPDATE_LAST_SEEN_AT,
+                                        {'username': self.username},
+                                        'user-update-last-seen-at')
             self.last_seen_at = result.row['last_seen_at']
 
     async def fetch_integration_tokens(self, integration: str) \
             -> typing.List[oauth2.IntegrationToken]:
         """Retrieve access tokens for the specified integration."""
-        obj = await oauth2.OAuth2Integration.by_name(
-            self._application, integration)
+        obj = await oauth2.OAuth2Integration.by_name(self._application,
+                                                     integration)
         return await obj.get_user_tokens(self)
 
     def _assign_values(self, data: dict) -> None:
@@ -246,10 +254,10 @@ class User:
             password = None
             if self.password is not None:
                 password = self._application.hash_password(self.password)
-            result = await conn.execute(
-                self.SQL_AUTHENTICATE,
-                {'username': self.username, 'password': password},
-                'user-authenticate')
+            result = await conn.execute(self.SQL_AUTHENTICATE, {
+                'username': self.username,
+                'password': password
+            }, 'user-authenticate')
             if not result.row_count:
                 self._reset()
                 return False
@@ -260,23 +268,23 @@ class User:
         """Return the groups for the user as a list of group objects"""
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
-            result = await conn.execute(
-                self.SQL_GROUPS, {'username': self.username},
-                'user-groups')
+            result = await conn.execute(self.SQL_GROUPS,
+                                        {'username': self.username},
+                                        'user-groups')
             return [Group(**r) for r in result]
 
     async def _db_refresh(self) -> None:
         """Fetch the latest values from the database"""
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
-            result = await conn.execute(
-                self.SQL_REFRESH, {'username': self.username},
-                'user-refresh')
+            result = await conn.execute(self.SQL_REFRESH,
+                                        {'username': self.username},
+                                        'user-refresh')
         if result:
             self._assign_values(result.row)
             self.groups = await self._db_groups()
-            self.permissions = sorted(set(
-                chain.from_iterable([g.permissions for g in self.groups])))
+            self.permissions = sorted(
+                set(chain.from_iterable([g.permissions for g in self.groups])))
             self.connected_integrations = await self._refresh_integrations()
             self.last_refreshed_at = max(
                 timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
@@ -313,8 +321,7 @@ class User:
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
             result = await conn.execute(
-                self.SQL_UPDATE_USER_FROM_LDAP,
-                {
+                self.SQL_UPDATE_USER_FROM_LDAP, {
                     'username': self.username,
                     'user_type': 'ldap',
                     'external_id': self.external_id,
@@ -330,23 +337,22 @@ class User:
                 on_error=self.on_postgres_error) as conn:
             await conn.callproc(
                 'v1.maintain_group_membership_from_ldap_groups',
-                (self.username, ldap_groups),
-                'user-maintain-groups')
+                (self.username, ldap_groups), 'user-maintain-groups')
 
         # Update the groups attribute
         self.groups = await self._db_groups()
-        self.permissions = sorted(set(
-            chain.from_iterable([g.permissions for g in self.groups])))
+        self.permissions = sorted(
+            set(chain.from_iterable([g.permissions for g in self.groups])))
         self.connected_integrations = await self._refresh_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
-    async def _refresh_integrations(self) -> typing.Sequence[
-            ConnectedIntegration]:
+    async def _refresh_integrations(
+            self) -> typing.Sequence[ConnectedIntegration]:
         """Fetch connected integration details from the DB."""
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
-            result = await conn.execute(
-                self.SQL_INTEGRATIONS, {'username': self.username})
+            result = await conn.execute(self.SQL_INTEGRATIONS,
+                                        {'username': self.username})
             return [ConnectedIntegration(**r) for r in result]
 
     def _reset(self) -> None:
@@ -372,9 +378,9 @@ class User:
         async with self._application.postgres_connector(
                 on_error=self.on_token_postgres_error) as conn:
             try:
-                result = await conn.execute(
-                    self.SQL_AUTHENTICATE_TOKEN, {'token': self.token},
-                    'user-token-auth')
+                result = await conn.execute(self.SQL_AUTHENTICATE_TOKEN,
+                                            {'token': self.token},
+                                            'user-token-auth')
             except psycopg2.errors.InvalidTextRepresentation:
                 return False
             if not result.row_count:

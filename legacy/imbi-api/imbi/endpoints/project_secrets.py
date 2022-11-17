@@ -13,11 +13,11 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
         '       s.created_by, s.last_modified_by'
         '  FROM v1.project_secrets AS s'
         '  JOIN v1.projects AS p ON s.project_id = p.id'
-        ' WHERE s.project_id = %(project_id)s'
-    )
+        ' WHERE s.project_id = %(project_id)s')
 
     async def get(self, *args, **kwargs):
-        result = await self.postgres_execute(self.COLLECTION_SQL, kwargs,
+        result = await self.postgres_execute(self.COLLECTION_SQL,
+                                             kwargs,
                                              metric_name=f'get-{self.NAME}')
         for row in result.rows:
             row['value'] = self.application.decrypt_value(row['value'])

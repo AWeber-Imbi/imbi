@@ -7,7 +7,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 
     NAME = 'project-fact-types'
     ID = 'project_id'
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT c.id, c.name, c.fact_type, c.data_type, c.description,
                c.ui_options, c.weight,
                CASE WHEN c.fact_type = 'enum' THEN ARRAY(

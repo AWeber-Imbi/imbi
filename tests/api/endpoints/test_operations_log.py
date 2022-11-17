@@ -42,7 +42,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'ticket_slug': str(uuid.uuid4()),
                 'version': str(uuid.uuid4()),
             }
-            result = self.fetch('/operations-log', method='POST',
+            result = self.fetch('/operations-log',
+                                method='POST',
                                 json_body=record)
             self.assertEqual(result.code, 200)
             records.append(json.loads(result.body.decode('utf-8')))
@@ -148,7 +149,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'ticket_slug': str(uuid.uuid4()),
                 'version': str(uuid.uuid4()),
             }
-            result = self.fetch('/operations-log', method='POST',
+            result = self.fetch('/operations-log',
+                                method='POST',
                                 json_body=record)
             self.assertEqual(result.code, 200)
             records.append(json.loads(result.body.decode('utf-8')))
@@ -187,17 +189,17 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         # insert record
         record = {
-                'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-                'recorded_at': '2021-08-30T00:00:03+00:00',
-                'environment': self.environment,
-                'project_id': self.project['id'],
-                'change_type': 'Upgraded',
-                'description': str(uuid.uuid4()),
-                'link': str(uuid.uuid4()),
-                'notes': str(uuid.uuid4()),
-                'ticket_slug': str(uuid.uuid4()),
-                'version': str(uuid.uuid4()),
-            }
+            'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
+            'recorded_at': '2021-08-30T00:00:03+00:00',
+            'environment': self.environment,
+            'project_id': self.project['id'],
+            'change_type': 'Upgraded',
+            'description': str(uuid.uuid4()),
+            'link': str(uuid.uuid4()),
+            'notes': str(uuid.uuid4()),
+            'ticket_slug': str(uuid.uuid4()),
+            'version': str(uuid.uuid4()),
+        }
         result = self.fetch('/operations-log', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         records.insert(4, json.loads(result.body.decode('utf-8')))
@@ -294,9 +296,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # Collection
         result = self.fetch('/operations-log')
         self.assertEqual(result.code, 200)
-        self.assertListEqual(
-            json.loads(result.body.decode('utf-8')),
-            [{k: v for k, v in record.items()}])
+        self.assertListEqual(json.loads(result.body.decode('utf-8')),
+                             [{k: v
+                               for k, v in record.items()}])
 
         # DELETE
         result = self.fetch(url, method='DELETE')

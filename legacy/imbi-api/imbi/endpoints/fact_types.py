@@ -6,15 +6,14 @@ from imbi.endpoints import base
 class _RequestHandlerMixin:
 
     ID_KEY = ['id']
-    FIELDS = ['id', 'project_type_ids', 'name', 'fact_type', 'data_type',
-              'description', 'ui_options', 'weight']
-    DEFAULTS = {
-        'data_type': 'string',
-        'fact_type': 'free-form',
-        'weight': 0
-    }
+    FIELDS = [
+        'id', 'project_type_ids', 'name', 'fact_type', 'data_type',
+        'description', 'ui_options', 'weight'
+    ]
+    DEFAULTS = {'data_type': 'string', 'fact_type': 'free-form', 'weight': 0}
 
-    GET_SQL = re.sub(r'\s+', ' ', """\
+    GET_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT id, created_at, created_by, last_modified_at, last_modified_by,
                project_type_ids, name, fact_type, data_type, description,
                ui_options, weight
@@ -28,13 +27,15 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     NAME = 'fact-types'
     ITEM_NAME = 'fact-type'
 
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT id, project_type_ids, name, fact_type, data_type, description,
                ui_options, weight
           FROM v1.project_fact_types
          ORDER BY name, project_type_ids""")
 
-    POST_SQL = re.sub(r'\s+', ' ', """\
+    POST_SQL = re.sub(
+        r'\s+', ' ', """\
         INSERT INTO v1.project_fact_types
                     (project_type_ids, created_by, name, fact_type, data_type,
                      description, ui_options, weight)
@@ -50,7 +51,8 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
 
     DELETE_SQL = 'DELETE FROM v1.project_fact_types WHERE id=%(id)s'
 
-    PATCH_SQL = re.sub(r'\s+', ' ', """\
+    PATCH_SQL = re.sub(
+        r'\s+', ' ', """\
         UPDATE v1.project_fact_types
            SET last_modified_at=CURRENT_TIMESTAMP,
                last_modified_by=%(username)s,

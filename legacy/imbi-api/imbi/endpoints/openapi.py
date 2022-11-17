@@ -28,4 +28,5 @@ class RequestHandler(base.RequestHandler):
             template, **{
                 'host': self.request.host,
                 'scheme': self.request.protocol,
-                'settings': self.settings})
+                'settings': self.settings
+            })

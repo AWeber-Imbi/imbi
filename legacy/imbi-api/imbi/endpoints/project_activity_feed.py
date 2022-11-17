@@ -7,7 +7,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 
     NAME = 'project-activity-feed'
     ID = 'project_id'
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """\
         WITH created AS (
                 SELECT created_at AS "when",
                        created_by AS who,

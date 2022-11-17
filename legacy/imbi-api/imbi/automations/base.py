@@ -9,9 +9,7 @@ if typing.TYPE_CHECKING:
 
 
 class Automation:
-
-    def __init__(self,
-                 application: 'app.Application',
+    def __init__(self, application: 'app.Application',
                  current_user: 'user.User',
                  db: sprockets_postgres.PostgresConnector):
         self.application = application

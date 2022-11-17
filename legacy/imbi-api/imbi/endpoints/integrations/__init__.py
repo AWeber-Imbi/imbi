@@ -12,5 +12,6 @@ URLS = [
     web.url(r'^/gitlab/projects', gitlab.ProjectsHandler),
     web.url(r'^/integrations$', oauth2.CollectionRequestHandler),
     web.url(r'^/integrations/(?P<name>[\w_\-%\+]+)$',
-            oauth2.RecordRequestHandler, name='integration')
+            oauth2.RecordRequestHandler,
+            name='integration')
 ]

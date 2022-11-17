@@ -50,8 +50,7 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
     This client sends authenticated HTTP requests to the GitLab API.
 
     """
-    def __init__(self,
-                 token: oauth2.IntegrationToken,
+    def __init__(self, token: oauth2.IntegrationToken,
                  application: tornado.web.Application):
         super().__init__()
         settings = application.settings['automations']['gitlab']
@@ -65,8 +64,11 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         self._user_info: typing.Union[dict, None] = None
         self._user_namespace: typing.Union[dict, None] = None
 
-    async def api(self, url: typing.Union[yarl.URL, str], *,
-                  method: str = 'GET', **kwargs):
+    async def api(self,
+                  url: typing.Union[yarl.URL, str],
+                  *,
+                  method: str = 'GET',
+                  **kwargs):
         """Make an authenticated request to the GitLab API."""
         if not isinstance(url, yarl.URL):
             url = yarl.URL(url)
@@ -92,9 +94,10 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         while url is not None:
             response = await self.api(url)
             if not response.ok:
-                raise errors.InternalServerError(
-                    'GET %s failed: %s', url, response.code,
-                    title='GitLab API Failure')
+                raise errors.InternalServerError('GET %s failed: %s',
+                                                 url,
+                                                 response.code,
+                                                 title='GitLab API Failure')
 
             entries.extend(response.body)
             for link in response.links:
@@ -116,9 +119,10 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             return None
         if response.ok:
             return response.body
-        raise errors.InternalServerError(
-            'failed to fetch group %s: %s', slug, response.code,
-            title='GitLab API Failure')
+        raise errors.InternalServerError('failed to fetch group %s: %s',
+                                         slug,
+                                         response.code,
+                                         title='GitLab API Failure')
 
     async def fetch_project(self, project_id: int) \
             -> typing.Optional[ProjectInfo]:
@@ -129,13 +133,12 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             return None
         if response.ok:
             return ProjectInfo.parse_obj(response.body)
-        raise errors.InternalServerError(
-            'failed to fetch project %s: %s', project_id, response.code,
-            title='GitLab API Failure')
+        raise errors.InternalServerError('failed to fetch project %s: %s',
+                                         project_id,
+                                         response.code,
+                                         title='GitLab API Failure')
 
-    async def create_project(self,
-                             parent,
-                             project_name: str,
+    async def create_project(self, parent, project_name: str,
                              **attributes) -> ProjectInfo:
         if self.restrict_to_user:
             parent = await self.fetch_user_namespace()
@@ -149,37 +152,30 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         response = await self.api('projects', method='POST', body=attributes)
         if response.ok:
             return ProjectInfo.parse_obj(response.body)
-        raise errors.InternalServerError(
-            'failed to create project %s: %s', project_name, response.code,
-            title='GitLab API Failure', gitlab_response=response.body)
+        raise errors.InternalServerError('failed to create project %s: %s',
+                                         project_name,
+                                         response.code,
+                                         title='GitLab API Failure',
+                                         gitlab_response=response.body)
 
-    async def commit_tree(self,
-                          project_info: ProjectInfo,
-                          project_dir: pathlib.Path,
-                          commit_message: str):
+    async def commit_tree(self, project_info: ProjectInfo,
+                          project_dir: pathlib.Path, commit_message: str):
         self.logger.info('creating commit for %s', project_info.id)
 
         files = [path for path in project_dir.glob('**/*') if path.is_file()]
         self.logger.debug('found %d files in %s', len(files), project_dir)
 
-        actions = [
-            {
-                'action': 'create',
-                'content': base64.b64encode(file.read_bytes()).decode('ascii'),
-                'encoding': 'base64',
-                'file_path': str(file.relative_to(project_dir)),
-            }
-            for file in files
-        ]
-        actions.extend([
-            {
-                'action': 'chmod',
-                'execute_filemode': True,
-                'file_path': str(file.relative_to(project_dir)),
-            }
-            for file in files
-            if file.stat().st_mode & stat.S_IXUSR
-        ])
+        actions = [{
+            'action': 'create',
+            'content': base64.b64encode(file.read_bytes()).decode('ascii'),
+            'encoding': 'base64',
+            'file_path': str(file.relative_to(project_dir)),
+        } for file in files]
+        actions.extend([{
+            'action': 'chmod',
+            'execute_filemode': True,
+            'file_path': str(file.relative_to(project_dir)),
+        } for file in files if file.stat().st_mode & stat.S_IXUSR])
         self.logger.debug('creating commit with %d actions', len(actions))
 
         project_url = yarl.URL(project_info.links.self)
@@ -194,9 +190,11 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         )
         if response.ok:
             return response.body
-        raise errors.InternalServerError(
-            'failed to commit to %s: %s', project_url, response.code,
-            title='GitLab API Failure', gitlab_response=response.body)
+        raise errors.InternalServerError('failed to commit to %s: %s',
+                                         project_url,
+                                         response.code,
+                                         title='GitLab API Failure',
+                                         gitlab_response=response.body)
 
     async def fetch_user_information(self):
         if self._user_info:
@@ -206,19 +204,21 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             self._user_info = response.body
             return self._user_info
         raise errors.InternalServerError(
-            'failed to retrieve GitLab user information: %s', response.code,
+            'failed to retrieve GitLab user information: %s',
+            response.code,
             title='GitLab API Failure')
 
     async def fetch_user_namespace(self):
         if self._user_namespace:
             return self._user_namespace
         user_info = await self.fetch_user_information()
-        response = await self.api(
-            self.token.integration.api_endpoint /
-            'namespaces' / user_info['username'])
+        response = await self.api(self.token.integration.api_endpoint /
+                                  'namespaces' / user_info['username'])
         if response.ok:
             self._user_namespace = response.body
             return self._user_namespace
         raise errors.InternalServerError(
             'failed to retrieve GitLab user namespace for %s: %s',
-            user_info['username'], response.code, title='GitLab API Failure')
+            user_info['username'],
+            response.code,
+            title='GitLab API Failure')

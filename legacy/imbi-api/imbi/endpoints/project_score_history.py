@@ -7,7 +7,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 
     NAME = 'project-score-history'
     ID = 'project_id'
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """\
         WITH history AS (
                 SELECT changed_at::DATE AS "date",
                        max(score::INT) AS score

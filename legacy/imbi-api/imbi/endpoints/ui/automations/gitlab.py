@@ -27,9 +27,9 @@ class GitLabAutomationRequestHandler(mixins.PrepareFailureMixin,
             user = await self.get_current_user()  # never None
             tokens = await integration.get_user_tokens(user)
             if not tokens:
-                raise errors.Forbidden(
-                    '%r has no GitLab tokens', user,
-                    title='GitLab Not Connected')
+                raise errors.Forbidden('%r has no GitLab tokens',
+                                       user,
+                                       title='GitLab Not Connected')
             self.gitlab = gitlab.GitLabClient(tokens[0], self.application)
 
 
@@ -75,8 +75,8 @@ class InitialCommitRequestHandler(GitLabAutomationRequestHandler):
 
         async with self.postgres_transaction() as transaction:
             automation = automations.GitLabInitialCommitAutomation(
-                self.application, imbi_project_id, cookie_cutter,
-                await self.get_current_user(), transaction)
+                self.application, imbi_project_id, cookie_cutter, await
+                self.get_current_user(), transaction)
             failures = await automation.prepare()
             if failures:
                 raise self.handle_prepare_failures('Create Initial Commit',

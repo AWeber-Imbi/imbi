@@ -6,11 +6,14 @@ from imbi.endpoints import base
 class _RequestHandlerMixin:
 
     ID_KEY = 'id'
-    FIELDS = ['id', 'name', 'slug', 'icon_class', 'maintained_by',
-              'gitlab_group_name', 'sentry_team_slug']
+    FIELDS = [
+        'id', 'name', 'slug', 'icon_class', 'maintained_by',
+        'gitlab_group_name', 'sentry_team_slug'
+    ]
     DEFAULTS = {'icon_class': 'fas fa-users', 'maintained_by': []}
 
-    GET_SQL = re.sub(r'\s+', ' ', """\
+    GET_SQL = re.sub(
+        r'\s+', ' ', """\
         SELECT id, "name", created_at, created_by,
                last_modified_at, last_modified_by,
                slug, icon_class, maintained_by,
@@ -24,12 +27,14 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     NAME = 'namespaces'
     ITEM_NAME = 'namespace'
 
-    COLLECTION_SQL = re.sub(r'\s+', ' ', """ \
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """ \
         SELECT id, "name", slug, icon_class, maintained_by, gitlab_group_name,
                sentry_team_slug
           FROM v1.namespaces ORDER BY "name" ASC""")
 
-    POST_SQL = re.sub(r'\s+', ' ', """\
+    POST_SQL = re.sub(
+        r'\s+', ' ', """\
         INSERT INTO v1.namespaces
                     ("name", created_by, slug, icon_class, "maintained_by",
                      gitlab_group_name, sentry_team_slug)
@@ -45,7 +50,8 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
 
     DELETE_SQL = 'DELETE FROM v1.namespaces WHERE id=%(id)s'
 
-    PATCH_SQL = re.sub(r'\s+', ' ', """\
+    PATCH_SQL = re.sub(
+        r'\s+', ' ', """\
         UPDATE v1.namespaces
            SET "name" = %(name)s,
                last_modified_at = CURRENT_TIMESTAMP,

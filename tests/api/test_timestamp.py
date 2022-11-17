@@ -7,7 +7,6 @@ from imbi import timestamp
 
 
 class TimestampTests(unittest.TestCase):
-
     def test_format_and_parse(self):
         expectation = '2016-08-26 13:46:34-04:00'
         parsed = timestamp.parse(expectation)
@@ -20,7 +19,12 @@ class TimestampTests(unittest.TestCase):
         self.assertEqual(expectation, timestamp.isoformat())
 
     def test_parse_rfc822(self):
-        expectation = datetime.datetime(1994, 10, 29, 19, 43, 31,
+        expectation = datetime.datetime(1994,
+                                        10,
+                                        29,
+                                        19,
+                                        43,
+                                        31,
                                         tzinfo=tz.tzoffset(None, 0))
         self.assertEqual(
             expectation,

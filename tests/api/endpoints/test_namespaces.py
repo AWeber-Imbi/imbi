@@ -14,8 +14,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_namespace_lifecycle(self):
         record = {
-            field: namespaces.CollectionRequestHandler.DEFAULTS.get(
-                field, None)
+            field:
+            namespaces.CollectionRequestHandler.DEFAULTS.get(field, None)
             for field in namespaces.CollectionRequestHandler.FIELDS
             if field != namespaces.CollectionRequestHandler.ID_KEY
         }
@@ -39,8 +39,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
-            result.headers['Cache-Control'], 'public, max-age={}'.format(
-                namespaces.RecordRequestHandler.TTL))
+            result.headers['Cache-Control'],
+            'public, max-age={}'.format(namespaces.RecordRequestHandler.TTL))
         self.assertDictEqual(response, record)
 
         # PATCH
@@ -70,18 +70,19 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assertEqual(
-            result.headers['Cache-Control'], 'public, max-age={}'.format(
-                namespaces.RecordRequestHandler.TTL))
+            result.headers['Cache-Control'],
+            'public, max-age={}'.format(namespaces.RecordRequestHandler.TTL))
         response = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(response, record)
 
         # Collection
         result = self.fetch('/namespaces')
         self.assertEqual(result.code, 200)
-        self.assertListEqual(
-            json.loads(result.body.decode('utf-8')),
-            [{k: v for k, v in record.items()
-              if k not in ['created_by', 'last_modified_by']}])
+        self.assertListEqual(json.loads(result.body.decode('utf-8')), [{
+            k: v
+            for k, v in record.items()
+            if k not in ['created_by', 'last_modified_by']
+        }])
 
         # DELETE
         result = self.fetch(url, method='DELETE')

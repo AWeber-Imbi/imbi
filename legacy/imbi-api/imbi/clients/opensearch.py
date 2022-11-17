@@ -107,12 +107,10 @@ class OpenSearch:
         LOGGER.debug('Deleting %s from %s', document_id, index)
         try:
             await self.client.delete(index, document_id)
-        except (
-            opensearchpy.exceptions.NotFoundError,
-            opensearchpy.exceptions.RequestError
-        ) as err:
-            LOGGER.warning('Deletion of %s:%s failed: %r',
-                           index, document_id, err)
+        except (opensearchpy.exceptions.NotFoundError,
+                opensearchpy.exceptions.RequestError) as err:
+            LOGGER.warning('Deletion of %s:%s failed: %r', index, document_id,
+                           err)
 
     async def documents_pending(self) -> int:
         """Return the number of documents pending indexing"""
@@ -131,16 +129,20 @@ class OpenSearch:
                 json.dumps(normalize(sanitize_keys(document)), indent=0))
             await self.redis.sadd(self.PENDING_KEY, f'{index}:{document_id}')
             return
-        await self._index_document(
-            index, document_id, normalize(sanitize_keys(document)))
+        await self._index_document(index, document_id,
+                                   normalize(sanitize_keys(document)))
 
     async def search(self, index: str, query: str, max_results: int = 1000) \
             -> typing.Dict[str, typing.List[dict]]:
-        result = await self.client.search(
-            body={
-                'query': {
-                    'query_string': {'query': query, 'size': max_results}}},
-            index=index)
+        result = await self.client.search(body={
+            'query': {
+                'query_string': {
+                    'query': query,
+                    'size': max_results
+                }
+            }
+        },
+                                          index=index)
         return {'hits': [r['_source'] for r in result['hits']['hits']]}
 
     async def stop(self) -> None:
@@ -170,28 +172,24 @@ class OpenSearch:
             LOGGER.warning('Failed to load %s from redis', key)
             return False
 
-        if not await self._index_document(
-                index, document_id, json.loads(document)):
+        if not await self._index_document(index, document_id,
+                                          json.loads(document)):
             return False
 
-        result = await asyncio.gather(
-            self.redis.delete(key),
-            self.redis.scard(self.PENDING_KEY))
+        result = await asyncio.gather(self.redis.delete(key),
+                                      self.redis.scard(self.PENDING_KEY))
         LOGGER.debug(
-            'Processing of %s:%s is complete with %i documents pending',
-            index, document_id, result[1])
+            'Processing of %s:%s is complete with %i documents pending', index,
+            document_id, result[1])
         return True
 
-    async def _index_document(self,
-                              index: str,
-                              document_id: str,
+    async def _index_document(self, index: str, document_id: str,
                               document: dict) -> bool:
         """Invoked to index a document in ElasticSearch"""
         try:
-            await self.client.index(
-                index, body=document, id=document_id)
+            await self.client.index(index, body=document, id=document_id)
         except opensearchpy.RequestError as err:
-            LOGGER.warning('Failed to index %s in %s: %s',
-                           document_id, index, err)
+            LOGGER.warning('Failed to index %s in %s: %s', document_id, index,
+                           err)
             return False
         return True

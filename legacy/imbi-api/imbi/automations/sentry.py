@@ -6,7 +6,6 @@ from imbi.clients import sentry
 
 
 class SentryCreateProjectAutomation(base.Automation):
-
     def __init__(self, application, project_id, current_user, db) -> None:
         super().__init__(application, current_user, db)
         self.client = sentry.SentryClient(application)
@@ -44,8 +43,7 @@ class SentryCreateProjectAutomation(base.Automation):
                     'imbi_project_id': self.imbi_project_id,
                     'slug': project.slug,
                     'username': self.user.username,
-                }
-            )
+                })
             if self.settings.get('project_link_type_id'):
                 await self.db.execute(
                     '  INSERT INTO v1.project_links(project_id, link_type_id,'
@@ -60,12 +58,11 @@ class SentryCreateProjectAutomation(base.Automation):
                     '              last_modified_by = %(username)s,'
                     '              url = %(url)s', {
                         'imbi_project_id': self.imbi_project_id,
-                        'project_link_type_id':
-                            self.settings['project_link_type_id'],
+                        'project_link_type_id': self.
+                        settings['project_link_type_id'],
                         'url': project.link,
                         'username': self.user.username,
-                    }
-                )
+                    })
             for name, value in project.keys.items():
                 await self.db.execute(
                     '  INSERT INTO v1.project_secrets(project_id, name, value,'
@@ -82,8 +79,7 @@ class SentryCreateProjectAutomation(base.Automation):
                         'key_name': f'sentry_{name.lower()}',
                         'key_value': self.application.encrypt_value(value),
                         'username': self.user.username,
-                    }
-                )
+                    })
 
         # Using a wide catch of Exception here to ensure that we remove
         # the sentry project if we fail to save it for any reason.  This

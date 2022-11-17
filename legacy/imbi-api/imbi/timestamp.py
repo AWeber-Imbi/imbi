@@ -45,8 +45,8 @@ def parse_rfc822(value: str) -> typing.Optional[datetime.datetime]:
     parsed = utils.parsedate_tz(value)
     if not parsed:
         return None
-    return datetime.datetime.fromtimestamp(
-        utils.mktime_tz(parsed), tz.tzoffset(None, 0))
+    return datetime.datetime.fromtimestamp(utils.mktime_tz(parsed),
+                                           tz.tzoffset(None, 0))
 
 
 def to_utc(value: str) -> str:

@@ -25,11 +25,8 @@ class SonarCreateProject(base.Automation):
            SET sonarqube_project_key = %(sonar_key)s
          WHERE id = %(project_id)s""")
 
-    def __init__(self,
-                 application: 'app.Application',
-                 project_id: int,
-                 public_url: yarl.URL,
-                 current_user: 'user.User',
+    def __init__(self, application: 'app.Application', project_id: int,
+                 public_url: yarl.URL, current_user: 'user.User',
                  db: sprockets_postgres.PostgresConnector):
         super().__init__(application, current_user, db)
         self._public_url = public_url

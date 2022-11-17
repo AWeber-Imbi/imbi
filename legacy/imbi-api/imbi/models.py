@@ -35,7 +35,8 @@ class Namespace:
     gitlab_group_name: str
     sentry_team_slug: typing.Optional[str]
 
-    SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
+    SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
         SELECT id,
                created_at,
                created_by,
@@ -57,15 +58,8 @@ class ProjectFact:
     name: str
     recorded_at: datetime.datetime
     recorded_by: str
-    value: typing.Union[
-        bool,
-        datetime.date,
-        datetime.datetime,
-        decimal.Decimal,
-        int,
-        None,
-        str
-    ]
+    value: typing.Union[bool, datetime.date, datetime.datetime,
+                        decimal.Decimal, int, None, str]
     fact_type: str
     data_type: str
     description: typing.Optional[str]
@@ -73,7 +67,8 @@ class ProjectFact:
     score: decimal.Decimal
     weight: int
 
-    COLLECTION_SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
         WITH project_type_id AS (SELECT project_type_id AS id
                                    FROM v1.projects
                                   WHERE id = %(obj_id)s)
@@ -133,7 +128,8 @@ class ProjectType:
     environment_urls: bool
     gitlab_project_prefix: typing.Optional[str]
 
-    SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
+    SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
         SELECT id,
                created_at,
                created_by,
@@ -161,7 +157,8 @@ class ProjectLink:
     icon_class: typing.Optional[str]
     url: str
 
-    COLLECTION_SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
         SELECT a.link_type_id,
                b.link_type,
                a.created_at,
@@ -187,7 +184,8 @@ class ProjectURL:
     icon_class: typing.Optional[str]
     url: str
 
-    COLLECTION_SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
+    COLLECTION_SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
         SELECT a.environment,
                a.created_at,
                a.created_by,
@@ -225,7 +223,8 @@ class Project:
     urls: typing.Dict[str, str]
     project_score: int
 
-    SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
+    SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
         SELECT id,
                created_at,
                created_by,
@@ -263,7 +262,8 @@ class OperationsLog:
     ticket_slug: typing.Optional[str]
     version: typing.Optional[str]
 
-    SQL: typing.ClassVar = re.sub(r'\s+', ' ', """\
+    SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
         SELECT a.id,
                a.recorded_at,
                a.recorded_by,
@@ -285,17 +285,14 @@ class OperationsLog:
 
 async def _load(model: dataclasses.dataclass, obj_id: int,
                 application: 'app.Application') -> dataclasses.dataclass:
-
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
-        LOGGER.error('Failed to execute query for project %s: %s',
-                     obj_id, exc)
-        raise errors.DatabaseError(
-            f'Error loading {model.__class__.__name__}', error=exc)
+        LOGGER.error('Failed to execute query for project %s: %s', obj_id, exc)
+        raise errors.DatabaseError(f'Error loading {model.__class__.__name__}',
+                                   error=exc)
 
     async with application.postgres_connector(
             on_error=on_postgres_error) as conn:
-        result = await conn.execute(
-            model.SQL, {'id': obj_id}, 'model-load')
+        result = await conn.execute(model.SQL, {'id': obj_id}, 'model-load')
         if result.row_count:
             return model(**result.row)
 
@@ -304,19 +301,18 @@ async def _load_collection(model: dataclasses.dataclass,
                            obj_id: int,
                            application: 'app.Application') \
         -> typing.List[dataclasses.dataclass]:
-
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
-        LOGGER.error('Failed to execute query for collection %s: %s',
-                     obj_id, exc)
+        LOGGER.error('Failed to execute query for collection %s: %s', obj_id,
+                     exc)
         raise errors.DatabaseError(
             f'Error loading {model.__class__.__name__} '
-            f'collection for {obj_id}', error=exc)
+            f'collection for {obj_id}',
+            error=exc)
 
     async with application.postgres_connector(
             on_error=on_postgres_error) as conn:
-        result = await conn.execute(
-            model.COLLECTION_SQL, {'obj_id': obj_id},
-            'collection-load')
+        result = await conn.execute(model.COLLECTION_SQL, {'obj_id': obj_id},
+                                    'collection-load')
         return [model(**row) for row in result.rows]
 
 
@@ -330,19 +326,17 @@ async def operations_log(ops_log_id: int,
     return await _load(OperationsLog, ops_log_id, application)
 
 
-async def project(project_id: int,
-                  application: 'app.Application') -> Project:
-
+async def project(project_id: int, application: 'app.Application') -> Project:
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
-        LOGGER.error('Failed to execute query for project %s: %s',
-                     project_id, exc)
-        raise errors.DatabaseError(
-            f'Error loading Project {project_id}', error=exc)
+        LOGGER.error('Failed to execute query for project %s: %s', project_id,
+                     exc)
+        raise errors.DatabaseError(f'Error loading Project {project_id}',
+                                   error=exc)
 
     async with application.postgres_connector(
             on_error=on_postgres_error) as conn:
-        result = await conn.execute(
-            Project.SQL, {'id': project_id}, 'project-model-load')
+        result = await conn.execute(Project.SQL, {'id': project_id},
+                                    'project-model-load')
         if result.row_count:
             values = dict(result.row)
             result = await asyncio.gather(
@@ -356,9 +350,13 @@ async def project(project_id: int,
             values.update({
                 'namespace': result[0],
                 'project_type': result[1],
-                'facts': {value.name: value.value for value in result[2]},
-                'links': {value.link_type: value.url for value in result[3]},
-                'urls': {value.environment: value.url for value in result[4]}})
+                'facts': {value.name: value.value
+                          for value in result[2]},
+                'links': {value.link_type: value.url
+                          for value in result[3]},
+                'urls': {value.environment: value.url
+                         for value in result[4]}
+            })
             return Project(**values)
 
 

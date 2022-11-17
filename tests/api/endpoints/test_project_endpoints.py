@@ -11,9 +11,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     ADMIN_ACCESS = True
     TRUNCATE_TABLES = [
-        'v1.environments',
-        'v1.project_link_types',
-        'v1.project_types',
+        'v1.environments', 'v1.project_link_types', 'v1.project_types',
         'v1.namespaces'
     ]
 
@@ -43,8 +41,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Date'])
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
-            result.headers['Cache-Control'], 'public, max-age={}'.format(
-                projects.RecordRequestHandler.TTL))
+            result.headers['Cache-Control'],
+            'public, max-age={}'.format(projects.RecordRequestHandler.TTL))
         record.update({
             'id': response['id'],
             'namespace': self.namespace['name'],
@@ -84,8 +82,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertIsNotNone(result.headers['Last-Modified'])
         self.assert_link_header_equals(result, url)
         self.assertEqual(
-            result.headers['Cache-Control'], 'public, max-age={}'.format(
-                projects.RecordRequestHandler.TTL))
+            result.headers['Cache-Control'],
+            'public, max-age={}'.format(projects.RecordRequestHandler.TTL))
 
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertDictEqual(record, new_value)
@@ -119,8 +117,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assert_link_header_equals(result, url)
         self.assertIsNone(result.headers.get('Last-Modified', None))
         self.assertEqual(
-            result.headers['Cache-Control'], 'public, max-age={}'.format(
-                projects.RecordRequestHandler.TTL))
+            result.headers['Cache-Control'],
+            'public, max-age={}'.format(projects.RecordRequestHandler.TTL))
         record.update({
             'id': response['id'],
             'namespace': self.namespace['name'],
@@ -160,46 +158,41 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         project_b = json.loads(result.body.decode('utf-8'))
 
         # Create the dependency
-        result = self.fetch(
-            '/projects/{}/dependencies'.format(project_b['id']),
-            method='POST', json_body={'dependency_id': project_a['id']})
+        result = self.fetch('/projects/{}/dependencies'.format(
+            project_b['id']),
+                            method='POST',
+                            json_body={'dependency_id': project_a['id']})
         self.assertEqual(result.code, 200)
 
-        result = self.fetch(
-            '/projects/{}/dependencies'.format(project_b['id']),
-            method='GET')
+        result = self.fetch('/projects/{}/dependencies'.format(
+            project_b['id']),
+                            method='GET')
         self.assertEqual(result.code, 200)
-        self.assertListEqual(
-            json.loads(result.body.decode('utf-8')),
-            [{
-                'project_id': project_b['id'],
-                'created_by': self.USERNAME[self.ADMIN_ACCESS],
-                'dependency_id': project_a['id']
-            }])
+        self.assertListEqual(json.loads(result.body.decode('utf-8')), [{
+            'project_id': project_b['id'],
+            'created_by': self.USERNAME[self.ADMIN_ACCESS],
+            'dependency_id': project_a['id']
+        }])
 
-        result = self.fetch(
-            '/projects/{}/dependencies/{}'.format(project_b['id'],
-                                                  project_a['id']),
-            method='GET')
+        result = self.fetch('/projects/{}/dependencies/{}'.format(
+            project_b['id'], project_a['id']),
+                            method='GET')
         self.assertEqual(result.code, 200)
         self.assertDictEqual(
-            json.loads(result.body.decode('utf-8')),
-            {
+            json.loads(result.body.decode('utf-8')), {
                 'project_id': project_b['id'],
                 'created_by': self.USERNAME[self.ADMIN_ACCESS],
                 'dependency_id': project_a['id']
             })
 
-        result = self.fetch(
-            '/projects/{}/dependencies/{}'.format(
-                project_b['id'], project_a['id']),
-            method='DELETE')
+        result = self.fetch('/projects/{}/dependencies/{}'.format(
+            project_b['id'], project_a['id']),
+                            method='DELETE')
         self.assertEqual(result.code, 204)
 
-        result = self.fetch(
-            '/projects/{}/dependencies/{}'.format(
-                project_b['id'], project_a['id']),
-            method='GET')
+        result = self.fetch('/projects/{}/dependencies/{}'.format(
+            project_b['id'], project_a['id']),
+                            method='GET')
         self.assertEqual(result.code, 404)
 
     def test_links(self):
@@ -211,7 +204,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'environments': self.environments
         }
 
-        result = self.fetch('/projects', method='POST',
+        result = self.fetch('/projects',
+                            method='POST',
                             json_body=project_record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
@@ -234,8 +228,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 project_links.RecordRequestHandler.TTL))
-        self.assertEqual(
-            link_record['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+        self.assertEqual(link_record['created_by'],
+                         self.USERNAME[self.ADMIN_ACCESS])
         self.assertEqual(link_record['url'], record['url'])
 
         # Get links
@@ -299,7 +293,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'environments': self.environments
         }
 
-        result = self.fetch('/projects', method='POST',
+        result = self.fetch('/projects',
+                            method='POST',
                             json_body=project_record)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
@@ -322,8 +317,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(
             result.headers['Cache-Control'], 'public, max-age={}'.format(
                 project_links.RecordRequestHandler.TTL))
-        self.assertEqual(
-            url_record['created_by'], self.USERNAME[self.ADMIN_ACCESS])
+        self.assertEqual(url_record['created_by'],
+                         self.USERNAME[self.ADMIN_ACCESS])
         self.assertEqual(url_record['url'], record['url'])
 
         # Get URLs
@@ -404,5 +399,5 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # Search by name
         part = record['name'].split('-')[4]
         result = self.fetch(f'/projects?name={part}', method='GET')
-        self.assertTrue(in_results(proj_id,
-                                   json.loads(result.body.decode('utf-8'))))
+        self.assertTrue(
+            in_results(proj_id, json.loads(result.body.decode('utf-8'))))

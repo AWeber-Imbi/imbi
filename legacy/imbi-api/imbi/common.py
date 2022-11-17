@@ -8,7 +8,7 @@ import dateutil.parser
 
 
 def coerce_project_fact_values(
-        rows: list[dict[str, typing.Any]]
+    rows: list[dict[str, typing.Any]]
 ) -> list[dict[str, None | bool | decimal.Decimal | int | str]]:
     """Shared method to coerce the values to the correct data types in the
     output for project facts
@@ -22,8 +22,8 @@ def coerce_project_fact_values(
 
 
 def coerce_project_fact(
-        data_type: str, value: typing.Any
-) -> None | bool | decimal.Decimal | int | str:
+        data_type: str,
+        value: typing.Any) -> None | bool | decimal.Decimal | int | str:
     """Coerce a single fact based on its data type."""
     if not value and value != 0:
         value = None

@@ -12,7 +12,6 @@ import tornado.httputil
 import tornado.web
 import yarl
 
-
 ERROR_URL = yarl.URL('https://localhost/')
 
 
@@ -46,8 +45,8 @@ class ApplicationError(problemdetails.Problem):
     log_message: str
     reason: str
 
-    def __init__(self, status_code: int, fragment: str,
-                 log_message: str, *log_args, **kwargs):
+    def __init__(self, status_code: int, fragment: str, log_message: str,
+                 *log_args, **kwargs):
         # NB -- tornado.web.HTTPError DOES NOT set the reason for us :/
         kwargs['reason'] = kwargs.get(
             'reason',
@@ -94,9 +93,9 @@ class MethodNotAllowed(ApplicationError):
 
 class UnsupportedMediaType(ApplicationError):
     def __init__(self, media_type: str, **kwargs):
-        super().__init__(
-            415, 'unsupported-media-type', '%s is not a supported media type',
-            media_type, **kwargs)
+        super().__init__(415, 'unsupported-media-type',
+                         '%s is not a supported media type', media_type,
+                         **kwargs)
 
 
 class InternalServerError(ApplicationError):
@@ -105,8 +104,11 @@ class InternalServerError(ApplicationError):
 
 
 class DatabaseError(InternalServerError):
-    def __init__(self, log_message=None, *log_args,
-                 error: typing.Optional[Exception] = None, **kwargs):
+    def __init__(self,
+                 log_message=None,
+                 *log_args,
+                 error: typing.Optional[Exception] = None,
+                 **kwargs):
         kwargs.setdefault('title', 'Database Error')
         if log_message is None:
             if error is not None:
@@ -120,5 +122,6 @@ class DatabaseError(InternalServerError):
 
 class IntegrationNotFound(InternalServerError):
     def __init__(self, integration_name: str):
-        super().__init__('integration lookup failed for %s', integration_name,
+        super().__init__('integration lookup failed for %s',
+                         integration_name,
                          title='Integration Missing')

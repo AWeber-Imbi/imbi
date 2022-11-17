@@ -9,7 +9,6 @@ LDAP_PASSWORD = 'password'
 
 
 class ClientTestCase(base.TestCase):
-
     @staticmethod
     def get_user_dn(conn):
         result = conn.extend.standard.who_am_i()

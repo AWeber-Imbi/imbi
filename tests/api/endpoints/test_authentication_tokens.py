@@ -11,7 +11,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
     def test_token_lifecycle(self):
         # Create the token
         token_name = str(uuid.uuid4())
-        response = self.fetch('/authentication-tokens', method='POST',
+        response = self.fetch('/authentication-tokens',
+                              method='POST',
                               json_body={'name': token_name})
         self.assertEqual(response.code, 200)
         result = json.loads(response.body.decode('utf-8'))
@@ -31,9 +32,10 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertGreaterEqual(token_count, 2)
 
         # Delete the token
-        response = self.fetch(
-            '/authentication-tokens/{}'.format(headers['Private-Token']),
-            method='DELETE', headers=headers)
+        response = self.fetch('/authentication-tokens/{}'.format(
+            headers['Private-Token']),
+                              method='DELETE',
+                              headers=headers)
         self.assertEqual(response.code, 204)
 
         # Get the collection and ensure there's one less token
