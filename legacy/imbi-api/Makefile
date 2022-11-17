@@ -19,11 +19,12 @@ clean:
 
 env: env/stamp
 
-env/stamp: setup.cfg setup.py
+env/stamp: setup.cfg setup.py Makefile
 	@ python3 -m venv env
 	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install --upgrade pip
 	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install wheel
 	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install -e '.[testing]'
+	@ test -d .git/ && ./env/bin/pre-commit install --install-hooks || true
 	@ touch env/stamp
 
 .PHONY: setup
@@ -48,7 +49,12 @@ flake8: env
 	@ printf "\nRunning Flake8 Tests\n"
 	@ env/bin/flake8 --tee --output-file=build/flake8.txt
 
+.PHONY: yapf
+yapf: env
+	@ printf "\nRunning yapf Tests\n"
+	@ env/bin/yapf -dr imbi tests 2>&1 | tee build/yapf.diff
+
 # Testing Groups
 
 .PHONY: test
-test: bandit flake8 coverage
+test: bandit flake8 yapf coverage
