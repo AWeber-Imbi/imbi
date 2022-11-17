@@ -4,7 +4,7 @@ System Reports
 """
 from tornado import web
 
-from . import automations, authentication, groups, index, settings, user
+from . import authentication, automations, index, settings, user
 
 IndexRequestHandler = index.IndexRequestHandler
 
