@@ -18,11 +18,14 @@ class _RequestHandlerMixin:
 
     GET_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT id, recorded_at, recorded_by, completed_at,
-               project_id, environment, change_type, description,
-               link, notes, ticket_slug, version,
+        SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
+               o.project_id, o.environment, o.change_type, o.description,
+               o.link, o.notes, o.ticket_slug, o.version,
+               p.name AS project_name, u.email_address
                'OperationsLogEntry' AS "type"
-          FROM v1.operations_log
+          FROM v1.operations_log AS o
+          JOIN v1.users AS u ON u.username = o.recorded_by
+          LEFT JOIN v1.projects AS p ON p.id = o.project_id
          WHERE id = %(id)s""")
 
 
@@ -37,9 +40,12 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
         SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
+               p.name AS project_name, u.email_address,
                'OperationsLogEntry' as "type"
           FROM v1.operations_log AS o
-          {{JOIN}} {{WHERE}}
+          JOIN v1.users AS u ON u.username = o.recorded_by
+          LEFT JOIN v1.projects AS p ON p.id = o.project_id
+          {{WHERE}}
       ORDER BY o.recorded_at {{ORDER}}, o.id {{ORDER}}
          LIMIT %(limit)s""")
 
@@ -82,10 +88,6 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
                    and kwargs['recorded_at_anchor'] is not None
                    and kwargs['id_anchor'] is not None)
 
-        join_sql = ''
-        if kwargs['namespace_id'] is not None:
-            join_sql += 'JOIN v1.projects AS p ON o.project_id = p.id'
-
         where_chunks = []
         for kwarg in self.FILTER_CHUNKS.keys():
             if kwargs[kwarg] is not None:
@@ -105,7 +107,6 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
             order = 'desc' if order == 'asc' else 'asc'
 
         sql = self.COLLECTION_SQL \
-            .replace('{{JOIN}}', join_sql) \
             .replace('{{WHERE}}', where_sql) \
             .replace('{{ORDER}}', order)
 
