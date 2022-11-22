@@ -2,9 +2,14 @@
 Base Request Handlers
 
 """
+from __future__ import annotations
+
 import asyncio
+import base64
+import dataclasses
 import datetime
 import logging
+import operator
 import typing
 import uuid
 from email import utils
@@ -12,6 +17,9 @@ from email import utils
 import jsonpatch
 import problemdetails
 import sprockets_postgres as postgres
+import umsgpack
+import yarl
+from ietfparse import datastructures
 from openapi_core.deserializing.exceptions import DeserializeError
 from openapi_core.schema.media_types.exceptions import InvalidContentType
 from openapi_core.templating.paths.exceptions import \
@@ -22,7 +30,7 @@ from sprockets.http import mixins
 from sprockets.mixins import mediatype
 from tornado import httputil, web
 
-from imbi import cors, errors, session, user, version
+from imbi import common, cors, errors, session, user, version
 
 LOGGER = logging.getLogger(__name__)
 
@@ -470,3 +478,133 @@ class AdminCRUDRequestHandler(CRUDRequestHandler):
     @require_permission('admin')
     async def post(self, *args, **kwargs):
         await super().post(*args, **kwargs)
+
+
+@dataclasses.dataclass
+class PaginationToken:
+    """Opaque token used in "next" links by the PaginatedRequestMixin"""
+
+    start: datetime.datetime
+    limit: int
+    earliest: datetime.datetime
+
+    def with_start(self, start: datetime.datetime) -> PaginationToken:
+        """Create a new token with a different start value"""
+        return PaginationToken(start=start,
+                               limit=self.limit,
+                               earliest=self.earliest)
+
+    @classmethod
+    def from_header(cls, header_val: str) -> PaginationToken:
+        """Create a token from an opaque header value"""
+        raw_token = common.urlsafe_padded_b64decode(header_val)
+        data = umsgpack.unpackb(raw_token)
+        return PaginationToken(
+            earliest=datetime.datetime.fromisoformat(data['earliest']),
+            limit=data['limit'],
+            start=(datetime.datetime.fromisoformat(data['start']) -
+                   datetime.timedelta.resolution))
+
+    def to_header(self) -> str:
+        """Generate an opaque header value from this token"""
+        return base64.urlsafe_b64encode(
+            umsgpack.packb({
+                'earliest': self.earliest.isoformat(),
+                'limit': self.limit,
+                'start': self.start.isoformat(),
+            })).decode('ascii').rstrip('=')
+
+
+QueryMethod = typing.Callable[[dict[str, typing.Any]],
+                              typing.Coroutine[None, None,
+                                               list[tuple[datetime.datetime,
+                                                          typing.Any]]]]
+"""Type signature of the function called by PaginatedRequestHandler
+
+This is something that looks like:
+
+  async def retrieve_data(
+      params: dict[str, typing.Any]) -> list[tuple[datetime.datetime, dict]:
+    ...
+
+"""
+
+
+class PaginatedRequestMixin(web.RequestHandler):
+    """Mix this in to repeated retrieve query results ordered by time
+
+    Call the `fetch_items` method to call a specified query method
+    repeatedly until "token.limit" items have been retrieved.  The
+    query method is called with a well-known set of parameters and
+    returns a list of ("when", "data") tuples.  The query parameters
+    are passed as a dictionary that contains at least the following
+    keys:
+
+    * ``earlier``   the earliest (oldest) record to query for
+    * ``later``     the most recent record to query for
+    * ``remaining`` the maximum number of records to return
+
+    The query function should build a query similar that contains
+    ``... some_column BETWEEN %(earlier)s AND %(later)s ...`` as
+    well as ``... LIMIT %(remaining)s``.  The parameters dictionary
+    contains any additional parameters that are passed into the
+    ``fetch_items`` call.
+
+    Call the `pagination_token_from_request` method to retrieve the
+    pagination token from the current request if one exists.  If
+    the token does not exist, then the concrete implementation needs
+    to generate one to pass into `fetch_items`.
+
+    """
+
+    logger: logging.Logger
+
+    async def fetch_items(self, token: PaginationToken, query: QueryMethod,
+                          time_step: datetime.timedelta,
+                          **initial_params) -> list[dict]:
+        """Call this to iterate over a query function and collect the result
+
+        :param token: controls the pagination process
+        :param query: coroutine function to call to retrieve data
+        :param time_step: amount of time to "step" for each iteration.
+            This controls how much data the "query" function is asked
+            to retrieve.
+        :param initial_params: additional parameters to include when
+            calling `query`
+        :returns: list of calling `query` until `token.limit` items
+            are retrieved
+
+        """
+        buckets = []
+        params = initial_params.copy()
+        params.update({'end': token.start, 'remaining': token.limit})
+        while params['remaining'] > 0 and params['end'] >= token.earliest:
+            params.update({
+                'earlier': params['end'] - time_step,
+                'later': params['end'],
+            })
+            buckets.extend(await query(params))
+            buckets.sort(key=operator.itemgetter(0), reverse=True)
+            params.update({
+                'remaining': token.limit - len(buckets),
+                'end': params['end'] - time_step,
+            })
+
+        buckets = buckets[:token.limit]
+        if buckets and buckets[-1][0] > token.earliest:
+            target = yarl.URL(self.request.uri).with_query(
+                token=token.with_start(buckets[-1][0]).to_header())
+            header = datastructures.LinkHeader(str(target), [('rel', 'next')])
+            self.add_header('Link', str(header))
+
+        return [entry for _, entry in buckets]
+
+    def get_pagination_token_from_request(self) -> PaginationToken | None:
+        """Retrieve the pagination token from the request"""
+        token = self.get_query_argument('token', '')
+        if token:
+            try:
+                return PaginationToken.from_header(token)
+            except ValueError as error:
+                self.logger.warning('ignoring malformed token %r: %s', token,
+                                    error)
