@@ -12,7 +12,7 @@ from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
-    web.url(r'^/activity-feed$', activity_feed.RequestHandler),
+    web.url(r'^/activity-feed$', activity_feed.CollectionRequestHandler),
     web.url(r'^/api-docs/$', openapi.RequestHandler),
     web.url(r'^/api-docs/(openapi.yaml)$', openapi.RequestHandler),
     web.url(r'^/authentication-tokens$', authentication_tokens.RequestHandler),

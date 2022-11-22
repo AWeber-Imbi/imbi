@@ -5,7 +5,7 @@ from tornado import web
 from imbi.endpoints import base
 
 
-class RequestHandler(base.ValidatingRequestHandler):
+class CollectionRequestHandler(base.ValidatingRequestHandler):
 
     NAME = 'activity-feed'
 
