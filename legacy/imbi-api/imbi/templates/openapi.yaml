@@ -39,11 +39,11 @@ paths:
           description: Limit the number of records returned
           schema:
             type: number
-        - name: offset
+        - name: token
           in: query
-          description: The starting offset for the records returned
+          description: Opaque pagination token
           schema:
-            type: number
+            type: string
       responses:
         '200':
           description: Success
@@ -52,49 +52,52 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
-                  description: Feed Item Entry
-                  properties:
-                    type:
-                      description: Describes the format of this entry
-                      type: string
-                      enum:
-                        - ProjectFeedEntry
-                    when:
-                      description: The timestamp of the entry
-                      type: string
-                      format: iso8601-timestamp
-                    namespace_id:
-                      description: The namespace ID
-                      type: number
-                    namespace:
-                      description: The namespace of the project
-                      type: string
-                    project_id:
-                      description: The project ID
-                      type: number
-                    project_name:
-                      description: The project name
-                      type: string
-                    project_type:
-                      description: The project type
-                      type: string
-                    who:
-                      description: The username of the user who acted on the project
-                      type: string
-                    display_name:
-                      description: The display name of the user who acted on the project
-                      type: string
-                    email_address:
-                      description: The email address of the user who acted on the project
-                      type: string
-                    what:
-                      description: The action taken by the user
-                      type: string
-                      enum:
-                        - created
-                        - updated
-                        - updated facts
+                  oneOf:
+                    - type: object
+                      title: Project-related change
+                      properties:
+                        type:
+                          description: Describes the format of this entry
+                          type: string
+                          enum:
+                            - ProjectFeedEntry
+                        display_name:
+                          description: The display name of the user who acted on the project
+                          type: string
+                        email_address:
+                          description: The email address of the user who acted on the project
+                          type: string
+                          format: email
+                        namespace:
+                          description: The namespace of the project
+                          type: string
+                        namespace_id:
+                          description: The namespace ID
+                          type: integer
+                        project_id:
+                          description: The project ID
+                          type: integer
+                        project_name:
+                          description: The project name
+                          type: string
+                        project_type:
+                          description: The project type
+                          type: string
+                        what:
+                          description: The action taken by the user
+                          type: string
+                          enum:
+                            - created
+                            - updated
+                            - updated facts
+                        when:
+                          description: The timestamp of the entry
+                          type: string
+                          format: date-time
+                        who:
+                          description: The username of the user who acted on the project
+                          type: string
+                    - $ref: '#/paths/~1operations-log/get/responses/200/content/application~1json/schema/items'
               examples:
                 records:
                   summary: IMBI project changes
@@ -110,17 +113,21 @@ paths:
                       display_name: Gavin M. Roy
                       email_address: gmr@imbi.co
                       what: updated facts
-                    - when: 2021-05-21T20:41:06.423Z
-                      type: ProjectFeedEntry
-                      namespace: Example
-                      namespace_id: 1
+                    - id: 1
+                      when: 2021-05-21T20:41:06.423Z
+                      recorded_by: gavinr
+                      email_address: gavinr@example.com
+                      type: OperationsLogEntry
+                      completed_at: null
                       project_id: 1
                       project_name: Imbi
-                      project_type: Web Application
-                      who: gmr
-                      display_name: Gavin M. Roy
-                      email_address: gmr@imbi.co
-                      what: updated
+                      environment: Testing
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                      notes: null
+                      ticket_slug: JIRA-32768
+                      version: 0.13.0
                     - when: 2021-05-20T20:30:21.987Z
                       type: ProjectFeedEntry
                       namespace: Example
@@ -136,49 +143,52 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
-                  description: Feed Item Entry
-                  properties:
-                    type:
-                      description: Describes the format of this entry
-                      type: string
-                      enum:
-                        - ProjectFeedEntry
-                    when:
-                      description: The timestamp of the entry
-                      type: string
-                      format: iso8601-timestamp
-                    namespace_id:
-                      description: The namespace ID
-                      type: number
-                    namespace:
-                      description: The namespace of the project
-                      type: string
-                    project_id:
-                      description: The project ID
-                      type: number
-                    project_name:
-                      description: The project name
-                      type: string
-                    project_type:
-                      description: The project type
-                      type: string
-                    who:
-                      description: The username of the user who acted on the project
-                      type: string
-                    display_name:
-                      description: The display name of the user who acted on the project
-                      type: string
-                    email_address:
-                      description: The email address of the user who acted on the project
-                      type: string
-                    what:
-                      description: The action taken by the user
-                      type: string
-                      enum:
-                        - created
-                        - updated
-                        - updated facts
+                  oneOf:
+                    - type: object
+                      title: Project-related change
+                      properties:
+                        type:
+                          description: Describes the format of this entry
+                          type: string
+                          enum:
+                            - ProjectFeedEntry
+                        display_name:
+                          description: The display name of the user who acted on the project
+                          type: string
+                        email_address:
+                          description: The email address of the user who acted on the project
+                          type: string
+                          format: email
+                        namespace:
+                          description: The namespace of the project
+                          type: string
+                        namespace_id:
+                          description: The namespace ID
+                          type: integer
+                        project_id:
+                          description: The project ID
+                          type: integer
+                        project_name:
+                          description: The project name
+                          type: string
+                        project_type:
+                          description: The project type
+                          type: string
+                        what:
+                          description: The action taken by the user
+                          type: string
+                          enum:
+                            - created
+                            - updated
+                            - updated facts
+                        when:
+                          description: The timestamp of the entry
+                          type: string
+                          format: date-time
+                        who:
+                          description: The username of the user who acted on the project
+                          type: string
+                    - $ref: '#/paths/~1operations-log/get/responses/200/content/application~1json/schema/items'
               examples:
                 records:
                   summary: IMBI project changes
@@ -194,17 +204,21 @@ paths:
                       display_name: Gavin M. Roy
                       email_address: gmr@imbi.co
                       what: updated facts
-                    - when: 2021-05-21T20:41:06.423Z
-                      type: ProjectFeedEntry
-                      namespace: Example
-                      namespace_id: 1
+                    - id: 1
+                      when: 2021-05-21T20:41:06.423Z
+                      recorded_by: gavinr
+                      email_address: gavinr@example.com
+                      type: OperationsLogEntry
+                      completed_at: null
                       project_id: 1
                       project_name: Imbi
-                      project_type: Web Application
-                      who: gmr
-                      display_name: Gavin M. Roy
-                      email_address: gmr@imbi.co
-                      what: updated
+                      environment: Testing
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      link: 'https://github.com/aweber/imbi/releases/tag/0.13.0'
+                      notes: null
+                      ticket_slug: JIRA-32768
+                      version: 0.13.0
                     - when: 2021-05-20T20:30:21.987Z
                       type: ProjectFeedEntry
                       namespace: Example
@@ -216,6 +230,21 @@ paths:
                       display_name: Gavin M. Roy
                       email_address: gmr@imbi.co
                       what: created
+          headers:
+            Link:
+              description: |
+                Links to related resources, in the format defined by
+                [RFC 5988](https://tools.ietf.org/html/rfc5988#section-5).  The following
+                link relation types are used in this API.
+
+                | "rel" value | Description                                      |
+                |:-----------:| -----------                                      |
+                | first       | link to the first page in a collection           |
+                | next        | link to the next page in the collection          |
+                | self        | the canonical URL for the resource if one exists |
+              schema:
+                type: string
+              style: simple
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
   /authentication-tokens:
@@ -519,7 +548,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -705,7 +734,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -1045,7 +1074,7 @@ paths:
               schema:
                 type: string
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -1547,7 +1576,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -1713,6 +1742,12 @@ paths:
                   name:
                     type: string
   '/integrations/{name}':
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
     get:
       description: Retrieve a specific integration by name
       summary: Fetch a single integration
@@ -1855,15 +1890,24 @@ paths:
                       type: string
                       format: iso8601-timestamp
                     recorded_by:
-                      description: The user who recorded the change
+                      description: The name of the user who recorded the change
+                      type: string
+                    email_address:
+                      description: The email address of the user who recorded the change
                       type: string
                     completed_at:
                       description: 'If specified, indicates the change occurred over a span of time'
                       type: string
                       format: iso8601-timestamp
+                      nullable: true
                     project_id:
                       description: The ID of the project that was changed
                       type: number
+                      nullable: true
+                    project_name:
+                      description: The name of the project that was changed
+                      type: string
+                      nullable: true
                     environment:
                       description: The environment that the change occurred in
                       type: string
@@ -1888,19 +1932,24 @@ paths:
                     description:
                       description: The single line description of the change
                       type: string
+                      nullable: true
                     link:
                       description: An optional link for additional context to the link
                       type: string
+                      nullable: true
                     notes:
                       description: Optional notes for the change in markdown format
                       type: string
+                      nullable: true
                     ticket_slug:
                       description: An optional slug of the ticket that the change was made for
                       type: string
                       pattern: '^[\w-]+$'
+                      nullable: true
                     version:
                       description: An optional version that the change was made for
                       type: string
+                      nullable: true
                   additionalProperties: false
               examples:
                 records:
@@ -1961,15 +2010,24 @@ paths:
                       type: string
                       format: iso8601-timestamp
                     recorded_by:
-                      description: The user who recorded the change
+                      description: The name of the user who recorded the change
+                      type: string
+                    email_address:
+                      description: The email address of the user who recorded the change
                       type: string
                     completed_at:
                       description: 'If specified, indicates the change occurred over a span of time'
                       type: string
                       format: iso8601-timestamp
+                      nullable: true
                     project_id:
                       description: The ID of the project that was changed
                       type: number
+                      nullable: true
+                    project_name:
+                      description: The name of the project that was changed
+                      type: string
+                      nullable: true
                     environment:
                       description: The environment that the change occurred in
                       type: string
@@ -1994,19 +2052,24 @@ paths:
                     description:
                       description: The single line description of the change
                       type: string
+                      nullable: true
                     link:
                       description: An optional link for additional context to the link
                       type: string
+                      nullable: true
                     notes:
                       description: Optional notes for the change in markdown format
                       type: string
+                      nullable: true
                     ticket_slug:
                       description: An optional slug of the ticket that the change was made for
                       type: string
                       pattern: '^[\w-]+$'
+                      nullable: true
                     version:
                       description: An optional version that the change was made for
                       type: string
+                      nullable: true
                   additionalProperties: false
               examples:
                 records:
@@ -2163,7 +2226,7 @@ paths:
           description: 'The request to create, update, or update the operations-log entry was successful'
           headers:
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -2610,7 +2673,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -2905,7 +2968,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -3182,7 +3245,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -3401,7 +3464,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -3688,7 +3751,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -4103,7 +4166,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -4919,6 +4982,17 @@ paths:
           required: true
           schema:
             type: number
+        - name: limit
+          in: query
+          description: Limit the number of records returned
+          schema:
+            type: number
+            default: 25
+        - name: token
+          in: query
+          description: Opaque pagination token
+          schema:
+            type: string
       responses:
         '200':
           description: Success
@@ -4927,37 +5001,9 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
-                  description: Feed Item Entry
-                  properties:
-                    type:
-                      description: Describes the format of this entry
-                      type: string
-                      enum:
-                        - ProjectFeedEntry
-                    when:
-                      description: The timestamp of the entry
-                      type: string
-                      format: iso8601-timestamp
-                    who:
-                      description: The username of the user who acted on the project
-                      type: string
-                    display_name:
-                      description: The display name of the user who acted on the project
-                      type: string
-                    what:
-                      description: The action taken by the user
-                      type: string
-                      enum:
-                        - created
-                        - updated
-                        - updated fact
-                    fact_type:
-                      description: 'If the action was `updated fact`, the fact that was updated'
-                      type: string
-                    value:
-                      description: 'If the action was `updated fact`, the value of the updated fact'
-                      type: string
+                  oneOf:
+                    - $ref: '#/paths/~1activity-feed/get/responses/200/content/application~1json/schema/items/oneOf/0'
+                    - $ref: '#/paths/~1operations-log/get/responses/200/content/application~1json/schema/items'
               examples:
                 records:
                   summary: Feed entries
@@ -4969,6 +5015,20 @@ paths:
                       what: updated fact
                       fact_name: Programming Language
                       value: ES2015+
+                    - id: 1
+                      when: 2021-03-18T03:00:01.520Z
+                      recorded_by: gavinr
+                      email_address: gavinr@example.com
+                      type: OperationsLogEntry
+                      completed_at: null
+                      project_id: 1
+                      project_name: Imbi UI
+                      environment: Testing
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      notes: null
+                      ticket_slug: null
+                      version: 0.0.0
                     - when: 2021-03-18T02:55:50.865Z
                       type: ProjectFeedEntry
                       who: Gavin Roy
@@ -4980,37 +5040,9 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
-                  description: Feed Item Entry
-                  properties:
-                    type:
-                      description: Describes the format of this entry
-                      type: string
-                      enum:
-                        - ProjectFeedEntry
-                    when:
-                      description: The timestamp of the entry
-                      type: string
-                      format: iso8601-timestamp
-                    who:
-                      description: The username of the user who acted on the project
-                      type: string
-                    display_name:
-                      description: The display name of the user who acted on the project
-                      type: string
-                    what:
-                      description: The action taken by the user
-                      type: string
-                      enum:
-                        - created
-                        - updated
-                        - updated fact
-                    fact_type:
-                      description: 'If the action was `updated fact`, the fact that was updated'
-                      type: string
-                    value:
-                      description: 'If the action was `updated fact`, the value of the updated fact'
-                      type: string
+                  oneOf:
+                    - $ref: '#/paths/~1activity-feed/get/responses/200/content/application~1json/schema/items/oneOf/0'
+                    - $ref: '#/paths/~1operations-log/get/responses/200/content/application~1json/schema/items'
               examples:
                 records:
                   summary: Feed entries
@@ -5022,6 +5054,20 @@ paths:
                       what: updated fact
                       fact_name: Programming Language
                       value: ES2015+
+                    - id: 1
+                      when: 2021-03-18T03:00:01.520Z
+                      recorded_by: gavinr
+                      email_address: gavinr@example.com
+                      type: OperationsLogEntry
+                      completed_at: null
+                      project_id: 1
+                      project_name: Imbi UI
+                      environment: Testing
+                      change_type: Deployment
+                      description: Added the Operations Log functionality
+                      notes: null
+                      ticket_slug: null
+                      version: 0.0.0
                     - when: 2021-03-18T02:55:50.865Z
                       type: ProjectFeedEntry
                       who: Gavin Roy
@@ -5029,6 +5075,9 @@ paths:
                       what: created
                       fact_name: null
                       value: null
+          headers:
+            Link:
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
   '/projects/{id}/links':
@@ -5199,7 +5248,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -5343,18 +5392,7 @@ paths:
                   updated_by: null
           headers:
             Link:
-              description: |
-                Links to related resources, in the format defined by
-                [RFC 5988](https://tools.ietf.org/html/rfc5988#section-5).  The following
-                link relation types are used in this API.
-
-                | "rel" value | Description                                      |
-                |:-----------:| -----------                                      |
-                | canonical   | the canonical URL for the resource if one exists |
-                | first       | link to the first page in a collection           |
-                | next        | link to the next page in the collection          |
-              schema:
-                type: string
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
     post:
       summary: Create Record
       description: Create a new note for a project
@@ -5612,7 +5650,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
@@ -5983,7 +6021,7 @@ paths:
             Last-Modified:
               $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
             Link:
-              $ref: '#/paths/~1projects~1%7Bid%7D~1notes/get/responses/200/headers/Link'
+              $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
           content:
             application/json:
               schema:
