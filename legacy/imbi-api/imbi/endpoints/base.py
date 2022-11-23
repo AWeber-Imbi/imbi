@@ -524,14 +524,14 @@ QueryMethod = typing.Callable[[dict[str, typing.Any]],
 This is something that looks like:
 
   async def retrieve_data(
-      params: dict[str, typing.Any]) -> list[tuple[datetime.datetime, dict]:
+      params: dict[str, typing.Any]) -> list[tuple[datetime.datetime, dict]]:
     ...
 
 """
 
 
 class PaginatedRequestMixin(web.RequestHandler):
-    """Mix this in to repeated retrieve query results ordered by time
+    """Mix this in to repeatedly retrieve query results ordered by time
 
     Call the `fetch_items` method to call a specified query method
     repeatedly until "token.limit" items have been retrieved.  The

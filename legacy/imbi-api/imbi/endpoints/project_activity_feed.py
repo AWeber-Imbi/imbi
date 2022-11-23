@@ -55,8 +55,8 @@ class CollectionRequestHandler(base.PaginatedRequestMixin,
                o.recorded_at, o.recorded_by, o.completed_at,
                o.project_id, o.environment, o.change_type,
                o.description, o.link, o.notes, o.ticket_slug,
-               o.version, p.name AS project_name,
-               u.email_address
+               o.version, p.name AS project_name, u.email_address,
+               u.display_name
           FROM v1.operations_log AS o
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
           LEFT JOIN v1.users AS u ON u.username = o.recorded_by

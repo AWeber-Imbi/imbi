@@ -22,7 +22,7 @@ class _RequestHandlerMixin:
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
                p.name AS project_name, u.email_address,
-               'OperationsLogEntry' AS "type"
+               u.display_name, 'OperationsLogEntry' AS "type"
           FROM v1.operations_log AS o
           JOIN v1.users AS u ON u.username = o.recorded_by
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
@@ -40,7 +40,7 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
         SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
-               p.name AS project_name, u.email_address,
+               p.name AS project_name, u.email_address, u.display_name,
                'OperationsLogEntry' as "type"
           FROM v1.operations_log AS o
           JOIN v1.users AS u ON u.username = o.recorded_by
