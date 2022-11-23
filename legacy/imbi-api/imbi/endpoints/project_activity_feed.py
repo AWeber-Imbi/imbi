@@ -43,7 +43,8 @@ class CollectionRequestHandler(base.PaginatedRequestMixin,
                c.what, c.fact_name, c.value
           FROM combined AS c
           JOIN v1.users AS u ON u.username = c.who
-         WHERE c."when" BETWEEN %(earlier)s AND %(later)s
+         WHERE c."when" >  %(earlier)s
+           AND c."when" <= %(later)s
          ORDER BY c."when" DESC
          LIMIT %(remaining)s
         """)
@@ -59,7 +60,8 @@ class CollectionRequestHandler(base.PaginatedRequestMixin,
           FROM v1.operations_log AS o
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
           LEFT JOIN v1.users AS u ON u.username = o.recorded_by
-         WHERE recorded_at BETWEEN %(earlier)s AND %(later)s
+         WHERE recorded_at >  %(earlier)s
+           AND recorded_at <= %(later)s
          ORDER BY o.recorded_at DESC, o.id DESC
          LIMIT %(remaining)s
         """)
@@ -75,7 +77,7 @@ class CollectionRequestHandler(base.PaginatedRequestMixin,
             FROM v1.operations_log
            WHERE project_id = %(project_id)s
         )
-        SELECT MIN(earliest) AS earliest
+        SELECT COALESCE(MIN(earliest), CURRENT_TIMESTAMP) AS earliest
           FROM T
         """)
 
