@@ -577,17 +577,18 @@ class PaginatedRequestMixin(web.RequestHandler):
         """
         buckets = []
         params = initial_params.copy()
-        params.update({'end': token.start, 'remaining': token.limit})
-        while params['remaining'] > 0 and params['end'] >= token.earliest:
-            params.update({
-                'earlier': params['end'] - time_step,
-                'later': params['end'],
-            })
+        params.update({
+            'earlier': token.start - time_step,
+            'later': token.start,
+            'remaining': token.limit,
+        })
+        while params['remaining'] > 0 and params['later'] >= token.earliest:
             buckets.extend(await query(params))
             buckets.sort(key=operator.itemgetter(0), reverse=True)
             params.update({
+                'earlier': params['earlier'] - time_step,
+                'later': params['earlier'],
                 'remaining': token.limit - len(buckets),
-                'end': params['end'] - time_step,
             })
 
         buckets = buckets[:token.limit]
