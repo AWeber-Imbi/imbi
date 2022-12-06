@@ -58,9 +58,10 @@ class CollectionRequestHandler(base.PaginatedRequestMixin,
                o.version, p.name AS project_name, u.email_address,
                u.display_name
           FROM v1.operations_log AS o
-          LEFT JOIN v1.projects AS p ON p.id = o.project_id
+          JOIN v1.projects AS p ON p.id = o.project_id
           LEFT JOIN v1.users AS u ON u.username = o.recorded_by
-         WHERE recorded_at >  %(earlier)s
+         WHERE p.id = %(project_id)s
+           AND recorded_at >  %(earlier)s
            AND recorded_at <= %(later)s
          ORDER BY o.recorded_at DESC, o.id DESC
          LIMIT %(remaining)s
