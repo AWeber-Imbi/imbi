@@ -39,6 +39,12 @@ paths:
           description: Limit the number of records returned
           schema:
             type: number
+        - name: omit_user
+          in: query
+          description: Username to omit from the activity feed
+          schema:
+            type: string
+          explode: true
         - name: token
           in: query
           description: Opaque pagination token
@@ -1939,7 +1945,7 @@ paths:
                       type: string
                       nullable: true
                     link:
-                      description: An optional link for additional context to the link
+                      description: An optional link for additional context to the entry
                       type: string
                       nullable: true
                     notes:
@@ -2068,7 +2074,7 @@ paths:
                       type: string
                       nullable: true
                     link:
-                      description: An optional link for additional context to the link
+                      description: An optional link for additional context to the entry
                       type: string
                       nullable: true
                     notes:
@@ -2185,7 +2191,7 @@ paths:
                   type: string
                   nullable: true
                 link:
-                  description: An optional link for additional context to the link
+                  description: An optional link for additional context to the entry
                   type: string
                   nullable: true
                 notes:
