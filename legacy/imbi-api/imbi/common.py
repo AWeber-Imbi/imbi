@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import datetime
 import decimal
 import typing
@@ -59,3 +60,13 @@ def coerce_project_fact(
         raise ValueError(f'{data_type!r} is not a known fact type')
 
     return value
+
+
+def urlsafe_padded_b64decode(data: str) -> bytes:
+    """Base64 decode 'data' after padding with '=' if needed"""
+    bin_data = data.encode('ascii')
+    data_len = len(bin_data)
+    pad_len = data_len % 4
+    if pad_len:
+        bin_data = bin_data.ljust(data_len + pad_len, b'=')
+    return base64.urlsafe_b64decode(bin_data)
