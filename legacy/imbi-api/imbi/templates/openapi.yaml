@@ -2449,7 +2449,66 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+                  title: Project Fact Type
+                  description: |
+                    Defines types of facts that can be recorded about a project
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate ID
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    name:
+                      description: The project fact type name
+                      type: string
+                    project_type_ids:
+                      description: An array of Project Type ids to associate the fact type with
+                      type: array
+                      items:
+                        type: number
+                      uniqueItems: true
+                    fact_type:
+                      description: Indicates how a fact value is validated and scored
+                      type: string
+                      enum:
+                        - enum
+                        - free-form
+                        - range
+                    description:
+                      description: Provides additional context about the fact typee
+                      type: string
+                      nullable: true
+                    data_type:
+                      description: The data type for the value
+                      type: string
+                      enum:
+                        - boolean
+                        - date
+                        - decimal
+                        - integer
+                        - string
+                        - timestamp
+                    ui_options:
+                      description: An array of values that are used in the UI for display purposes
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          - display-as-badge
+                          - display-as-percentage
+                          - hidden
+                          - read-only
+                      uniqueItems: true
+                    weight:
+                      description: The weight of the fact type when computing a project score
+                      type: number
+                      default: 0
+                  additionalProperties: false
               examples:
                 records:
                   summary: Multiple project fact type records
@@ -2526,7 +2585,66 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+                  title: Project Fact Type
+                  description: |
+                    Defines types of facts that can be recorded about a project
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate ID
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    name:
+                      description: The project fact type name
+                      type: string
+                    project_type_ids:
+                      description: An array of Project Type ids to associate the fact type with
+                      type: array
+                      items:
+                        type: number
+                      uniqueItems: true
+                    fact_type:
+                      description: Indicates how a fact value is validated and scored
+                      type: string
+                      enum:
+                        - enum
+                        - free-form
+                        - range
+                    description:
+                      description: Provides additional context about the fact typee
+                      type: string
+                      nullable: true
+                    data_type:
+                      description: The data type for the value
+                      type: string
+                      enum:
+                        - boolean
+                        - date
+                        - decimal
+                        - integer
+                        - string
+                        - timestamp
+                    ui_options:
+                      description: An array of values that are used in the UI for display purposes
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          - display-as-badge
+                          - display-as-percentage
+                          - hidden
+                          - read-only
+                      uniqueItems: true
+                    weight:
+                      description: The weight of the fact type when computing a project score
+                      type: number
+                      default: 0
+                  additionalProperties: false
               examples:
                 records:
                   summary: Multiple project fact type records
@@ -2707,7 +2825,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items'
               examples:
                 record:
                   summary: A full project fact type record
@@ -2725,7 +2843,7 @@ paths:
                     weight: 25
             application/msgpack:
               schema:
-                $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items'
               examples:
                 record:
                   summary: A full project fact type record
@@ -3944,174 +4062,190 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  title: Project
-                  description: Describes a project managed by Imbi
-                  type: object
-                  properties:
-                    id:
-                      description: The project ID
-                      type: number
-                    created_by:
-                      description: The user that created the record
-                      type: string
-                    last_modified_by:
-                      description: The user that last modified the record
-                      type: string
-                    namespace_id:
-                      description: The project namespace ID
-                      type: number
-                    namespace:
-                      description: The namespace name
-                      type: string
-                    project_type_id:
-                      description: The project type ID
-                      type: number
-                    project_type:
-                      description: The project type name
-                      type: string
-                    name:
-                      description: The project name
-                      type: string
-                    slug:
-                      description: The project URL slug (In GitLab and other projects)
-                      type: string
-                      pattern: '^[\w-]+$'
-                    description:
-                      description: Long for description of the project
-                      type: string
-                      nullable: true
-                    environments:
-                      description: The operational environments the project is available in
-                      type: array
-                      items:
-                        type: string
-                      nullable: true
-                    archived:
-                      description: Indicates that the project is archived
-                      type: boolean
-                    gitlab_project_id:
-                      description: Optional project ID for the associated gitlab project
-                      type: integer
-                      nullable: true
-                    sentry_project_slug:
-                      description: Optional slug for the project in sentry
-                      type: string
-                      nullable: true
-                    sonarqube_project_key:
-                      description: Optional slug for the project in SonarQube
-                      type: string
-                      nullable: true
-                    pagerduty_service_id:
-                      description: Optional ID for the project in PagerDuty
-                      type: string
-                      nullable: true
-                  additionalProperties: false
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      title: Project
+                      description: Describes a project managed by Imbi
+                      type: object
+                      properties:
+                        id:
+                          description: The project ID
+                          type: number
+                        created_by:
+                          description: The user that created the record
+                          type: string
+                        last_modified_by:
+                          description: The user that last modified the record
+                          type: string
+                        namespace_id:
+                          description: The project namespace ID
+                          type: number
+                        namespace:
+                          description: The namespace name
+                          type: string
+                        project_type_id:
+                          description: The project type ID
+                          type: number
+                        project_type:
+                          description: The project type name
+                          type: string
+                        name:
+                          description: The project name
+                          type: string
+                        slug:
+                          description: The project URL slug (In GitLab and other projects)
+                          type: string
+                          pattern: '^[\w-]+$'
+                        description:
+                          description: Long for description of the project
+                          type: string
+                          nullable: true
+                        environments:
+                          description: The operational environments the project is available in
+                          type: array
+                          items:
+                            type: string
+                          nullable: true
+                        archived:
+                          description: Indicates that the project is archived
+                          type: boolean
+                        gitlab_project_id:
+                          description: Optional project ID for the associated gitlab project
+                          type: integer
+                          nullable: true
+                        sentry_project_slug:
+                          description: Optional slug for the project in sentry
+                          type: string
+                          nullable: true
+                        sonarqube_project_key:
+                          description: Optional slug for the project in SonarQube
+                          type: string
+                          nullable: true
+                        pagerduty_service_id:
+                          description: Optional ID for the project in PagerDuty
+                          type: string
+                          nullable: true
+                      additionalProperties: false
+                  rows:
+                    type: number
+                    description: 'Count of projects matching the query parameter filters, ignoring limit. This can be used to determine whether there are more projects to fetch with offset.'
               examples:
-                records:
+                record:
                   summary: Multiple project records
                   value:
-                    - id: 1
-                      created_by: test_user
-                      last_modified_by: null
-                      namespace_id: 1
-                      namespace: Applications
-                      project_type_id: 1
-                      project_type: HTTP API
-                      name: User Service
-                      slug: user
-                      description: 'The user service is used to manage user specific data, including profiles and content.'
-                      environments:
-                        - Testing
-                        - Staging
-                        - Production
-                      archived: false
+                    data:
+                      - id: 1
+                        created_by: test_user
+                        last_modified_by: null
+                        namespace_id: 1
+                        namespace: Applications
+                        project_type_id: 1
+                        project_type: HTTP API
+                        name: User Service
+                        slug: user
+                        description: 'The user service is used to manage user specific data, including profiles and content.'
+                        environments:
+                          - Testing
+                          - Staging
+                          - Production
+                        archived: false
+                    rows: 1
             application/msgpack:
               schema:
-                type: array
-                items:
-                  title: Project
-                  description: Describes a project managed by Imbi
-                  type: object
-                  properties:
-                    id:
-                      description: The project ID
-                      type: number
-                    created_by:
-                      description: The user that created the record
-                      type: string
-                    last_modified_by:
-                      description: The user that last modified the record
-                      type: string
-                    namespace_id:
-                      description: The project namespace ID
-                      type: number
-                    namespace:
-                      description: The namespace name
-                      type: string
-                    project_type_id:
-                      description: The project type ID
-                      type: number
-                    project_type:
-                      description: The project type name
-                      type: string
-                    name:
-                      description: The project name
-                      type: string
-                    slug:
-                      description: The project URL slug (In GitLab and other projects)
-                      type: string
-                      pattern: '^[\w-]+$'
-                    description:
-                      description: Long for description of the project
-                      type: string
-                      nullable: true
-                    environments:
-                      description: The operational environments the project is available in
-                      type: array
-                      items:
-                        type: string
-                      nullable: true
-                    archived:
-                      description: Indicates that the project is archived
-                      type: boolean
-                    gitlab_project_id:
-                      description: Optional project ID for the associated gitlab project
-                      type: integer
-                      nullable: true
-                    sentry_project_slug:
-                      description: Optional slug for the project in sentry
-                      type: string
-                      nullable: true
-                    sonarqube_project_key:
-                      description: Optional slug for the project in SonarQube
-                      type: string
-                      nullable: true
-                    pagerduty_service_id:
-                      description: Optional ID for the project in PagerDuty
-                      type: string
-                      nullable: true
-                  additionalProperties: false
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      title: Project
+                      description: Describes a project managed by Imbi
+                      type: object
+                      properties:
+                        id:
+                          description: The project ID
+                          type: number
+                        created_by:
+                          description: The user that created the record
+                          type: string
+                        last_modified_by:
+                          description: The user that last modified the record
+                          type: string
+                        namespace_id:
+                          description: The project namespace ID
+                          type: number
+                        namespace:
+                          description: The namespace name
+                          type: string
+                        project_type_id:
+                          description: The project type ID
+                          type: number
+                        project_type:
+                          description: The project type name
+                          type: string
+                        name:
+                          description: The project name
+                          type: string
+                        slug:
+                          description: The project URL slug (In GitLab and other projects)
+                          type: string
+                          pattern: '^[\w-]+$'
+                        description:
+                          description: Long for description of the project
+                          type: string
+                          nullable: true
+                        environments:
+                          description: The operational environments the project is available in
+                          type: array
+                          items:
+                            type: string
+                          nullable: true
+                        archived:
+                          description: Indicates that the project is archived
+                          type: boolean
+                        gitlab_project_id:
+                          description: Optional project ID for the associated gitlab project
+                          type: integer
+                          nullable: true
+                        sentry_project_slug:
+                          description: Optional slug for the project in sentry
+                          type: string
+                          nullable: true
+                        sonarqube_project_key:
+                          description: Optional slug for the project in SonarQube
+                          type: string
+                          nullable: true
+                        pagerduty_service_id:
+                          description: Optional ID for the project in PagerDuty
+                          type: string
+                          nullable: true
+                      additionalProperties: false
+                  rows:
+                    type: number
+                    description: 'Count of projects matching the query parameter filters, ignoring limit. This can be used to determine whether there are more projects to fetch with offset.'
               examples:
-                records:
+                record:
                   summary: Multiple project records
                   value:
-                    - id: 1
-                      created_by: test_user
-                      last_modified_by: null
-                      namespace_id: 1
-                      namespace: Applications
-                      project_type_id: 1
-                      project_type: HTTP API
-                      name: User Service
-                      slug: user
-                      description: 'The user service is used to manage user specific data, including profiles and content.'
-                      environments:
-                        - Testing
-                        - Staging
-                        - Production
-                      archived: false
+                    data:
+                      - id: 1
+                        created_by: test_user
+                        last_modified_by: null
+                        namespace_id: 1
+                        namespace: Applications
+                        project_type_id: 1
+                        project_type: HTTP API
+                        name: User Service
+                        slug: user
+                        description: 'The user service is used to manage user specific data, including profiles and content.'
+                        environments:
+                          - Testing
+                          - Staging
+                          - Production
+                        archived: false
+                    rows: 1
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
     post:
@@ -4200,7 +4334,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/items'
+                $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/properties/data/items'
               examples:
                 record:
                   summary: An example of a project record
@@ -4222,7 +4356,7 @@ paths:
                     archived: false
             application/msgpack:
               schema:
-                $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/items'
+                $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/properties/data/items'
               examples:
                 record:
                   summary: An example of a project record
@@ -4488,80 +4622,8 @@ paths:
       tags:
         - Project Facts
       responses:
-        '200':
+        '204':
           description: The request to record the project fact was successful
-          content:
-            application/json:
-              schema:
-                title: Project Fact Type
-                description: |
-                  Defines types of facts that can be recorded about a project
-                type: object
-                properties:
-                  id:
-                    description: The surrogate ID
-                    type: number
-                  created_by:
-                    description: The user that created the record
-                    type: string
-                  last_modified_by:
-                    description: The user that last modified the record
-                    type: string
-                  name:
-                    description: The project fact type name
-                    type: string
-                  project_type_ids:
-                    description: An array of Project Type ids to associate the fact type with
-                    type: array
-                    items:
-                      type: number
-                    uniqueItems: true
-                  fact_type:
-                    description: Indicates how a fact value is validated and scored
-                    type: string
-                    enum:
-                      - enum
-                      - free-form
-                      - range
-                  description:
-                    description: Provides additional context about the fact typee
-                    type: string
-                    nullable: true
-                  data_type:
-                    description: The data type for the value
-                    type: string
-                    enum:
-                      - boolean
-                      - date
-                      - decimal
-                      - integer
-                      - string
-                      - timestamp
-                  ui_options:
-                    description: An array of values that are used in the UI for display purposes
-                    type: array
-                    items:
-                      type: string
-                      enum:
-                        - display-as-badge
-                        - display-as-percentage
-                        - hidden
-                        - read-only
-                    uniqueItems: true
-                  weight:
-                    description: The weight of the fact type when computing a project score
-                    type: number
-                    default: 0
-                additionalProperties: false
-              examples:
-                record:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
