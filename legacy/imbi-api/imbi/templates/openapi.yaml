@@ -2449,7 +2449,66 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+                  title: Project Fact Type
+                  description: |
+                    Defines types of facts that can be recorded about a project
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate ID
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    name:
+                      description: The project fact type name
+                      type: string
+                    project_type_ids:
+                      description: An array of Project Type ids to associate the fact type with
+                      type: array
+                      items:
+                        type: number
+                      uniqueItems: true
+                    fact_type:
+                      description: Indicates how a fact value is validated and scored
+                      type: string
+                      enum:
+                        - enum
+                        - free-form
+                        - range
+                    description:
+                      description: Provides additional context about the fact typee
+                      type: string
+                      nullable: true
+                    data_type:
+                      description: The data type for the value
+                      type: string
+                      enum:
+                        - boolean
+                        - date
+                        - decimal
+                        - integer
+                        - string
+                        - timestamp
+                    ui_options:
+                      description: An array of values that are used in the UI for display purposes
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          - display-as-badge
+                          - display-as-percentage
+                          - hidden
+                          - read-only
+                      uniqueItems: true
+                    weight:
+                      description: The weight of the fact type when computing a project score
+                      type: number
+                      default: 0
+                  additionalProperties: false
               examples:
                 records:
                   summary: Multiple project fact type records
@@ -2526,7 +2585,66 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+                  title: Project Fact Type
+                  description: |
+                    Defines types of facts that can be recorded about a project
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate ID
+                      type: number
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                    last_modified_by:
+                      description: The user that last modified the record
+                      type: string
+                    name:
+                      description: The project fact type name
+                      type: string
+                    project_type_ids:
+                      description: An array of Project Type ids to associate the fact type with
+                      type: array
+                      items:
+                        type: number
+                      uniqueItems: true
+                    fact_type:
+                      description: Indicates how a fact value is validated and scored
+                      type: string
+                      enum:
+                        - enum
+                        - free-form
+                        - range
+                    description:
+                      description: Provides additional context about the fact typee
+                      type: string
+                      nullable: true
+                    data_type:
+                      description: The data type for the value
+                      type: string
+                      enum:
+                        - boolean
+                        - date
+                        - decimal
+                        - integer
+                        - string
+                        - timestamp
+                    ui_options:
+                      description: An array of values that are used in the UI for display purposes
+                      type: array
+                      items:
+                        type: string
+                        enum:
+                          - display-as-badge
+                          - display-as-percentage
+                          - hidden
+                          - read-only
+                      uniqueItems: true
+                    weight:
+                      description: The weight of the fact type when computing a project score
+                      type: number
+                      default: 0
+                  additionalProperties: false
               examples:
                 records:
                   summary: Multiple project fact type records
@@ -2707,7 +2825,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items'
               examples:
                 record:
                   summary: A full project fact type record
@@ -2725,7 +2843,7 @@ paths:
                     weight: 25
             application/msgpack:
               schema:
-                $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
+                $ref: '#/paths/~1project-fact-types/get/responses/200/content/application~1json/schema/items'
               examples:
                 record:
                   summary: A full project fact type record
@@ -4504,80 +4622,8 @@ paths:
       tags:
         - Project Facts
       responses:
-        '200':
+        '204':
           description: The request to record the project fact was successful
-          content:
-            application/json:
-              schema:
-                title: Project Fact Type
-                description: |
-                  Defines types of facts that can be recorded about a project
-                type: object
-                properties:
-                  id:
-                    description: The surrogate ID
-                    type: number
-                  created_by:
-                    description: The user that created the record
-                    type: string
-                  last_modified_by:
-                    description: The user that last modified the record
-                    type: string
-                  name:
-                    description: The project fact type name
-                    type: string
-                  project_type_ids:
-                    description: An array of Project Type ids to associate the fact type with
-                    type: array
-                    items:
-                      type: number
-                    uniqueItems: true
-                  fact_type:
-                    description: Indicates how a fact value is validated and scored
-                    type: string
-                    enum:
-                      - enum
-                      - free-form
-                      - range
-                  description:
-                    description: Provides additional context about the fact typee
-                    type: string
-                    nullable: true
-                  data_type:
-                    description: The data type for the value
-                    type: string
-                    enum:
-                      - boolean
-                      - date
-                      - decimal
-                      - integer
-                      - string
-                      - timestamp
-                  ui_options:
-                    description: An array of values that are used in the UI for display purposes
-                    type: array
-                    items:
-                      type: string
-                      enum:
-                        - display-as-badge
-                        - display-as-percentage
-                        - hidden
-                        - read-only
-                    uniqueItems: true
-                  weight:
-                    description: The weight of the fact type when computing a project score
-                    type: number
-                    default: 0
-                additionalProperties: false
-              examples:
-                record:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
-            application/msgpack:
-              schema:
-                $ref: '#/paths/~1projects~1%7Bid%7D~1facts/post/responses/200/content/application~1json/schema'
-              examples:
-                record:
-                  $ref: '#/paths/~1projects~1%7Bid%7D~1facts/get/responses/200/content/application~1json/examples/facts'
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':
