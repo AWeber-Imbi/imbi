@@ -1209,6 +1209,7 @@ paths:
                           - test
                       value:
                         description: 'The value to add, replace, or test'
+                        nullable: true
                         oneOf:
                           - type: array
                             items:
@@ -1217,7 +1218,7 @@ paths:
                           - type: number
                           - type: object
                           - type: string
-                        nullable: true
+                            nullable: true
                     required:
                       - path
                       - op
