@@ -14,7 +14,7 @@ from dateutil import tz
 def age(value: typing.Union[datetime.datetime, str]) -> datetime.timedelta:
     """Return the age of a timestamp as a datetime.timedelta"""
     if isinstance(value, str):
-        return utcnow() - iso8601.parse_date(value).datetime
+        return utcnow() - iso8601.parse_date(value)
     return utcnow() - value
 
 
