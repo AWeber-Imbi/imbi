@@ -42,7 +42,6 @@ def require_permission(permission):
     :raises: problemdetails.Problem
 
     """
-
     def _require_permission(f):
         def wrapped(self, *args, **kwargs):
             """Inner-wrapping of the decorator that performs the logic"""
@@ -216,7 +215,6 @@ class RequestHandler(cors.CORSMixin, postgres.RequestHandlerMixin,
 
 class AuthenticatedRequestHandler(RequestHandler):
     """RequestHandler base class for authenticated requests"""
-
     async def prepare(self) -> None:
         await super().prepare()
 
@@ -237,7 +235,6 @@ class AuthenticatedRequestHandler(RequestHandler):
 
 class ValidatingRequestHandler(AuthenticatedRequestHandler):
     """Validates the request against the OpenAPI spec"""
-
     async def prepare(self) -> None:
         await super().prepare()
 
@@ -380,8 +377,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
 
         original = dict(result.row)
         for key in {
-            'created_at', 'created_by', 'last_modified_at',
-            'last_modified_by'
+                'created_at', 'created_by', 'last_modified_at',
+                'last_modified_by'
         }:
             if key in original:
                 del original[key]
@@ -396,8 +393,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
 
         # Bail early if there are no changes
         if not {
-            k: original[k]
-            for k in original if k in updated and original[k] != updated[k]
+                k: original[k]
+                for k in original if k in updated and original[k] != updated[k]
         }:
             self._add_self_link(self.request.path)
             self._add_link_header()
@@ -518,9 +515,9 @@ class PaginationToken:
 
 
 QueryMethod = typing.Callable[[dict[str, typing.Any]],
-typing.Coroutine[None, None,
-list[tuple[datetime.datetime,
-typing.Any]]]]
+                              typing.Coroutine[None, None,
+                                               list[tuple[datetime.datetime,
+                                                          typing.Any]]]]
 """Type signature of the function called by PaginatedRequestHandler
 
 This is something that looks like:

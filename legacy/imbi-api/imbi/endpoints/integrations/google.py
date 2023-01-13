@@ -5,8 +5,8 @@ import urllib.parse
 import google.auth.exceptions
 import sprockets.mixins.http
 import yarl
-from google.oauth2 import id_token
 from google.auth.transport import requests
+from google.oauth2 import id_token
 
 import imbi.user
 from imbi import errors, oauth2

@@ -87,7 +87,7 @@ class Session:
                                   'start': self.start
                               }),
                               expire=self._settings['session_duration'] *
-                                     86400)
+                              86400)
         self._handler.set_secure_cookie(
             'session',
             self.id,
