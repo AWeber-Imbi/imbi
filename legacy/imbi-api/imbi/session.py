@@ -8,6 +8,7 @@ import typing
 import uuid
 
 import aioredis
+import iso8601
 from sprockets.http import app
 from tornado import web
 
@@ -129,6 +130,8 @@ class Session:
 
         user_obj = user.User(self._handler.application, password=password)
         for key, value in data['user'].items():
+            if key in ('created_at', 'last_refreshed_at', 'last_seen_at'):
+                value = iso8601.parse_date(value)
             setattr(user_obj, key, value)
         return user_obj
 
