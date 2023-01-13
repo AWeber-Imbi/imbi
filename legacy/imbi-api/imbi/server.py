@@ -116,6 +116,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     if automations_sonar.get('url') and automations_sonar.get('admin_token'):
         automations_sonar['enabled'] = True
     footer_link = config.get('footer_link', {})
+    google = config.get('google', {})
     http_settings = config.get('http', {})
     ldap = config.get('ldap', {})
     postgres = config.get('postgres', {})
@@ -181,6 +182,12 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'url': footer_link.get('url', '')
         },
         'frontend_url': config.get('frontend_url', None),
+        'google': {
+            'valid_domains': google.get('valid_domains', '').split(','),
+            'client_id': google.get('client_id', None),
+            'authorization_endpoint': google.get('authorization_endpoint',
+                                                 None),
+        },
         'javascript_url': config.get('javascript_url', None),
         'ldap': {
             'enabled': ldap.get('enabled'),

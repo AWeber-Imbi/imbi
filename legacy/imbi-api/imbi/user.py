@@ -98,7 +98,7 @@ class User:
              WHERE username = %(username)s
          RETURNING last_seen_at""")
 
-    SQL_UPDATE_USER_FROM_LDAP = re.sub(
+    SQL_UPSERT_USER = re.sub(
         r'\s+', ' ', """\
         INSERT INTO v1.users (username, user_type, external_id,
                               display_name, email_address, last_seen_at)
@@ -112,6 +112,7 @@ class User:
                  DO UPDATE SET email_address = EXCLUDED.email_address,
                                  external_id = EXCLUDED.external_id,
                                    user_type = EXCLUDED.user_type,
+                                display_name = EXCLUDED.display_name,
                                     password = NULL,
                                 last_seen_at = CURRENT_TIMESTAMP
                         WHERE users.username = EXCLUDED.username
@@ -121,7 +122,8 @@ class User:
                  application,
                  username: typing.Optional[str] = None,
                  password: typing.Optional[str] = None,
-                 token: typing.Optional[str] = None) -> None:
+                 token: typing.Optional[str] = None,
+                 google_user: bool = False) -> None:
         self._application = application
         self._ldap = ldap.Client(application.settings['ldap'])
         self._ldap_conn: typing.Optional[ldap3.Connection] = None
@@ -138,6 +140,7 @@ class User:
         self.connected_integrations: typing.List[ConnectedIntegration] = []
         self.groups: typing.List[Group] = []
         self.permissions: typing.List[str] = []
+        self.google_user: bool = google_user
 
     @property
     def password(self):
@@ -170,6 +173,7 @@ class User:
             'integrations': sorted(
                 {app.name
                  for app in self.connected_integrations}),
+            'google_user': self.google_user,
         }
 
     async def authenticate(self) -> bool:
@@ -177,6 +181,8 @@ class User:
         if successful.
 
         """
+        if self.google_user:
+            return True
         if self.token:
             return await self._token_auth()
         result = await self._db_auth()
@@ -206,10 +212,36 @@ class User:
 
     async def refresh(self) -> None:
         """Update the attributes from LDAP"""
+        if self.google_user:
+            return
         if self.external_id and self._ldap.is_enabled:
             await self._ldap_refresh()
         else:
             await self._db_refresh()
+
+    async def google_refresh(self, email, external_id, name):
+        self.display_name = name
+        self.email_address = email
+        self.external_id = external_id
+
+        async with self._application.postgres_connector(
+                on_error=self.on_postgres_error) as conn:
+            result = await conn.execute(
+                self.SQL_UPSERT_USER, {
+                    'username': self.username,
+                    'user_type': 'google',
+                    'external_id': self.external_id,
+                    'display_name': self.display_name,
+                    'email_address': self.email_address
+                }, 'user-update')
+            self.last_seen_at = result.row['last_seen_at']
+
+        # Update the groups attribute
+        self.groups = await self._db_groups()
+        self.permissions = sorted(
+            set(chain.from_iterable([g.permissions for g in self.groups])))
+        self.connected_integrations = await self._refresh_integrations()
+        self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
     @property
     def should_refresh(self) -> bool:
@@ -321,7 +353,7 @@ class User:
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
             result = await conn.execute(
-                self.SQL_UPDATE_USER_FROM_LDAP, {
+                self.SQL_UPSERT_USER, {
                     'username': self.username,
                     'user_type': 'ldap',
                     'external_id': self.external_id,
