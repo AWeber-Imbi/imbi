@@ -20,6 +20,7 @@ DEFAULT_POOL_SIZE = 5
 
 class Session:
     """Session object manages session state and the user object."""
+
     def __init__(self, handler: web.RequestHandler) -> None:
         self._handler = handler
         self.authenticated = False
@@ -85,7 +86,7 @@ class Session:
                                   'start': self.start
                               }),
                               expire=self._settings['session_duration'] *
-                              86400)
+                                     86400)
         self._handler.set_secure_cookie(
             'session',
             self.id,
