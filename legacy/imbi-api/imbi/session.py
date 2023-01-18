@@ -8,6 +8,7 @@ import typing
 import uuid
 
 import aioredis
+import iso8601
 from sprockets.http import app
 from tornado import web
 
@@ -20,6 +21,7 @@ DEFAULT_POOL_SIZE = 5
 
 class Session:
     """Session object manages session state and the user object."""
+
     def __init__(self, handler: web.RequestHandler) -> None:
         self._handler = handler
         self.authenticated = False
@@ -89,7 +91,8 @@ class Session:
         self._handler.set_secure_cookie(
             'session',
             self.id,
-            expires_days=self._settings['session_duration'])
+            expires_days=self._settings['session_duration'],
+            httponly=True)
 
     @property
     def _application(self) -> app.Application:
@@ -128,6 +131,8 @@ class Session:
 
         user_obj = user.User(self._handler.application, password=password)
         for key, value in data['user'].items():
+            if key in ('created_at', 'last_refreshed_at', 'last_seen_at'):
+                value = iso8601.parse_date(value)
             setattr(user_obj, key, value)
         return user_obj
 

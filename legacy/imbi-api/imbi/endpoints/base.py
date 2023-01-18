@@ -445,7 +445,6 @@ class CRUDRequestHandler(ValidatingRequestHandler):
 
 
 class CollectionRequestHandler(CRUDRequestHandler):
-
     DEFAULTS = {}
     ID_KEY: typing.Union[str, list] = 'id'
     IS_COLLECTION: True

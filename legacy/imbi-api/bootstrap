@@ -102,6 +102,8 @@ automations:
   yapf:
     allow_multiline_dictionary_keys: true
     allow_split_before_dict_value: false
+google:
+  valid_domains: gmail.com
 http:
   canonical_server_name: imbi.localhost
   processes: 1
