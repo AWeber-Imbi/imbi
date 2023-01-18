@@ -2,6 +2,7 @@ import logging
 import re
 import urllib.parse
 
+import aioredis
 import google.auth.exceptions
 import sprockets.mixins.http
 import yarl
@@ -46,6 +47,10 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
           AND external_id = %(external_id)s
     """)
 
+    @property
+    def _redis(self) -> aioredis.Redis:
+        return self.application.session_redis
+
     async def prepare(self) -> None:
         await super().prepare()
         if not self._finished:
@@ -55,6 +60,14 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                 raise errors.IntegrationNotFound('google')
 
     async def get(self):
+        state = self.get_query_argument('state', default=None)
+        if not state:
+            raise errors.BadRequest('No state in request payload')
+        redis_state = self._redis.get(state)
+        if not redis_state:
+            raise errors.Forbidden('Returned state CRSF token not found')
+        self._redis.delete(state)
+
         code = self.get_query_argument('code', default=None)
         if not code:
             raise errors.BadRequest('No code in request payload')
