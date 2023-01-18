@@ -131,7 +131,7 @@ class User:
         self.created_at: typing.Optional[datetime.datetime] = None
         self.last_refreshed_at: typing.Optional[datetime.datetime] = None
         self.last_seen_at: typing.Optional[datetime.datetime] = None
-        self.user_type = 'internal'
+        self.user_type = 'google' if google_user else 'internal'
         self.external_id: typing.Optional[str] = None
         self.email_address: typing.Optional[str] = None
         self.display_name: typing.Optional[str] = None
