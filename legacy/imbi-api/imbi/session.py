@@ -91,7 +91,8 @@ class Session:
         self._handler.set_secure_cookie(
             'session',
             self.id,
-            expires_days=self._settings['session_duration'])
+            expires_days=self._settings['session_duration'],
+            httponly=True)
 
     @property
     def _application(self) -> app.Application:
