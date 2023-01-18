@@ -183,10 +183,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         },
         'frontend_url': config.get('frontend_url', None),
         'google': {
-            'valid_domains': google.get('valid_domains', '').split(','),
-            'client_id': google.get('client_id', None),
-            'authorization_endpoint': google.get('authorization_endpoint',
-                                                 None),
+            'valid_domains': google.get('valid_domains', '').split(',')
         },
         'javascript_url': config.get('javascript_url', None),
         'ldap': {
