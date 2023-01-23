@@ -23,12 +23,6 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 
     NAME = 'google-redirect'
 
-    GET_TOKEN_SQL = re.sub(r'\s+', ' ', """
-        SELECT * FROM v1.user_oauth2_tokens
-         WHERE integration = %(integration)s
-           AND external_id = %(external_id)s
-    """)
-
     ADD_TOKEN_SQL = re.sub(r'\s+', ' ', """
         INSERT INTO v1.user_oauth2_tokens
                     (username, integration, external_id,
