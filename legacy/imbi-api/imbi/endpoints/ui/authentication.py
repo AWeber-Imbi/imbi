@@ -1,3 +1,4 @@
+import os
 import uuid
 
 import aioredis
@@ -33,9 +34,9 @@ class GoogleLoginRequestHandler(base.RequestHandler):
         await super().prepare()
         if not self._finished:
             self.integration = await oauth2.OAuth2Integration.by_name(
-                self.application, 'google')
+                self.application, self.integration_name)
             if not self.integration:
-                raise errors.IntegrationNotFound('google')
+                raise errors.IntegrationNotFound(self.integration_name)
 
     async def get(self, *args, **kwargs):
         state = str(uuid.uuid4())
@@ -61,6 +62,11 @@ class GoogleLoginRequestHandler(base.RequestHandler):
     @property
     def _redis(self) -> aioredis.Redis:
         return self.application.session_redis
+
+    @property
+    def integration_name(self):
+        env = os.environ.get('ENVIRONMENT', 'production').lower()
+        return f'google-{env}'
 
 
 class LogoutRequestHandler(base.RequestHandler):
