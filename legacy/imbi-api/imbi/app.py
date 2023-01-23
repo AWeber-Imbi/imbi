@@ -126,7 +126,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         if sentry_sdk and self.settings.get('sentry_backend_dsn'):
             sentry_sdk.init(debug=self.settings['debug'],
                             dsn=self.settings['sentry_backend_dsn'],
-                            environment=os.environ.get('environment',
+                            environment=os.environ.get('ENVIRONMENT',
                                                        'production'),
                             integrations=[
                                 sentry_tornado.TornadoIntegration(),
