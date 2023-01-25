@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import urllib.parse
 
@@ -22,17 +23,11 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 
     NAME = 'google-redirect'
 
-    GET_TOKEN_SQL = re.sub(r'\s+', ' ', """
-        SELECT * FROM v1.user_oauth2_tokens
-         WHERE integration = 'google'
-           AND external_id = %(external_id)s
-    """)
-
     ADD_TOKEN_SQL = re.sub(r'\s+', ' ', """
         INSERT INTO v1.user_oauth2_tokens
                     (username, integration, external_id,
                      access_token, refresh_token)
-             VALUES (%(username)s, 'google', %(external_id)s,
+             VALUES (%(username)s, %(integration)s, %(external_id)s,
                      %(access_token)s, %(refresh_token)s)
         ON CONFLICT (integration, external_id)
                  DO UPDATE SET access_token = EXCLUDED.access_token,
@@ -43,7 +38,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
        UPDATE v1.user_oauth2_tokens
           SET access_token = %(access_token)s,
               username = %(username)s
-        WHERE integration = 'google'
+        WHERE integration = %(integration)s
           AND external_id = %(external_id)s
     """)
 
@@ -55,9 +50,9 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         await super().prepare()
         if not self._finished:
             self.integration = await oauth2.OAuth2Integration.by_name(
-                self.application, 'google')
+                self.application, self.integration_name)
             if not self.integration:
-                raise errors.IntegrationNotFound('google')
+                raise errors.IntegrationNotFound(self.integration_name)
 
     async def get(self):
         state = self.get_query_argument('state', default=None)
@@ -146,11 +141,18 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                 'username': username,
                 'external_id': external_id,
                 'access_token': access_token,
-                'refresh_token': refresh_token
+                'refresh_token': refresh_token,
+                'integration': self.integration_name
             })
         else:
             await self.postgres_execute(self.UPDATE_TOKEN_SQL, {
                 'username': username,
                 'external_id': external_id,
-                'access_token': access_token
+                'access_token': access_token,
+                'integration': self.integration_name
             })
+
+    @property
+    def integration_name(self):
+        env = os.environ.get('ENVIRONMENT', 'production').lower()
+        return f'google-{env}'
