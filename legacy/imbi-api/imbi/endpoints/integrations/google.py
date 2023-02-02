@@ -58,10 +58,10 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         state = self.get_query_argument('state', default=None)
         if not state:
             raise errors.BadRequest('No state in request payload')
-        redis_state = self._redis.get(state)
+        redis_state = await self._redis.get(state)
         if not redis_state:
             raise errors.Forbidden('Returned state CRSF token not found')
-        self._redis.delete(state)
+        await self._redis.delete(state)
 
         code = self.get_query_argument('code', default=None)
         if not code:
