@@ -11,9 +11,8 @@ from itertools import chain
 
 import ldap3
 import psycopg2.errors
-from tornado import web
 
-from imbi import ldap, oauth2, timestamp
+from imbi import errors, ldap, oauth2, timestamp
 
 LOGGER = logging.getLogger(__name__)
 
@@ -201,7 +200,9 @@ class User:
 
     @staticmethod
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
-        raise web.HTTPError(500, 'System error')
+        LOGGER.error('Database failure: %s: %s', _metric_name, exc)
+        raise errors.DatabaseError(f'Error executing {_metric_name}',
+                                   error=exc)
 
     @classmethod
     def on_token_postgres_error(cls, metric_name: str, exc: Exception) -> None:
