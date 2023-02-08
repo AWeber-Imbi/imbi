@@ -99,23 +99,12 @@ class User:
 
     SQL_UPSERT_USER = re.sub(
         r'\s+', ' ', """\
-        INSERT INTO v1.users (username, user_type, external_id,
-                              display_name, email_address, last_seen_at)
-             VALUES (%(username)s,
-                     %(user_type)s,
-                     %(external_id)s,
-                     %(display_name)s,
-                     %(email_address)s,
-                     CURRENT_TIMESTAMP)
-        ON CONFLICT (username)
-                 DO UPDATE SET email_address = EXCLUDED.email_address,
-                                 external_id = EXCLUDED.external_id,
-                                   user_type = EXCLUDED.user_type,
-                                display_name = EXCLUDED.display_name,
-                                    password = NULL,
-                                last_seen_at = CURRENT_TIMESTAMP
-                        WHERE users.username = EXCLUDED.username
-          RETURNING last_seen_at""")
+        SELECT v1.upsert_user(%(username)s,
+                              %(user_type)s,
+                              %(external_id)s,
+                              %(display_name)s,
+                              %(email_address)s)
+             AS last_seen_at""")
 
     def __init__(self,
                  application,
