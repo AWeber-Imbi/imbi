@@ -5,7 +5,6 @@ LDAP Client
 """
 import dataclasses
 import logging
-import typing
 from concurrent import futures
 
 import ldap3
@@ -145,7 +144,7 @@ class Client:
             for k, v in conn.response[0]['attributes'].items()
         }
 
-    def _groups(self, conn: ldap3.Connection, dn: str) -> typing.List[str]:
+    def _groups(self, conn: ldap3.Connection, dn: str) -> list[str]:
         """Return the groups for the specified username.
 
         :param conn: The connection to use

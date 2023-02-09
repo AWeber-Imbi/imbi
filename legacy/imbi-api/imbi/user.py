@@ -21,7 +21,7 @@ class Group:
     """Group class to represent a single group a user is a member of"""
     __slots__ = ['name', 'permissions']
 
-    def __init__(self, name: str, permissions: typing.List[str]):
+    def __init__(self, name: str, permissions: list[str]):
         self.name = name
         self.permissions = sorted(permissions or [])
 
@@ -111,7 +111,10 @@ class User:
                  username: typing.Optional[str] = None,
                  password: typing.Optional[str] = None,
                  token: typing.Optional[str] = None,
-                 google_user: bool = False) -> None:
+                 google_user: bool = False,
+                 display_name: typing.Optional[str] = None,
+                 external_id: typing.Optional[str] = None,
+                 email_address: typing.Optional[str] = None) -> None:
         self._application = application
         self._ldap = ldap.Client(application.settings['ldap'])
         self._ldap_conn: typing.Optional[ldap3.Connection] = None
@@ -120,14 +123,14 @@ class User:
         self.last_refreshed_at: typing.Optional[datetime.datetime] = None
         self.last_seen_at: typing.Optional[datetime.datetime] = None
         self.user_type = 'google' if google_user else 'internal'
-        self.external_id: typing.Optional[str] = None
-        self.email_address: typing.Optional[str] = None
-        self.display_name: typing.Optional[str] = None
+        self.external_id = external_id
+        self.email_address = email_address
+        self.display_name = display_name
         self._password = password
         self.token = token
-        self.connected_integrations: typing.List[ConnectedIntegration] = []
-        self.groups: typing.List[Group] = []
-        self.permissions: typing.List[str] = []
+        self.connected_integrations: list[str] = []
+        self.groups: list[str] = []
+        self.permissions: list[str] = []
         self.google_user: bool = google_user
 
     @property
@@ -153,14 +156,12 @@ class User:
             'last_seen_at': timestamp.isoformat(self.last_seen_at),
             'email_address': self.email_address,
             'display_name': self.display_name,
-            'groups': [g.name for g in self.groups],
+            'groups': self.groups,
             'password': self._application.encrypt_value(
                 '' if self.password is None else self.password),
             'permissions': self.permissions,
             'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at),
-            'integrations': sorted(
-                {app.name
-                 for app in self.connected_integrations}),
+            'integrations': self.connected_integrations,
             'google_user': self.google_user,
         }
 
@@ -201,36 +202,29 @@ class User:
         return cls.on_postgres_error(metric_name, exc)
 
     async def refresh(self) -> None:
-        """Update the attributes from LDAP"""
+        """Refresh the user attributes from the respective data store."""
         if self.google_user:
-            return
-        if self.external_id and self._ldap.is_enabled:
+            await self._refresh_from_attributes()
+        elif self.external_id and self._ldap.is_enabled:
             await self._ldap_refresh()
         else:
             await self._db_refresh()
 
-    async def google_refresh(self, email, external_id, name):
-        self.display_name = name
-        self.email_address = email
-        self.external_id = external_id
-
+    async def _refresh_from_attributes(self):
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
             result = await conn.execute(
                 self.SQL_UPSERT_USER, {
                     'username': self.username,
-                    'user_type': 'google',
+                    'user_type': self.user_type,
                     'external_id': self.external_id,
                     'display_name': self.display_name,
                     'email_address': self.email_address
                 }, 'user-update')
             self.last_seen_at = result.row['last_seen_at']
 
-        # Update the groups attribute
-        self.groups = await self._db_groups()
-        self.permissions = sorted(
-            set(chain.from_iterable([g.permissions for g in self.groups])))
-        self.connected_integrations = await self._refresh_integrations()
+        await self._refresh_groups()
+        await self._refresh_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
     @property
@@ -257,7 +251,7 @@ class User:
             self.last_seen_at = result.row['last_seen_at']
 
     async def fetch_integration_tokens(self, integration: str) \
-            -> typing.List[oauth2.IntegrationToken]:
+            -> list[oauth2.IntegrationToken]:
         """Retrieve access tokens for the specified integration."""
         obj = await oauth2.OAuth2Integration.by_name(self._application,
                                                      integration)
@@ -286,7 +280,7 @@ class User:
         await self._db_refresh()
         return True
 
-    async def _db_groups(self) -> typing.List[Group]:
+    async def _db_groups(self) -> list[Group]:
         """Return the groups for the user as a list of group objects"""
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
@@ -304,10 +298,8 @@ class User:
                                         'user-refresh')
         if result:
             self._assign_values(result.row)
-            self.groups = await self._db_groups()
-            self.permissions = sorted(
-                set(chain.from_iterable([g.permissions for g in self.groups])))
-            self.connected_integrations = await self._refresh_integrations()
+            await self._refresh_groups()
+            await self._refresh_integrations()
             self.last_refreshed_at = max(
                 timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
         else:
@@ -361,14 +353,21 @@ class User:
                 'v1.maintain_group_membership_from_ldap_groups',
                 (self.username, ldap_groups), 'user-maintain-groups')
 
-        # Update the groups attribute
-        self.groups = await self._db_groups()
-        self.permissions = sorted(
-            set(chain.from_iterable([g.permissions for g in self.groups])))
-        self.connected_integrations = await self._refresh_integrations()
+        await self._refresh_groups()
+        await self._refresh_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
-    async def _refresh_integrations(
+    async def _refresh_groups(self):
+        db_groups = await self._db_groups()
+        self.groups = [group.name for group in db_groups]
+        self.permissions = sorted(
+            set(chain.from_iterable([g.permissions for g in db_groups])))
+
+    async def _refresh_integrations(self):
+        self.connected_integrations = sorted(
+            {app.name for app in await self._get_integrations()})
+
+    async def _get_integrations(
             self) -> typing.Sequence[ConnectedIntegration]:
         """Fetch connected integration details from the DB."""
         async with self._application.postgres_connector(

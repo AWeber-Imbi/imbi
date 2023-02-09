@@ -67,7 +67,7 @@ class Stats:
 
     async def counters(self,
                        all_hosts: bool = False,
-                       flush: bool = False) -> typing.Dict[str, int]:
+                       flush: bool = False) -> dict[str, int]:
         """Return a dict of counters and their values
 
         :param all_hosts: Process counters for all hosts
@@ -88,7 +88,7 @@ class Stats:
     async def durations(self,
                         all_hosts: bool = False,
                         flush: bool = False) \
-            -> typing.Dict[str, typing.List[float]]:
+            -> dict[str, list[float]]:
         """Return a dict of durations and their values
 
         :param all_hosts: Process durations for all hosts

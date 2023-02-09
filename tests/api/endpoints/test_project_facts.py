@@ -8,7 +8,8 @@ from tests import base
 
 class ProjectFactTests(base.TestCaseWithReset):
     TRUNCATE_TABLES = [
-        'v1.project_facts', 'v1.projects', 'v1.project_fact_types'
+        'v1.project_facts', 'v1.projects', 'v1.project_fact_types',
+        'v1.project_types', 'v1.namespaces', 'v1.environments'
     ]
 
     def setUp(self) -> None:

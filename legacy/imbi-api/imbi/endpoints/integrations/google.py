@@ -98,8 +98,10 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         user_email = id_info['email']
         user_name = id_info['name']
         imbi_user = imbi.user.User(self.application, username=user_email,
-                                   google_user=True)
-        await imbi_user.google_refresh(user_email, user_id, user_name)
+                                   google_user=True, external_id=user_id,
+                                   display_name=user_name,
+                                   email_address=user_email)
+        await imbi_user.refresh()
         return imbi_user
 
     async def exchange_code_for_tokens(self, code):

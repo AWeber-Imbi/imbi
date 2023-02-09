@@ -105,11 +105,11 @@ class ProjectIndex:
             self.INDEX, str(project.id), self._project_to_dict(project))
 
     async def search(self, query: str, max_results: int = 1000) \
-            -> typing.Dict[str, typing.List[dict]]:
+            -> dict[str, list[dict]]:
         return await self.application.opensearch.search(
             self.INDEX, query, max_results)
 
-    async def searchable_fields(self) -> typing.List[typing.Dict]:
+    async def searchable_fields(self) -> list[dict]:
         fields = []
         index_mappings = await self._build_mappings()
         for key, defn in index_mappings.items():

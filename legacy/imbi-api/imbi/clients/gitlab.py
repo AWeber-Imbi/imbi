@@ -83,7 +83,7 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         self.logger.debug('%s %s', method, url)
         return await super().http_fetch(str(url), method=method, **kwargs)
 
-    async def fetch_all_pages(self, *path, **query) -> typing.List[dict]:
+    async def fetch_all_pages(self, *path, **query) -> list[dict]:
         url = self.token.integration.api_endpoint
         for component in path:
             url /= str(component)

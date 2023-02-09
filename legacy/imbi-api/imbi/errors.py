@@ -41,7 +41,7 @@ class ApplicationError(problemdetails.Problem):
     """
 
     # work around some typing weirdness in problemdetails...
-    document: typing.Dict[str, typing.Any]
+    document: dict[str, typing.Any]
     log_message: str
     reason: str
 
