@@ -161,9 +161,7 @@ class User:
                 '' if self.password is None else self.password),
             'permissions': self.permissions,
             'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at),
-            'integrations': sorted(
-                {app.name
-                 for app in self.connected_integrations}),
+            'integrations': self.connected_integrations,
             'google_user': self.google_user,
         }
 
@@ -230,7 +228,8 @@ class User:
         self.groups = [group.name for group in db_groups]
         self.permissions = sorted(
             set(chain.from_iterable([g.permissions for g in db_groups])))
-        self.connected_integrations = await self._get_integrations()
+        self.connected_integrations = sorted(
+            {app.name for app in await self._get_integrations()})
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
     @property
@@ -308,7 +307,8 @@ class User:
             self.groups = [group.name for group in db_groups]
             self.permissions = sorted(
                 set(chain.from_iterable([g.permissions for g in db_groups])))
-            self.connected_integrations = await self._get_integrations()
+            self.connected_integrations = sorted(
+                {app.name for app in await self._get_integrations()})
             self.last_refreshed_at = max(
                 timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
         else:
@@ -367,7 +367,8 @@ class User:
         self.groups = [group.name for group in db_groups]
         self.permissions = sorted(
             set(chain.from_iterable([g.permissions for g in db_groups])))
-        self.connected_integrations = await self._get_integrations()
+        self.connected_integrations = sorted(
+            {app.name for app in await self._get_integrations()})
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
     async def _get_integrations(
