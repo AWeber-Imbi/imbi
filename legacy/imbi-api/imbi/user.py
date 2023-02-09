@@ -111,7 +111,10 @@ class User:
                  username: typing.Optional[str] = None,
                  password: typing.Optional[str] = None,
                  token: typing.Optional[str] = None,
-                 google_user: bool = False) -> None:
+                 google_user: bool = False,
+                 display_name: typing.Optional[str] = None,
+                 external_id: typing.Optional[str] = None,
+                 email_address: typing.Optional[str] = None) -> None:
         self._application = application
         self._ldap = ldap.Client(application.settings['ldap'])
         self._ldap_conn: typing.Optional[ldap3.Connection] = None
@@ -120,9 +123,9 @@ class User:
         self.last_refreshed_at: typing.Optional[datetime.datetime] = None
         self.last_seen_at: typing.Optional[datetime.datetime] = None
         self.user_type = 'google' if google_user else 'internal'
-        self.external_id: typing.Optional[str] = None
-        self.email_address: typing.Optional[str] = None
-        self.display_name: typing.Optional[str] = None
+        self.external_id = external_id
+        self.email_address = email_address
+        self.display_name = display_name
         self._password = password
         self.token = token
         self.connected_integrations: typing.List[ConnectedIntegration] = []
@@ -203,17 +206,13 @@ class User:
     async def refresh(self) -> None:
         """Update the attributes from LDAP"""
         if self.google_user:
-            return
-        if self.external_id and self._ldap.is_enabled:
+            await self._google_refresh()
+        elif self.external_id and self._ldap.is_enabled:
             await self._ldap_refresh()
         else:
             await self._db_refresh()
 
-    async def google_refresh(self, email, external_id, name):
-        self.display_name = name
-        self.email_address = email
-        self.external_id = external_id
-
+    async def _google_refresh(self):
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
             result = await conn.execute(
