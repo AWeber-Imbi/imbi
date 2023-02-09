@@ -129,7 +129,7 @@ class User:
         self._password = password
         self.token = token
         self.connected_integrations: list[ConnectedIntegration] = []
-        self.groups: list[Group] = []
+        self.groups: list[str] = []
         self.permissions: list[str] = []
         self.google_user: bool = google_user
 
@@ -156,7 +156,7 @@ class User:
             'last_seen_at': timestamp.isoformat(self.last_seen_at),
             'email_address': self.email_address,
             'display_name': self.display_name,
-            'groups': [g.name for g in self.groups],
+            'groups': self.groups,
             'password': self._application.encrypt_value(
                 '' if self.password is None else self.password),
             'permissions': self.permissions,
@@ -226,9 +226,10 @@ class User:
             self.last_seen_at = result.row['last_seen_at']
 
         # Update the groups attribute
-        self.groups = await self._db_groups()
+        db_groups = await self._db_groups()
+        self.groups = [group.name for group in db_groups]
         self.permissions = sorted(
-            set(chain.from_iterable([g.permissions for g in self.groups])))
+            set(chain.from_iterable([g.permissions for g in db_groups])))
         self.connected_integrations = await self._refresh_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
@@ -303,9 +304,10 @@ class User:
                                         'user-refresh')
         if result:
             self._assign_values(result.row)
-            self.groups = await self._db_groups()
+            db_groups = await self._db_groups()
+            self.groups = [group.name for group in db_groups]
             self.permissions = sorted(
-                set(chain.from_iterable([g.permissions for g in self.groups])))
+                set(chain.from_iterable([g.permissions for g in db_groups])))
             self.connected_integrations = await self._refresh_integrations()
             self.last_refreshed_at = max(
                 timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
@@ -361,9 +363,10 @@ class User:
                 (self.username, ldap_groups), 'user-maintain-groups')
 
         # Update the groups attribute
-        self.groups = await self._db_groups()
+        db_groups = await self._db_groups()
+        self.groups = [group.name for group in db_groups]
         self.permissions = sorted(
-            set(chain.from_iterable([g.permissions for g in self.groups])))
+            set(chain.from_iterable([g.permissions for g in db_groups])))
         self.connected_integrations = await self._refresh_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
