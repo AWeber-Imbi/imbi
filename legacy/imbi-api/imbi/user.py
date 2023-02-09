@@ -230,7 +230,7 @@ class User:
         self.groups = [group.name for group in db_groups]
         self.permissions = sorted(
             set(chain.from_iterable([g.permissions for g in db_groups])))
-        self.connected_integrations = await self._refresh_integrations()
+        self.connected_integrations = await self._get_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
     @property
@@ -308,7 +308,7 @@ class User:
             self.groups = [group.name for group in db_groups]
             self.permissions = sorted(
                 set(chain.from_iterable([g.permissions for g in db_groups])))
-            self.connected_integrations = await self._refresh_integrations()
+            self.connected_integrations = await self._get_integrations()
             self.last_refreshed_at = max(
                 timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
         else:
@@ -367,10 +367,10 @@ class User:
         self.groups = [group.name for group in db_groups]
         self.permissions = sorted(
             set(chain.from_iterable([g.permissions for g in db_groups])))
-        self.connected_integrations = await self._refresh_integrations()
+        self.connected_integrations = await self._get_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
-    async def _refresh_integrations(
+    async def _get_integrations(
             self) -> typing.Sequence[ConnectedIntegration]:
         """Fetch connected integration details from the DB."""
         async with self._application.postgres_connector(
