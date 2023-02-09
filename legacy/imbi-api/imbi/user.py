@@ -128,7 +128,7 @@ class User:
         self.display_name = display_name
         self._password = password
         self.token = token
-        self.connected_integrations: list[ConnectedIntegration] = []
+        self.connected_integrations: list[str] = []
         self.groups: list[str] = []
         self.permissions: list[str] = []
         self.google_user: bool = google_user
