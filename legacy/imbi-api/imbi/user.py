@@ -224,10 +224,7 @@ class User:
             self.last_seen_at = result.row['last_seen_at']
 
         # Update the groups attribute
-        db_groups = await self._db_groups()
-        self.groups = [group.name for group in db_groups]
-        self.permissions = sorted(
-            set(chain.from_iterable([g.permissions for g in db_groups])))
+        await self._refresh_groups()
         self.connected_integrations = sorted(
             {app.name for app in await self._get_integrations()})
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
@@ -303,10 +300,7 @@ class User:
                                         'user-refresh')
         if result:
             self._assign_values(result.row)
-            db_groups = await self._db_groups()
-            self.groups = [group.name for group in db_groups]
-            self.permissions = sorted(
-                set(chain.from_iterable([g.permissions for g in db_groups])))
+            await self._refresh_groups()
             self.connected_integrations = sorted(
                 {app.name for app in await self._get_integrations()})
             self.last_refreshed_at = max(
@@ -362,14 +356,16 @@ class User:
                 'v1.maintain_group_membership_from_ldap_groups',
                 (self.username, ldap_groups), 'user-maintain-groups')
 
-        # Update the groups attribute
+        await self._refresh_groups()
+        self.connected_integrations = sorted(
+            {app.name for app in await self._get_integrations()})
+        self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
+
+    async def _refresh_groups(self):
         db_groups = await self._db_groups()
         self.groups = [group.name for group in db_groups]
         self.permissions = sorted(
             set(chain.from_iterable([g.permissions for g in db_groups])))
-        self.connected_integrations = sorted(
-            {app.name for app in await self._get_integrations()})
-        self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
     async def _get_integrations(
             self) -> typing.Sequence[ConnectedIntegration]:
