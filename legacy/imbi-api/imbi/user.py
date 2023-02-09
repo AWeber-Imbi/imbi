@@ -225,8 +225,7 @@ class User:
 
         # Update the groups attribute
         await self._refresh_groups()
-        self.connected_integrations = sorted(
-            {app.name for app in await self._get_integrations()})
+        await self._refresh_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
     @property
@@ -301,8 +300,7 @@ class User:
         if result:
             self._assign_values(result.row)
             await self._refresh_groups()
-            self.connected_integrations = sorted(
-                {app.name for app in await self._get_integrations()})
+            await self._refresh_integrations()
             self.last_refreshed_at = max(
                 timestamp.utcnow(), self.last_seen_at or timestamp.utcnow())
         else:
@@ -357,8 +355,7 @@ class User:
                 (self.username, ldap_groups), 'user-maintain-groups')
 
         await self._refresh_groups()
-        self.connected_integrations = sorted(
-            {app.name for app in await self._get_integrations()})
+        await self._refresh_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
 
     async def _refresh_groups(self):
@@ -366,6 +363,10 @@ class User:
         self.groups = [group.name for group in db_groups]
         self.permissions = sorted(
             set(chain.from_iterable([g.permissions for g in db_groups])))
+
+    async def _refresh_integrations(self):
+        self.connected_integrations = sorted(
+            {app.name for app in await self._get_integrations()})
 
     async def _get_integrations(
             self) -> typing.Sequence[ConnectedIntegration]:
