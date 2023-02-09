@@ -202,7 +202,7 @@ class User:
         return cls.on_postgres_error(metric_name, exc)
 
     async def refresh(self) -> None:
-        """Update the attributes from LDAP"""
+        """Refresh the user attributes from the respective data store."""
         if self.google_user:
             await self._google_refresh()
         elif self.external_id and self._ldap.is_enabled:
