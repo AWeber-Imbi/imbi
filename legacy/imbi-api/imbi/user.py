@@ -204,26 +204,25 @@ class User:
     async def refresh(self) -> None:
         """Refresh the user attributes from the respective data store."""
         if self.google_user:
-            await self._google_refresh()
+            await self._refresh_from_attributes()
         elif self.external_id and self._ldap.is_enabled:
             await self._ldap_refresh()
         else:
             await self._db_refresh()
 
-    async def _google_refresh(self):
+    async def _refresh_from_attributes(self):
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
             result = await conn.execute(
                 self.SQL_UPSERT_USER, {
                     'username': self.username,
-                    'user_type': 'google',
+                    'user_type': self.user_type,
                     'external_id': self.external_id,
                     'display_name': self.display_name,
                     'email_address': self.email_address
                 }, 'user-update')
             self.last_seen_at = result.row['last_seen_at']
 
-        # Update the groups attribute
         await self._refresh_groups()
         await self._refresh_integrations()
         self.last_refreshed_at = max(timestamp.utcnow(), self.last_seen_at)
