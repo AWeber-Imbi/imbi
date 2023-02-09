@@ -133,7 +133,7 @@ class OpenSearch:
                                    normalize(sanitize_keys(document)))
 
     async def search(self, index: str, query: str, max_results: int = 1000) \
-            -> typing.Dict[str, typing.List[dict]]:
+            -> dict[str, list[dict]]:
         result = await self.client.search(body={
             'query': {
                 'query_string': {

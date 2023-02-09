@@ -108,7 +108,7 @@ class OAuth2Integration:
                 })
 
     async def get_user_tokens(self, user_info: 'user.User') \
-            -> typing.List[IntegrationToken]:
+            -> list[IntegrationToken]:
         async with self._application.postgres_connector(
                 on_error=self._on_postgres_error) as conn:
             result = await conn.execute(self.SQL_GET_TOKENS, {

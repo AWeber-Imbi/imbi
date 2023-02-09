@@ -31,7 +31,7 @@ class Namespace:
     name: str
     slug: str
     icon_class: str
-    maintained_by: typing.Optional[typing.List[str]]
+    maintained_by: typing.Optional[list[str]]
     gitlab_group_name: str
     sentry_team_slug: typing.Optional[str]
 
@@ -63,7 +63,7 @@ class ProjectFact:
     fact_type: str
     data_type: str
     description: typing.Optional[str]
-    ui_options: typing.Optional[typing.List[str]]
+    ui_options: typing.Optional[list[str]]
     score: decimal.Decimal
     weight: int
 
@@ -212,15 +212,15 @@ class Project:
     name: str
     slug: str
     description: typing.Optional[str]
-    environments: typing.Optional[typing.List[str]]
+    environments: typing.Optional[list[str]]
     archived: bool
     gitlab_project_id: typing.Optional[int]
     sentry_project_slug: typing.Optional[str]
     sonarqube_project_key: typing.Optional[str]
     pagerduty_service_id: typing.Optional[str]
-    facts: typing.Dict[str, str]
-    links: typing.Dict[str, str]
-    urls: typing.Dict[str, str]
+    facts: dict[str, str]
+    links: dict[str, str]
+    urls: dict[str, str]
     project_score: int
 
     SQL: typing.ClassVar = re.sub(
@@ -300,7 +300,7 @@ async def _load(model: dataclasses.dataclass, obj_id: int,
 async def _load_collection(model: dataclasses.dataclass,
                            obj_id: int,
                            application: 'app.Application') \
-        -> typing.List[dataclasses.dataclass]:
+        -> list[dataclasses.dataclass]:
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
         LOGGER.error('Failed to execute query for collection %s: %s', obj_id,
                      exc)
@@ -362,13 +362,13 @@ async def project(project_id: int, application: 'app.Application') -> Project:
 
 async def project_facts(project_id: int,
                         application: 'app.Application') \
-        -> typing.List[ProjectFact]:
+        -> list[ProjectFact]:
     return await _load_collection(ProjectFact, project_id, application)
 
 
 async def project_links(project_id: int,
                         application: 'app.Application') \
-        -> typing.List[ProjectLink]:
+        -> list[ProjectLink]:
     return await _load_collection(ProjectLink, project_id, application)
 
 
@@ -379,5 +379,5 @@ async def project_type(project_type_id: int,
 
 async def project_urls(project_id: int,
                        application: 'app.Application') \
-        -> typing.List[ProjectURL]:
+        -> list[ProjectURL]:
     return await _load_collection(ProjectURL, project_id, application)

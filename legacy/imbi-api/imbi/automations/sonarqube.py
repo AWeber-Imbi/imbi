@@ -35,7 +35,7 @@ class SonarCreateProject(base.Automation):
         self._project: typing.Optional[models.Project] = None
         self._sonar_client: typing.Optional[sonarqube.SonarQubeClient] = None
 
-    async def prepare(self) -> typing.List[str]:
+    async def prepare(self) -> list[str]:
         self._project = await self._get_project(self._imbi_project_id)
         token = await self._get_gitlab_token()
         if self._project and self._project.gitlab_project_id is None:

@@ -133,10 +133,10 @@ class TestCaseWithReset(TestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.environments: typing.Optional[typing.List[typing.Dict]] = None
-        self.namespace: typing.Optional[typing.Dict] = None
-        self.project_fact_type: typing.Optional[typing.Dict] = None
-        self.project_type: typing.Optional[typing.Dict] = None
+        self.environments: typing.Optional[list[dict]] = None
+        self.namespace: typing.Optional[dict] = None
+        self.project_fact_type: typing.Optional[dict] = None
+        self.project_type: typing.Optional[dict] = None
         self.headers['Private-Token'] = self.run_until_complete(
             self.get_token())
 
@@ -166,7 +166,7 @@ class TestCaseWithReset(TestCase):
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
-    def create_environments(self) -> typing.List[dict]:
+    def create_environments(self) -> list[dict]:
         environments = []
         for iteration in range(0, 2):
             result = self.fetch('/environments',

@@ -15,7 +15,7 @@ class Automation:
         self.application = application
         self.automation_settings = self.application.settings['automations']
         self.db = db
-        self.errors: typing.List[str] = []
+        self.errors: list[str] = []
         self.logger = logging.getLogger(__package__).getChild(
             self.__class__.__name__)
         self.user = current_user

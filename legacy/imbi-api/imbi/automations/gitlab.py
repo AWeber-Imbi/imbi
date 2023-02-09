@@ -42,7 +42,7 @@ class GitLabCreateProjectAutomation(base.Automation):
         self._gitlab_parent: typing.Optional[dict] = None
         self._project: typing.Optional[models.Project] = None
 
-    async def prepare(self) -> typing.List[str]:
+    async def prepare(self) -> list[str]:
         project: models.Project
         token: oauth2.IntegrationToken
         project, token = await asyncio.gather(
@@ -130,7 +130,7 @@ class GitLabInitialCommitAutomation(base.Automation):
         self._project: typing.Optional[models.Project] = None
         self._token: typing.Optional[oauth2.IntegrationToken] = None
 
-    async def prepare(self) -> typing.List[str]:
+    async def prepare(self) -> list[str]:
         self._project = await self._get_project(self._imbi_project_id)
         self._token = await self._get_gitlab_token()
         self._cookie_cutter = await self._get_cookie_cutter(

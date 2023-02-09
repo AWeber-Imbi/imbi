@@ -77,7 +77,7 @@ class OperationsLogIndex:
             self.INDEX, str(ops_log.id), self._ops_log_to_dict(ops_log), True)
 
     async def search(self, query: str, max_results: int = 1000) \
-            -> typing.Dict[str, typing.List[dict]]:
+            -> dict[str, list[dict]]:
         return await self.application.opensearch.search(
             self.INDEX, query, max_results)
 

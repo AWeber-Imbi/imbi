@@ -21,7 +21,7 @@ class Group:
     """Group class to represent a single group a user is a member of"""
     __slots__ = ['name', 'permissions']
 
-    def __init__(self, name: str, permissions: typing.List[str]):
+    def __init__(self, name: str, permissions: list[str]):
         self.name = name
         self.permissions = sorted(permissions or [])
 
@@ -128,9 +128,9 @@ class User:
         self.display_name = display_name
         self._password = password
         self.token = token
-        self.connected_integrations: typing.List[ConnectedIntegration] = []
-        self.groups: typing.List[Group] = []
-        self.permissions: typing.List[str] = []
+        self.connected_integrations: list[ConnectedIntegration] = []
+        self.groups: list[Group] = []
+        self.permissions: list[str] = []
         self.google_user: bool = google_user
 
     @property
@@ -256,7 +256,7 @@ class User:
             self.last_seen_at = result.row['last_seen_at']
 
     async def fetch_integration_tokens(self, integration: str) \
-            -> typing.List[oauth2.IntegrationToken]:
+            -> list[oauth2.IntegrationToken]:
         """Retrieve access tokens for the specified integration."""
         obj = await oauth2.OAuth2Integration.by_name(self._application,
                                                      integration)
@@ -285,7 +285,7 @@ class User:
         await self._db_refresh()
         return True
 
-    async def _db_groups(self) -> typing.List[Group]:
+    async def _db_groups(self) -> list[Group]:
         """Return the groups for the user as a list of group objects"""
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:

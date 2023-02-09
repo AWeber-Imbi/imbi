@@ -6,7 +6,6 @@ import collections
 import logging
 import re
 import socket
-import typing
 
 from . import base
 
@@ -60,7 +59,7 @@ class RequestHandler(base.RequestHandler):
             self.write('\n')
 
         timers = await self.application.stats.durations(all_hosts, flush)
-        values: typing.Dict[str, typing.List[str]] = {}
+        values: dict[str, list[str]] = {}
         for timer in sorted(timers.keys()):
             chunk_key = self._build_output_key(timer, 'seconds').split('{')[0]
             if chunk_key not in values:
