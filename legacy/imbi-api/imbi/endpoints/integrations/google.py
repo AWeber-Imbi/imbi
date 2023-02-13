@@ -96,10 +96,11 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
             raise errors.Forbidden('Invalid Google domain sign in')
         user_id = id_info['sub']
         user_email = id_info['email']
-        user_name = id_info['name']
-        imbi_user = imbi.user.User(self.application, username=user_email,
+        display_name = id_info['name']
+        username = user_email.split('@')[0]
+        imbi_user = imbi.user.User(self.application, username=username,
                                    google_user=True, external_id=user_id,
-                                   display_name=user_name,
+                                   display_name=display_name,
                                    email_address=user_email)
         await imbi_user.refresh()
         return imbi_user
