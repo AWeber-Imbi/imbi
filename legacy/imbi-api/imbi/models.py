@@ -251,6 +251,7 @@ class OperationsLog:
     id: int
     recorded_at: datetime.datetime
     recorded_by: str
+    display_name: str
     completed_at: typing.Optional[datetime.datetime]
     project_id: typing.Optional[int]
     project_name: typing.Optional[str]
@@ -264,23 +265,26 @@ class OperationsLog:
 
     SQL: typing.ClassVar = re.sub(
         r'\s+', ' ', """\
-        SELECT a.id,
-               a.recorded_at,
-               a.recorded_by,
-               a.completed_at,
-               a.project_id,
-               b.name AS project_name,
-               a.environment,
-               a.change_type,
-               a.description,
-               a.link,
-               a.notes,
-               a.ticket_slug,
-               a.version
-          FROM v1.operations_log AS a
-     LEFT JOIN v1.projects AS b
-            ON a.project_id = b.id
-         WHERE a.id=%(id)s""")
+        SELECT o.id,
+               o.recorded_at,
+               o.recorded_by,
+               u.display_name,
+               o.completed_at,
+               o.project_id,
+               p.name AS project_name,
+               o.environment,
+               o.change_type,
+               o.description,
+               o.link,
+               o.notes,
+               o.ticket_slug,
+               o.version
+          FROM v1.operations_log AS o
+     LEFT JOIN v1.users AS u
+            ON u.username = o.recorded_by
+     LEFT JOIN v1.projects AS p
+            ON o.project_id = p.id
+         WHERE o.id=%(id)s""")
 
 
 async def _load(model: dataclasses.dataclass, obj_id: int,
