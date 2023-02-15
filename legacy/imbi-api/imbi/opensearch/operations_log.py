@@ -19,6 +19,9 @@ OPS_LOG = {
     'recorded_by': {
         'type': 'text'
     },
+    'display_name': {
+        'type': 'text',
+    },
     'completed_at': {
         'type': 'date'
     },
