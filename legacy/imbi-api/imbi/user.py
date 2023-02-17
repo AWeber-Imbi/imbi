@@ -128,7 +128,7 @@ class User:
         self.display_name = display_name
         self._password = password
         self.token = token
-        self.connected_integrations: list[str] = []
+        self.integrations: list[str] = []
         self.groups: list[str] = []
         self.permissions: list[str] = []
         self.google_user: bool = google_user
@@ -161,7 +161,7 @@ class User:
                 '' if self.password is None else self.password),
             'permissions': self.permissions,
             'last_refreshed_at': timestamp.isoformat(self.last_refreshed_at),
-            'integrations': self.connected_integrations,
+            'integrations': self.integrations,
             'google_user': self.google_user,
         }
 
@@ -364,7 +364,7 @@ class User:
             set(chain.from_iterable([g.permissions for g in db_groups])))
 
     async def _refresh_integrations(self):
-        self.connected_integrations = sorted(
+        self.integrations = sorted(
             {app.name for app in await self._get_integrations()})
 
     async def _get_integrations(
@@ -391,7 +391,7 @@ class User:
         self.groups = []
         self.permissions = []
         self.last_refreshed_at = None
-        self.connected_integrations = []
+        self.integrations = []
 
     async def _token_auth(self) -> bool:
         """Validate via v1.authentication_tokens table"""
