@@ -103,6 +103,7 @@ automations:
     allow_multiline_dictionary_keys: true
     allow_split_before_dict_value: false
 google:
+  enabled: true
   valid_domains: gmail.com
 http:
   canonical_server_name: imbi.localhost
@@ -117,6 +118,8 @@ ldap:
   users_dn: ou=users,dc=example,dc=org
   username: cn
   pool_size: 5
+local_users:
+  enabled: true
 opensearch:
   connection:
     hosts:

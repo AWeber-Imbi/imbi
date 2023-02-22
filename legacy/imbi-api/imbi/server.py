@@ -119,6 +119,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     google = config.get('google', {})
     http_settings = config.get('http', {})
     ldap = config.get('ldap', {})
+    local_users = config.get('local_users', {})
     postgres = config.get('postgres', {})
     sentry = config.get('sentry', {})
     session = config.get('session', {})
@@ -183,6 +184,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         },
         'frontend_url': config.get('frontend_url', None),
         'google': {
+            'enabled': google.get('enabled', False),
             'valid_domains': google.get('valid_domains', '').split(',')
         },
         'javascript_url': config.get('javascript_url', None),
@@ -198,6 +200,9 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'user_object_type': ldap.get('user_object_type', 'inetOrgPerson'),
             'username': ldap.get('username', 'uid'),
             'users_dn': ldap.get('users_dn')
+        },
+        'local_users': {
+            'enabled': local_users.get('enabled', True)
         },
         'number_of_procs': http_settings.get('processes', 2),
         'opensearch': config.get('opensearch', {}),
