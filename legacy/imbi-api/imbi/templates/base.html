@@ -18,6 +18,8 @@
          data-footer-text="{{ handler.application.settings['footer_link']['text'] }}"
          data-footer-url="{{ handler.application.settings['footer_link']['url'] }}"
          data-ldap="{{ str(handler.application.settings['ldap']['enabled']).lower() }}"
+         data-local-users="{{ str(handler.application.settings['local_users']['enabled']).lower() }}"
+         data-google="{{ str(handler.application.settings['google']['enabled']).lower() }}"
          data-sentry_dsn="{{ handler.application.settings['sentry_ui_dsn'] }}"
          data-url="{{ handler.request.protocol }}://{{ handler.request.host }}"
          data-version="{{ handler.application.settings['version'] }}"
