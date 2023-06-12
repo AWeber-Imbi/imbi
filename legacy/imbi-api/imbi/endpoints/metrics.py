@@ -31,7 +31,7 @@ class RequestHandler(base.RequestHandler):
         tags = self._build_key_dict(key_in)
         key = tags.pop('key')
         tag_repr = ','.join(f'{k}="{v}"' for k, v in tags.items())
-        return f'{key}_{suffix}{{{tag_repr}}}'
+        return f'imbi_{key}_{suffix}{{{tag_repr}}}'
 
     async def get(self):
         """Tornado RequestHandler GET request endpoint for reporting status"""
@@ -101,10 +101,10 @@ class RequestHandler(base.RequestHandler):
         self.write('# HELP postgres_pool_size The number of open connections '
                    'in the pool\n')
         self.write('# TYPE postgres_pool_size gauge\n')
-        self.write(f'postgres_pool_size{{host="{socket.gethostname()}"}} '
+        self.write(f'imbi_postgres_pool_size{{host="{socket.gethostname()}"}} '
                    f'{postgres["pool_size"]}\n\n')
         self.write('# HELP postgres_pool_free The number of free connections '
                    'in the pool\n')
         self.write('# TYPE postgres_pool_free gauge\n')
-        self.write(f'postgres_pool_free{{host="{socket.gethostname()}"}} '
+        self.write(f'imbi_postgres_pool_free{{host="{socket.gethostname()}"}} '
                    f'{postgres["pool_free"]}\n\n')
