@@ -76,6 +76,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                     'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
                     'recorded_at': now(),
                     'notes': notes[-1],
+                    'description': 'Deployed app',
                 },
             )
             self.assertEqual(result.code, 200)

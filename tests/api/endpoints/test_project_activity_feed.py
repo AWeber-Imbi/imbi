@@ -47,6 +47,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'project_id': self.project['id'],
             'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
             'recorded_at': now(),
+            'description': 'deployed app',
             'notes': '',
         }
         body.update(overrides)

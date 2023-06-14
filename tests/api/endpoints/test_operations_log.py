@@ -318,6 +318,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'recorded_at': '2021-08-30T00:00:00+00:00',
             'environment': self.environment,
             'change_type': 'Upgraded',
+            'description': 'Upgraded app',
         }
         result = self.fetch('/operations-log', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
@@ -326,6 +327,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assert_link_header_equals(result, url)
         self.assertEqual(response['environment'], record['environment'])
         self.assertEqual(response['change_type'], record['change_type'])
+        self.assertEqual(response['description'], record['description'])
 
         # DELETE
         result = self.fetch(url, method='DELETE')
