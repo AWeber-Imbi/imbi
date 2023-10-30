@@ -40,18 +40,15 @@ class GoogleLoginRequestHandler(base.RequestHandler):
 
     async def get(self, *args, **kwargs):
         state = str(uuid.uuid4())
-        await self._redis.set(state,
-                              'google-login-crsf',
-                              expire=86400)
+        await self._redis.set(state, 'google-login-crsf', expire=86400)
         target = yarl.URL(self.integration.authorization_endpoint).with_query({
             'client_id': str(self.integration.client_id),
             'redirect_uri': str(self.integration.callback_url),
             'state': state,
             'response_type': 'code',
             'scope': ' '.join([
-              'openid',
-              'https://www.googleapis.com/auth/userinfo.email',
-              'https://www.googleapis.com/auth/userinfo.profile'
+                'openid', 'https://www.googleapis.com/auth/userinfo.email',
+                'https://www.googleapis.com/auth/userinfo.profile'
             ]),
             'access_type': 'offline',
             'include_granted_scopes': 'true',

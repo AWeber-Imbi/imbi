@@ -365,10 +365,10 @@ class User:
 
     async def _refresh_integrations(self):
         self.integrations = sorted(
-            {app.name for app in await self._get_integrations()})
+            {app.name
+             for app in await self._get_integrations()})
 
-    async def _get_integrations(
-            self) -> typing.Sequence[ConnectedIntegration]:
+    async def _get_integrations(self) -> typing.Sequence[ConnectedIntegration]:
         """Fetch connected integration details from the DB."""
         async with self._application.postgres_connector(
                 on_error=self.on_postgres_error) as conn:
