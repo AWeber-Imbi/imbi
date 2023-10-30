@@ -23,7 +23,8 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 
     NAME = 'google-redirect'
 
-    ADD_TOKEN_SQL = re.sub(r'\s+', ' ', """
+    ADD_TOKEN_SQL = re.sub(
+        r'\s+', ' ', """
         INSERT INTO v1.user_oauth2_tokens
                     (username, integration, external_id,
                      access_token, refresh_token)
@@ -34,7 +35,8 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                               refresh_token = EXCLUDED.refresh_token
     """)
 
-    UPDATE_TOKEN_SQL = re.sub(r'\s+', ' ', """
+    UPDATE_TOKEN_SQL = re.sub(
+        r'\s+', ' ', """
        UPDATE v1.user_oauth2_tokens
           SET access_token = %(access_token)s,
               username = %(username)s
@@ -84,8 +86,9 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 
     async def sync_user(self, openid_token) -> imbi.user.User:
         try:
-            id_info = id_token.verify_oauth2_token(
-                openid_token, requests.Request(), self.integration.client_id)
+            id_info = id_token.verify_oauth2_token(openid_token,
+                                                   requests.Request(),
+                                                   self.integration.client_id)
         except google.auth.exceptions.GoogleAuthError as e:
             raise errors.BadRequest('Token issuer is invalid: %s', e)
         except ValueError:
@@ -98,8 +101,10 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         user_email = id_info['email']
         display_name = id_info['name']
         username = user_email.split('@')[0]
-        imbi_user = imbi.user.User(self.application, username=username,
-                                   google_user=True, external_id=user_id,
+        imbi_user = imbi.user.User(self.application,
+                                   username=username,
+                                   google_user=True,
+                                   external_id=user_id,
                                    display_name=display_name,
                                    email_address=user_email)
         await imbi_user.refresh()
@@ -117,8 +122,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
             str(self.integration.token_endpoint),
             method='POST',
             body=body,
-            content_type='application/x-www-form-urlencoded'
-        )
+            content_type='application/x-www-form-urlencoded')
         if not response.ok:
             self.logger.error('failed to exchange auth code for token: %s %s',
                               response.body['error'],
@@ -131,29 +135,29 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                     'error': response.body['error'],
                     'error_description': response.body['error_description'],
                 })
-        return (
-            response.body.get('id_token'),
-            response.body.get('access_token'),
-            response.body.get('refresh_token')
-        )
+        return (response.body.get('id_token'),
+                response.body.get('access_token'),
+                response.body.get('refresh_token'))
 
     async def upsert_token(self, username, external_id, access_token,
                            refresh_token):
         if refresh_token:
-            await self.postgres_execute(self.ADD_TOKEN_SQL, {
-                'username': username,
-                'external_id': external_id,
-                'access_token': access_token,
-                'refresh_token': refresh_token,
-                'integration': self.integration_name
-            })
+            await self.postgres_execute(
+                self.ADD_TOKEN_SQL, {
+                    'username': username,
+                    'external_id': external_id,
+                    'access_token': access_token,
+                    'refresh_token': refresh_token,
+                    'integration': self.integration_name
+                })
         else:
-            await self.postgres_execute(self.UPDATE_TOKEN_SQL, {
-                'username': username,
-                'external_id': external_id,
-                'access_token': access_token,
-                'integration': self.integration_name
-            })
+            await self.postgres_execute(
+                self.UPDATE_TOKEN_SQL, {
+                    'username': username,
+                    'external_id': external_id,
+                    'access_token': access_token,
+                    'integration': self.integration_name
+                })
 
     @property
     def integration_name(self):
