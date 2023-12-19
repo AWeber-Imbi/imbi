@@ -1693,7 +1693,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1integrations~1%7Bname%7D/get/responses/200/content/application~1json/schema'
+                  $ref: '#/paths/~1integrations/post/responses/200/content/application~1json/schema'
     post:
       description: Add a new integration
       summary: Add integration
@@ -1710,32 +1710,13 @@ paths:
                   type: string
                 api_endpoint:
                   type: string
-                callback_url:
-                  type: string
-                authorization_endpoint:
-                  type: string
-                token_endpoint:
-                  type: string
-                revoke_endpoint:
+                api_secret:
                   type: string
                   nullable: true
-                client_id:
-                  type: string
-                client_secret:
-                  type: string
-                  nullable: true
-                public_client:
-                  type: boolean
               required:
                 - name
                 - api_endpoint
-                - callback_url
-                - authorization_endpoint
-                - token_endpoint
-                - revoke_endpoint
-                - client_id
-                - client_secret
-                - public_client
+                - api_secret
               additionalProperties: false
           application/x-www-form-urlencoded:
             schema:
@@ -1750,6 +1731,12 @@ paths:
                 properties:
                   name:
                     type: string
+                  api_endpoint:
+                    type: string
+                required:
+                  - name
+                  - api_endpoint
+                additionalProperties: false
   '/integrations/{name}':
     parameters:
       - name: name
@@ -1768,31 +1755,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  name:
-                    type: string
-                  api_endpoint:
-                    type: string
-                  callback_url:
-                    type: string
-                  authorization_endpoint:
-                    type: string
-                  token_endpoint:
-                    type: string
-                  revoke_endpoint:
-                    type: string
-                  client_id:
-                    type: string
-                required:
-                  - name
-                  - api_endpoint
-                  - callback_url
-                  - authorization_endpoint
-                  - token_endpoint
-                  - revoke_endpoint
-                  - client_id
-                additionalProperties: false
+                $ref: '#/paths/~1integrations/post/responses/200/content/application~1json/schema'
     delete:
       description: Remove the specified integration
       summary: Delete an integration
@@ -1801,6 +1764,24 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+    patch:
+      description: Update an integration
+      summary: Update an integration
+      tags:
+        - Integrations
+      requestBody:
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1integrations/post/responses/200/content/application~1json/schema'
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
@@ -5294,6 +5275,144 @@ paths:
             application/msgpack:
               schema:
                 type: object
+  '/projects/{id}/identifiers/{integration}':
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: integer
+      - name: integration
+        in: path
+        description: Integration name
+        required: true
+        schema:
+          type: string
+    get:
+      description: Retrieve a specific surrogate identifier for the project
+      summary: Get Identifier
+      tags:
+        - Project Facts
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  external_id:
+                    type: string
+                  created_by:
+                    type: string
+                  created_at:
+                    type: string
+                    format: iso8601-timestamp
+                  modified_by:
+                    type: string
+                    nullable: true
+                  modified_at:
+                    type: string
+                    format: iso8601-timestamp
+                    nullable: true
+                required:
+                  - external_id
+                  - created_by
+                  - created_at
+                  - modified_by
+                  - modified_at
+                additionalProperties: true
+            application/msgpack:
+              schema:
+                type: object
+                properties:
+                  external_id:
+                    type: string
+                  created_by:
+                    type: string
+                  created_at:
+                    type: string
+                    format: iso8601-timestamp
+                  modified_by:
+                    type: string
+                    nullable: true
+                  modified_at:
+                    type: string
+                    format: iso8601-timestamp
+                    nullable: true
+                required:
+                  - external_id
+                  - created_by
+                  - created_at
+                  - modified_by
+                  - modified_at
+                additionalProperties: true
+    patch:
+      description: Update a specific surrogate identifier for the project
+      summary: Update identifier
+      requestBody:
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
+      responses:
+        '200':
+          description: Updated identifier
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  external_id:
+                    type: string
+                  created_by:
+                    type: string
+                  created_at:
+                    type: string
+                    format: iso8601-timestamp
+                  modified_by:
+                    type: string
+                    nullable: true
+                  modified_at:
+                    type: string
+                    format: iso8601-timestamp
+                    nullable: true
+                required:
+                  - external_id
+                  - created_by
+                  - created_at
+                  - modified_by
+                  - modified_at
+                additionalProperties: true
+            application/msgpack:
+              schema:
+                type: object
+                properties:
+                  external_id:
+                    type: string
+                  created_by:
+                    type: string
+                  created_at:
+                    type: string
+                    format: iso8601-timestamp
+                  modified_by:
+                    type: string
+                    nullable: true
+                  modified_at:
+                    type: string
+                    format: iso8601-timestamp
+                    nullable: true
+                required:
+                  - external_id
+                  - created_by
+                  - created_at
+                  - modified_by
+                  - modified_at
+                additionalProperties: true
+    delete:
+      description: Remove the surrogate identifier for the project in a specified integration
+      summary: Remove identifier
+      responses:
+        '204':
+          description: Identifier removed
   '/projects/{id}/links':
     get:
       description: Retrieve the collection of links for a project

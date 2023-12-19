@@ -283,10 +283,30 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     ITEM_NAME = None  # Used to create link headers for POST requests
     TTL = 300
 
+    OMIT_FIELDS: typing.Optional[list] = None
+    """Set this to omit specific fields from a record response.
+
+    Set this to `None` for the previous behavior of omitting
+    the `created_at` and `last_modified_at` fields.
+
+    Set this to the empty list to pass *all* fields in the
+    response.
+
+    Set this to a list of names to explicitly exclude specific
+    fields in the response.
+
+    """
+
     DELETE_SQL: typing.Optional[str] = None
     GET_SQL: typing.Optional[str] = None
     PATCH_SQL: typing.Optional[str] = None
     POST_SQL: typing.Optional[str] = None
+
+    def initialize(self) -> None:
+        super().initialize()
+        if self.__class__.OMIT_FIELDS is None and self.OMIT_FIELDS is None:
+            # implement backwards compatible behavior
+            self.OMIT_FIELDS = ['created_at', 'last_modified_at']
 
     async def delete(self, *args, **kwargs):
         if self.DELETE_SQL is None:
@@ -321,12 +341,9 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         if isinstance(value, list):
             return super().send_response(value)
 
-        if not (self.request.method == 'GET' and self.IS_COLLECTION):
+        if self.request.method != 'GET' or not self.IS_COLLECTION:
             self._add_last_modified_header(
                 value.get('last_modified_at', value.get('created_at')))
-            for key in {'created_at', 'last_modified_at'}:
-                if key in value:
-                    del value[key]
             if self.ID_KEY:
                 if isinstance(self.ID_KEY, list):
                     args = [str(value[k]) for k in self.ID_KEY]
@@ -340,6 +357,10 @@ class CRUDRequestHandler(ValidatingRequestHandler):
                     self.logger.debug('Failed to reverse URL for %s %r',
                                       self.NAME, args)
             self._add_link_header()
+
+        for name in self.OMIT_FIELDS:
+            value.pop(name, None)
+
         super().send_response(value)
 
     async def _delete(self, kwargs):
