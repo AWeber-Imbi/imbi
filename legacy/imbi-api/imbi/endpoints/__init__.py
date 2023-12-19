@@ -102,6 +102,11 @@ URLS = [
     web.url(r'^/projects/(?P<project_id>\d+)/identifiers$',
             integration_identifiers.CollectionRequestHandler,
             name='project-identifiers'),
+    web.url(
+        r'^/projects/(?P<project_id>\d+)/identifiers/'
+        r'(?P<integration_name>.+)$',
+        integration_identifiers.RecordRequestHandler,
+        name='project-identifier'),
     web.url(r'^/projects/(?P<project_id>\d+)/links$',
             project_links.CollectionRequestHandler,
             name='project-links'),

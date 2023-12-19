@@ -44,3 +44,36 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
         if not result:
             raise errors.ItemNotFound()
         await super().get(*args, **kwargs)
+
+
+class RecordRequestHandler(base.CRUDRequestHandler):
+    NAME = 'project-identifier'
+    ID_KEY = ['project_id', 'integration_name']
+
+    GET_SQL = re.sub(
+        r'\s+', ' ', """\
+        SELECT project_id, integration_name, external_id,
+               created_at, created_by,
+               last_modified_at, last_modified_by
+          FROM v1.project_identifiers
+         WHERE project_id = %(project_id)s
+           AND integration_name = %(integration_name)s
+        """)
+    PATCH_SQL = re.sub(
+        r'\s+', ' ', """\
+        UPDATE v1.project_identifiers
+           SET external_id = %(external_id)s,
+               integration_name = %(integration_name)s,
+               last_modified_by = %(username)s,
+               last_modified_at = CURRENT_TIMESTAMP
+         WHERE project_id = %(current_project_id)s
+           AND project_id = %(project_id)s
+           AND integration_name = %(current_integration_name)s
+        RETURNING external_id
+        """)
+    DELETE_SQL = re.sub(
+        r'\s+', ' ', """\
+        DELETE FROM v1.project_identifiers
+              WHERE project_id = %(project_id)s
+                AND integration_name = %(integration_name)s
+        """)
