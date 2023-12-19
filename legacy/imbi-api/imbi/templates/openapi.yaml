@@ -5176,6 +5176,124 @@ paths:
               $ref: '#/paths/~1activity-feed/get/responses/200/headers/Link'
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
+  '/projects/{id}/identifiers':
+    parameters:
+      - name: id
+        in: path
+        description: Project ID
+        required: true
+        schema:
+          type: integer
+    get:
+      description: Retrieve surrogate identifiers for the project
+      summary: Get Identifiers
+      tags:
+        - Project Facts
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    external_id:
+                      type: string
+                    integration_name:
+                      type: string
+                    created_by:
+                      type: string
+                    created_at:
+                      type: string
+                      format: iso8601-timestamp
+                    modified_by:
+                      type: string
+                      nullable: true
+                    modified_at:
+                      type: string
+                      format: iso8601-timestamp
+                      nullable: true
+                  required:
+                    - external_id
+                    - integration_name
+                    - created_by
+                    - created_at
+                    - modified_by
+                    - modified_at
+                  additionalProperties: true
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    external_id:
+                      type: string
+                    integration_name:
+                      type: string
+                    created_by:
+                      type: string
+                    created_at:
+                      type: string
+                      format: iso8601-timestamp
+                    modified_by:
+                      type: string
+                      nullable: true
+                    modified_at:
+                      type: string
+                      format: iso8601-timestamp
+                      nullable: true
+                  required:
+                    - external_id
+                    - integration_name
+                    - created_by
+                    - created_at
+                    - modified_by
+                    - modified_at
+                  additionalProperties: true
+    post:
+      description: Add a surrogate identifier for a project
+      summary: Add Identifier
+      tags:
+        - Project Facts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                external_id:
+                  type: string
+                integration_name:
+                  type: string
+              required:
+                - external_id
+                - integration_name
+              additionalProperties: false
+          application/msgpack:
+            schema:
+              type: object
+              properties:
+                external_id:
+                  type: string
+                integration_name:
+                  type: string
+              required:
+                - external_id
+                - integration_name
+              additionalProperties: false
+      responses:
+        '200':
+          description: Newly created identifier
+          content:
+            application/json:
+              schema:
+                type: object
+            application/msgpack:
+              schema:
+                type: object
   '/projects/{id}/links':
     get:
       description: Retrieve the collection of links for a project

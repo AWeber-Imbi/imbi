@@ -3,10 +3,11 @@ from tornado import web
 from imbi import constants
 from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                environments, fact_type_enums, fact_type_ranges, fact_types,
-               groups, integrations, metrics, namespaces, openapi, opensearch,
-               operations_log, permissions, project_activity_feed,
-               project_dependencies, project_fact_history, project_fact_types,
-               project_facts, project_link_types, project_links, project_notes,
+               groups, integration_identifiers, integrations, metrics,
+               namespaces, openapi, opensearch, operations_log, permissions,
+               project_activity_feed, project_dependencies,
+               project_fact_history, project_fact_types, project_facts,
+               project_link_types, project_links, project_notes,
                project_score_history, project_secrets, project_types,
                project_urls, projects, reports, status, ui)
 
@@ -98,6 +99,9 @@ URLS = [
     web.url(r'^/projects/(?P<project_id>\d+)/feed$',
             project_activity_feed.CollectionRequestHandler,
             name='project-activity-feed'),
+    web.url(r'^/projects/(?P<project_id>\d+)/identifiers$',
+            integration_identifiers.CollectionRequestHandler,
+            name='project-identifiers'),
     web.url(r'^/projects/(?P<project_id>\d+)/links$',
             project_links.CollectionRequestHandler,
             name='project-links'),
