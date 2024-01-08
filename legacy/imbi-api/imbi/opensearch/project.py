@@ -163,6 +163,11 @@ class ProjectIndex:
                 defn[f'urls.{opensearch.sanitize_key(row["name"])}'] = {
                     'type': 'text'
                 }
+            result = await cursor.execute('SELECT name FROM v1.integrations;')
+            for row in result:
+                defn[f'identifiers.{opensearch.sanitize_key(row["name"])}'] = {
+                    'type': 'text'
+                }
         return defn
 
     @staticmethod

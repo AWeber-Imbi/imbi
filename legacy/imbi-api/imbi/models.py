@@ -114,6 +114,21 @@ class ProjectFact:
 
 
 @dataclasses.dataclass
+class ProjectIdentifier:
+    integration_name: str
+    external_id: str
+    created_at: datetime.datetime
+    created_by: str
+
+    COLLECTION_SQL: typing.ClassVar[str] = re.sub(
+        r'\s+', ' ', """\
+        SELECT integration_name, external_id, created_at, created_by
+          FROM v1.project_identifiers
+         WHERE project_id = %(obj_id)s
+         ORDER BY integration_name""")
+
+
+@dataclasses.dataclass
 class ProjectType:
     id: int
     created_at: datetime.datetime
@@ -219,6 +234,7 @@ class Project:
     sonarqube_project_key: typing.Optional[str]
     pagerduty_service_id: typing.Optional[str]
     facts: dict[str, str]
+    identifiers: dict[str, typing.Any]
     links: dict[str, str]
     urls: dict[str, str]
     project_score: int
@@ -348,7 +364,9 @@ async def project(project_id: int, application: 'app.Application') -> Project:
                 project_type(values['project_type_id'], application),
                 project_facts(project_id, application),
                 project_links(project_id, application),
-                project_urls(project_id, application))
+                project_urls(project_id, application),
+                project_identifiers(project_id, application),
+            )
             del values['namespace_id']
             del values['project_type_id']
             values.update({
@@ -359,7 +377,11 @@ async def project(project_id: int, application: 'app.Application') -> Project:
                 'links': {value.link_type: value.url
                           for value in result[3]},
                 'urls': {value.environment: value.url
-                         for value in result[4]}
+                         for value in result[4]},
+                'identifiers': {
+                    value.integration_name: value.external_id
+                    for value in result[5]
+                },
             })
             return Project(**values)
 
@@ -368,6 +390,12 @@ async def project_facts(project_id: int,
                         application: 'app.Application') \
         -> list[ProjectFact]:
     return await _load_collection(ProjectFact, project_id, application)
+
+
+async def project_identifiers(
+        project_id: int,
+        application: 'app.Application') -> list[ProjectIdentifier]:
+    return await _load_collection(ProjectIdentifier, project_id, application)
 
 
 async def project_links(project_id: int,
