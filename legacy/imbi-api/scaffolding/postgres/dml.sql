@@ -10,3 +10,6 @@ INSERT INTO v1.users (username, user_type, external_id, email_address, display_n
 
 INSERT INTO v1.group_members("group", username) VALUES ('admin', 'test');
 INSERT INTO v1.group_members("group", username) VALUES ('imbi', 'ffink');
+
+INSERT INTO v1.authentication_tokens (name, username, token)
+     VALUES ('import', 'test', '00000000-0000-0000-0000-000000000000');

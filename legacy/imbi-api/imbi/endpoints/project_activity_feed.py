@@ -34,10 +34,20 @@ class CollectionRequestHandler(base.PaginatedRequestMixin,
               ON b.id = a.fact_type_id
            WHERE a.project_id = %(project_id)s
         ),
+        identifiers AS (
+          SELECT COALESCE(a.last_modified_at, a.created_at) AS "when",
+                 COALESCE(a.last_modified_by, a.created_by) AS who,
+                 'updated fact' AS what,
+                 (a.integration_name || ' external ID') AS fact_name,
+                 a.external_id AS value
+            FROM v1.project_identifiers AS a
+           WHERE a.project_id = %(project_id)s
+        ),
         combined AS (
                 SELECT * FROM created
           UNION SELECT * FROM updated
           UNION SELECT * FROM facts
+          UNION SELECT * FROM identifiers
         )
         SELECT 'ProjectFeedEntry' AS "type", c."when", c.who, u.display_name,
                c.what, c.fact_name, c.value

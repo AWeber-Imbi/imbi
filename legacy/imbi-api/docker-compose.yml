@@ -45,11 +45,12 @@ services:
       - opensearch
 
   postgres:
-    image: aweber/imbi-postgres:0.17.0
+    image: aweber/imbi-postgres:0.20.0
     ports:
       - 5432
     volumes:
       - ./scaffolding/postgres:/tmp/postgres
+
   redis:
     image: gavinmroy/alpine-redis:5.0.9-0
     ports:
