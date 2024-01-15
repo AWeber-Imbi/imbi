@@ -15,6 +15,7 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
         SELECT external_id, integration_name, project_id, created_at,
                created_by, last_modified_at, last_modified_by
           FROM v1.project_identifiers
+         WHERE project_id = %(project_id)s
          ORDER BY project_id, integration_name
         """)
 
