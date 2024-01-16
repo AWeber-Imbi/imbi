@@ -18,7 +18,7 @@ tar c -C /source -f - \
     Makefile \
     VERSION \
     bootstrap \
-    docker-compose.yml \
+    compose.yml \
     ddl \
     imbi \
     scaffolding \
