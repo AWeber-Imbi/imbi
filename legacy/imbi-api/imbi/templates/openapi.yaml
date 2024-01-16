@@ -1926,6 +1926,162 @@ paths:
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+  '/integrations/{integration_name}/notifications/{notification_name}/filters':
+    parameters:
+      - name: integration_name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: notification_name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      description: Retrieve the collection of filters for a notification
+      summary: Get notification filters
+      tags:
+        - Integrations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications~1%7Bnotification_name%7D~1filters/post/responses/200/content/application~1json/schema'
+    post:
+      description: Add a new filter to a notification
+      summary: Add notification filter
+      tags:
+        - Integrations
+      requestBody:
+        description: Filter details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                pattern:
+                  type: string
+                operation:
+                  type: string
+                  enum:
+                    - '=='
+                    - '!='
+                value:
+                  type: string
+                  nullable: true
+                action:
+                  type: string
+                  enum:
+                    - process
+                    - ignore
+              required:
+                - name
+                - pattern
+                - operation
+                - value
+                - action
+              additionalProperties: false
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications~1%7Bnotification_name%7D~1filters/post/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  pattern:
+                    type: string
+                  operation:
+                    type: string
+                    enum:
+                      - '=='
+                      - '!='
+                  value:
+                    type: string
+                    nullable: true
+                  action:
+                    type: string
+                    enum:
+                      - process
+                      - ignore
+                required:
+                  - name
+                  - pattern
+                  - operation
+                  - value
+                  - action
+                additionalProperties: true
+  '/integrations/{integration_name}/notifications/{notification_name}/filters/{filter_name}':
+    parameters:
+      - name: integration_name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: notification_name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: filter_name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      description: Retrieve a specific filter from a notification by name
+      summary: Fetch a notification filter
+      tags:
+        - Integrations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications~1%7Bnotification_name%7D~1filters/post/responses/200/content/application~1json/schema'
+    delete:
+      description: Remove the filter from the notification
+      summary: Delete a notification filter
+      tags:
+        - Integrations
+      responses:
+        '204':
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+    patch:
+      description: Update a notification filter
+      summary: Update a notification filter
+      tags:
+        - Integrations
+      requestBody:
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications~1%7Bnotification_name%7D~1filters/post/responses/200/content/application~1json/schema'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
   /operations-log:
     get:
       description: Retrieve the collection of operational log entries
