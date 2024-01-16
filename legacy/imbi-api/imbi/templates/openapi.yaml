@@ -1786,6 +1786,146 @@ paths:
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+  '/integrations/{integration_name}/notifications':
+    parameters:
+      - name: integration_name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      description: Retrieve the collection of notifications defined for an integration
+      summary: Get notifications
+      tags:
+        - Integrations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications/post/responses/200/content/application~1json/schema'
+    post:
+      description: Add a new notification to an integration
+      summary: Add notification
+      tags:
+        - Integrations
+      requestBody:
+        description: Notification details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                id_pattern:
+                  type: string
+                documentation:
+                  type: string
+                  format: uri
+                  nullable: true
+                verification_token:
+                  type: string
+                  nullable: true
+                default_action:
+                  type: string
+                  enum:
+                    - process
+                    - ignore
+              required:
+                - name
+                - id_pattern
+                - documentation
+                - verification_token
+                - default_action
+              additionalProperties: false
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications/post/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  id_pattern:
+                    type: string
+                  documentation:
+                    type: string
+                    format: uri
+                    nullable: true
+                  default_action:
+                    type: string
+                    enum:
+                      - process
+                      - ignore
+                required:
+                  - name
+                  - id_pattern
+                  - documentation
+                  - default_action
+                additionalProperties: true
+  '/integrations/{integration_name}/notifications/{notification_name}':
+    parameters:
+      - name: integration_name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: notification_name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      description: Retrieve a specific notification by name
+      summary: Fetch a single notification
+      tags:
+        - Integrations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications/post/responses/200/content/application~1json/schema'
+    delete:
+      description: Remove the specified notification
+      summary: Delete a notification
+      tags:
+        - Integrations
+      responses:
+        '204':
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+    patch:
+      description: Update a notification
+      summary: Update a notification
+      tags:
+        - Integrations
+      requestBody:
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications/post/responses/200/content/application~1json/schema'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
   /operations-log:
     get:
       description: Retrieve the collection of operational log entries

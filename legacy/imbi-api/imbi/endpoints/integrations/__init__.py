@@ -4,7 +4,7 @@ Integration Endpoints
 """
 from tornado import web
 
-from . import _apps, gitlab, google
+from . import _apps, gitlab, google, notifications
 
 URLS = [
     web.url(r'^/gitlab/auth', gitlab.RedirectHandler),
@@ -17,4 +17,4 @@ URLS = [
     web.url(r'^/integrations/(?P<name>[\w_\-%\+]+)$',
             _apps.RecordRequestHandler,
             name='integration'),
-]
+] + notifications.URLS
