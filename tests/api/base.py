@@ -139,12 +139,15 @@ class TestCaseWithReset(TestCase):
         self.project_type: typing.Optional[dict] = None
         self.headers['Private-Token'] = self.run_until_complete(
             self.get_token())
+        self.run_until_complete(self.remove_test_data())
 
     def tearDown(self) -> None:
-        for table in self.TRUNCATE_TABLES:
-            self.run_until_complete(
-                self.postgres_execute(f'TRUNCATE TABLE {table} CASCADE', {}))
+        self.run_until_complete(self.remove_test_data())
         super().tearDown()
+
+    async def remove_test_data(self) -> None:
+        for table in self.TRUNCATE_TABLES:
+            await self.postgres_execute(f'TRUNCATE TABLE {table} CASCADE', {})
 
     def create_project(self) -> dict:
         if not self.environments:
