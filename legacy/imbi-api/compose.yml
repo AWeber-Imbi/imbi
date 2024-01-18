@@ -48,7 +48,8 @@ services:
     ports:
       - 5432
     volumes:
-      - ./scaffolding/postgres:/tmp/postgres
+      - ./scaffolding/postgres/z01-data.sql:/docker-entrypoint-initdb.d/z01-data.sql
+      - ./scaffolding/postgres/z02-imbi-db.sh:/docker-entrypoint-initdb.d/z02-imbi-db.sh
 
   redis:
     image: redis:7-alpine
