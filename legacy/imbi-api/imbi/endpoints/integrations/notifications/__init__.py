@@ -2,6 +2,7 @@ from tornado import web
 
 from . import filters
 from . import notifications
+from . import processing
 from . import rules
 
 PREFIX = r'^/integrations/(?P<integration_name>[^/]+)/notifications'
@@ -29,4 +30,9 @@ URLS = [
         r'/(?P<fact_type_id>\d+)$',
         rules.RecordRequestHandler,
         name=rules.RecordRequestHandler.NAME),
+    web.url(
+        fr'{PREFIX}/(?P<notification_name>{SLUG})'
+        r'/(?P<action>delete|get|post|put)$',
+        processing.ProcessingHandler,
+        name='notification-processing'),
 ]
