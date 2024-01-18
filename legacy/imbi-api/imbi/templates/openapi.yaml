@@ -2082,6 +2082,130 @@ paths:
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+  '/integrations/{integration_name}/notifications/{notification_name}/rules':
+    parameters:
+      - name: integration_name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: notification_name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      description: Retrieve the collection of rules for a notification
+      summary: Get notification rules
+      tags:
+        - Integrations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications~1%7Bnotification_name%7D~1rules/post/responses/200/content/application~1json/schema'
+    post:
+      description: Add a new rule to a notification
+      summary: Add notification rule
+      tags:
+        - Integrations
+      requestBody:
+        description: Rule details
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fact_type_id:
+                  type: integer
+                pattern:
+                  type: string
+              required:
+                - fact_type_id
+                - pattern
+              additionalProperties: false
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications~1%7Bnotification_name%7D~1rules/post/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fact_type_id:
+                    type: integer
+                  pattern:
+                    type: string
+                required:
+                  - fact_type_id
+                  - pattern
+                additionalProperties: true
+  '/integrations/{integration_name}/notifications/{notification_name}/rules/{rule_name}':
+    parameters:
+      - name: integration_name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: notification_name
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: rule_name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      description: Retrieve a specific rule from a notification by name
+      summary: Fetch a notification rule
+      tags:
+        - Integrations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications~1%7Bnotification_name%7D~1rules/post/responses/200/content/application~1json/schema'
+    delete:
+      description: Remove a rule from the notification
+      summary: Delete a notification rule
+      tags:
+        - Integrations
+      responses:
+        '204':
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+    patch:
+      description: Update a notification rule
+      summary: Update a notification rule
+      tags:
+        - Integrations
+      requestBody:
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1notifications~1%7Bnotification_name%7D~1rules/post/responses/200/content/application~1json/schema'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
   /operations-log:
     get:
       description: Retrieve the collection of operational log entries

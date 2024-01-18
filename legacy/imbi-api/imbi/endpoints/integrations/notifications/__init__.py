@@ -2,6 +2,7 @@ from tornado import web
 
 from . import filters
 from . import notifications
+from . import rules
 
 PREFIX = r'^/integrations/(?P<integration_name>[^/]+)/notifications'
 SLUG = r'[\w_\-%\+]+'
@@ -20,4 +21,12 @@ URLS = [
         fr'{PREFIX}/(?P<notification_name>{SLUG})/filters/(?P<name>{SLUG})$',
         filters.RecordRequestHandler,
         name=filters.RecordRequestHandler.NAME),
+    web.url(fr'{PREFIX}/(?P<notification_name>{SLUG})/rules$',
+            rules.CollectionRequestHandler,
+            name=rules.CollectionRequestHandler.NAME),
+    web.url(
+        fr'{PREFIX}/(?P<notification_name>{SLUG})/rules'
+        r'/(?P<fact_type_id>\d+)$',
+        rules.RecordRequestHandler,
+        name=rules.RecordRequestHandler.NAME),
 ]
