@@ -66,9 +66,9 @@ You should always run prettier for the JavaScript/JSX code. It will reformat the
 
 ### Adding a new user
 
-The easiest way to add a new user is to create a LDIF file and run it using `docker-compose ldap ldapmodify`:
+The easiest way to add a new user is to create a LDIF file and run it using `docker compose ldap ldapmodify`:
 
-    $ docker-compose exec ldap ldapadd -D cn=admin,dc=example,dc=org -W
+    $ docker compose exec ldap ldapadd -D cn=admin,dc=example,dc=org -W
     Enter LDAP Password: admin
     dn: cn=dave-shawley,ou=users,dc=example,dc=org
     objectclass: person
@@ -93,7 +93,7 @@ The easiest way to add a new user is to create a LDIF file and run it using `doc
     ^D
     $
 
-You can also use `docker-compose exec` to spawn a shell and use the ldap utilities directly on the container. The admin
+You can also use `docker compose exec` to spawn a shell and use the ldap utilities directly on the container. The admin
 user is `cn=admin,dc=example,dc=org` with a password of `admin`. The `userPassword` in the document is the Base-64
 encoded SHA1 checksum of the plaintext password.
 

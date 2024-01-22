@@ -10,7 +10,7 @@ all: setup test
 
 .PHONY: clean
 clean:
-	@ docker-compose down --remove-orphans --volumes
+	@ docker compose down --remove-orphans --volumes
 	@ rm -rf imbi/static/fonts/* imbi/static/js/*
 	@ rm -rf .env build dist imbi.egg-info env ui/node_modules
 
