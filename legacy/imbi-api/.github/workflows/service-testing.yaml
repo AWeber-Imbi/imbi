@@ -23,7 +23,7 @@ jobs:
       - name: Bootstrap environment
         run: make .env
       - name: Run Tests
-        run: docker-compose run --rm -T test-python3.9
+        run: docker compose run --rm -T test-python3.9
       - name: Upload Coverage
         uses: codecov/codecov-action@v1.0.2
         if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags') && github.repository == 'aweber/imbi'

@@ -14,11 +14,11 @@ TEST_HOST="${TEST_HOST:-127.0.0.1}"
 echo "Integration test host: ${TEST_HOST}"
 
 get_container() {
-  docker-compose ps -q $1
+  docker compose ps -q $1
 }
 
 get_exposed_port() {
-  docker-compose port $1 $2 | cut -d: -f2
+  docker compose port $1 $2 | cut -d: -f2
 }
 
 report_start() {
@@ -34,7 +34,7 @@ wait_for_healthy_containers() {
   counter="0"
   while true
   do
-    if [ "$( docker-compose ps | grep -c healthy | grep -v unhealthy)" -eq "${1}" ]; then
+    if [ "$( docker compose ps | grep -c healthy | grep -v unhealthy)" -eq "${1}" ]; then
       break
     fi
     counter=$((counter+1))
@@ -50,15 +50,15 @@ wait_for_healthy_containers() {
 mkdir -p build ddl/build imbi/static/css imbi/static/fonts imbi/static/js
 
 # Stop any running instances and clean up after them, then pull images
-docker-compose down --volumes --remove-orphans
+docker compose down --volumes --remove-orphans
 printf "Pulling and starting containers ... "
-docker-compose pull -q
-docker-compose up -d ldap opensearch postgres redis
+docker compose pull -q
+docker compose up -d ldap opensearch postgres redis
 report_done
 
 wait_for_healthy_containers 4
 
-docker-compose exec -T postgres psql -U postgres -d postgres -f /tmp/postgres/dml.sql -q
+docker compose exec -T postgres psql -U postgres -d postgres -f /tmp/postgres/dml.sql -q
 
 cat > .env <<EOF
 export ENVIRONMENT=development
