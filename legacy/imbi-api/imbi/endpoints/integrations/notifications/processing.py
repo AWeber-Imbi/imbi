@@ -109,6 +109,8 @@ class ProcessingHandler(base.RequestHandler):
         the request and calling this method to do the actual processing.
 
         """
+        self.logger.name = '.'.join(
+            [__package__, integration_name, notification_name])
         notification = await self._get_notification(integration_name,
                                                     notification_name)
         self.logger.info('processing notification %s/%s default %r',
