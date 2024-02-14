@@ -4,6 +4,8 @@ import json
 import unittest
 import uuid
 
+import pydantic
+
 from imbi.endpoints.integrations.notifications import processing
 from tests import base
 
@@ -465,9 +467,10 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
 class EdgeTests(unittest.TestCase):
     def test_json_pointer_validation(self) -> None:
+        Adapter = pydantic.TypeAdapter(processing.JsonPointer)
         with self.assertRaises(TypeError):
-            processing.JsonPointer.validate(1.0)
+            Adapter.validate_python(1.0)
         with self.assertRaises(ValueError):
-            processing.JsonPointer.validate('not-a-slash')
+            Adapter.validate_python('not-a-slash')
         with self.assertRaises(ValueError):
-            processing.JsonPointer.validate('')
+            Adapter.validate_python('')
