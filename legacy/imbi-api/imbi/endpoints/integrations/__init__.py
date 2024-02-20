@@ -4,7 +4,9 @@ Integration Endpoints
 """
 from tornado import web
 
-from . import gitlab, google, integrations, notifications
+from . import automations, gitlab, google, integrations, notifications
+
+SLUG = r'[\w_\-%\+]+'
 
 URLS = [
     web.url(r'^/gitlab/auth', gitlab.RedirectHandler),
@@ -14,7 +16,9 @@ URLS = [
     web.url(r'^/integrations$',
             integrations.CollectionRequestHandler,
             name='integrations'),
-    web.url(r'^/integrations/(?P<name>[\w_\-%\+]+)$',
+    web.url(fr'^/integrations/(?P<name>{SLUG})$',
             integrations.RecordRequestHandler,
             name='integration'),
+    web.url(fr'/integrations/(?P<integration_name>{SLUG})/automations/?',
+            automations.CollectionRequestHandler),
 ] + notifications.URLS
