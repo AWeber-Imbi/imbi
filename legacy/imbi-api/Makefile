@@ -1,7 +1,7 @@
 REVISION = $(shell git rev-parse HEAD | cut -b 1-7)
 
 ifneq (,$(wildcard ./.env))
-	include .env
+	-include .env
 	export $(shell sed 's/=.*//' .env)
 endif
 
@@ -21,9 +21,9 @@ env: env/stamp
 
 env/stamp: setup.cfg setup.py Makefile
 	@ python3 -m venv env
-	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install --upgrade pip
-	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install wheel
-	@ source env/bin/activate && PIP_USER=0 env/bin/pip3 install -e '.[testing]'
+	@ . ./env/bin/activate && PIP_USER=0 env/bin/pip3 install --upgrade pip
+	@ . ./env/bin/activate && PIP_USER=0 env/bin/pip3 install wheel
+	@ . ./env/bin/activate && PIP_USER=0 env/bin/pip3 install -e '.[testing]'
 	@ test -d .git/ && ./env/bin/pre-commit install --install-hooks || true
 	@ touch env/stamp
 

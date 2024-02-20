@@ -139,30 +139,36 @@ class TestCaseWithReset(TestCase):
         self.project_type: typing.Optional[dict] = None
         self.headers['Private-Token'] = self.run_until_complete(
             self.get_token())
+        self.run_until_complete(self.remove_test_data())
 
     def tearDown(self) -> None:
-        for table in self.TRUNCATE_TABLES:
-            self.run_until_complete(
-                self.postgres_execute(f'TRUNCATE TABLE {table} CASCADE', {}))
+        self.run_until_complete(self.remove_test_data())
         super().tearDown()
 
-    def create_project(self) -> dict:
+    async def remove_test_data(self) -> None:
+        for table in self.TRUNCATE_TABLES:
+            await self.postgres_execute(f'TRUNCATE TABLE {table} CASCADE', {})
+
+    def create_project(self, **overrides) -> dict:
         if not self.environments:
             self.environments = self.create_environments()
         if not self.namespace:
             self.namespace = self.create_namespace()
         if not self.project_type:
             self.project_type = self.create_project_type()
+
+        project_definition = {
+            'namespace_id': self.namespace['id'],
+            'project_type_id': self.project_type['id'],
+            'name': str(uuid.uuid4()),
+            'slug': str(uuid.uuid4().hex),
+            'description': str(uuid.uuid4()),
+            'environments': self.environments,
+        }
+        project_definition.update(overrides)
         result = self.fetch('/projects',
                             method='POST',
-                            json_body={
-                                'namespace_id': self.namespace['id'],
-                                'project_type_id': self.project_type['id'],
-                                'name': str(uuid.uuid4()),
-                                'slug': str(uuid.uuid4().hex),
-                                'description': str(uuid.uuid4()),
-                                'environments': self.environments,
-                            })
+                            json_body=project_definition)
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
