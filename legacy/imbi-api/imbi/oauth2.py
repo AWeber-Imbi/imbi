@@ -18,6 +18,7 @@ class IntegrationToken:
     integration: 'OAuth2Integration'
     access_token: str
     refresh_token: str
+    id_token: typing.Optional[str]
     external_id: str
 
 
@@ -39,7 +40,7 @@ class OAuth2Integration:
 
     SQL_GET_TOKENS = re.sub(
         r'\s+', ' ', """\
-        SELECT access_token, refresh_token, external_id
+        SELECT access_token, refresh_token, id_token, external_id
           FROM v1.user_oauth2_tokens
          WHERE username = %(username)s
            AND integration = %(integration)s""")
@@ -117,7 +118,8 @@ class OAuth2Integration:
             })
         return [
             IntegrationToken(self, row['access_token'], row['refresh_token'],
-                             row['external_id']) for row in result
+                             row['id_token'], row['external_id'])
+            for row in result
         ]
 
     @property

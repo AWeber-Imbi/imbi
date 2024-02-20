@@ -5,10 +5,10 @@ import urllib.parse
 
 import aioredis
 import google.auth.exceptions
+import google.oauth2.id_token
 import sprockets.mixins.http
 import yarl
 from google.auth.transport import requests
-from google.oauth2 import id_token
 
 import imbi.user
 from imbi import errors, oauth2
@@ -27,9 +27,9 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         r'\s+', ' ', """
         INSERT INTO v1.user_oauth2_tokens
                     (username, integration, external_id,
-                     access_token, refresh_token)
+                     access_token, refresh_token, id_token)
              VALUES (%(username)s, %(integration)s, %(external_id)s,
-                     %(access_token)s, %(refresh_token)s)
+                     %(access_token)s, %(refresh_token)s, %(id_token)s)
         ON CONFLICT (integration, external_id)
                  DO UPDATE SET access_token = EXCLUDED.access_token,
                               refresh_token = EXCLUDED.refresh_token
@@ -39,6 +39,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         r'\s+', ' ', """
        UPDATE v1.user_oauth2_tokens
           SET access_token = %(access_token)s,
+              id_token = %(id_token)s
               username = %(username)s
         WHERE integration = %(integration)s
           AND external_id = %(external_id)s
@@ -69,13 +70,13 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         if not code:
             raise errors.BadRequest('No code in request payload')
 
-        (openid_token, access_token,
+        (id_token, access_token,
          refresh_token) = await self.exchange_code_for_tokens(code)
 
-        user = await self.sync_user(openid_token)
+        user = await self.sync_user(id_token)
         await self.save_session(user)
         await self.upsert_token(user.username, user.external_id, access_token,
-                                refresh_token)
+                                refresh_token, id_token)
 
         target = yarl.URL(self.request.full_url()).with_path('/ui/')
         self.redirect(str(target))
@@ -84,11 +85,10 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         self.session.user = user
         await self.session.save()
 
-    async def sync_user(self, openid_token) -> imbi.user.User:
+    async def sync_user(self, id_token) -> imbi.user.User:
         try:
-            id_info = id_token.verify_oauth2_token(openid_token,
-                                                   requests.Request(),
-                                                   self.integration.client_id)
+            id_info = google.oauth2.id_token.verify_oauth2_token(
+                id_token, requests.Request(), self.integration.client_id)
         except google.auth.exceptions.GoogleAuthError as e:
             raise errors.BadRequest('Token issuer is invalid: %s', e)
         except ValueError:
@@ -140,7 +140,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                 response.body.get('refresh_token'))
 
     async def upsert_token(self, username, external_id, access_token,
-                           refresh_token):
+                           refresh_token, id_token):
         if refresh_token:
             await self.postgres_execute(
                 self.ADD_TOKEN_SQL, {
@@ -148,6 +148,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                     'external_id': external_id,
                     'access_token': access_token,
                     'refresh_token': refresh_token,
+                    'id_token': id_token,
                     'integration': self.integration_name
                 })
         else:
@@ -156,6 +157,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                     'username': username,
                     'external_id': external_id,
                     'access_token': access_token,
+                    'id_token': id_token,
                     'integration': self.integration_name
                 })
 
