@@ -16,6 +16,7 @@ from email import utils
 
 import jsonpatch
 import problemdetails
+import sprockets.mixins.mediatype.content
 import sprockets_postgres as postgres
 import umsgpack
 import yarl
@@ -27,7 +28,6 @@ from openapi_core.templating.paths.exceptions import \
 from openapi_core.unmarshalling.schemas.exceptions import ValidateError
 from openapi_core.validation.exceptions import InvalidSecurity
 from sprockets.http import mixins
-from sprockets.mixins import mediatype
 from tornado import httputil, web
 
 from imbi import common, cors, errors, session, user, version
@@ -63,7 +63,8 @@ def require_permission(permission):
 
 class RequestHandler(cors.CORSMixin, postgres.RequestHandlerMixin,
                      mixins.ErrorLogger, problemdetails.ErrorWriter,
-                     mediatype.ContentMixin, web.RequestHandler):
+                     sprockets.mixins.mediatype.content.ContentMixin,
+                     web.RequestHandler):
     """Base RequestHandler class used for recipients and subscribers."""
 
     APPLICATION_JSON = 'application/json'
