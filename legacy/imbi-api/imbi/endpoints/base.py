@@ -16,6 +16,7 @@ from email import utils
 
 import jsonpatch
 import problemdetails
+import pydantic
 import sprockets.mixins.mediatype.content
 import sprockets_postgres as postgres
 import umsgpack
@@ -630,3 +631,20 @@ class PaginatedRequestMixin(web.RequestHandler):
             except ValueError as error:
                 self.logger.warning('ignoring malformed token %r: %s', token,
                                     error)
+
+
+ModelType = typing.TypeVar('ModelType', bound=pydantic.BaseModel)
+
+
+class PydanticHandlerMixin(RequestHandler):
+    def parse_request_body_as(self,
+                              model_cls: typing.Type[ModelType]) -> ModelType:
+        try:
+            return model_cls.model_validate(self.get_request_body())
+        except pydantic.ValidationError as error:
+            raise errors.ApplicationError(
+                422,
+                'invalid-request-body',
+                'Failed to validate request body: %s',
+                error,
+                validation_errors=error.errors())

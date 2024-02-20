@@ -1,6 +1,7 @@
 import decimal
 import urllib.parse
 
+import pydantic
 from sprockets.mixins.mediatype import handlers, transcoders
 
 
@@ -41,11 +42,19 @@ class DecimalMixin:
         return super().dump_object(obj)
 
 
-class JSONTranscoder(DecimalMixin, transcoders.JSONTranscoder):
+class PydanticMixin:
+    def dump_object(self, obj):
+        if isinstance(obj, pydantic.BaseModel):
+            return obj.model_dump(mode='json')
+        return super().dump_object(obj)
+
+
+class JSONTranscoder(DecimalMixin, PydanticMixin, transcoders.JSONTranscoder):
     """Handle Decimal Values"""
 
 
-class MsgPackTranscoder(DecimalMixin, transcoders.MsgPackTranscoder):
+class MsgPackTranscoder(DecimalMixin, PydanticMixin,
+                        transcoders.MsgPackTranscoder):
     """Handle Decimal Values"""
 
 
