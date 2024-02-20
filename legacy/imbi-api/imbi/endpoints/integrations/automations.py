@@ -100,6 +100,25 @@ extensions.register_adapter(AutomationCategory, adapt_automation_category)
 
 class CollectionRequestHandler(base.PydanticHandlerMixin,
                                base.ValidatingRequestHandler):
+    async def get(self, integration_name: str) -> None:
+        result = await self.postgres_execute(
+            'SELECT a.id, a.name, a.slug, a.callable, a.categories,'
+            '       a.integration_name, a.created_at, a.created_by,'
+            '       a.last_modified_at, a.last_modified_by,'
+            '       array_agg(pt.slug) AS applies_to,'
+            '       array_agg(d.slug) AS depends_on'
+            '  FROM v1.automations AS a'
+            '  LEFT JOIN v1.available_automations AS aa'
+            '         ON aa.automation_id = a.id'
+            '  LEFT JOIN v1.project_types AS pt ON pt.id = aa.project_type_id'
+            '  LEFT JOIN v1.automations_graph AS g ON g.automation_id = a.id'
+            '  LEFT JOIN v1.automations AS d ON d.id = g.dependency_id'
+            ' WHERE a.integration_name = %(integration_name)s'
+            ' GROUP BY a.id, a.name, a.slug, a.callable, a.categories,'
+            '          a.integration_name, a.slug',
+            parameters={'integration_name': integration_name})
+        self.send_response([Automation.model_validate(row) for row in result])
+
     @base.require_permission('admin')
     async def post(self, integration_name: str) -> None:
         request = self.parse_request_body_as(AddAutomationRequest)
