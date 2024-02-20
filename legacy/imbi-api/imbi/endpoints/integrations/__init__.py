@@ -21,4 +21,7 @@ URLS = [
             name='integration'),
     web.url(fr'/integrations/(?P<integration_name>{SLUG})/automations/?',
             automations.CollectionRequestHandler),
+    web.url(
+        fr'/integrations/(?P<integration_name>{SLUG})'
+        fr'/automations/(?P<slug>{SLUG})', automations.RecordRequestHandler),
 ] + notifications.URLS

@@ -185,3 +185,55 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
                 automation.depends_on = sorted(mapping.keys())
 
             self.send_response(automation)
+
+
+class RecordRequestHandler(base.PydanticHandlerMixin,
+                           base.ValidatingRequestHandler):
+    async def get(self, integration_name: str, slug: str) -> None:
+        automation_id, automation_slug = slugify.decode_path_slug(slug)
+        del slug  # use either automation_id or automation_slug
+
+        self.logger.debug('looking for %r or %r', automation_id,
+                          automation_slug)
+
+        result = await self.postgres_execute(
+            'SELECT a.id, a.name, a.callable, a.categories, a.slug,'
+            '       a.integration_name, a.created_at, a.created_by,'
+            '       a.last_modified_at, a.last_modified_by,'
+            '       array_agg(pt.slug) AS applies_to,'
+            '       array_agg(d.slug) AS depends_on'
+            '  FROM v1.automations AS a'
+            '  LEFT JOIN v1.available_automations AS aa'
+            '         ON aa.automation_id = a.id'
+            '  LEFT JOIN v1.project_types AS pt ON pt.id = aa.project_type_id'
+            '  LEFT JOIN v1.automations_graph AS g ON g.automation_id = a.id'
+            '  LEFT JOIN v1.automations AS d ON d.id = g.dependency_id'
+            ' WHERE a.integration_name = %(integration_name)s'
+            '   AND (a.slug = %(slug)s OR a.id = %(automation_id)s)'
+            ' GROUP BY a.id, a.name, a.callable, a.categories, a.slug,'
+            '          a.integration_name', {
+                'automation_id': automation_id,
+                'slug': automation_slug,
+                'integration_name': integration_name,
+            })
+        if not result:
+            raise errors.ItemNotFound(instance=self.request.uri)
+
+        self.send_response(Automation.model_validate(result.row))
+
+    @base.require_permission('admin')
+    async def delete(self, integration_name: str, slug: str) -> None:
+        automation_id, automation_slug = slugify.decode_path_slug(slug)
+        del slug  # use either automation_id or automation_slug
+
+        result = await self.postgres_execute(
+            'DELETE FROM v1.automations'
+            ' WHERE integration_name = %(integration_name)s'
+            '   AND (id = %(automation_id)s OR slug = %(automation_slug)s)', {
+                'automation_id': automation_id,
+                'automation_slug': automation_slug,
+                'integration_name': integration_name,
+            })
+        if not result.row_count:
+            raise errors.ItemNotFound(instance=self.request.uri)
+        self.set_status(204, reason='Item Deleted')
