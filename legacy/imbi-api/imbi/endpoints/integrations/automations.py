@@ -18,35 +18,6 @@ def do_nothing(*_args, **_kwargs):
     pass
 
 
-class InvalidSlugsError(errors.BadRequest):
-    def __init__(self, slug_type: str, invalid_slugs: set[int | str]) -> None:
-        super().__init__('Invalid %s slugs: %r',
-                         slug_type,
-                         invalid_slugs,
-                         invalid_slugs=sorted(invalid_slugs))
-
-
-async def _map_ids_and_slugs(conn: sprockets_postgres.PostgresConnector,
-                             entity_type: str,
-                             values: list[int | str]) -> dict[str, int]:
-    slugs = tuple(s for s in values if isinstance(s, str))
-    ids = tuple(i for i in values if isinstance(i, int))
-    result = await conn.execute(
-        f'SELECT DISTINCT slug, id'
-        f'  FROM v1.{entity_type}'
-        f' WHERE slug IN %(slugs)s'
-        f'    OR id IN %(ids)s', {
-            'slugs': slugs or (None, ),
-            'ids': ids or (None, ),
-        })
-    mapping = {row['slug']: row['id'] for row in result}
-    invalid_values: set[int | str] = set(slugs) - set(mapping.keys())
-    invalid_values.update(set(ids) - set(mapping.values()))
-    if invalid_values:
-        raise InvalidSlugsError(entity_type, invalid_values)
-    return mapping
-
-
 class AutomationCategory(enum.Enum):
     CREATE_PROJECT = 'create-project'
 
@@ -159,30 +130,30 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
             )
 
             if request.applies_to:
-                mapping = await _map_ids_and_slugs(conn, 'project_types',
-                                                   request.applies_to)
+                mapping = await slugify.IdSlugMapping.from_database(
+                    conn, 'v1', 'project_types', request.applies_to)
                 query = psycopg2.sql.SQL(
                     'INSERT INTO v1.available_automations(automation_id,'
                     '                                     project_type_id)'
                     '     VALUES {}'.format(','.join(
                         conn.cursor.mogrify('(%s,%s)', (
                             automation.id, project_type_id)).decode()
-                        for project_type_id in mapping.values())))
+                        for project_type_id in mapping.ids)))
                 await conn.execute(query)
-                automation.applies_to = sorted(mapping.keys())
+                automation.applies_to = sorted(mapping.slugs)
 
             if request.depends_on:
-                mapping = await _map_ids_and_slugs(conn, 'automations',
-                                                   request.depends_on)
+                mapping = await slugify.IdSlugMapping.from_database(
+                    conn, 'v1', 'automations', request.depends_on)
                 query = psycopg2.sql.SQL(
                     'INSERT INTO v1.automations_graph(automation_id,'
                     '                                 dependency_id)'
                     '     VALUES {}'.format(','.join(
                         conn.cursor.mogrify('(%s,%s)', (
                             automation.id, dependency_id)).decode()
-                        for dependency_id in mapping.values())))
+                        for dependency_id in mapping.ids)))
                 await conn.execute(query)
-                automation.depends_on = sorted(mapping.keys())
+                automation.depends_on = sorted(mapping.slugs)
 
             self.send_response(automation)
 
