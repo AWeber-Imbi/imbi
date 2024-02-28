@@ -17,7 +17,7 @@ UNSET_URL = yarl.URL()
 class IntegrationToken:
     integration: 'OAuth2Integration'
     access_token: str
-    refresh_token: str
+    refresh_token: typing.Optional[str]
     id_token: typing.Optional[str]
     external_id: str
 
@@ -31,12 +31,27 @@ class OAuth2Integration:
           FROM v1.oauth2_integrations
          WHERE name = %(name)s""")
 
-    SQL_ADD_TOKEN = re.sub(
+    SQL_UPSERT_TOKENS = re.sub(
         r'\s+', ' ', """\
         INSERT INTO v1.user_oauth2_tokens(username, integration, external_id,
-                                          access_token, refresh_token)
+                                          access_token, refresh_token,
+                                          id_token)
              VALUES (%(username)s, %(integration)s, %(external_id)s,
-                     %(access_token)s, %(refresh_token)s)""")
+                     %(access_token)s, %(refresh_token)s, %(id_token)s)
+        ON CONFLICT (integration, external_id)
+      DO UPDATE SET access_token = EXCLUDED.access_token,
+                    refresh_token = EXCLUDED.refresh_token,
+                    id_token = EXCLUDED.id_token""")
+
+    SQL_UPDATE_TOKENS = re.sub(
+        r'\s+', ' ', """
+           UPDATE v1.user_oauth2_tokens
+              SET access_token = %(access_token)s,
+                  id_token = %(id_token),
+                  username = %(username)s
+            WHERE integration = %(integration)s
+              AND external_id = %(external_id)s
+        """)
 
     SQL_GET_TOKENS = re.sub(
         r'\s+', ' ', """\
@@ -95,18 +110,34 @@ class OAuth2Integration:
         else:
             self._reset()
 
-    async def add_user_token(self, user_info: 'user.User', external_id: str,
-                             access_token: str, refresh_token: str) -> None:
+    async def upsert_user_tokens(
+            self,
+            username: str,
+            external_id: str,
+            access_token: str,
+            refresh_token: typing.Optional[str] = None,
+            id_token: typing.Optional[str] = None) -> None:
         async with self._application.postgres_connector(
                 on_error=self._on_postgres_error) as conn:
-            await conn.execute(
-                self.SQL_ADD_TOKEN, {
-                    'integration': self.name,
-                    'username': user_info.username,
-                    'external_id': external_id,
-                    'access_token': access_token,
-                    'refresh_token': refresh_token
-                })
+            if refresh_token:
+                await conn.execute(
+                    self.SQL_UPSERT_TOKENS, {
+                        'integration': self.name,
+                        'username': username,
+                        'external_id': external_id,
+                        'access_token': access_token,
+                        'refresh_token': refresh_token,
+                        'id_token': id_token
+                    })
+            else:
+                await conn.execute(
+                    self.SQL_UPDATE_TOKENS, {
+                        'integration': self.name,
+                        'username': username,
+                        'external_id': external_id,
+                        'access_token': access_token,
+                        'id_token': id_token
+                    })
 
     async def get_user_tokens(self, user_info: 'user.User') \
             -> list[IntegrationToken]:

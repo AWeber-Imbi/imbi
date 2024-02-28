@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 import urllib.parse
 
 import aioredis
@@ -22,28 +21,6 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
     integration: oauth2.OAuth2Integration
 
     NAME = 'google-redirect'
-
-    ADD_TOKEN_SQL = re.sub(
-        r'\s+', ' ', """
-        INSERT INTO v1.user_oauth2_tokens
-                    (username, integration, external_id,
-                     access_token, refresh_token, id_token)
-             VALUES (%(username)s, %(integration)s, %(external_id)s,
-                     %(access_token)s, %(refresh_token)s, %(id_token)s)
-        ON CONFLICT (integration, external_id)
-                 DO UPDATE SET access_token = EXCLUDED.access_token,
-                              refresh_token = EXCLUDED.refresh_token
-    """)
-
-    UPDATE_TOKEN_SQL = re.sub(
-        r'\s+', ' ', """
-       UPDATE v1.user_oauth2_tokens
-          SET access_token = %(access_token)s,
-              id_token = %(id_token)s
-              username = %(username)s
-        WHERE integration = %(integration)s
-          AND external_id = %(external_id)s
-    """)
 
     @property
     def _redis(self) -> aioredis.Redis:
@@ -75,9 +52,10 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 
         user = await self.sync_user(id_token)
         await self.save_session(user)
-        await self.upsert_token(user.username, user.external_id, access_token,
-                                refresh_token, id_token)
-
+        await self.integration.upsert_user_tokens(user.username,
+                                                  user.external_id,
+                                                  access_token, refresh_token,
+                                                  id_token)
         target = yarl.URL(self.request.full_url()).with_path('/ui/')
         self.redirect(str(target))
 
@@ -138,28 +116,6 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
         return (response.body.get('id_token'),
                 response.body.get('access_token'),
                 response.body.get('refresh_token'))
-
-    async def upsert_token(self, username, external_id, access_token,
-                           refresh_token, id_token):
-        if refresh_token:
-            await self.postgres_execute(
-                self.ADD_TOKEN_SQL, {
-                    'username': username,
-                    'external_id': external_id,
-                    'access_token': access_token,
-                    'refresh_token': refresh_token,
-                    'id_token': id_token,
-                    'integration': self.integration_name
-                })
-        else:
-            await self.postgres_execute(
-                self.UPDATE_TOKEN_SQL, {
-                    'username': username,
-                    'external_id': external_id,
-                    'access_token': access_token,
-                    'id_token': id_token,
-                    'integration': self.integration_name
-                })
 
     @property
     def integration_name(self):

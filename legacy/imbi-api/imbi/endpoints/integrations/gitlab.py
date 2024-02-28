@@ -49,9 +49,10 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                     title='Gitlab authorization failure',
                     detail='unexpected email address {} for user {}'.format(
                         email, imbi_user.username))
-            await self.integration.add_user_token(imbi_user, str(user_id),
-                                                  token.access_token,
-                                                  token.refresh_token)
+            await self.integration.upsert_user_tokens(imbi_user.username,
+                                                      str(user_id),
+                                                      token.access_token,
+                                                      token.refresh_token)
 
         # Revoke the gitlab token if we cannot use or save it.  This
         # is a catch-all case since GitLab does not remove tokens based
