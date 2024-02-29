@@ -4,12 +4,11 @@ import datetime
 import enum
 import typing
 
-import psycopg2.sql
 import pydantic
 import sprockets_postgres
 from psycopg2 import extensions
 
-from imbi import errors, slugify
+from imbi import errors, postgres, slugify
 from imbi.endpoints import base
 
 
@@ -132,27 +131,19 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
             if request.applies_to:
                 mapping = await slugify.IdSlugMapping.from_database(
                     conn, 'v1', 'project_types', request.applies_to)
-                query = psycopg2.sql.SQL(
-                    'INSERT INTO v1.available_automations(automation_id,'
-                    '                                     project_type_id)'
-                    '     VALUES {}'.format(','.join(
-                        conn.cursor.mogrify('(%s,%s)', (
-                            automation.id, project_type_id)).decode()
-                        for project_type_id in mapping.ids)))
-                await conn.execute(query)
+                await postgres.insert_values(
+                    conn, 'v1', 'available_automations',
+                    ['automation_id', 'project_type_id'],
+                    [(automation.id, value) for value in mapping.ids])
                 automation.applies_to = sorted(mapping.slugs)
 
             if request.depends_on:
                 mapping = await slugify.IdSlugMapping.from_database(
                     conn, 'v1', 'automations', request.depends_on)
-                query = psycopg2.sql.SQL(
-                    'INSERT INTO v1.automations_graph(automation_id,'
-                    '                                 dependency_id)'
-                    '     VALUES {}'.format(','.join(
-                        conn.cursor.mogrify('(%s,%s)', (
-                            automation.id, dependency_id)).decode()
-                        for dependency_id in mapping.ids)))
-                await conn.execute(query)
+                await postgres.insert_values(
+                    conn, 'v1', 'automations_graph',
+                    ['automation_id', 'dependency_id'],
+                    [(automation.id, value) for value in mapping.ids])
                 automation.depends_on = sorted(mapping.slugs)
 
             self.send_response(automation)
