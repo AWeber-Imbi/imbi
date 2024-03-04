@@ -7,6 +7,8 @@ goal is to collect SQL query helpers into this module when they
 are applicable to multiple uses.
 
 """
+from __future__ import annotations
+
 import typing
 
 import sprockets_postgres
@@ -24,6 +26,11 @@ async def insert_values(
     implements the SQL building approach described briefly in
     https://github.com/psycopg/psycopg/issues/576 .
 
+    .. code-block::
+
+       INSERT INTO {schema}.{table_name} ({column_names})
+            VALUES (*rows[0]), (*rows[1]), ...
+
     """
     if not rows:
         return
@@ -37,3 +44,39 @@ async def insert_values(
                 sql.SQL(',').join(sql.Literal(v) for v in row))
             for row in rows))
     await conn.execute(query.as_string(conn.cursor.raw))
+
+
+def generate_update(
+    schema: str,
+    table_name: str,
+    id_placeholder: str,
+    original: dict[str, typing.Any],
+    updated: dict[str, typing.Any],
+    columns: typing.Iterable[str],
+) -> sql.Composed | None:
+    """Generate an SQL update statement from `original` into `updated`
+
+    This function dynamically generates the SQL UPDATE statement
+    constraining the changes to those in `columns`. If there are
+    no changes, then ``None`` is returned.
+
+    .. code-block::
+
+       UPDATE {schema}.{table_name}
+          SET col1 = updated[col1],
+              ...
+        WHERE id = %({id_placeholder})s
+
+    """
+    modified_columns = [c for c in columns if original[c] != updated[c]]
+    if not modified_columns:
+        return None
+
+    return sql.SQL('UPDATE {table} SET {values} WHERE id = {id_value}').format(
+        table=sql.Identifier(schema, table_name),
+        values=sql.SQL(',').join(
+            sql.SQL('{} = {}').format(sql.Identifier(column),
+                                      sql.Literal(updated[column]))
+            for column in modified_columns),
+        id_value=sql.Placeholder(id_placeholder),
+    )

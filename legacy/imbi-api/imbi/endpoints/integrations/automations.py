@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import datetime
 import enum
+import http.client
 import typing
 
+import jsonpatch
+import psycopg2.errors
 import pydantic
 import sprockets_postgres
 from psycopg2 import extensions
@@ -152,12 +155,156 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
 class RecordRequestHandler(base.PydanticHandlerMixin,
                            base.ValidatingRequestHandler):
     async def get(self, integration_name: str, slug: str) -> None:
+        automation = await self._find_automation(integration_name, slug)
+        if not automation:
+            raise errors.ItemNotFound(instance=self.request.uri)
+        self.send_response(automation)
+
+    @base.require_permission('admin')
+    async def delete(self, integration_name: str, slug: str) -> None:
+        automation_id, automation_slug = slugify.decode_path_slug(slug)
+        del slug  # use either automation_id or automation_slug
+
+        result = await self.postgres_execute(
+            'DELETE FROM v1.automations'
+            ' WHERE integration_name = %(integration_name)s'
+            '   AND (id = %(automation_id)s'
+            '        OR slug = %(automation_slug)s'
+            '        OR name = %(automation_slug)s)', {
+                'automation_id': automation_id,
+                'automation_slug': automation_slug,
+                'integration_name': integration_name,
+            })
+        if not result.row_count:
+            raise errors.ItemNotFound(instance=self.request.uri)
+        self.set_status(204, reason='Item Deleted')
+
+    @base.require_permission('admin')
+    async def patch(self, integration_name: str, slug: str) -> None:
+        patch = jsonpatch.JsonPatch(self.get_request_body())
+
+        automation = await self._find_automation(integration_name, slug)
+        if not automation:
+            raise errors.ItemNotFound(instance=self.request.uri)
+
+        original = automation.model_dump(mode='json')
+        updated = patch.apply(original)
+        if updated['id'] != original['id']:
+            raise errors.BadRequest('Automation ID is immutable')
+
+        project_type_map, automations_map = await self._get_maps(
+            automation, updated)
+
+        # map any IDs into slugs first since that is the real data model
+        updated.update({
+            'applies_to': project_type_map.to_slugs(updated['applies_to']),
+            'depends_on': automations_map.to_slugs(updated['depends_on']),
+        })
+        try:
+            new_automation = Automation.model_validate(updated)
+        except pydantic.ValidationError as error:
+            raise errors.PydanticValidationError(
+                error, 'Failed to validate new Automation')
+
+        update_stmt = postgres.generate_update(
+            'v1', 'automations', 'automation_id', original, updated,
+            ('name', 'slug', 'integration_name', 'callable', 'categories'))
+
+        # figure out which association values we are adding and/or
+        # removing... and map them to IDs while we are in there
+        added_types, removed_types = partition_and_map_set_changes(
+            automation.applies_to, new_automation.applies_to, project_type_map)
+        added_deps, removed_deps = partition_and_map_set_changes(
+            automation.depends_on, new_automation.depends_on, automations_map)
+
+        # and now we can finally figure out if anything has changed
+        if not any((update_stmt, added_types, removed_types, added_deps,
+                    removed_deps)):
+            self.set_status(http.client.NOT_MODIFIED)
+            return
+
+        async with self.postgres_transaction() as txn:
+            txn: sprockets_postgres.PostgresConnector
+            if update_stmt:
+                await txn.execute(update_stmt.as_string(txn.cursor.raw),
+                                  {'automation_id': automation.id})
+            if added_deps:
+                await postgres.insert_values(
+                    txn, 'v1', 'automations_graph',
+                    ['automation_id', 'dependency_id'],
+                    [(automation.id, dependency) for dependency in added_deps])
+            if removed_deps:
+                await txn.execute(
+                    'DELETE FROM v1.automations_graph'
+                    '      WHERE automation_id = %(automation_id)s'
+                    '        AND dependency_id IN %(removed_deps)s', {
+                        'automation_id': automation.id,
+                        'removed_deps': tuple(removed_deps)
+                    })
+            if added_types:
+                await postgres.insert_values(
+                    txn, 'v1', 'available_automations',
+                    ['automation_id', 'project_type_id'],
+                    [(automation.id, pt_id) for pt_id in added_types])
+            if removed_types:
+                await txn.execute(
+                    'DELETE FROM v1.available_automations'
+                    '      WHERE automation_id = %(automation_id)s'
+                    '        AND project_type_id IN %(removed_types)s', {
+                        'automation_id': automation.id,
+                        'removed_types': tuple(removed_types)
+                    })
+
+        automation = await self._find_automation(integration_name, slug)
+        self.send_response(automation)
+
+    def on_postgres_error(self, metric_name: str,
+                          exc: Exception) -> typing.Optional[Exception]:
+        """Handle postgres exceptions
+
+        Stop exceptions that are not handled in sprockets_postgres
+        from becoming "internal server errors". we don't want a bad
+        patch to be retried by a client.
+
+        """
+        self.logger.exception('unexpected error')
+        if isinstance(exc, psycopg2.errors.NotNullViolation):
+            sanitized = exc.pgerror.removeprefix('ERROR:').splitlines()[0]
+            return errors.BadRequest(
+                'Request generated an invalid result: %s',
+                str(exc).replace('\n', ' '),
+                title='Invalid update',
+                reason='Bad Request',
+                detail=sanitized.strip(),
+                sqlstate=exc.pgcode,
+            )
+        if isinstance(exc, psycopg2.errors.CheckViolation):
+            sanitized = exc.pgerror.removeprefix('ERROR:').splitlines()[0]
+            return errors.ApplicationError(
+                http.HTTPStatus.CONFLICT,
+                'conflict',
+                'Request violated relationship constraint: %s',
+                str(exc).replace('\n', ' '),
+                title='Invalid update',
+                reason='Conflict',
+                detail=sanitized.strip(),
+                sqlstate=exc.pgcode,
+            )
+        return super().on_postgres_error(metric_name, exc)
+
+    async def _find_automation(self, integration_name: str,
+                               slug: str) -> Automation | None:
+        """Retrieve a single automation from the DB
+
+        The `slug` can be a slug, the name of the automation,
+        or the automation's surrogate ID.
+
+        """
         automation_id, automation_slug = slugify.decode_path_slug(slug)
         del slug  # use either automation_id or automation_slug
 
         self.logger.debug('looking for %r or %r', automation_id,
                           automation_slug)
-
         result = await self.postgres_execute(
             'SELECT a.id, a.name, a.callable, a.categories, a.slug,'
             '       a.integration_name, a.created_at, a.created_by,'
@@ -171,31 +318,43 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             '  LEFT JOIN v1.automations_graph AS g ON g.automation_id = a.id'
             '  LEFT JOIN v1.automations AS d ON d.id = g.dependency_id'
             ' WHERE a.integration_name = %(integration_name)s'
-            '   AND (a.slug = %(slug)s OR a.id = %(automation_id)s)'
+            '   AND (a.slug = %(slug)s'
+            '        OR a.id = %(automation_id)s'
+            '        OR a.name = %(slug)s)'
             ' GROUP BY a.id, a.name, a.callable, a.categories, a.slug,'
             '          a.integration_name', {
                 'automation_id': automation_id,
                 'slug': automation_slug,
                 'integration_name': integration_name,
             })
-        if not result:
-            raise errors.ItemNotFound(instance=self.request.uri)
+        if result.row:
+            automation = Automation.model_validate(result.row)
+            self.logger.debug('found %s (%s)', automation.slug, automation.id)
+            return automation
+        return None
 
-        self.send_response(Automation.model_validate(result.row))
+    async def _get_maps(
+            self, automation: Automation, updated: dict
+    ) -> tuple[slugify.IdSlugMapping, slugify.IdSlugMapping]:
+        async with self.application.postgres_connector(
+                self.on_postgres_error, self.on_postgres_timing) as conn:
+            values = set(automation.applies_to)
+            values.update(updated.get('applies_to', []))
+            project_type_map = await slugify.IdSlugMapping.from_database(
+                conn, 'v1', 'project_types', values)
 
-    @base.require_permission('admin')
-    async def delete(self, integration_name: str, slug: str) -> None:
-        automation_id, automation_slug = slugify.decode_path_slug(slug)
-        del slug  # use either automation_id or automation_slug
+            values = set(automation.depends_on)
+            values.update(updated.get('depends_on', []))
+            automations_map = await slugify.IdSlugMapping.from_database(
+                conn, 'v1', 'automations', values)
 
-        result = await self.postgres_execute(
-            'DELETE FROM v1.automations'
-            ' WHERE integration_name = %(integration_name)s'
-            '   AND (id = %(automation_id)s OR slug = %(automation_slug)s)', {
-                'automation_id': automation_id,
-                'automation_slug': automation_slug,
-                'integration_name': integration_name,
-            })
-        if not result.row_count:
-            raise errors.ItemNotFound(instance=self.request.uri)
-        self.set_status(204, reason='Item Deleted')
+        return project_type_map, automations_map
+
+
+def partition_and_map_set_changes(
+        start_data: list[str], final_data: list[str],
+        mapping: slugify.IdSlugMapping) -> tuple[list[int], list[int]]:
+    """Take original & changed collections and return added & removed sets"""
+    start_set, final_set = set(start_data), set(final_data)
+    return (mapping.to_ids(final_set - start_set),
+            mapping.to_ids(start_set - final_set))

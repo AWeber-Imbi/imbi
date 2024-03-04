@@ -8,6 +8,7 @@ functionality for specific error cases.
 import typing
 
 import problemdetails
+import pydantic
 import tornado.httputil
 import tornado.web
 import yarl
@@ -125,3 +126,19 @@ class IntegrationNotFound(InternalServerError):
         super().__init__('integration lookup failed for %s',
                          integration_name,
                          title='Integration Missing')
+
+
+class PydanticValidationError(ApplicationError):
+    def __init__(self,
+                 error: pydantic.ValidationError,
+                 log_message: str,
+                 *log_args: str,
+                 fragment: str = 'validation-error',
+                 status_code: int = 400,
+                 **kwargs):
+        super().__init__(status_code,
+                         fragment,
+                         log_message,
+                         *log_args,
+                         validation_errors=error.errors(),
+                         **kwargs)
