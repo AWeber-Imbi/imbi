@@ -49,6 +49,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(http.HTTPStatus.OK, rsp.code)
         return self._parse_automation(rsp)
 
+    def _fetch_automation(self, ident: int | str) -> automations.Automation:
+        rsp = self.fetch(str(self.automations_url / str(ident)))
+        self.assertEqual(http.HTTPStatus.OK, rsp.code)
+        return self._parse_automation(rsp)
+
     def _parse_automation(
             self, response: httpclient.HTTPResponse) -> automations.Automation:
         self.assertEqual(
@@ -159,3 +164,169 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         # update it with the same name... should get a 304
         rsp = self.fetch(patch_url, method='PATCH', json_body=patch)
         self.assertEqual(http.HTTPStatus.NOT_MODIFIED, rsp.code)
+
+    def test_updating_to_illegal_null_values(self) -> None:
+        automation = self.create_automation()
+        patch_url = str(self.automations_url / automation.slug)
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'replace',
+                             'path': '/name',
+                             'value': None
+                         }])
+        self.assertEqual(http.HTTPStatus.BAD_REQUEST, rsp.code)
+        error = json.loads(rsp.body.decode('utf-8'))
+        self.assertTrue(error['type'].endswith('#validation-error'),
+                        f'Unexpected error type {error["type"]!r}')
+
+    def test_updating_applies_to_with_invalid_values(self) -> None:
+        automation = self.create_automation()
+        patch_url = str(self.automations_url / automation.slug)
+
+        # try an invalid project type
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'add',
+                             'path': '/applies_to/-',
+                             'value': 'does-not-exist'
+                         }])
+        self.assertEqual(http.HTTPStatus.BAD_REQUEST, rsp.code)
+
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'add',
+                             'path': '/applies_to/-',
+                             'value': 0,
+                         }])
+        self.assertEqual(http.HTTPStatus.BAD_REQUEST, rsp.code)
+
+        # and now give it something completely unexpected
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'replace',
+                             'path': '/applies_to',
+                             'value': []
+                         }])
+        self.assertEqual(http.HTTPStatus.BAD_REQUEST, rsp.code)
+
+    def test_that_patching_id_fails(self) -> None:
+        automation = self.create_automation()
+        patch_url = str(self.automations_url / automation.slug)
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'replace',
+                             'path': '/id',
+                             'value': 12
+                         }])
+        self.assertEqual(http.HTTPStatus.BAD_REQUEST, rsp.code)
+
+    def test_updating_dependency_with_invalid_values(self) -> None:
+        automation = self.create_automation()
+        patch_url = str(self.automations_url / automation.slug)
+
+        # try something nonexistent first
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'add',
+                             'path': '/depends_on/-',
+                             'value': str(uuid.uuid4()),
+                         }])
+        self.assertEqual(http.HTTPStatus.BAD_REQUEST, rsp.code)
+
+        # try to make the automation depend on itself
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'add',
+                             'path': '/depends_on/-',
+                             'value': automation.id,
+                         }])
+        self.assertEqual(http.HTTPStatus.CONFLICT, rsp.code)
+
+        # check the slug too!
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'add',
+                             'path': '/depends_on/-',
+                             'value': automation.slug,
+                         }])
+        self.assertEqual(http.HTTPStatus.CONFLICT, rsp.code)
+
+    def test_patching_with_invalid_callable(self) -> None:
+        automation = self.create_automation()
+        patch_url = str(self.automations_url / automation.slug)
+
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'replace',
+                             'path': '/callable',
+                             'value': 'just-not-valid'
+                         }])
+        self.assertEqual(http.HTTPStatus.BAD_REQUEST, rsp.code)
+
+    def test_emptying_applies_to(self) -> None:
+        automation = self.create_automation()
+        patch_url = str(self.automations_url / automation.slug)
+
+        rsp = self.fetch(patch_url,
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'remove',
+                             'path': '/applies_to/0'
+                         }])
+        self.assertEqual(http.HTTPStatus.BAD_REQUEST, rsp.code)
+
+    def test_dependencies(self) -> None:
+        automation = self.create_automation()
+        another_automation = self.create_automation()
+        yet_another_automation = self.create_automation()
+
+        # exercise explicit adds
+        rsp = self.fetch(str(self.automations_url / another_automation.slug),
+                         method='PATCH',
+                         json_body=[
+                             {
+                                 'op': 'add',
+                                 'path': '/depends_on/-',
+                                 'value': automation.slug
+                             },
+                             {
+                                 'op': 'add',
+                                 'path': '/depends_on/-',
+                                 'value': yet_another_automation.slug
+                             },
+                         ])
+        self.assertEqual(http.HTTPStatus.OK, rsp.code)
+
+        # deleting an automation should remove dependency
+        rsp = self.fetch(str(self.automations_url /
+                             yet_another_automation.slug),
+                         method='DELETE')
+        self.assertEqual(http.HTTPStatus.NO_CONTENT, rsp.code)
+        another_automation = self._fetch_automation(another_automation.slug)
+        self.assertEqual([automation.slug], another_automation.depends_on)
+
+        # exercise explicit removals
+        rsp = self.fetch(str(self.automations_url / another_automation.slug),
+                         method='PATCH',
+                         json_body=[{
+                             'op': 'replace',
+                             'path': '/depends_on',
+                             'value': []
+                         }])
+        self.assertEqual(http.HTTPStatus.OK, rsp.code)
+        another_automation = self._parse_automation(rsp)
+
+        # make sure that the last_modified_at is retained
+        fresh = self._fetch_automation(another_automation.slug)
+        self.assertEqual(another_automation.last_modified_at,
+                         fresh.last_modified_at)
+        self.assertEqual([], fresh.depends_on)
