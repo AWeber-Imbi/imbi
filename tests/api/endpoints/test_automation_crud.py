@@ -330,3 +330,31 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(another_automation.last_modified_at,
                          fresh.last_modified_at)
         self.assertEqual([], fresh.depends_on)
+
+    def test_broken_things(self) -> None:
+        another_project_type = self.create_project_type()
+
+        automation = self.create_automation(applies_to=[
+            self.project_type['id'],
+            another_project_type['slug'],
+        ])
+
+        # deleting a project-type removes it from the applies_to set
+        rsp = self.fetch(f'/project-types/{self.project_type["id"]}',
+                         method='DELETE')
+        self.assertEqual(http.HTTPStatus.NO_CONTENT, rsp.code)
+        fresh = self._fetch_automation(automation.slug)
+        self.assertEqual([another_project_type['slug']], fresh.applies_to)
+
+        # however ...... it does not mark the automation as changed :/
+        self.assertIsNone(fresh.last_modified_at, 'This should be broken!')
+
+        # FIXME: deleting THE LAST project-type currently breaks related
+        # FIXME: automations since the applies_to list becomes empty
+        rsp = self.fetch(f'/project-types/{another_project_type["id"]}',
+                         method='DELETE')
+        rsp = self.fetch(str(self.automations_url / automation.slug))
+        self.assertEqual(http.HTTPStatus.INTERNAL_SERVER_ERROR, rsp.code)
+        error = json.loads(rsp.body.decode('utf-8'))
+        self.assertTrue(error['type'].endswith('#validation-error'),
+                        f'Unexpected error type {error["type"]!r}')

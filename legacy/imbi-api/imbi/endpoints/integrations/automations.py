@@ -193,7 +193,6 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
     @base.require_permission('admin')
     async def patch(self, integration_name: str, slug: str) -> None:
         patch = jsonpatch.JsonPatch(self.get_request_body())
-
         automation = await self._find_automation(integration_name, slug)
         if not automation:
             raise errors.ItemNotFound(instance=self.request.uri)
@@ -343,7 +342,15 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
                 'integration_name': integration_name,
             })
         if result.row:
-            automation = Automation.model_validate(result.row)
+            try:
+                automation = Automation.model_validate(result.row)
+            except pydantic.ValidationError as error:
+                raise errors.PydanticValidationError(
+                    error,
+                    'Database contains an invalid automation with id %r: %s',
+                    result.row['id'],
+                    error,
+                    status_code=500)
             self.logger.debug('found %s (%s)', automation.slug, automation.id)
             return automation
         return None
