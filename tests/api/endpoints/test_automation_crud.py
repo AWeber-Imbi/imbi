@@ -5,6 +5,7 @@ import json
 import uuid
 
 import yarl
+from ietfparse import headers
 from tornado import httpclient
 
 from imbi.endpoints.integrations import automations
@@ -103,6 +104,14 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             retrieved = automations.Automation.model_validate(
                 json.loads(rsp.body.decode('utf-8')))
             self.assertEqual(retrieved, automation)
+            links = {
+                dict(parsed.parameters)['rel']: parsed.target
+                for value in rsp.headers.get_list('link')
+                for parsed in headers.parse_link(value)
+            }
+            self.assertEqual(
+                self.get_url(self.automations_url / automation.slug),
+                links['self'], 'Canonical link should contain the slug')
 
     def test_deleting_automations(self) -> None:
         rsp = self.fetch(str(self.automations_url / str(uuid.uuid4())),

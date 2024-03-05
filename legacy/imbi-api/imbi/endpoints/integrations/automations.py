@@ -154,10 +154,21 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
 
 class RecordRequestHandler(base.PydanticHandlerMixin,
                            base.ValidatingRequestHandler):
+    def _add_self_link(self, _path: str) -> None:
+        pass  # this stops base.RequestHandler from making assumptions
+
     async def get(self, integration_name: str, slug: str) -> None:
         automation = await self._find_automation(integration_name, slug)
         if not automation:
             raise errors.ItemNotFound(instance=self.request.uri)
+
+        path = self.reverse_url('automation', automation.integration_name,
+                                automation.slug)
+        self.add_header(
+            'link',
+            f'<{self.request.protocol}://{self.request.host}{path}>;'
+            f' rel="self"',
+        )
         self.send_response(automation)
 
     @base.require_permission('admin')
