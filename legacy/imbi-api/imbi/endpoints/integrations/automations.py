@@ -199,6 +199,8 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
         updated.update({
             'applies_to': project_type_map.to_slugs(updated['applies_to']),
             'depends_on': automations_map.to_slugs(updated['depends_on']),
+            'last_modified_at': datetime.datetime.now(datetime.timezone.utc),
+            'last_modified_by': self._current_user.username,
         })
         try:
             new_automation = Automation.model_validate(updated)
@@ -206,9 +208,9 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             raise errors.PydanticValidationError(
                 error, 'Failed to validate new Automation')
 
-        update_stmt = postgres.generate_update(
-            'v1', 'automations', 'automation_id', original, updated,
-            ('name', 'slug', 'integration_name', 'callable', 'categories'))
+        entity_updated = any(updated[column] != original[column]
+                             for column in ('name', 'slug', 'integration_name',
+                                            'callable', 'categories'))
 
         # figure out which association values we are adding and/or
         # removing... and map them to IDs while we are in there
@@ -218,16 +220,18 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             automation.depends_on, new_automation.depends_on, automations_map)
 
         # and now we can finally figure out if anything has changed
-        if not any((update_stmt, added_types, removed_types, added_deps,
+        if not any((entity_updated, added_types, removed_types, added_deps,
                     removed_deps)):
             self.set_status(http.client.NOT_MODIFIED)
             return
 
         async with self.postgres_transaction() as txn:
             txn: sprockets_postgres.PostgresConnector
-            if update_stmt:
-                await txn.execute(update_stmt.as_string(txn.cursor.raw),
-                                  {'automation_id': automation.id})
+            if entity_updated:
+                await postgres.update_entity(
+                    txn, 'v1', 'automations', original, updated,
+                    ('name', 'slug', 'integration_name', 'callable',
+                     'categories', 'last_modified_at', 'last_modified_by'))
             if added_deps:
                 await postgres.insert_values(
                     txn, 'v1', 'automations_graph',

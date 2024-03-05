@@ -135,6 +135,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         patched = self._parse_automation(rsp)
         self.assertEqual(automation.id, patched.id)
         self.assertEqual('Real name', patched.name)
+        self.assertIsNotNone(patched.last_modified_at)
+        self.assertEqual('test', patched.last_modified_by)
 
         rsp = self.fetch(str(self.automations_url / automation.name))
         self.assertEqual(http.HTTPStatus.NOT_FOUND, rsp.code)
@@ -144,3 +146,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
         rsp = self.fetch(str(self.automations_url / patched.name))
         self.assertEqual(http.HTTPStatus.OK, rsp.code)
+
+        # update it with the same name... should get a 304
+        rsp = self.fetch(patch_url, method='PATCH', json_body=patch)
+        self.assertEqual(http.HTTPStatus.NOT_MODIFIED, rsp.code)

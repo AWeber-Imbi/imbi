@@ -46,37 +46,40 @@ async def insert_values(
     await conn.execute(query.as_string(conn.cursor.raw))
 
 
-def generate_update(
+async def update_entity(
+    conn: sprockets_postgres.PostgresConnector,
     schema: str,
     table_name: str,
-    id_placeholder: str,
     original: dict[str, typing.Any],
     updated: dict[str, typing.Any],
     columns: typing.Iterable[str],
-) -> sql.Composed | None:
-    """Generate an SQL update statement from `original` into `updated`
+) -> None:
+    """Update an entity from `original` into `updated`
 
     This function dynamically generates the SQL UPDATE statement
-    constraining the changes to those in `columns`. If there are
-    no changes, then ``None`` is returned.
+    constraining the changes to those in `columns`. The row is
+    assumed to be identified by a column named ``id``. The value
+    is taken from ``original['id']``.
 
     .. code-block::
 
        UPDATE {schema}.{table_name}
           SET col1 = updated[col1],
               ...
-        WHERE id = %({id_placeholder})s
+        WHERE id = original[id]
 
     """
     modified_columns = [c for c in columns if original[c] != updated[c]]
     if not modified_columns:
         return None
 
-    return sql.SQL('UPDATE {table} SET {values} WHERE id = {id_value}').format(
-        table=sql.Identifier(schema, table_name),
-        values=sql.SQL(',').join(
-            sql.SQL('{} = {}').format(sql.Identifier(column),
-                                      sql.Literal(updated[column]))
-            for column in modified_columns),
-        id_value=sql.Placeholder(id_placeholder),
-    )
+    query = sql.SQL(
+        'UPDATE {table} SET {values} WHERE id = {id_value}').format(
+            table=sql.Identifier(schema, table_name),
+            values=sql.SQL(',').join(
+                sql.SQL('{} = {}').format(sql.Identifier(column),
+                                          sql.Literal(updated[column]))
+                for column in modified_columns),
+            id_value=sql.Literal(original['id']),
+        )
+    await conn.execute(query.as_string(conn.cursor.raw))
