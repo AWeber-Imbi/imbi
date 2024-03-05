@@ -4806,6 +4806,10 @@ paths:
                           description: Optional ID for the project in PagerDuty
                           type: string
                           nullable: true
+                        configuration_type:
+                          description: Optional configuration system for the project
+                          type: string
+                          nullable: true
                       additionalProperties: false
                   rows:
                     type: number
@@ -4830,6 +4834,7 @@ paths:
                           - Staging
                           - Production
                         archived: false
+                        configuration_type: ssm
                     rows: 1
             application/msgpack:
               schema:
@@ -4899,6 +4904,10 @@ paths:
                           description: Optional ID for the project in PagerDuty
                           type: string
                           nullable: true
+                        configuration_type:
+                          description: Optional configuration system for the project
+                          type: string
+                          nullable: true
                       additionalProperties: false
                   rows:
                     type: number
@@ -4923,6 +4932,7 @@ paths:
                           - Staging
                           - Production
                         archived: false
+                        configuration_type: ssm
                     rows: 1
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
@@ -5038,6 +5048,7 @@ paths:
                       - Staging
                       - Production
                     archived: false
+                    configuration_type: ssm
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects/get/responses/200/content/application~1json/schema/properties/data/items'
@@ -5060,6 +5071,7 @@ paths:
                       - Staging
                       - Production
                     archived: false
+                    configuration_type: ssm
         '400':
           $ref: '#/paths/~1groups/post/responses/400'
         '401':

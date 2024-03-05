@@ -14,7 +14,7 @@ class _RequestHandlerMixin:
     FIELDS = [
         'id', 'namespace_id', 'project_type_id', 'name', 'slug', 'description',
         'environments', 'archived', 'gitlab_project_id', 'sentry_project_slug',
-        'sonarqube_project_key', 'pagerduty_service_id'
+        'sonarqube_project_key', 'pagerduty_service_id', 'configuration_type'
     ]
     TTL = 300
 
@@ -37,7 +37,8 @@ class _RequestHandlerMixin:
                a.gitlab_project_id,
                a.sentry_project_slug,
                a.sonarqube_project_key,
-               a.pagerduty_service_id
+               a.pagerduty_service_id,
+               a.configuration_type
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
@@ -88,7 +89,8 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
                a.sentry_project_slug,
                a.sonarqube_project_key,
                a.pagerduty_service_id,
-               v1.project_score(a.id) AS project_score
+               v1.project_score(a.id) AS project_score,
+               a.configuration_type
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
@@ -302,7 +304,8 @@ class RecordRequestHandler(project.RequestHandlerMixin, _RequestHandlerMixin,
                a.sentry_project_slug,
                a.sonarqube_project_key,
                a.pagerduty_service_id,
-               v1.project_score(a.id)
+               v1.project_score(a.id),
+               a.configuration_type
           FROM v1.projects AS a
           JOIN v1.namespaces AS b ON b.id = a.namespace_id
           JOIN v1.project_types AS c ON c.id = a.project_type_id
@@ -395,6 +398,7 @@ class RecordRequestHandler(project.RequestHandlerMixin, _RequestHandlerMixin,
                sentry_project_slug=%(sentry_project_slug)s,
                sonarqube_project_key=%(sonarqube_project_key)s,
                pagerduty_service_id=%(pagerduty_service_id)s
+               configuration_type=%(configuration_type)s
          WHERE id=%(id)s""")
 
     async def delete(self, *args, **kwargs):
