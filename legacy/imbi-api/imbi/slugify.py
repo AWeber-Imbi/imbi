@@ -32,7 +32,7 @@ def path_element(value: str) -> str:
     return Slug(value.strip('-_'))
 
 
-def decode_path_slug(slug_or_id: str) -> tuple[int | None, str | None]:
+def decode_path_slug(slug_or_id: str) -> tuple[int | None] | tuple[None | str]:
     """Decode a path parameter as either an integer or a slug
 
     :returns: a tuple of (int, str) where only one of the values
