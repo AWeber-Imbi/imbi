@@ -228,9 +228,9 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
 
         # figure out which association values we are adding and/or
         # removing... and map them to IDs while we are in there
-        added_types, removed_types = partition_and_map_set_changes(
+        added_types, removed_types = _partition_map_and_set_changes(
             automation.applies_to, new_automation.applies_to, project_type_map)
-        added_deps, removed_deps = partition_and_map_set_changes(
+        added_deps, removed_deps = _partition_map_and_set_changes(
             automation.depends_on, new_automation.depends_on, automations_map)
 
         # and now we can finally figure out if anything has changed
@@ -377,7 +377,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
         return project_type_map, automations_map
 
 
-def partition_and_map_set_changes(
+def _partition_map_and_set_changes(
         start_data: list[str], final_data: list[str],
         mapping: slugify.IdSlugMapping) -> tuple[list[int], list[int]]:
     """Take original & changed collections and return added & removed sets"""
