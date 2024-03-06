@@ -73,6 +73,8 @@ extensions.register_adapter(AutomationCategory, adapt_automation_category)
 
 class CollectionRequestHandler(base.PydanticHandlerMixin,
                                base.ValidatingRequestHandler):
+    NAME = 'automations'  # used in metrics
+
     async def get(self, integration_name: str) -> None:
         result = await self.postgres_execute(
             'SELECT a.id, a.name, a.slug, a.callable, a.categories,'
@@ -154,6 +156,8 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
 
 class RecordRequestHandler(base.PydanticHandlerMixin,
                            base.ValidatingRequestHandler):
+    NAME = 'automation'  # used in metrics
+
     def _add_self_link(self, _path: str) -> None:
         pass  # this stops base.RequestHandler from making assumptions
 
