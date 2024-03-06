@@ -397,7 +397,12 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         proj_id = response['id']
 
         # Search by name
-        part = record['name'].split('-')[4]
+        # I am using the first portion of the UUID since it has a
+        # higher likelihood of matching in the text search index.
+        # Using the final chunk of the name fails about 10% of the
+        # time
+        part = record['name'].split('-')[0]
+
         result = self.fetch(f'/projects?name={part}', method='GET')
         self.assertTrue(
             in_results(proj_id, json.loads(result.body.decode('utf-8'))))
