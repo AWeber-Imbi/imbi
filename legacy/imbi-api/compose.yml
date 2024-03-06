@@ -44,7 +44,7 @@ services:
       - opensearch
 
   postgres:
-    image: aweber/imbi-postgres:0.20.1
+    image: aweber/imbi-postgres:0.20.2
     ports:
       - 5432
     volumes:
