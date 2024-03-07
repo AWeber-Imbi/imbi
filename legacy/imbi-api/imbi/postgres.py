@@ -43,7 +43,8 @@ async def insert_values(
             sql.SQL('({})').format(
                 sql.SQL(',').join(sql.Literal(v) for v in row))
             for row in rows))
-    await conn.execute(query.as_string(conn.cursor.raw))
+    await conn.execute(query.as_string(conn.cursor.raw),
+                       metric_name=f'insert-{table_name}')
 
 
 async def update_entity(
@@ -82,4 +83,5 @@ async def update_entity(
                 for column in modified_columns),
             id_value=sql.Literal(original['id']),
         )
-    await conn.execute(query.as_string(conn.cursor.raw))
+    await conn.execute(query.as_string(conn.cursor.raw),
+                       metric_name=f'update-{table_name}')

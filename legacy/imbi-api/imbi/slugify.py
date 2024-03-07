@@ -105,7 +105,9 @@ class IdSlugMapping:
             params.update({'ids': ids or empty, 'slugs': slugs or empty})
             query += sql.SQL('WHERE slug IN {} OR id IN {}').format(
                 sql.Placeholder('slugs'), sql.Placeholder('ids'))
-        result = await conn.execute(query, params)
+        result = await conn.execute(query,
+                                    params,
+                                    metric_name=f'fetch-{entity_table}-slugs')
 
         mapping = {row['slug']: row['id'] for row in result}
         invalid_values: set[int | str] = set(slugs) - set(mapping.keys())

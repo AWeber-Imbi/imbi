@@ -91,7 +91,8 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
             ' WHERE a.integration_name = %(integration_name)s'
             ' GROUP BY a.id, a.name, a.slug, a.callable, a.categories,'
             '          a.integration_name, a.slug',
-            parameters={'integration_name': integration_name})
+            parameters={'integration_name': integration_name},
+            metric_name='get-automations')
         self.send_response([Automation.model_validate(row) for row in result])
 
     @base.require_permission('admin')
@@ -117,7 +118,8 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
                     'integration_name': integration_name,
                     'slug': slug,
                     'username': self._current_user.username,
-                })
+                },
+                metric_name='create-automation')
             if not result.row_count:
                 raise errors.DatabaseError('No rows returned from INSERT',
                                            title='Failed to insert record')
@@ -189,7 +191,8 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
                 'automation_id': automation_id,
                 'automation_slug': automation_slug,
                 'integration_name': integration_name,
-            })
+            },
+            metric_name='delete-automation')
         if not result.row_count:
             raise errors.ItemNotFound(instance=self.request.uri)
         self.set_status(204, reason='Item Deleted')
@@ -258,7 +261,8 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
                     '        AND dependency_id IN %(removed_deps)s', {
                         'automation_id': automation.id,
                         'removed_deps': tuple(removed_deps)
-                    })
+                    },
+                    metric_name='delete-automations_graph')
             if added_types:
                 await postgres.insert_values(
                     txn, 'v1', 'available_automations',
@@ -271,7 +275,8 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
                     '        AND project_type_id IN %(removed_types)s', {
                         'automation_id': automation.id,
                         'removed_types': tuple(removed_types)
-                    })
+                    },
+                    metric_name='delete-available_automations')
 
         automation = await self._find_automation(integration_name, slug)
         self.send_response(automation)
@@ -344,7 +349,8 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
                 'automation_id': automation_id,
                 'slug': automation_slug,
                 'integration_name': integration_name,
-            })
+            },
+            metric_name='get-automation')
         if result.row:
             try:
                 automation = Automation.model_validate(result.row)
