@@ -140,5 +140,5 @@ class PydanticValidationError(ApplicationError):
                          fragment,
                          log_message,
                          *log_args,
-                         validation_errors=error.errors(),
+                         validation_errors=error.errors(include_context=False),
                          **kwargs)
