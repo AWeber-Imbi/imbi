@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import enum
 import http.client
+import inspect
 import typing
 
 import jsonpatch
@@ -19,7 +20,21 @@ class AutomationCategory(enum.Enum):
     CREATE_PROJECT = 'create-project'
 
 
+def verify_legal_callable(v):
+    if not inspect.iscoroutinefunction(v):
+        name = getattr(v, '__name__', repr(v))
+        raise ValueError(f'{name} is not a coroutine function')
+
+    mod_name = inspect.getmodule(v).__name__
+    allow_list = {'imbi.automations'}
+    if (mod_name in allow_list
+            or any(mod_name.startswith(a + '.') for a in allow_list)):
+        return v
+    raise ValueError(f'{mod_name!r} is not an allowed implementation module')
+
+
 CallableType = typing.Annotated[pydantic.ImportString,
+                                pydantic.AfterValidator(verify_legal_callable),
                                 pydantic.Field(default=automations.do_nothing)]
 PathIdType: typing.TypeAlias = typing.Union[int, slugify.Slug]
 
@@ -220,7 +235,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             new_automation = Automation.model_validate(updated)
         except pydantic.ValidationError as error:
             raise errors.PydanticValidationError(
-                error, 'Failed to validate new Automation')
+                error, 'Failed to validate new Automation') from None
 
         entity_updated = any(updated[column] != original[column]
                              for column in ('name', 'slug', 'integration_name',
