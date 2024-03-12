@@ -11,26 +11,23 @@ import pydantic
 import sprockets_postgres
 from psycopg2 import extensions
 
-from imbi import errors, postgres, slugify
+from imbi import automations, errors, postgres, slugify
 from imbi.endpoints import base
-
-
-# used as a default automation action
-def do_nothing(*_args, **_kwargs):
-    pass
 
 
 class AutomationCategory(enum.Enum):
     CREATE_PROJECT = 'create-project'
 
 
+CallableType = typing.Annotated[pydantic.ImportString,
+                                pydantic.Field(default=automations.do_nothing)]
 PathIdType: typing.TypeAlias = typing.Union[int, slugify.Slug]
 
 
 class AddAutomationRequest(pydantic.BaseModel):
     name: str
     categories: list[AutomationCategory] = pydantic.Field(min_items=1)
-    callable: pydantic.ImportString = pydantic.Field(default=do_nothing)
+    callable: CallableType
     applies_to: list[PathIdType] = pydantic.Field(default_factory=list,
                                                   min_items=1)
     depends_on: list[PathIdType] = pydantic.Field(default_factory=list)
@@ -41,7 +38,7 @@ class Automation(pydantic.BaseModel):
     name: str
     slug: slugify.Slug
     integration_name: str
-    callable: pydantic.ImportString
+    callable: CallableType
     categories: list[AutomationCategory] = pydantic.Field(min_items=1)
     applies_to: list[slugify.Slug] = pydantic.Field(default_factory=list,
                                                     min_items=1)
