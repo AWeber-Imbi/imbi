@@ -73,3 +73,15 @@ class LogoutRequestHandler(base.RequestHandler):
     async def get(self, *args, **kwargs):
         await self.session.clear()
         self.send_response({'loggedOut': True})
+
+
+class ConnectionRequestHandler(base.AuthenticatedRequestHandler):
+    async def delete(self, integration_name: str) -> None:
+        await self.postgres_execute(
+            'DELETE FROM v1.user_oauth2_tokens'
+            ' WHERE integration = %(integration_name)s'
+            '   AND username = %(username)s', {
+                'integration_name': integration_name,
+                'username': self._current_user.username,
+            })
+        self.set_status(204)
