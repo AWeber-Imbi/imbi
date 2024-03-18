@@ -7,29 +7,52 @@ import jsonpointer
 import psycopg2
 import pydantic
 import sprockets_postgres
+from pydantic_core import core_schema
 
 from imbi import errors
 from imbi.endpoints import base
 
 
-class JsonPointer(jsonpointer.JsonPointer):
-    """jsonpointer.JsonPointer wrapped for use with pydantic"""
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
+def validated_jsonpointer(
+        value: str | jsonpointer.JsonPointer) -> jsonpointer.JsonPointer:
+    """Convert a string to a valid jsonpointer.JsonPointer
 
-    @classmethod
-    def validate(cls, value: str) -> 'JsonPointer':
-        if not isinstance(value, str):
-            raise TypeError('Value must be a string')
-        try:
-            pointer = jsonpointer.JsonPointer(value)
-        except jsonpointer.JsonPointerException as error:
-            raise ValueError(error.args[0]) from error
-        else:
-            if not pointer.parts:
-                raise ValueError('JSON pointer must not be empty')
-            return cls(value)
+    The JsonPointer initializer does not fail when given an empty
+    string. This function raises `TypeError` and `ValueError` when
+    appropriate.
+
+    """
+    if isinstance(value, jsonpointer.JsonPointer):
+        return value
+    if not isinstance(value, str):
+        raise TypeError('Value must be a string')
+    try:
+        pointer = jsonpointer.JsonPointer(value)
+    except jsonpointer.JsonPointerException as error:
+        raise ValueError(error.args[0]) from error
+    else:
+        if not pointer.parts:
+            raise ValueError('JSON pointer must not be empty')
+        return jsonpointer.JsonPointer(value)
+
+
+def _jptr_core_schema(*_) -> core_schema.CoreSchema:
+    """Small helper for use with pydantic.GetPydanticSchema"""
+    validator = core_schema.no_info_plain_validator_function(
+        validated_jsonpointer)
+    return core_schema.json_or_python_schema(json_schema=validator,
+                                             python_schema=validator)
+
+
+def _jptr_json_schema(*_) -> pydantic.json_schema.JsonSchemaValue:
+    """Small helper for use with pydantic.GetPydanticSchema"""
+    return {'type': 'string', 'format': 'json-pointer'}
+
+
+JsonPointer = typing.Annotated[
+    jsonpointer.JsonPointer,
+    pydantic.GetPydanticSchema(_jptr_core_schema, _jptr_json_schema)]
+"""Pydantic capable version of a jsonpointer.JsonPointer"""
 
 
 class Integration(pydantic.BaseModel):
@@ -232,13 +255,13 @@ class ProcessingHandler(base.RequestHandler):
             raise errors.ItemNotFound('Notification %r not found',
                                       notification_name)
 
-        integration = Integration.parse_obj(integration_data.row)
-        notification = Notification.parse_obj(
-            dict(notification_data.row, integration=integration))
+        integration = Integration.model_validate(integration_data.row)
+        notification_data.row['integration'] = integration.model_dump()
+        notification = Notification.model_validate(notification_data.row)
         notification.rules.extend(
-            NotificationRule.parse_obj(row) for row in rules.rows)
+            NotificationRule.model_validate(row) for row in rules.rows)
         notification.filters.extend(
-            NotificationFilter.parse_obj(row) for row in filters.rows)
+            NotificationFilter.model_validate(row) for row in filters.rows)
 
         return notification
 
@@ -324,7 +347,7 @@ class ProcessingHandler(base.RequestHandler):
             )
             return None
 
-        project = ProjectInfo.parse_obj(result.row)
+        project = ProjectInfo.model_validate(result.row)
         self.logger.debug('found project %r for %s@%s', project.id,
                           surrogate_project_id, notification.integration.name)
         return project

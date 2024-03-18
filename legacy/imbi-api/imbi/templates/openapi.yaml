@@ -1786,6 +1786,264 @@ paths:
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+  '/integrations/{integration_name}/automations':
+    parameters:
+      - name: integration_name
+        in: path
+        description: Connected application that each automation is related to
+        required: true
+        schema:
+          type: string
+    get:
+      description: Retrieve automations implemented by `integration_name`
+      summary: Get Automations
+      tags:
+        - Automations
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1automations/post/responses/200/content/application~1json/schema'
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1automations/post/responses/200/content/application~1json/schema'
+    post:
+      description: Add an automation
+      summary: Add Automation
+      tags:
+        - Automations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  description: Human-readable name for this automation
+                  type: string
+                categories:
+                  description: Which actions is this automation valid for?
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - create-project
+                callable:
+                  allOf:
+                    - description: |
+                        Identifies what to invoke for this automation.
+
+                        This identifies which python function to invoke inside of the running
+                        Imbi instance. It uses the [common import string] syntax.
+
+                        [common import string]: https://docs.pydantic.dev/latest/api/types/#pydantic.types.ImportString
+                      type: string
+                    - type: string
+                      default: imbi.endpoints.integrations.automations.do_nothing
+                applies_to:
+                  description: List of project types that this automation is valid for
+                  type: array
+                  items:
+                    oneOf:
+                      - type: string
+                        title: slug
+                        description: Identifies the project type using its slug
+                      - type: integer
+                        title: ID
+                        description: Identifies the project type using its unique ID
+                depends_on:
+                  description: List of other automations that are required for this automation to run
+                  type: array
+                  items:
+                    oneOf:
+                      - type: string
+                        title: slug
+                        description: Identifies the automation using its slug
+                      - type: integer
+                        title: ID
+                        description: Identifies the automation using its surrogate ID
+              required:
+                - name
+                - categories
+                - applies_to
+              example:
+                name: Create project
+                categories:
+                  - create-project
+                applies_to:
+                  - http-api
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1automations/post/requestBody/content/application~1json/schema'
+      responses:
+        '200':
+          description: Newly created automation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    description: Surrogate ID for this automation
+                    type: integer
+                  name:
+                    description: Human-readable name for this automation
+                    type: string
+                  slug:
+                    description: Machine-readable slug
+                    type: string
+                    pattern: '^[a-z0-9][-_a-z0-9]*[a-z0-9]$'
+                    minLength: 2
+                  integration_name:
+                    description: The name of the integration that implements this automation
+                    type: string
+                  callable:
+                    description: |
+                      Identifies what to invoke for this automation.
+
+                      This identifies which python function to invoke inside of the running
+                      Imbi instance. It uses the [common import string] syntax.
+
+                      [common import string]: https://docs.pydantic.dev/latest/api/types/#pydantic.types.ImportString
+                    type: string
+                  categories:
+                    description: Which actions is this automation valid for?
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - create-project
+                  applies_to:
+                    description: Project type slugs that this automation can be run for
+                    type: array
+                    items:
+                      type: string
+                  depends_on:
+                    description: Slugs of other automations that are required for this automation to be run
+                    type: array
+                    items:
+                      type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  created_by:
+                    type: string
+                  last_modified_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  last_modified_by:
+                    type: string
+                    nullable: true
+                example:
+                  id: 1
+                  name: Create project
+                  slug: github-create-project
+                  integration_name: GitHub
+                  callable: imbi.endpoints.integrations.automations.do_nothing
+                  categories:
+                    - create-project
+                  applies_to:
+                    - http-api
+                  depends_on: []
+                  created_at: '2024-02-27T21:05:46+0000'
+                  created_by: me
+                  last_modified_at: null
+                  last_modified_by: null
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1automations/post/responses/200/content/application~1json/schema'
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '409':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/integrations/{integration_name}/automations/{automation_name}':
+    parameters:
+      - name: integration_name
+        in: path
+        description: Application that implements this automation
+        required: true
+        schema:
+          type: string
+      - name: automation_name
+        in: path
+        description: Assigned slug or name of the automation
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get Automation
+      description: |
+        Retrieve an automation by its slug, name, or surrogate ID
+      tags:
+        - Automations
+      responses:
+        '200':
+          description: Record details
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1automations/post/responses/200/content/application~1json/schema'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1automations/post/responses/200/content/application~1json/schema'
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+    delete:
+      summary: Delete Automation
+      description: |
+        Delete an automation by its slug, name, or surrogate ID
+      tags:
+        - Automations
+      responses:
+        '204':
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+    patch:
+      summary: Update Automation
+      description: |
+        Update an automation by its slug, name, or surrogate ID
+      tags:
+        - Automations
+      requestBody:
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
+      responses:
+        '200':
+          description: Updated Record
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1automations/post/responses/200/content/application~1json/schema'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1integrations~1%7Bintegration_name%7D~1automations/post/responses/200/content/application~1json/schema'
+        '304':
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+        '409':
+          $ref: '#/paths/~1groups/post/responses/409'
   '/integrations/{integration_name}/notifications':
     parameters:
       - name: integration_name
@@ -1797,7 +2055,7 @@ paths:
       description: Retrieve the collection of notifications defined for an integration
       summary: Get notifications
       tags:
-        - Integrations
+        - Notifications
       responses:
         '200':
           description: Success
@@ -1811,7 +2069,7 @@ paths:
       description: Add a new notification to an integration
       summary: Add notification
       tags:
-        - Integrations
+        - Notifications
       requestBody:
         description: Notification details
         content:
@@ -1888,7 +2146,7 @@ paths:
       description: Retrieve a specific notification by name
       summary: Fetch a single notification
       tags:
-        - Integrations
+        - Notifications
       responses:
         '200':
           description: Success
@@ -1900,7 +2158,7 @@ paths:
       description: Remove the specified notification
       summary: Delete a notification
       tags:
-        - Integrations
+        - Notifications
       responses:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
@@ -1912,7 +2170,7 @@ paths:
       description: Update a notification
       summary: Update a notification
       tags:
-        - Integrations
+        - Notifications
       requestBody:
         $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
@@ -1942,7 +2200,7 @@ paths:
       description: Retrieve the collection of filters for a notification
       summary: Get notification filters
       tags:
-        - Integrations
+        - Notifications
       responses:
         '200':
           description: Success
@@ -1956,7 +2214,7 @@ paths:
       description: Add a new filter to a notification
       summary: Add notification filter
       tags:
-        - Integrations
+        - Notifications
       requestBody:
         description: Filter details
         content:
@@ -2044,7 +2302,7 @@ paths:
       description: Retrieve a specific filter from a notification by name
       summary: Fetch a notification filter
       tags:
-        - Integrations
+        - Notifications
       responses:
         '200':
           description: Success
@@ -2056,7 +2314,7 @@ paths:
       description: Remove the filter from the notification
       summary: Delete a notification filter
       tags:
-        - Integrations
+        - Notifications
       responses:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
@@ -2068,7 +2326,7 @@ paths:
       description: Update a notification filter
       summary: Update a notification filter
       tags:
-        - Integrations
+        - Notifications
       requestBody:
         $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
@@ -2098,7 +2356,7 @@ paths:
       description: Retrieve the collection of rules for a notification
       summary: Get notification rules
       tags:
-        - Integrations
+        - Notifications
       responses:
         '200':
           description: Success
@@ -2112,7 +2370,7 @@ paths:
       description: Add a new rule to a notification
       summary: Add notification rule
       tags:
-        - Integrations
+        - Notifications
       requestBody:
         description: Rule details
         content:
@@ -2168,7 +2426,7 @@ paths:
       description: Retrieve a specific rule from a notification by name
       summary: Fetch a notification rule
       tags:
-        - Integrations
+        - Notifications
       responses:
         '200':
           description: Success
@@ -2180,7 +2438,7 @@ paths:
       description: Remove a rule from the notification
       summary: Delete a notification rule
       tags:
-        - Integrations
+        - Notifications
       responses:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
@@ -2192,7 +2450,7 @@ paths:
       description: Update a notification rule
       summary: Update a notification rule
       tags:
-        - Integrations
+        - Notifications
       requestBody:
         $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
@@ -5771,6 +6029,8 @@ paths:
     patch:
       description: Update a specific surrogate identifier for the project
       summary: Update identifier
+      tags:
+        - Project Facts
       requestBody:
         $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
       responses:
@@ -5830,6 +6090,8 @@ paths:
     delete:
       description: Remove the surrogate identifier for the project in a specified integration
       summary: Remove identifier
+      tags:
+        - Project Facts
       responses:
         '204':
           description: Identifier removed
@@ -7289,6 +7551,8 @@ tags:
     description: Endpoints used for retrieving settings for the Imbi UI
   - name: Integrations
     description: Endpoints used to retrieve information about applications that Imbi is integrated with
+  - name: Notifications
+    description: Endpoints used for integrating Imbi with webhooks from other applications
   - name: Monitoring & Metrics
     description: 'Endpoints used for health checking, service status, and service metrics'
   - name: User
@@ -7306,13 +7570,17 @@ x-tagGroups:
     tags:
       - Cookie Cutters
       - Environments
-      - Integrations
       - Namespaces
       - Fact Types
       - Fact Type Enums
       - Fact Type Ranges
       - Project Link Types
       - Project Types
+  - name: Integrations
+    tags:
+      - Integrations
+      - Notifications
+      - Automations
   - name: Operations Log
     tags:
       - Operations Log
@@ -7335,7 +7603,6 @@ x-tagGroups:
       - User
   - name: UI Specific
     tags:
-      - Automations
       - Dashboard
       - Settings
   - name: Other

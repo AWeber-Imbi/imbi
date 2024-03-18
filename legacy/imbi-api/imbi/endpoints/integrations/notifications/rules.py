@@ -45,7 +45,7 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 
 
 class RecordRequestHandler(base.CRUDRequestHandler):
-    NAME = 'integration-notification'
+    NAME = 'notification-rule'
     ID_KEY = ['integration_name', 'notification_name', 'fact_type_id']
 
     GET_SQL = re.sub(

@@ -4,11 +4,11 @@ System Reports
 """
 from tornado import web
 
-from . import authentication, automations, index, settings, user
+from . import authentication, index, settings, user
 
 IndexRequestHandler = index.IndexRequestHandler
 
-URLS = automations.URLS + [
+URLS = [
     web.url(r'^/ui/', index.IndexRequestHandler),
     web.url(r'^/ui/login$', authentication.LoginRequestHandler),
     web.url(r'^/ui/login/google$', authentication.GoogleLoginRequestHandler),

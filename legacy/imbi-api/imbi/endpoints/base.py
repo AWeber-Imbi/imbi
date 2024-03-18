@@ -16,6 +16,8 @@ from email import utils
 
 import jsonpatch
 import problemdetails
+import pydantic
+import sprockets.mixins.mediatype.content
 import sprockets_postgres as postgres
 import umsgpack
 import yarl
@@ -27,7 +29,6 @@ from openapi_core.templating.paths.exceptions import \
 from openapi_core.unmarshalling.schemas.exceptions import ValidateError
 from openapi_core.validation.exceptions import InvalidSecurity
 from sprockets.http import mixins
-from sprockets.mixins import mediatype
 from tornado import httputil, web
 
 from imbi import common, cors, errors, session, user, version
@@ -63,7 +64,8 @@ def require_permission(permission):
 
 class RequestHandler(cors.CORSMixin, postgres.RequestHandlerMixin,
                      mixins.ErrorLogger, problemdetails.ErrorWriter,
-                     mediatype.ContentMixin, web.RequestHandler):
+                     sprockets.mixins.mediatype.content.ContentMixin,
+                     web.RequestHandler):
     """Base RequestHandler class used for recipients and subscribers."""
 
     APPLICATION_JSON = 'application/json'
@@ -629,3 +631,20 @@ class PaginatedRequestMixin(web.RequestHandler):
             except ValueError as error:
                 self.logger.warning('ignoring malformed token %r: %s', token,
                                     error)
+
+
+ModelType = typing.TypeVar('ModelType', bound=pydantic.BaseModel)
+
+
+class PydanticHandlerMixin(RequestHandler):
+    def parse_request_body_as(self,
+                              model_cls: typing.Type[ModelType]) -> ModelType:
+        try:
+            return model_cls.model_validate(self.get_request_body())
+        except pydantic.ValidationError as error:
+            raise errors.ApplicationError(
+                422,
+                'invalid-request-body',
+                'Failed to validate request body: %s',
+                error,
+                validation_errors=error.errors())
