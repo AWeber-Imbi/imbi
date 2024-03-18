@@ -10,9 +10,12 @@ are applicable to multiple uses.
 from __future__ import annotations
 
 import typing
+import uuid
 
 import sprockets_postgres
 from psycopg2 import sql
+
+_omitted = str(uuid.uuid4())
 
 
 async def insert_values(
@@ -54,6 +57,9 @@ async def update_entity(
     original: dict[str, typing.Any],
     updated: dict[str, typing.Any],
     columns: typing.Iterable[str],
+    *,
+    id_column: str = 'id',
+    id_value: typing.Any = _omitted,
 ) -> None:
     """Update an entity from `original` into `updated`
 
@@ -74,14 +80,16 @@ async def update_entity(
     if not modified_columns:
         return None
 
+    id_value = original[id_column] if id_value is _omitted else id_value
     query = sql.SQL(
-        'UPDATE {table} SET {values} WHERE id = {id_value}').format(
+        'UPDATE {table} SET {values} WHERE {id_column} = {id_value}').format(
             table=sql.Identifier(schema, table_name),
             values=sql.SQL(',').join(
                 sql.SQL('{} = {}').format(sql.Identifier(column),
                                           sql.Literal(updated[column]))
                 for column in modified_columns),
-            id_value=sql.Literal(original['id']),
+            id_column=sql.Identifier(id_column),
+            id_value=sql.Literal(id_value),
         )
     await conn.execute(query.as_string(conn.cursor.raw),
                        metric_name=f'update-{table_name}')
