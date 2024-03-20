@@ -181,8 +181,6 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         google_integration = await oauth2.OAuth2Integration.by_name(
             self.application, f'google-{env}')
         body = urllib.parse.urlencode({
-            'client_id': google_integration.client_id,
-            'client_secret': google_integration.client_secret,
             'grant_type': 'refresh_token',
             'redirect_uri': google_integration.callback_url,
             'refresh_token': refresh_token,
@@ -191,7 +189,9 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             str(google_integration.token_endpoint),
             method='POST',
             body=body,
-            content_type='application/x-www-form-urlencoded')
+            content_type='application/x-www-form-urlencoded',
+            auth_username=google_integration.client_id,
+            auth_password=google_integration.client_secret)
         if response.code in (401, 403):
             await self.session.clear()
             raise web.Finish()
