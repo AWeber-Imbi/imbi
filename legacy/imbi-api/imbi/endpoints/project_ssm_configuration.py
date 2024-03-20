@@ -93,9 +93,10 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                 role_arn_exists = True
             role_arn = result.row['role_arn']
 
-            creds = await self.get_aws_credentials(
-                aws_session, role_arn, imbi_user, google_tokens.id_token,
-                google_tokens.refresh_token)
+            creds = await self.get_aws_credentials(aws_session, role_arn,
+                                                   imbi_user,
+                                                   google_tokens.id_token,
+                                                   google_tokens.refresh_token)
             params = await aws.get_parameters_by_path(
                 aws_session, ssm_path_prefix, creds['access_key_id'],
                 creds['secret_access_key'], creds['session_token'])
@@ -125,9 +126,13 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         } for name, data in params_by_path.items()]
         self.send_response(output)
 
-    async def get_aws_credentials(self, aws_session: aioboto3.Session,
-                                  role_arn, imbi_user: user.User, id_token,
-                                  refresh_token) -> dict:
+    async def get_aws_credentials(self,
+                                  aws_session: aioboto3.Session,
+                                  role_arn,
+                                  imbi_user: user.User,
+                                  id_token,
+                                  refresh_token,
+                                  is_retry=False) -> dict:
         """Return (potentially cached or refreshed) AWS credentials."""
         key = f'{imbi_user.username}:{role_arn}'
         cached_creds = await self._redis.hgetall(key)
@@ -140,20 +145,20 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             response = await aws.get_credentials(aws_session, role_arn,
                                                  imbi_user.username, id_token)
         except botocore.exceptions.ClientError as error:
-            if error.response['Error']['Code'] == 'ExpiredTokenException':
+            if not is_retry and error.response['Error'][
+                    'Code'] == 'ExpiredTokenException':
                 id_token = await self.refresh_oauth2_tokens(
                     imbi_user.username, imbi_user.external_id, refresh_token)
                 return await self.get_aws_credentials(aws_session, role_arn,
                                                       imbi_user, id_token,
-                                                      refresh_token)
+                                                      refresh_token, True)
             else:
                 error_code = error.response['Error']['Code']
                 if error_code == 'AccessDenied':
                     raise web.HTTPError(
                         401,
                         reason=('Not authorized to access SSM in this '
-                                'namespace & environment')
-                    )
+                                'namespace & environment'))
                 else:
                     self.logger.error('Unexpected AWS credential failure: %s',
                                       error_code)
