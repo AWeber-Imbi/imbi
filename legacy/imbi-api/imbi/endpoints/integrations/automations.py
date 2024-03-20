@@ -41,10 +41,10 @@ PathIdType: typing.TypeAlias = typing.Union[int, slugify.Slug]
 
 class AddAutomationRequest(pydantic.BaseModel):
     name: str
-    categories: list[AutomationCategory] = pydantic.Field(min_items=1)
+    categories: list[AutomationCategory] = pydantic.Field(min_length=1)
     callable: CallableType
     applies_to: list[PathIdType] = pydantic.Field(default_factory=list,
-                                                  min_items=1)
+                                                  min_length=1)
     depends_on: list[PathIdType] = pydantic.Field(default_factory=list)
 
 
@@ -54,9 +54,9 @@ class Automation(pydantic.BaseModel):
     slug: slugify.Slug
     integration_name: str
     callable: CallableType
-    categories: list[AutomationCategory] = pydantic.Field(min_items=1)
+    categories: list[AutomationCategory] = pydantic.Field(min_length=1)
     applies_to: list[slugify.Slug] = pydantic.Field(default_factory=list,
-                                                    min_items=1)
+                                                    min_length=1)
     depends_on: list[slugify.Slug] = pydantic.Field(default_factory=list)
     created_by: str
     created_at: datetime.datetime
