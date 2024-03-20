@@ -93,6 +93,10 @@ class ProjectInfo(pydantic.BaseModel):
     project_type_id: int
 
 
+T: typing.TypeAlias = typing.TypeVar('T')
+Pair: typing.TypeAlias = tuple[T, T]
+
+
 class ProcessingHandler(base.RequestHandler):
     """Handle incoming notifications from integrated applications.
 
@@ -265,6 +269,31 @@ class ProcessingHandler(base.RequestHandler):
 
         return notification
 
+    def _coerce_value(
+        self,
+        constraint: str,
+        notification_value: str | float | int | bool,
+    ) -> Pair[int] | Pair[float] | Pair[bool] | Pair[str]:
+        """Coerce the string constraint according to received value"""
+        try:
+            if isinstance(notification_value,
+                          bool) and constraint.lower() in {'true', 'false'}:
+                self.logger.debug('_coercing %r and %r to boolean', constraint,
+                                  notification_value)
+                return constraint.lower() == 'true', notification_value
+            if isinstance(notification_value, float):
+                self.logger.debug('_coercing %r and %r to float', constraint,
+                                  notification_value)
+                return float(constraint), notification_value
+            if isinstance(notification_value, int) and constraint.isdigit():
+                self.logger.debug('_coercing %r and %r to int', constraint,
+                                  notification_value)
+                return int(constraint, 10), notification_value
+        except (TypeError, ValueError):
+            self.logger.warning('failed to coerce %r to a %s', constraint,
+                                notification_value.__class__.__name__)
+        return constraint, notification_value
+
     def _evaluate_filters(self, notification: Notification, body) -> bool:
         """Evaluate the list of filters.
 
@@ -283,12 +312,14 @@ class ProcessingHandler(base.RequestHandler):
         matches = []
         unspecified = object()
         for notification_filter in notification.filters:
+            constraint = notification_filter.value
             value = notification_filter.pattern.resolve(body, unspecified)
             self.logger.debug('evaluating filter %s with %r',
                               notification_filter,
                               'unmatched' if value is unspecified else value)
             if value is not unspecified:
-                if notification_filter.value == value:
+                constraint, value = self._coerce_value(constraint, value)
+                if value == constraint:
                     if notification_filter.operation == '==':
                         self.logger.debug('matched %s -> %s',
                                           notification_filter.name,
