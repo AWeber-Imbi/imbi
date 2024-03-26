@@ -47,7 +47,7 @@ class OAuth2Integration:
         r'\s+', ' ', """
            UPDATE v1.user_oauth2_tokens
               SET access_token = %(access_token)s,
-                  id_token = %(id_token),
+                  id_token = %(id_token)s,
                   username = %(username)s
             WHERE integration = %(integration)s
               AND external_id = %(external_id)s
