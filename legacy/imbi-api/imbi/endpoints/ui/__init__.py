@@ -17,5 +17,6 @@ URLS = [
     web.url(r'^/ui/logout$', authentication.LogoutRequestHandler),
     web.url(r'^/ui/settings$', settings.RequestHandler),
     web.url(r'^/ui/user$', user.UserRequestHandler),
+    web.url(r'^/ui/available-automations$', user.AvailableAutomationsHandler),
     web.url(r'^/ui/.*$', index.IndexRequestHandler)
 ]
