@@ -1,10 +1,11 @@
 import re
 
 from imbi import errors
-from imbi.endpoints import base
+from imbi.endpoints import base, projects
 
 
-class CollectionRequestHandler(base.CollectionRequestHandler):
+class CollectionRequestHandler(projects.ProjectAttributeCollectionMixin,
+                               base.CollectionRequestHandler):
     NAME = 'project-identifiers'
     ITEM_NAME = 'project-identifier'
     ID_KEY = ['project_id', 'integration_name']
@@ -47,7 +48,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
         await super().get(*args, **kwargs)
 
 
-class RecordRequestHandler(base.CRUDRequestHandler):
+class RecordRequestHandler(projects.ProjectAttributeCRUDMixin,
+                           base.CRUDRequestHandler):
     NAME = 'project-identifier'
     ID_KEY = ['project_id', 'integration_name']
 
