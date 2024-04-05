@@ -4947,6 +4947,12 @@ paths:
                     type: string
                   minLength: 1
                   nullable: true
+                automations:
+                  description: List of project creation automations to run while creating the project
+                  type: array
+                  items:
+                    type: string
+                  nullable: true
               required:
                 - namespace_id
                 - project_type_id

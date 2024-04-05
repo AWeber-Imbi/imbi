@@ -1,5 +1,6 @@
 import asyncio
 import re
+import typing
 
 from imbi import errors, models
 from imbi.endpoints import base
@@ -166,8 +167,54 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
         self.send_response({'rows': count.row['records'], 'data': result.rows})
 
     async def post(self, *_args, **kwargs):
+        values = self.get_request_body()
+        automations = await self._retrieve_automations(
+            values.get('automations', []), values['project_type_id'])
+
         result = await self._post(kwargs)
+        for automation in automations:
+            self.logger.debug('running automation %s = %r', automation.slug,
+                              automation.callable)
+            try:
+                await automation.callable()
+            except Exception as error:
+                self.logger.error('automation failure for %s: %s',
+                                  automation.slug, error)
+                await self.postgres_execute(
+                    'DELETE FROM v1.projects WHERE id = %(project_id)s',
+                    {'project_id': result['id']})
+                raise errors.InternalServerError('Automation %s failed',
+                                                 automation.slug) from None
+
         await self.index_document(result['id'])
+
+    async def _retrieve_automations(
+            self, slugs: typing.Iterable[str],
+            project_type_id: int) -> list[models.Automation]:
+        """Retrieve a list of automations by slug and validate them
+
+        If a slug doesn't exist in the database or any automation is
+        not applicable to the project type, then an exception is raised.
+
+        """
+        automations = [
+            await models.automation(slug, self.application) for slug in slugs
+        ]
+        error = {
+            'missing_automations': [
+                name for name, matched in zip(slugs, automations)
+                if matched is None
+            ],
+            'invalid_automations': [
+                a.name for a in automations
+                if project_type_id not in a.applies_to_ids
+            ]
+        }
+        error = {label: value for label, value in error.items() if value}
+        if error:
+            raise errors.BadRequest('Invalid project creation request: %r',
+                                    error, **error)
+        return automations
 
 
 class RecordRequestHandler(project.RequestHandlerMixin, _RequestHandlerMixin,

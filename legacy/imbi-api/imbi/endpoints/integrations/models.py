@@ -53,7 +53,12 @@ class Automation(pydantic.BaseModel):
     categories: list[AutomationCategory] = pydantic.Field(min_length=1)
     applies_to: list[slugify.Slug] = pydantic.Field(default_factory=list,
                                                     min_length=1)
+    applies_to_ids: list[int] = pydantic.Field(default_factory=list,
+                                               min_length=1,
+                                               exclude=True)
     depends_on: list[slugify.Slug] = pydantic.Field(default_factory=list)
+    depends_on_ids: list[int] = pydantic.Field(default_factory=list,
+                                               exclude=True)
     created_by: str
     created_at: datetime.datetime
     last_modified_by: typing.Union[str, None] = None
@@ -66,7 +71,11 @@ class Automation(pydantic.BaseModel):
             return [AutomationCategory(v) for v in value[1:-1].split(',')]
         return value
 
-    @pydantic.field_validator('applies_to', 'depends_on', mode='before')
+    @pydantic.field_validator('applies_to',
+                              'applies_to_ids',
+                              'depends_on',
+                              'depends_on_ids',
+                              mode='before')
     @classmethod
     def handle_postgres_null_arrays(cls,
                                     value) -> list[slugify.Slug] | list[int]:
