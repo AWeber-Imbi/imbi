@@ -8,7 +8,7 @@ import yarl
 from ietfparse import headers
 from tornado import httpclient
 
-from imbi.endpoints.integrations import automations
+from imbi import models
 from tests import base
 
 
@@ -36,7 +36,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.automations_url = (yarl.URL('/integrations') /
                                 self.integration_name / 'automations')
 
-    def create_automation(self, **overrides: object) -> automations.Automation:
+    def create_automation(self, **overrides: object) -> models.Automation:
         body: dict[str, object] = {
             'name': str(uuid.uuid4()),
             'categories': ['create-project'],
@@ -49,18 +49,18 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(http.HTTPStatus.OK, rsp.code)
         return self._parse_automation(rsp)
 
-    def _fetch_automation(self, ident: int | str) -> automations.Automation:
+    def _fetch_automation(self, ident: int | str) -> models.Automation:
         rsp = self.fetch(str(self.automations_url / str(ident)))
         self.assertEqual(http.HTTPStatus.OK, rsp.code)
         return self._parse_automation(rsp)
 
     def _parse_automation(
-            self, response: httpclient.HTTPResponse) -> automations.Automation:
+            self, response: httpclient.HTTPResponse) -> models.Automation:
         self.assertEqual(
             'application/json',
             response.headers.get('content-type',
                                  'binary/octet-stream').partition(';')[0])
-        return automations.Automation.model_validate(
+        return models.Automation.model_validate(
             json.loads(response.body.decode('utf-8')))
 
     def test_with_no_automations(self) -> None:
@@ -95,8 +95,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                             'binary/octet-stream').partition(';')[0])
         body = json.loads(rsp.body.decode('utf-8'))
         self.assertEqual(1, len(body))
-        self.assertEqual(automation,
-                         automations.Automation.model_validate(body[0]))
+        self.assertEqual(automation, models.Automation.model_validate(body[0]))
 
         for id_value in (automation.id, automation.slug, automation.name):
             url = self.automations_url / str(id_value)
@@ -106,7 +105,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 'application/json',
                 rsp.headers.get('content-type',
                                 'binary/octet-stream').partition(';')[0])
-            retrieved = automations.Automation.model_validate(
+            retrieved = models.Automation.model_validate(
                 json.loads(rsp.body.decode('utf-8')))
             self.assertEqual(retrieved, automation)
             links = {
