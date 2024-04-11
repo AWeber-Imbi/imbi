@@ -168,10 +168,21 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
 
     async def post(self, *_args, **kwargs):
         values = self.get_request_body()
+        values['username'] = self._current_user.username
+        for name in self.FIELDS:
+            if name not in values:
+                values[name] = self.DEFAULTS.get(name)
+
         automations = await self._retrieve_automations(
             values.get('automations', []), values['project_type_id'])
 
-        result = await self._post(kwargs)
+        result = await self.postgres_execute(self.POST_SQL, values,
+                                             f'post-{self.NAME}')
+        if not result.row_count:
+            raise errors.DatabaseError('Failed to create project',
+                                       title='Failed to create record')
+
+        project_id = result.row['id']
         for automation in automations:
             self.logger.debug('running automation %s = %r', automation.slug,
                               automation.callable)
@@ -182,11 +193,20 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
                                   automation.slug, error)
                 await self.postgres_execute(
                     'DELETE FROM v1.projects WHERE id = %(project_id)s',
-                    {'project_id': result['id']})
+                    {'project_id': project_id})
                 raise errors.InternalServerError('Automation %s failed',
                                                  automation.slug) from None
 
-        await self.index_document(result['id'])
+        await self.index_document(project_id)
+
+        response = await self.postgres_execute(self.GET_SQL,
+                                               {'id': project_id},
+                                               metric_name=f'get-{self.NAME}')
+        if response.row:
+            self.send_response(response.row)
+        else:
+            raise errors.InternalServerError(
+                'Newly created project not found - id=%s', project_id)
 
     async def _retrieve_automations(
             self, slugs: typing.Iterable[str],
