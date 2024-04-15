@@ -90,7 +90,8 @@ class OAuth2Integration:
                 result.row['authorization_endpoint'])
             self.token_endpoint = yarl.URL(result.row['token_endpoint'])
             self.client_id = result.row['client_id']
-            self.client_secret = result.row['client_secret']
+            self.client_secret = self._application.decrypt_value(
+                result.row['client_secret'])
             self.public_client = result.row['public_client']
 
             if result.row['api_endpoint']:

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import datetime
-import enum
 import http.client
-import inspect
 import typing
 
 import jsonpatch
@@ -12,75 +10,28 @@ import pydantic
 import sprockets_postgres
 from psycopg2 import extensions
 
-from imbi import automations, errors, postgres, slugify
+from imbi import errors, postgres, slugify
 from imbi.endpoints import base
+from . import models
 
-
-class AutomationCategory(enum.Enum):
-    CREATE_PROJECT = 'create-project'
-
-
-def verify_legal_callable(v):
-    if not inspect.iscoroutinefunction(v):
-        name = getattr(v, '__name__', repr(v))
-        raise ValueError(f'{name} is not a coroutine function')
-
-    mod_name = inspect.getmodule(v).__name__
-    allow_list = {'imbi.automations'}
-    if (mod_name in allow_list
-            or any(mod_name.startswith(a + '.') for a in allow_list)):
-        return v
-    raise ValueError(f'{mod_name!r} is not an allowed implementation module')
-
-
-CallableType = typing.Annotated[pydantic.ImportString,
-                                pydantic.AfterValidator(verify_legal_callable),
-                                pydantic.Field(default=automations.do_nothing)]
 PathIdType: typing.TypeAlias = typing.Union[int, slugify.Slug]
 
 
 class AddAutomationRequest(pydantic.BaseModel):
     name: str
-    categories: list[AutomationCategory] = pydantic.Field(min_length=1)
-    callable: CallableType
+    categories: list[models.AutomationCategory] = pydantic.Field(min_length=1)
+    callable: models.CallableType
     applies_to: list[PathIdType] = pydantic.Field(default_factory=list,
                                                   min_length=1)
     depends_on: list[PathIdType] = pydantic.Field(default_factory=list)
 
 
-class Automation(pydantic.BaseModel):
-    id: int
-    name: str
-    slug: slugify.Slug
-    integration_name: str
-    callable: CallableType
-    categories: list[AutomationCategory] = pydantic.Field(min_length=1)
-    applies_to: list[slugify.Slug] = pydantic.Field(default_factory=list,
-                                                    min_length=1)
-    depends_on: list[slugify.Slug] = pydantic.Field(default_factory=list)
-    created_by: str
-    created_at: datetime.datetime
-    last_modified_by: typing.Union[str, None] = None
-    last_modified_at: typing.Union[datetime.datetime, None] = None
-
-    @pydantic.field_validator('categories', mode='before')
-    @classmethod
-    def handle_postgres_array_syntax(cls, value) -> list[AutomationCategory]:
-        if isinstance(value, str):
-            return [AutomationCategory(v) for v in value[1:-1].split(',')]
-        return value
-
-    @pydantic.field_validator('applies_to', 'depends_on', mode='before')
-    @classmethod
-    def handle_postgres_null_arrays(cls, value) -> list[slugify.Slug]:
-        return [v for v in value if v is not None]
-
-
-def adapt_automation_category(category: AutomationCategory):
+def adapt_automation_category(category: models.AutomationCategory):
     return extensions.AsIs(repr(category.value))
 
 
-extensions.register_adapter(AutomationCategory, adapt_automation_category)
+extensions.register_adapter(models.AutomationCategory,
+                            adapt_automation_category)
 
 
 class CollectionRequestHandler(base.PydanticHandlerMixin,
@@ -92,8 +43,10 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
             'SELECT a.id, a.name, a.slug, a.callable, a.categories,'
             '       a.integration_name, a.created_at, a.created_by,'
             '       a.last_modified_at, a.last_modified_by,'
-            '       array_agg(pt.slug) AS applies_to,'
-            '       array_agg(d.slug) AS depends_on'
+            '       array_agg(DISTINCT pt.slug) AS applies_to,'
+            '       array_agg(DISTINCT d.slug) AS depends_on,'
+            '       array_agg(DISTINCT pt.id) AS applies_to_ids,'
+            '       array_agg(DISTINCT d.id) AS depends_on_ids'
             '  FROM v1.automations AS a'
             '  LEFT JOIN v1.available_automations AS aa'
             '         ON aa.automation_id = a.id'
@@ -105,7 +58,8 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
             '          a.integration_name, a.slug',
             parameters={'integration_name': integration_name},
             metric_name='get-automations')
-        self.send_response([Automation.model_validate(row) for row in result])
+        self.send_response(
+            [models.Automation.model_validate(row) for row in result])
 
     @base.require_permission('admin')
     async def post(self, integration_name: str) -> None:
@@ -136,7 +90,7 @@ class CollectionRequestHandler(base.PydanticHandlerMixin,
                 raise errors.DatabaseError('No rows returned from INSERT',
                                            title='Failed to insert record')
 
-            automation = Automation(
+            automation = models.Automation(
                 id=result.row['id'],
                 name=request.name,
                 slug=slug,
@@ -232,7 +186,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             'last_modified_by': self._current_user.username,
         })
         try:
-            new_automation = Automation.model_validate(updated)
+            new_automation = models.Automation.model_validate(updated)
         except pydantic.ValidationError as error:
             raise errors.PydanticValidationError(
                 error, 'Failed to validate new Automation') from None
@@ -328,7 +282,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
         return super().on_postgres_error(metric_name, exc)
 
     async def _find_automation(self, integration_name: str,
-                               slug: str) -> Automation | None:
+                               slug: str) -> models.Automation | None:
         """Retrieve a single automation from the DB
 
         The `slug` can be a slug, the name of the automation,
@@ -344,8 +298,10 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             'SELECT a.id, a.name, a.callable, a.categories, a.slug,'
             '       a.integration_name, a.created_at, a.created_by,'
             '       a.last_modified_at, a.last_modified_by,'
-            '       array_agg(pt.slug) AS applies_to,'
-            '       array_agg(d.slug) AS depends_on'
+            '       array_agg(DISTINCT pt.slug) AS applies_to,'
+            '       array_agg(DISTINCT d.slug) AS depends_on,'
+            '       array_agg(DISTINCT pt.id) AS applies_to_ids,'
+            '       array_agg(DISTINCT d.id) AS depends_on_ids'
             '  FROM v1.automations AS a'
             '  LEFT JOIN v1.available_automations AS aa'
             '         ON aa.automation_id = a.id'
@@ -365,7 +321,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             metric_name='get-automation')
         if result.row:
             try:
-                automation = Automation.model_validate(result.row)
+                automation = models.Automation.model_validate(result.row)
             except pydantic.ValidationError as error:
                 raise errors.PydanticValidationError(
                     error,
@@ -378,7 +334,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
         return None
 
     async def _get_maps(
-            self, automation: Automation, updated: dict
+            self, automation: models.Automation, updated: dict
     ) -> tuple[slugify.IdSlugMapping, slugify.IdSlugMapping]:
         async with self.application.postgres_connector(
                 self.on_postgres_error, self.on_postgres_timing) as conn:

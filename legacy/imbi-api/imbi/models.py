@@ -7,8 +7,33 @@ import re
 import typing
 
 from imbi import common, errors
+from imbi.endpoints.integrations.models import Automation, automation
 if typing.TYPE_CHECKING:
     from imbi import app
+
+# chose to use an explicit export list here to simplify
+# management of models across different modules
+__all__ = [
+    'Automation',
+    'CookieCutter',
+    'Namespace',
+    'OperationsLog',
+    'Project',
+    'ProjectFact',
+    'ProjectIdentifier',
+    'ProjectLink',
+    'ProjectType',
+    'ProjectURL',
+    'automation',
+    'namespace',
+    'operations_log',
+    'project',
+    'project_facts',
+    'project_identifiers',
+    'project_links',
+    'project_type',
+    'project_urls',
+]
 
 decimal.getcontext().prec = 2
 LOGGER = logging.getLogger(__name__)

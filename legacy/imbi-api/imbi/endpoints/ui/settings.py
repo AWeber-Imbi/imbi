@@ -3,7 +3,6 @@ import asyncio
 from imbi.endpoints import (base, cookie_cutters, environments, fact_types,
                             groups, namespaces, project_link_types,
                             project_types)
-from imbi.endpoints.integrations import oauth2
 from imbi.opensearch import project
 
 
@@ -37,7 +36,8 @@ class RequestHandler(base.RequestHandler):
                 metric_name='project-types'),
             project_index.searchable_fields(),
             self.postgres_execute(
-                oauth2.CollectionRequestHandler.COLLECTION_SQL,
+                'SELECT name, authorization_endpoint, client_id, callback_url'
+                '  FROM v1.oauth2_integrations',
                 metric_name='integrations'),
         )
 
