@@ -5,14 +5,18 @@ import inspect
 import logging
 import types
 
+import sprockets_postgres  # type: ignore[import-untyped]
 import typing_extensions as typing
 
 if typing.TYPE_CHECKING:  # pragma: nocover
     import imbi.models
+    import imbi.user
 
 CompensatingAction: typing.TypeAlias = typing.Callable[
     ['AutomationContext', BaseException], typing.Union[typing.Awaitable[None],
                                                        None]]
+QueryFunction: typing.TypeAlias = typing.Callable[
+    ..., typing.Awaitable[sprockets_postgres.QueryResult]]
 
 
 async def do_nothing(context: AutomationContext,
@@ -46,11 +50,22 @@ class AutomationContext:
     and each callback will be invoked exactly once. It is passed the
     context instance and the exception instance that was caught.
 
+    The context has a number of attributes exported for use inside an
+    action.
+
+    - *run_query* is a handle to the sprockets_postgres postgres_execute
+      method. Use this for database access.
+    - *user* is a `imbi.models.User` instance for the acting user. You
+      can use this to retrieve user-specific tokens for external apps
+      such as gitlab.
 
     """
-    def __init__(self) -> None:
+    def __init__(self, user: imbi.user.User, query: QueryFunction) -> None:
         self.logger = logging.getLogger('AutomationContext')
         self.notes: list[tuple[datetime.datetime, str]] = []
+        self.user = user
+        self.run_query = query
+
         self._cleanups: list[CompensatingAction] = []
 
     def note_progress(self, message_format: str, *args: object) -> None:
@@ -103,3 +118,34 @@ class AutomationContext:
             except Exception as error:
                 self.logger.exception('cleanup %r failed with %s', cleanup,
                                       error)
+
+
+async def run_automations(
+        automations: typing.Iterable[imbi.models.Automation],
+        *args: object,
+        user: imbi.user.User,
+        query_executor: sprockets_postgres.RequestHandlerMixin,
+        addt_callbacks: typing.Iterable[CompensatingAction] | None = None,
+        **kwargs: object) -> None:
+    """Run a list of operations in a AutomationContext instance
+
+    `args` and `kwargs` are passed as-is to **every** automation
+    callable. If an automation fails, then a AutomationFailedError
+    will be raised instead of whatever the automation raised.
+    """
+    last_automation = None
+    try:
+        async with AutomationContext(query=query_executor.postgres_execute,
+                                     user=user) as context:
+            for cb in addt_callbacks or []:
+                context.add_callback(cb)
+            for automation in automations:
+                last_automation = automation
+                await context.run_automation(automation, *args, **kwargs)
+    except Exception as error:
+        # only note which automation failed if we ran one
+        # AutomationContext.run_automation logs an "action failed" message,
+        # so we don't have to
+        if last_automation is not None:
+            raise AutomationFailedError(last_automation, error) from None
+        raise
