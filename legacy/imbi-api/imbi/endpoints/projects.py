@@ -2,7 +2,7 @@ import asyncio
 import re
 import typing
 
-from imbi import errors, models
+from imbi import automations, errors, models
 from imbi.endpoints import base
 from imbi.opensearch import project
 
@@ -173,7 +173,7 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
             if name not in values:
                 values[name] = self.DEFAULTS.get(name)
 
-        automations = await self._retrieve_automations(
+        selected_automations = await self._retrieve_automations(
             values.get('automations', []), values['project_type_id'])
 
         result = await self.postgres_execute(self.POST_SQL, values,
@@ -182,31 +182,20 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
             raise errors.DatabaseError('Failed to create project',
                                        title='Failed to create record')
 
-        project_id = result.row['id']
-        for automation in automations:
-            self.logger.debug('running automation %s = %r', automation.slug,
-                              automation.callable)
-            try:
-                await automation.callable()
-            except Exception as error:
-                self.logger.error('automation failure for %s: %s',
-                                  automation.slug, error)
-                await self.postgres_execute(
-                    'DELETE FROM v1.projects WHERE id = %(project_id)s',
-                    {'project_id': project_id})
-                raise errors.InternalServerError('Automation %s failed',
-                                                 automation.slug) from None
-
-        await self.index_document(project_id)
+        project = await models.project(result.row['id'], self.application)
+        self.logger.info('created project %s (%s) in %s', project.slug,
+                         project.id, project.namespace.slug)
+        await self._run_automations(project, selected_automations)
+        await self.index_document(project.id)
 
         response = await self.postgres_execute(self.GET_SQL,
-                                               {'id': project_id},
+                                               {'id': project.id},
                                                metric_name=f'get-{self.NAME}')
         if response.row:
             self.send_response(response.row)
         else:
             raise errors.InternalServerError(
-                'Newly created project not found - id=%s', project_id)
+                'Newly created project not found - id=%s', project.id)
 
     async def _retrieve_automations(
             self, slugs: typing.Iterable[str],
@@ -217,24 +206,49 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
         not applicable to the project type, then an exception is raised.
 
         """
-        automations = [
+        automation_instances = [
             await models.automation(slug, self.application) for slug in slugs
         ]
         error = {
             'missing_automations': [
-                name for name, matched in zip(slugs, automations)
+                name for name, matched in zip(slugs, automation_instances)
                 if matched is None
             ],
             'invalid_automations': [
-                a.name for a in automations
-                if project_type_id not in a.applies_to_ids
+                a.name for a in automation_instances
+                if a is not None and project_type_id not in a.applies_to_ids
             ]
         }
         error = {label: value for label, value in error.items() if value}
         if error:
             raise errors.BadRequest('Invalid project creation request: %r',
                                     error, **error)
-        return automations
+        return automation_instances
+
+    async def _run_automations(
+            self, project: models.Project,
+            selected_automations: typing.Sequence[models.Automation]) -> None:
+        """Run a list of automations for the newly created project
+
+        If an automation fails, then an InternalServerError is raised.
+        """
+        if not selected_automations:
+            return
+
+        self.logger.info(
+            'running create-project automations for project %s (%s): %r',
+            project.slug, project.id, [a.slug for a in selected_automations])
+        cleanup = automations.query_runner(
+            'delete-project-by-id', 'DELETE FROM v1.projects WHERE id = %s',
+            [project.id])
+        try:
+            await automations.run_automations(selected_automations,
+                                              project,
+                                              user=self._current_user,
+                                              query_executor=self,
+                                              addt_callbacks=[cleanup])
+        except automations.AutomationFailedError as error:
+            raise errors.InternalServerError(str(error)) from None
 
 
 class RecordRequestHandler(project.RequestHandlerMixin, _RequestHandlerMixin,
