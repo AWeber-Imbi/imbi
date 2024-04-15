@@ -149,3 +149,21 @@ async def run_automations(
         if last_automation is not None:
             raise AutomationFailedError(last_automation, error) from None
         raise
+
+
+def query_runner(metric_name: str, query: str, *args: object,
+                 **kwargs: object) -> CompensatingAction:
+    """Returns a CompensatingAction that calls context.run_query()
+
+    Use this to create compensating actions that run a simple
+    SQL query. If you need to do something more in-depth, then
+    write freestanding function.
+    """
+    kwargs['metric_name'] = metric_name
+
+    async def runner(context: AutomationContext, *_: object) -> None:
+        context.note_progress('running query %r with args %r', metric_name,
+                              args)
+        await context.run_query(query, *args, **kwargs)
+
+    return runner

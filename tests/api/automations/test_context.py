@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import typing
 import unittest.mock
 import uuid
@@ -264,3 +265,34 @@ class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
                     user=self.user,
                     query_executor=self.executor,
                     addt_callbacks=[unittest.mock.Mock()])
+
+
+class QueryRunnerTests(unittest.IsolatedAsyncioTestCase):
+    async def test(self) -> None:
+        runner = automations.query_runner(
+            unittest.mock.sentinel.metric_name,
+            unittest.mock.sentinel.query,
+            unittest.mock.sentinel.parameters,
+            timeout=unittest.mock.sentinel.timeout)
+        self.assertTrue(inspect.iscoroutinefunction(runner),
+                        'query_runner should return a coroutine function')
+
+        context = unittest.mock.Mock()
+        context.note_progress = unittest.mock.Mock()
+        context.run_query = unittest.mock.AsyncMock()
+        coro = runner(context, RuntimeError())
+        self.assertTrue(inspect.iscoroutine(coro),
+                        'query_runner() should return a coroutine')
+        result = await coro
+        self.assertIsNone(result, 'unexpected return from query runner')
+
+        context.note_progress.assert_called_once_with(
+            AnyInstanceOf(str),
+            unittest.mock.sentinel.metric_name,
+            (unittest.mock.sentinel.parameters, ),
+        )
+        context.run_query.assert_awaited_once_with(
+            unittest.mock.sentinel.query,
+            unittest.mock.sentinel.parameters,
+            metric_name=unittest.mock.sentinel.metric_name,
+            timeout=unittest.mock.sentinel.timeout)
