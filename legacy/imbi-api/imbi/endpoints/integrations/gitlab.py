@@ -131,7 +131,8 @@ class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
                 raise errors.Forbidden('no GitLab tokens for %r',
                                        imbi_user,
                                        title='GitLab Not Connected')
-            self.client = gitlab.GitLabClient(tokens[0], self.application)
+            self.client = gitlab.GitLabClient(imbi_user, tokens[0],
+                                              self.application)
 
 
 class UserNamespacesHandler(GitLabIntegratedHandler):

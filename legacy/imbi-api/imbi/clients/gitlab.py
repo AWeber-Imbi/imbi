@@ -1,4 +1,5 @@
 import base64
+import http.client
 import logging
 import pathlib
 import stat
@@ -10,7 +11,7 @@ import sprockets.mixins.http
 import tornado.web
 import yarl
 
-from imbi import errors, oauth2, version
+from imbi import errors, oauth2, user, version
 
 
 class Namespace(pydantic.BaseModel):
@@ -50,12 +51,13 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
     This client sends authenticated HTTP requests to the GitLab API.
 
     """
-    def __init__(self, token: oauth2.IntegrationToken,
+    def __init__(self, user: user.User, token: oauth2.IntegrationToken,
                  application: tornado.web.Application):
         super().__init__()
         settings = application.settings['automations']['gitlab']
         self.logger = logging.getLogger(__package__).getChild('GitLabClient')
         self.restrict_to_user = settings.get('restrict_to_user', False)
+        self.user = user
         self.token = token
         self.headers = {
             'Accept': 'application/json',
@@ -81,7 +83,19 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             kwargs['content_type'] = 'application/json'
         kwargs['user_agent'] = f'imbi/{version} (GitLabClient)'
         self.logger.debug('%s %s', method, url)
-        return await super().http_fetch(str(url), method=method, **kwargs)
+
+        response = await super().http_fetch(str(url), method=method, **kwargs)
+        if response.code == 400 and response.body:
+            self.logger.warning('%s %s failed: status=%s response=%r', method,
+                                url, response.code, response.body)
+        if response.code == http.client.UNAUTHORIZED:  # maybe refresh
+            if response.body.get('error', '') == 'invalid_token':
+                await self._refresh_token()
+                request_headers.update(self.headers)
+                response = await super().http_fetch(str(url),
+                                                    method=method,
+                                                    **kwargs)
+        return response
 
     async def fetch_all_pages(self, *path, **query) -> list[dict]:
         url = self.token.integration.api_endpoint
@@ -222,3 +236,34 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             user_info['username'],
             response.code,
             title='GitLab API Failure')
+
+    async def _refresh_token(self) -> None:
+        body = urllib.parse.urlencode({
+            'grant_type': 'refresh_token',
+            'refresh_token': self.token.refresh_token,
+            'client_id': self.token.integration.client_id,
+            'client_secret': self.token.integration.client_secret,
+        })
+        self.logger.info('refreshing token for %s (%s)', self.user.username,
+                         self.token.external_id)
+        self.logger.debug('refresh_request: %r', body)
+        response = await super().http_fetch(
+            str(self.token.integration.token_endpoint),
+            method='POST',
+            body=body,
+            content_type='application/x-www-form-urlencoded',
+        )
+        if response.ok:
+            self.logger.debug('refresh response: %r', response.body)
+            await self.token.integration.upsert_user_tokens(
+                self.user.username, self.token.external_id,
+                response.body['access_token'], response.body['refresh_token'],
+                self.token.id_token)
+            self.token.access_token = response.body['access_token']
+            self.token.refresh_token = response.body['refresh_token']
+            self.headers['Authorization'] = f'Bearer {self.token.access_token}'
+        else:
+            self.logger.error('failed to refresh token for %s: %r',
+                              self.user.username, response.body)
+            raise errors.InternalServerError('token refresh failed for %s: %s',
+                                             self.user.username, response.code)
