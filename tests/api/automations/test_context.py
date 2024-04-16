@@ -7,7 +7,7 @@ import uuid
 
 import sprockets_postgres  # type: ignore[import-untyped]
 
-from imbi import automations, user
+from imbi import app, automations, user
 
 
 class AnyInstanceOf:
@@ -33,6 +33,7 @@ class AnyInstanceOf:
 class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         super().setUp()
+        self.application = unittest.mock.Mock(spec=app.Application)
         self.user = unittest.mock.Mock(spec=user.User)
         self.query_function = unittest.mock.AsyncMock()
         self.context = automations.AutomationContext(self.application,
@@ -176,6 +177,7 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
 class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         super().setUp()
+        self.application = unittest.mock.Mock(spec=app.Application)
         self.executor = unittest.mock.AsyncMock(
             spec=sprockets_postgres.RequestHandlerMixin)
         self.user = unittest.mock.Mock(spec=user.User)
@@ -187,6 +189,7 @@ class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
         action = unittest.mock.AsyncMock()
         actions = [unittest.mock.Mock(callable=action)]
         await automations.run_automations(actions,
+                                          application=self.application,
                                           user=self.user,
                                           query_executor=self.executor)
         action.assert_awaited_once_with(
@@ -198,6 +201,7 @@ class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_without_explicit_callbacks(self) -> None:
         await automations.run_automations(self.automations,
+                                          application=self.application,
                                           user=self.user,
                                           query_executor=self.executor)
         for automation in self.automations:
@@ -212,6 +216,7 @@ class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
         self.automations[-1].callable.side_effect = error
         with self.assertRaises(automations.AutomationFailedError):
             await automations.run_automations(self.automations,
+                                              application=self.application,
                                               user=self.user,
                                               query_executor=self.executor,
                                               addt_callbacks=callbacks)
@@ -222,6 +227,7 @@ class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
     async def test_without_automations(self) -> None:
         callbacks = [unittest.mock.AsyncMock()]
         await automations.run_automations([],
+                                          application=self.application,
                                           user=self.user,
                                           query_executor=self.executor,
                                           addt_callbacks=callbacks)
@@ -235,6 +241,7 @@ class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
         ]
         await automations.run_automations(
             actions,
+            application=self.application,
             user=self.user,
             query_executor=self.executor,
         )
@@ -260,6 +267,7 @@ class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(RuntimeError):
                 await automations.run_automations(
                     self.automations,
+                    application=self.application,
                     user=self.user,
                     query_executor=self.executor,
                     addt_callbacks=[unittest.mock.Mock()])

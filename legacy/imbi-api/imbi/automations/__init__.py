@@ -9,6 +9,7 @@ import sprockets_postgres  # type: ignore[import-untyped]
 import typing_extensions as typing
 
 if typing.TYPE_CHECKING:  # pragma: nocover
+    import imbi.app
     import imbi.models
     import imbi.user
 
@@ -70,8 +71,10 @@ class AutomationContext:
       such as gitlab.
 
     """
-    def __init__(self, user: imbi.user.User, query: QueryFunction) -> None:
-        self.logger = logging.getLogger('AutomationContext')
+    def __init__(self, application: imbi.app.Application, user: imbi.user.User,
+                 query: QueryFunction) -> None:
+        self.application = application
+        self.logger = logging.getLogger(__name__).getChild('AutomationContext')
         self.notes: list[tuple[datetime.datetime, str]] = []
         self.user = user
         self.run_query = query
@@ -133,6 +136,7 @@ class AutomationContext:
 async def run_automations(
         automations: typing.Iterable[imbi.models.Automation],
         *args: object,
+        application: imbi.app.Application,
         user: imbi.user.User,
         query_executor: sprockets_postgres.RequestHandlerMixin,
         addt_callbacks: typing.Iterable[CompensatingAction] | None = None,
@@ -145,7 +149,8 @@ async def run_automations(
     """
     last_automation = None
     try:
-        async with AutomationContext(query=query_executor.postgres_execute,
+        async with AutomationContext(application=application,
+                                     query=query_executor.postgres_execute,
                                      user=user) as context:
             for cb in addt_callbacks or []:
                 context.add_callback(cb)

@@ -251,6 +251,7 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
         try:
             await automations.run_automations(selected_automations,
                                               project,
+                                              application=self.application,
                                               user=self._current_user,
                                               query_executor=self,
                                               addt_callbacks=[cleanup])
