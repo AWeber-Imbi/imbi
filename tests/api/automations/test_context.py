@@ -35,52 +35,51 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
         super().setUp()
         self.user = unittest.mock.Mock(spec=user.User)
         self.query_function = unittest.mock.AsyncMock()
+        self.context = automations.AutomationContext(self.application,
+                                                     self.user,
+                                                     self.query_function)
 
     async def test_callbacks_called_upon_failure(self) -> None:
         sync_callback = unittest.mock.Mock()
         async_callback = unittest.mock.AsyncMock()
         error = RuntimeError()
-        context = automations.AutomationContext(self.user, self.query_function)
-
         with self.assertRaises(RuntimeError):
-            async with context:
-                context.add_callback(sync_callback)
-                context.add_callback(async_callback)
+            async with self.context:
+                self.context.add_callback(sync_callback)
+                self.context.add_callback(async_callback)
                 raise error
 
-        sync_callback.assert_called_once_with(context, error)
-        async_callback.assert_awaited_once_with(context, error)
+        sync_callback.assert_called_once_with(self.context, error)
+        async_callback.assert_awaited_once_with(self.context, error)
 
     async def test_callbacks_are_not_called_upon_success(self) -> None:
         sync_callback = unittest.mock.Mock()
         async_callback = unittest.mock.AsyncMock()
-        async with automations.AutomationContext(
-                self.user, self.query_function) as context:
-            context.add_callback(sync_callback)
-            context.add_callback(async_callback)
+        async with self.context:
+            self.context.add_callback(sync_callback)
+            self.context.add_callback(async_callback)
 
         sync_callback.assert_not_called()
         async_callback.assert_not_awaited()
 
     async def test_run_automation(self) -> None:
         automation = unittest.mock.Mock()
-        context = automations.AutomationContext(self.user, self.query_function)
 
-        await context.run_automation(automation,
-                                     unittest.mock.sentinel.pos_arg,
-                                     keyword=unittest.mock.sentinel.kwarg)
+        await self.context.run_automation(automation,
+                                          unittest.mock.sentinel.pos_arg,
+                                          keyword=unittest.mock.sentinel.kwarg)
         automation.callable.assert_called_once_with(
-            context,
+            self.context,
             automation,
             unittest.mock.sentinel.pos_arg,
             keyword=unittest.mock.sentinel.kwarg)
 
         automation.callable = unittest.mock.AsyncMock()
-        await context.run_automation(automation,
-                                     unittest.mock.sentinel.pos_arg,
-                                     keyword=unittest.mock.sentinel.kwarg)
+        await self.context.run_automation(automation,
+                                          unittest.mock.sentinel.pos_arg,
+                                          keyword=unittest.mock.sentinel.kwarg)
         automation.callable.assert_awaited_once_with(
-            context,
+            self.context,
             automation,
             unittest.mock.sentinel.pos_arg,
             keyword=unittest.mock.sentinel.kwarg)
@@ -88,22 +87,20 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
         failure = RuntimeError()
         automation.callable = unittest.mock.AsyncMock(side_effect=failure)
         compensating_action = unittest.mock.Mock()
-        context.add_callback(compensating_action)
+        self.context.add_callback(compensating_action)
         with self.assertRaises(failure.__class__):
-            await context.run_automation(automation,
-                                         unittest.mock.sentinel.pos_arg,
-                                         keyword=unittest.mock.sentinel.kwarg)
+            await self.context.run_automation(
+                automation,
+                unittest.mock.sentinel.pos_arg,
+                keyword=unittest.mock.sentinel.kwarg)
         automation.callable.assert_awaited_once_with(
-            context,
+            self.context,
             automation,
             unittest.mock.sentinel.pos_arg,
             keyword=unittest.mock.sentinel.kwarg)
-        compensating_action.assert_called_once_with(context, failure)
+        compensating_action.assert_called_once_with(self.context, failure)
 
     async def test_that_failing_callbacks_are_reported(self) -> None:
-        context = automations.AutomationContext(self.user, self.query_function)
-        failure = RuntimeError()
-
         class Automation:
             def __init__(self) -> None:
                 self.slug = str(uuid.uuid4())
@@ -118,6 +115,7 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
         autos = [Automation() for _ in range(3)]
 
         # make the last automation fail
+        failure = RuntimeError()
         autos[-1].action.side_effect = failure
 
         # make the first automation's cleanup fail... we want to
@@ -125,10 +123,10 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
         autos[0].callback.side_effect = ValueError()
 
         with self.assertRaises(RuntimeError) as cm:
-            with self.assertLogs(context.logger) as log:
-                async with context:
+            with self.assertLogs(self.context.logger) as log:
+                async with self.context:
                     for a in autos:
-                        await context.run_automation(a)
+                        await self.context.run_automation(a)
         self.assertIs(failure, cm.exception)
         for record in log.records:
             if (record.levelname == 'ERROR'
@@ -139,12 +137,12 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
 
         # verify that all actions were invoked
         for a in autos:
-            a.action.assert_awaited_once_with(context, a)
+            a.action.assert_awaited_once_with(self.context, a)
 
         # verify that all callbacks except for the last one were invoked
         # with the correct parameters
         for a in autos[:-1]:
-            a.callback.assert_awaited_once_with(context, failure)
+            a.callback.assert_awaited_once_with(self.context, failure)
 
         # verify that the final callback was not invoked
         autos[-1].callback.assert_not_awaited()
@@ -162,17 +160,17 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
                 c.note_progress('action: param:%s', param)
                 c.add_callback(self.callback)
 
-        context = automations.AutomationContext(self.user, self.query_function)
         error = RuntimeError()
         autos = [Automation(), Automation(error)]
 
         with self.assertRaises(RuntimeError):
-            async with context:
+            async with self.context:
                 for param, act in enumerate(autos):
-                    await context.run_automation(act, param)
-        self.assertEqual(1, len(context.notes))
-        self.assertEqual(['action: param:0'], [n[1] for n in context.notes])
-        autos[0].callback.assert_called_once_with(context, error)
+                    await self.context.run_automation(act, param)
+        self.assertEqual(1, len(self.context.notes))
+        self.assertEqual(['action: param:0'],
+                         [n[1] for n in self.context.notes])
+        autos[0].callback.assert_called_once_with(self.context, error)
 
 
 class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
