@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import inspect
-import typing
 import unittest.mock
 import uuid
 
 import sprockets_postgres  # type: ignore[import-untyped]
+import typing_extensions as typing
 
-from imbi import app, automations, user
+from imbi import app, automations, models, user
 
 
 class AnyInstanceOf:
@@ -108,8 +108,8 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
                 self.action = unittest.mock.AsyncMock()
                 self.callback = unittest.mock.AsyncMock()
 
-            async def callable(self, c: automations.AutomationContext, *args,
-                               **kwargs) -> None:
+            async def callable(self, c: automations.AutomationContext,
+                               *args: object, **kwargs: object) -> None:
                 await self.action(c, *args, **kwargs)
                 c.add_callback(self.callback)
 
@@ -127,7 +127,8 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
             with self.assertLogs(self.context.logger) as log:
                 async with self.context:
                     for a in autos:
-                        await self.context.run_automation(a)
+                        await self.context.run_automation(
+                            typing.cast(models.Automation, a))
         self.assertIs(failure, cm.exception)
         for record in log.records:
             if (record.levelname == 'ERROR'
@@ -167,7 +168,8 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):
             async with self.context:
                 for param, act in enumerate(autos):
-                    await self.context.run_automation(act, param)
+                    await self.context.run_automation(
+                        typing.cast(models.Automation, act), param)
         self.assertEqual(1, len(self.context.notes))
         self.assertEqual(['action: param:0'],
                          [n[1] for n in self.context.notes])
@@ -289,7 +291,7 @@ class QueryRunnerTests(unittest.IsolatedAsyncioTestCase):
         coro = runner(context, RuntimeError())
         self.assertTrue(inspect.iscoroutine(coro),
                         'query_runner() should return a coroutine')
-        result = await coro
+        result = await coro  # type: ignore[misc]
         self.assertIsNone(result, 'unexpected return from query runner')
 
         context.note_progress.assert_called_once_with(

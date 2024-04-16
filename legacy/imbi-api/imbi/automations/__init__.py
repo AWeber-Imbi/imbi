@@ -91,17 +91,17 @@ class AutomationContext:
         self.notes.append((datetime.datetime.now(datetime.timezone.utc),
                            message_format % args if args else message_format))
 
-    async def run_automation(self, automation: imbi.models.Automation, *args,
-                             **kwargs) -> None:
-        self.logger.debug('running automation %s = %r', automation.slug,
-                          automation.callable)
+    async def run_automation(self, automation: imbi.models.Automation,
+                             *args: object, **kwargs: object) -> None:
+        self.logger.debug('running automation %s = %r with args %r %r',
+                          automation.slug, automation.callable, args, kwargs)
         try:
             result = automation.callable(self, automation, *args, **kwargs)
             if inspect.isawaitable(result):
                 await result
         except Exception as error:
-            self.logger.error(
-                'automation %s failed with %s, running %s cleanups',
+            self.logger.exception(
+                'automation %s failed with %r, running %s cleanups',
                 automation.slug, error, len(self._cleanups))
             await self._run_cleanups(error)
             raise error
