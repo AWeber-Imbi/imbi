@@ -15,8 +15,18 @@ if typing.TYPE_CHECKING:  # pragma: nocover
 CompensatingAction: typing.TypeAlias = typing.Callable[
     ['AutomationContext', BaseException], typing.Union[typing.Awaitable[None],
                                                        None]]
-QueryFunction: typing.TypeAlias = typing.Callable[
-    ..., typing.Awaitable[sprockets_postgres.QueryResult]]
+
+
+class QueryFunction(typing.Protocol):
+    async def __call__(
+        self,
+        sql: str,
+        parameters: sprockets_postgres.QueryParameters = None,
+        metric_name: str = '',
+        *,
+        timeout: sprockets_postgres.Timeout = None
+    ) -> sprockets_postgres.QueryResult:  # pragma: nocover
+        ...
 
 
 async def do_nothing(context: AutomationContext,
@@ -151,8 +161,12 @@ async def run_automations(
         raise
 
 
-def query_runner(metric_name: str, query: str, *args: object,
-                 **kwargs: object) -> CompensatingAction:
+def query_runner(
+    metric_name: str,
+    query: str,
+    *args: sprockets_postgres.QueryParameters | str,
+    **kwargs: sprockets_postgres.Timeout | str,
+) -> CompensatingAction:
     """Returns a CompensatingAction that calls context.run_query()
 
     Use this to create compensating actions that run a simple
