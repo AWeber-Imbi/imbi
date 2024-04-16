@@ -97,7 +97,7 @@ async def automation(automation_slug: str,
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
         LOGGER.error('Failed to execute query for automation %s: %s',
                      automation_slug, exc)
-        raise errors.DatabaseError(f'Error loading Automation', error=exc)
+        raise errors.DatabaseError('Error loading Automation', error=exc)
 
     async with application.postgres_connector(
             on_error=on_postgres_error) as conn:

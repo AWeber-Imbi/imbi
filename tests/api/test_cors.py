@@ -181,7 +181,7 @@ class PreflightProcessingTests(RequestProcessingTestCase):
 
     def test_preflight_without_explicit_allowed_origin(self):
         self.cors_processor.config.allowed_origins.allow_any = False
-        self.request.headers['Origin'] = f'https://example.net'
+        self.request.headers['Origin'] = 'https://example.net'
         self.cors_processor.process_request(self.handler)
         self.assert_preflight_failure()
         self.assertNotIn('Access-Control-Allow-Origin', self.response_headers)
