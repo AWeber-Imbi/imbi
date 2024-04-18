@@ -23,7 +23,7 @@ class OAuth2CreationRequest(pydantic.BaseModel):
 class OAuth2Details(pydantic.BaseModel):
     authorization_endpoint: pydantic.HttpUrl
     token_endpoint: pydantic.HttpUrl
-    revoke_endpoint: typing.Union[pydantic.HttpUrl, None]
+    revoke_endpoint: typing.Union[pydantic.HttpUrl, None] = None
     callback_url: pydantic.HttpUrl
     client_id: str
     client_secret: typing.Union[str, None]
@@ -93,7 +93,8 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
                 'callback_url': str(callback_url),
                 'authorization_endpoint': str(request.authorization_endpoint),
                 'token_endpoint': str(request.token_endpoint),
-                'revoke_endpoint': str(request.revoke_endpoint),
+                'revoke_endpoint': (str(request.revoke_endpoint)
+                                    if request.revoke_endpoint else None),
                 'client_id': request.client_id,
                 'client_secret': client_secret,
                 'public_client': request.use_pkce,
