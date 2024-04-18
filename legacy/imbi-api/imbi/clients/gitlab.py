@@ -26,22 +26,26 @@ class ProjectInfo(pydantic.BaseModel):
     id: int
     default_branch: str
     namespace: Namespace
+    name_with_namespace: str
     web_url: str
     links: ProjectLinks = pydantic.Field(..., alias='_links')
 
 
 PROJECT_DEFAULTS = {
+    'auto_devops_enabled': False,
     'default_branch': 'main',
-    'issues_access_level': 'disabled',
-    'issues_enabled': False,  # deprecated but required to disable :(
     'builds_access_level': 'enabled',
+    'forking_access_level': 'enabled',
+    'initialize_with_readme': False,
     'merge_requests_access_level': 'enabled',
+    'only_allow_merge_if_pipeline_succeeds': True,
     'operations_access_level': 'disabled',
     'packages_enabled': False,
-    'pages_access_level': 'disabled',
+    'printing_merge_request_link_enabled': True,
+    'remove_source_branch_after_merge': True,
     'snippets_access_level': 'enabled',
-    'wiki_access_level': 'disabled',
-    'wiki_enabled': False,  # deprecated but required to disable :(
+    'squash_option': 'default_off',
+    'visibility': 'public',
 }
 
 
@@ -141,7 +145,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         slug = urllib.parse.quote('/'.join(group_path), safe='')
         url = self.token.integration.api_endpoint
         path = f'{url.path.rstrip("/")}/groups/{slug}'
-        url = url.with_path(path, encoded=True)
+        url = url.with_path(path, encoded=True).with_query(
+            {'with_projects': 'false'})
         response = await self.api(url)
         if response.code == 404:
             self.logger.debug('Group not found: %s', url)
@@ -180,6 +185,19 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         raise GitLabAPIFailure(
             response, 'failed to create project %s in namespace %s: %s',
             project_name, parent['id'], response.code)
+
+    async def delete_project(self, project: ProjectInfo) -> None:
+        url = yarl.URL('/projects') / str(project.id)
+        response = await self.api(url, method='DELETE')
+        # intentionally swallow "Not Found" responses
+        if not response.ok and response.code not in (http.HTTPStatus.NOT_FOUND,
+                                                     http.HTTPStatus.GONE):
+            raise GitLabAPIFailure(
+                response,
+                '%s failed to delete project %s',
+                self.user.username,
+                project.web_url,
+                detail=f'Failed to delete {project.web_url}')
 
     async def commit_tree(self, project_info: ProjectInfo,
                           project_dir: pathlib.Path, commit_message: str):

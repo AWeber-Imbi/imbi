@@ -8,6 +8,8 @@ import types
 import sprockets_postgres  # type: ignore[import-untyped]
 import typing_extensions as typing
 
+from imbi import errors
+
 if typing.TYPE_CHECKING:  # pragma: nocover
     import imbi.app
     import imbi.models
@@ -80,6 +82,7 @@ class AutomationContext:
         self.run_query = query
 
         self._cleanups: list[CompensatingAction] = []
+        self._memory: dict[object, object] = {}
 
     def note_progress(self, message_format: str, *args: object) -> None:
         """Add a note to the list of notes
@@ -109,6 +112,19 @@ class AutomationContext:
     def add_callback(self, compensating_action: CompensatingAction) -> None:
         """Add a cleanup action"""
         self._cleanups.append(compensating_action)
+
+    # Implement MutableMapping interface for state storage
+    def __getitem__(self, key: object) -> object:
+        return self._memory[key]
+
+    def __delitem__(self, key: object) -> None:
+        del self._memory[key]
+
+    def __setitem__(self, key: object, value: object) -> None:
+        self._memory[key] = value
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._memory
 
     # Implement an async context manager that runs cleanups if an
     # exception is raised
@@ -157,6 +173,8 @@ async def run_automations(
             for automation in automations:
                 last_automation = automation
                 await context.run_automation(automation, *args, **kwargs)
+    except errors.ApplicationError:  # this is meant for the end user
+        raise
     except Exception as error:
         # only note which automation failed if we ran one
         # AutomationContext.run_automation logs an "action failed" message,

@@ -255,6 +255,8 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
                                               user=self._current_user,
                                               query_executor=self,
                                               addt_callbacks=[cleanup])
+        except errors.ApplicationError:  # this is meant for the end user
+            raise
         except automations.AutomationFailedError as error:
             raise errors.InternalServerError(str(error)) from None
 

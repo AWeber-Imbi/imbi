@@ -175,6 +175,23 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
                          [n[1] for n in self.context.notes])
         autos[0].callback.assert_called_once_with(self.context, error)
 
+    async def test_state_storage(self) -> None:
+        async def writer(ctx: automations.AutomationContext,
+                         _auto: models.Automation) -> None:
+            ctx[self.test_state_storage] = 'hello'
+
+        async def reader(ctx: automations.AutomationContext,
+                         _auto: models.Automation) -> None:
+            ctx['out'] = f'{ctx[self.test_state_storage]} world'
+            del ctx[self.test_state_storage]
+
+        await self.context.run_automation(
+            unittest.mock.AsyncMock(callable=writer))
+        await self.context.run_automation(
+            unittest.mock.AsyncMock(callable=reader))
+        self.assertEqual('hello world', self.context['out'])
+        self.assertNotIn(self.test_state_storage, self.context)
+
 
 class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
