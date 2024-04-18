@@ -45,6 +45,23 @@ PROJECT_DEFAULTS = {
 }
 
 
+class GitLabAPIFailure(errors.ApplicationError):
+    def __init__(self, response: sprockets.mixins.http.HTTPResponse,
+                 log_message: str, *log_args, **kwargs) -> None:
+        status_code = response.code
+        kwargs.setdefault('title', 'GitLab API Failure')
+        kwargs['gitlab_response_body'] = response.body
+
+        # A GitLab "unauthorized" response is not the same as an
+        # Imbi "unauthorized". HTTP unauthorized always refers to
+        # the user requested resource which is an Imbi resource.
+        if status_code == http.HTTPStatus.UNAUTHORIZED:
+            status_code = http.HTTPStatus.FORBIDDEN
+
+        super().__init__(status_code, 'gitlab-api-failure', log_message,
+                         *log_args, **kwargs)
+
+
 class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
     """API Client for GitLab.
 
@@ -108,10 +125,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         while url is not None:
             response = await self.api(url)
             if not response.ok:
-                raise errors.InternalServerError('GET %s failed: %s',
-                                                 url,
-                                                 response.code,
-                                                 title='GitLab API Failure')
+                raise GitLabAPIFailure(response, 'GET %s failed: %s', url,
+                                       response.code)
 
             entries.extend(response.body)
             for link in response.links:
@@ -133,10 +148,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             return None
         if response.ok:
             return response.body
-        raise errors.InternalServerError('failed to fetch group %s: %s',
-                                         slug,
-                                         response.code,
-                                         title='GitLab API Failure')
+        raise GitLabAPIFailure(response, 'failed to fetch group %s: %s', slug,
+                               response.code)
 
     async def fetch_project(self, project_id: int) \
             -> typing.Optional[ProjectInfo]:
@@ -147,10 +160,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             return None
         if response.ok:
             return ProjectInfo.parse_obj(response.body)
-        raise errors.InternalServerError('failed to fetch project %s: %s',
-                                         project_id,
-                                         response.code,
-                                         title='GitLab API Failure')
+        raise GitLabAPIFailure(response, 'failed to fetch project %s: %s',
+                               project_id, response.code)
 
     async def create_project(self, parent, project_name: str,
                              **attributes) -> ProjectInfo:
@@ -166,11 +177,9 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         response = await self.api('projects', method='POST', body=attributes)
         if response.ok:
             return ProjectInfo.parse_obj(response.body)
-        raise errors.InternalServerError('failed to create project %s: %s',
-                                         project_name,
-                                         response.code,
-                                         title='GitLab API Failure',
-                                         gitlab_response=response.body)
+        raise GitLabAPIFailure(
+            response, 'failed to create project %s in namespace %s: %s',
+            project_name, parent['id'], response.code)
 
     async def commit_tree(self, project_info: ProjectInfo,
                           project_dir: pathlib.Path, commit_message: str):
@@ -204,11 +213,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         )
         if response.ok:
             return response.body
-        raise errors.InternalServerError('failed to commit to %s: %s',
-                                         project_url,
-                                         response.code,
-                                         title='GitLab API Failure',
-                                         gitlab_response=response.body)
+        raise GitLabAPIFailure(response, 'failed to commit to %s: %s',
+                               project_url, response.code)
 
     async def fetch_user_information(self):
         if self._user_info:
@@ -217,10 +223,9 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         if response.ok:
             self._user_info = response.body
             return self._user_info
-        raise errors.InternalServerError(
-            'failed to retrieve GitLab user information: %s',
-            response.code,
-            title='GitLab API Failure')
+        raise GitLabAPIFailure(
+            response, 'failed to retrieve GitLab user information: %s',
+            response.code)
 
     async def fetch_user_namespace(self):
         if self._user_namespace:
@@ -231,11 +236,12 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         if response.ok:
             self._user_namespace = response.body
             return self._user_namespace
-        raise errors.InternalServerError(
+        raise GitLabAPIFailure(
+            response,
             'failed to retrieve GitLab user namespace for %s: %s',
             user_info['username'],
             response.code,
-            title='GitLab API Failure')
+            detail='failed to retrieve GitLab user namespace')
 
     async def _refresh_token(self) -> None:
         body = urllib.parse.urlencode({
@@ -265,5 +271,5 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         else:
             self.logger.error('failed to refresh token for %s: %r',
                               self.user.username, response.body)
-            raise errors.InternalServerError('token refresh failed for %s: %s',
-                                             self.user.username, response.code)
+            raise GitLabAPIFailure(response, 'token refresh failed: %s',
+                                   response.code)
