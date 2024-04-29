@@ -32,10 +32,10 @@ setup: .env env
 
 # Testing
 
-.PHONY: bandit
-bandit: env
-	@ printf "\nRunning Bandit\n"
-	@ env/bin/bandit -r imbi
+.PHONY: lint
+lint: env
+	@ printf "\nRunning pre-commit hooks\n"
+	@ env/bin/pre-commit run --all-files
 
 .PHONY: coverage
 coverage: .env env
@@ -44,17 +44,5 @@ coverage: .env env
 	@ env/bin/coverage xml
 	@ env/bin/coverage report
 
-.PHONY: flake8
-flake8: env
-	@ printf "\nRunning Flake8 Tests\n"
-	@ env/bin/flake8 --tee --output-file=build/flake8.txt
-
-.PHONY: yapf
-yapf: env
-	@ printf "\nRunning yapf Tests\n"
-	@ env/bin/yapf -dr imbi tests 2>&1 | tee build/yapf.diff
-
-# Testing Groups
-
 .PHONY: test
-test: bandit flake8 yapf coverage
+test: lint coverage
