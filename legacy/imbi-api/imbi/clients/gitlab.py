@@ -265,8 +265,6 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         body = urllib.parse.urlencode({
             'grant_type': 'refresh_token',
             'refresh_token': self.token.refresh_token,
-            'client_id': self.token.integration.client_id,
-            'client_secret': self.token.integration.client_secret,
         })
         self.logger.info('refreshing token for %s (%s)', self.user.username,
                          self.token.external_id)
@@ -276,6 +274,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             method='POST',
             body=body,
             content_type='application/x-www-form-urlencoded',
+            auth_username=self.token.integration.client_id,
+            auth_password=self.token.integration.client_secret,
         )
         if response.ok:
             self.logger.debug('refresh response: %r', response.body)
