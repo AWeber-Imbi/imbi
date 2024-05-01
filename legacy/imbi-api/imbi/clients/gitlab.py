@@ -1,4 +1,5 @@
 import base64
+import http.client
 import logging
 import pathlib
 import stat
@@ -10,7 +11,7 @@ import sprockets.mixins.http
 import tornado.web
 import yarl
 
-from imbi import errors, oauth2, version
+from imbi import errors, oauth2, user, version
 
 
 class Namespace(pydantic.BaseModel):
@@ -25,23 +26,44 @@ class ProjectInfo(pydantic.BaseModel):
     id: int
     default_branch: str
     namespace: Namespace
+    name_with_namespace: str
     web_url: str
     links: ProjectLinks = pydantic.Field(..., alias='_links')
 
 
 PROJECT_DEFAULTS = {
+    'auto_devops_enabled': False,
     'default_branch': 'main',
-    'issues_access_level': 'disabled',
-    'issues_enabled': False,  # deprecated but required to disable :(
     'builds_access_level': 'enabled',
+    'forking_access_level': 'enabled',
+    'initialize_with_readme': False,
     'merge_requests_access_level': 'enabled',
+    'only_allow_merge_if_pipeline_succeeds': True,
     'operations_access_level': 'disabled',
     'packages_enabled': False,
-    'pages_access_level': 'disabled',
+    'printing_merge_request_link_enabled': True,
+    'remove_source_branch_after_merge': True,
     'snippets_access_level': 'enabled',
-    'wiki_access_level': 'disabled',
-    'wiki_enabled': False,  # deprecated but required to disable :(
+    'squash_option': 'default_off',
+    'visibility': 'public',
 }
+
+
+class GitLabAPIFailure(errors.ApplicationError):
+    def __init__(self, response: sprockets.mixins.http.HTTPResponse,
+                 log_message: str, *log_args, **kwargs) -> None:
+        status_code = response.code
+        kwargs.setdefault('title', 'GitLab API Failure')
+        kwargs['gitlab_response_body'] = response.body
+
+        # A GitLab "unauthorized" response is not the same as an
+        # Imbi "unauthorized". HTTP unauthorized always refers to
+        # the user requested resource which is an Imbi resource.
+        if status_code == http.HTTPStatus.UNAUTHORIZED:
+            status_code = http.HTTPStatus.FORBIDDEN
+
+        super().__init__(status_code, 'gitlab-api-failure', log_message,
+                         *log_args, **kwargs)
 
 
 class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
@@ -50,12 +72,13 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
     This client sends authenticated HTTP requests to the GitLab API.
 
     """
-    def __init__(self, token: oauth2.IntegrationToken,
+    def __init__(self, user: user.User, token: oauth2.IntegrationToken,
                  application: tornado.web.Application):
         super().__init__()
         settings = application.settings['automations']['gitlab']
         self.logger = logging.getLogger(__package__).getChild('GitLabClient')
         self.restrict_to_user = settings.get('restrict_to_user', False)
+        self.user = user
         self.token = token
         self.headers = {
             'Accept': 'application/json',
@@ -81,7 +104,19 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             kwargs['content_type'] = 'application/json'
         kwargs['user_agent'] = f'imbi/{version} (GitLabClient)'
         self.logger.debug('%s %s', method, url)
-        return await super().http_fetch(str(url), method=method, **kwargs)
+
+        response = await super().http_fetch(str(url), method=method, **kwargs)
+        if response.code == 400 and response.body:
+            self.logger.warning('%s %s failed: status=%s response=%r', method,
+                                url, response.code, response.body)
+        if response.code == http.client.UNAUTHORIZED:  # maybe refresh
+            if response.body.get('error', '') == 'invalid_token':
+                await self._refresh_token()
+                request_headers.update(self.headers)
+                response = await super().http_fetch(str(url),
+                                                    method=method,
+                                                    **kwargs)
+        return response
 
     async def fetch_all_pages(self, *path, **query) -> list[dict]:
         url = self.token.integration.api_endpoint
@@ -94,10 +129,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         while url is not None:
             response = await self.api(url)
             if not response.ok:
-                raise errors.InternalServerError('GET %s failed: %s',
-                                                 url,
-                                                 response.code,
-                                                 title='GitLab API Failure')
+                raise GitLabAPIFailure(response, 'GET %s failed: %s', url,
+                                       response.code)
 
             entries.extend(response.body)
             for link in response.links:
@@ -112,17 +145,16 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         slug = urllib.parse.quote('/'.join(group_path), safe='')
         url = self.token.integration.api_endpoint
         path = f'{url.path.rstrip("/")}/groups/{slug}'
-        url = url.with_path(path, encoded=True)
+        url = url.with_path(path, encoded=True).with_query(
+            {'with_projects': 'false'})
         response = await self.api(url)
         if response.code == 404:
             self.logger.debug('Group not found: %s', url)
             return None
         if response.ok:
             return response.body
-        raise errors.InternalServerError('failed to fetch group %s: %s',
-                                         slug,
-                                         response.code,
-                                         title='GitLab API Failure')
+        raise GitLabAPIFailure(response, 'failed to fetch group %s: %s', slug,
+                               response.code)
 
     async def fetch_project(self, project_id: int) \
             -> typing.Optional[ProjectInfo]:
@@ -133,10 +165,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
             return None
         if response.ok:
             return ProjectInfo.parse_obj(response.body)
-        raise errors.InternalServerError('failed to fetch project %s: %s',
-                                         project_id,
-                                         response.code,
-                                         title='GitLab API Failure')
+        raise GitLabAPIFailure(response, 'failed to fetch project %s: %s',
+                               project_id, response.code)
 
     async def create_project(self, parent, project_name: str,
                              **attributes) -> ProjectInfo:
@@ -152,11 +182,22 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         response = await self.api('projects', method='POST', body=attributes)
         if response.ok:
             return ProjectInfo.parse_obj(response.body)
-        raise errors.InternalServerError('failed to create project %s: %s',
-                                         project_name,
-                                         response.code,
-                                         title='GitLab API Failure',
-                                         gitlab_response=response.body)
+        raise GitLabAPIFailure(
+            response, 'failed to create project %s in namespace %s: %s',
+            project_name, parent['id'], response.code)
+
+    async def delete_project(self, project: ProjectInfo) -> None:
+        url = yarl.URL('/projects') / str(project.id)
+        response = await self.api(url, method='DELETE')
+        # intentionally swallow "Not Found" responses
+        if not response.ok and response.code not in (http.HTTPStatus.NOT_FOUND,
+                                                     http.HTTPStatus.GONE):
+            raise GitLabAPIFailure(
+                response,
+                '%s failed to delete project %s',
+                self.user.username,
+                project.web_url,
+                detail=f'Failed to delete {project.web_url}')
 
     async def commit_tree(self, project_info: ProjectInfo,
                           project_dir: pathlib.Path, commit_message: str):
@@ -190,11 +231,8 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         )
         if response.ok:
             return response.body
-        raise errors.InternalServerError('failed to commit to %s: %s',
-                                         project_url,
-                                         response.code,
-                                         title='GitLab API Failure',
-                                         gitlab_response=response.body)
+        raise GitLabAPIFailure(response, 'failed to commit to %s: %s',
+                               project_url, response.code)
 
     async def fetch_user_information(self):
         if self._user_info:
@@ -203,10 +241,9 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         if response.ok:
             self._user_info = response.body
             return self._user_info
-        raise errors.InternalServerError(
-            'failed to retrieve GitLab user information: %s',
-            response.code,
-            title='GitLab API Failure')
+        raise GitLabAPIFailure(
+            response, 'failed to retrieve GitLab user information: %s',
+            response.code)
 
     async def fetch_user_namespace(self):
         if self._user_namespace:
@@ -217,8 +254,40 @@ class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
         if response.ok:
             self._user_namespace = response.body
             return self._user_namespace
-        raise errors.InternalServerError(
+        raise GitLabAPIFailure(
+            response,
             'failed to retrieve GitLab user namespace for %s: %s',
             user_info['username'],
             response.code,
-            title='GitLab API Failure')
+            detail='failed to retrieve GitLab user namespace')
+
+    async def _refresh_token(self) -> None:
+        body = urllib.parse.urlencode({
+            'grant_type': 'refresh_token',
+            'refresh_token': self.token.refresh_token,
+        })
+        self.logger.info('refreshing token for %s (%s)', self.user.username,
+                         self.token.external_id)
+        self.logger.debug('refresh_request: %r', body)
+        response = await super().http_fetch(
+            str(self.token.integration.token_endpoint),
+            method='POST',
+            body=body,
+            content_type='application/x-www-form-urlencoded',
+            auth_username=self.token.integration.client_id,
+            auth_password=self.token.integration.client_secret,
+        )
+        if response.ok:
+            self.logger.debug('refresh response: %r', response.body)
+            await self.token.integration.upsert_user_tokens(
+                self.user.username, self.token.external_id,
+                response.body['access_token'], response.body['refresh_token'],
+                self.token.id_token)
+            self.token.access_token = response.body['access_token']
+            self.token.refresh_token = response.body['refresh_token']
+            self.headers['Authorization'] = f'Bearer {self.token.access_token}'
+        else:
+            self.logger.error('failed to refresh token for %s: %r',
+                              self.user.username, response.body)
+            raise GitLabAPIFailure(response, 'token refresh failed: %s',
+                                   response.code)

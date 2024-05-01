@@ -297,8 +297,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         result = self.fetch('/operations-log')
         self.assertEqual(result.code, 200)
         self.assertListEqual(json.loads(result.body.decode('utf-8')),
-                             [{k: v
-                               for k, v in record.items()}])
+                             [dict(record.items())])
 
         # DELETE
         result = self.fetch(url, method='DELETE')

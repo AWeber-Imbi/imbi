@@ -1,9 +1,5 @@
 """
-Imbi
-====
-
 Imbi is an operational management platform for medium to large environments.
-
 """
 import warnings
 
