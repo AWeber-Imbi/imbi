@@ -102,6 +102,9 @@ class _SentryClient(sprockets.mixins.http.HTTPClientMixin):
         rsp = await super().http_fetch(str(url), method=method, **kwargs)
         if not rsp.ok:
             self.logger.error('%s %s failed: %s', method, url, rsp.code)
+            self.logger.debug('auth token: %s...%s', self.api_secret[:4],
+                              self.api_secret[-4:])
+            self.logger.debug('response body: %r', rsp.body)
         return rsp
 
     async def create_project(self, team_slug: str,
@@ -112,10 +115,11 @@ class _SentryClient(sprockets.mixins.http.HTTPClientMixin):
                                   body={'name': project_name})
         if not response.ok:
             self.logger.error('Sentry API failure: body %r', response.body)
-            raise errors.InternalServerError('POST %s failed: %s',
-                                             url,
-                                             response.code,
-                                             title='Sentry API Failure')
+            raise errors.InternalServerError(
+                'POST %s failed: %s',
+                response.history[-1].effective_url,
+                response.code,
+                title='Sentry API Failure')
         else:
             try:
                 data = _ProjectCreationResponse.parse_obj(response.body)
