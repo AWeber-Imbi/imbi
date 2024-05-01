@@ -30,6 +30,20 @@ class AnyInstanceOf:
         return NotImplemented
 
 
+class FakeAutomation:
+    def __init__(self) -> None:
+        self.integration_name = str(uuid.uuid4())
+        self.slug = str(uuid.uuid4())
+        self.action = unittest.mock.AsyncMock()
+        self.callback = unittest.mock.AsyncMock()
+
+    async def callable(self, c: automations.AutomationContext,
+                       automation: typing.Self, *args: object,
+                       **kwargs: object) -> None:
+        await self.action(c, automation, *args, **kwargs)
+        c.add_callback(self.callback)
+
+
 class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -102,18 +116,7 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
         compensating_action.assert_called_once_with(self.context, failure)
 
     async def test_that_failing_callbacks_are_reported(self) -> None:
-        class Automation:
-            def __init__(self) -> None:
-                self.slug = str(uuid.uuid4())
-                self.action = unittest.mock.AsyncMock()
-                self.callback = unittest.mock.AsyncMock()
-
-            async def callable(self, c: automations.AutomationContext,
-                               *args: object, **kwargs: object) -> None:
-                await self.action(c, *args, **kwargs)
-                c.add_callback(self.callback)
-
-        autos = [Automation() for _ in range(3)]
+        autos = [FakeAutomation() for _ in range(3)]
 
         # make the last automation fail
         failure = RuntimeError()
@@ -150,17 +153,16 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
         autos[-1].callback.assert_not_awaited()
 
     async def test_using_context_from_within_action(self) -> None:
-        class Automation:
+        class Automation(FakeAutomation):
             def __init__(self, side_effect: Exception | None = None) -> None:
-                self.slug = ''
-                self.action = unittest.mock.Mock(side_effect=side_effect)
-                self.callback = unittest.mock.Mock()
+                super().__init__()
+                self.action.side_effect = side_effect
 
-            def callable(self, c: automations.AutomationContext,
-                         automation: typing.Self, param: int) -> None:
-                self.action()
-                c.note_progress('action: param:%s', param)
-                c.add_callback(self.callback)
+            async def callable(self, c: automations.AutomationContext,
+                               automation: typing.Self, *args: object,
+                               **kwargs: object) -> None:
+                await super().callable(c, automation, *args, **kwargs)
+                c.note_progress('action: param:%s', args[0])
 
         error = RuntimeError()
         autos = [Automation(), Automation(error)]
@@ -172,7 +174,7 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
                         typing.cast(models.Automation, act), param)
         self.assertEqual(1, len(self.context.notes))
         self.assertEqual(['action: param:0'],
-                         [n[1] for n in self.context.notes])
+                         [n.message for n in self.context.notes])
         autos[0].callback.assert_called_once_with(self.context, error)
 
     async def test_state_storage(self) -> None:
