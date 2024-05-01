@@ -130,10 +130,10 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'enabled',
         automations_gitlab.get('project_link_type_id') is not None)
 
+    # `enabled` is calculated at runtime so default it to "true" here
+    # Keeping the setting so that the user can disable sentry via config
     automations_sentry = automations.get('sentry', {})
-    automations_sentry.setdefault(
-        'enabled', (automations_sentry.get('auth_token') is not None
-                    and automations_sentry.get('organization') is not None))
+    automations_sentry.setdefault('enabled', True)
     automations_sentry.setdefault('url', 'https://sentry.io/')
 
     module_path = pathlib.Path(sys.modules['imbi'].__file__).parent

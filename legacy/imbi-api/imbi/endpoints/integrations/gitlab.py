@@ -115,24 +115,13 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 class GitLabIntegratedHandler(base.AuthenticatedRequestHandler):
 
     NAME = 'gitlab-integrated'
-    client: gitlab.GitLabClient
 
     async def prepare(self) -> None:
         await super().prepare()
         if not self._finished:
-            integration = await oauth2.OAuth2Integration.by_name(
-                self.application, 'gitlab')
-            if not integration:
-                raise errors.IntegrationNotFound('gitlab')
-
-            imbi_user = await self.get_current_user()  # never None
-            tokens = await integration.get_user_tokens(imbi_user)
-            if not tokens:
-                raise errors.Forbidden('no GitLab tokens for %r',
-                                       imbi_user,
-                                       title='GitLab Not Connected')
-            self.client = gitlab.GitLabClient(imbi_user, tokens[0],
-                                              self.application)
+            self.client = await gitlab.create_client(self.application,
+                                                     'gitlab',
+                                                     self.current_user)
 
 
 class UserNamespacesHandler(GitLabIntegratedHandler):

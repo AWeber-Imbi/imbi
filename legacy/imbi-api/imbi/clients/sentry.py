@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+import typing
 
 import pydantic
 import sprockets.mixins.http
 import yarl
 
-from imbi import errors, version
+from imbi import errors, models, version
+if typing.TYPE_CHECKING:
+    from imbi import app
 
 
 class _ProjectCreationResponse(pydantic.BaseModel):
@@ -35,27 +38,52 @@ class ProjectInfo(pydantic.BaseModel):
     keys: dict[str, str]
 
 
-class SentryClient(sprockets.mixins.http.HTTPClientMixin):
-    def __init__(self, application) -> None:
+async def create_client(
+    application: app.Application,
+    integration_name: str,
+) -> '_SentryClient':
+    """Create a sentry API client
+
+    The settings needed to create a client are in the application
+    settings and the database currently. This function finds them
+    and creates a client.  If the configuration is invalid or the
+    integration is disabled, a ``ClientUnavailableError`` is raised
+    with an appropriate message.
+    """
+    logger = logging.getLogger(__package__).getChild('create_client')
+    settings = application.settings['automations']['sentry']
+    if not settings['enabled']:
+        raise errors.ClientUnavailableError(integration_name, 'disabled')
+    if not settings.get('organization'):
+        raise errors.ClientUnavailableError(integration_name,
+                                            'organization is not configured')
+
+    sentry_info = await models.integration(integration_name, application)
+    if not sentry_info:
+        logger.warning('%r integration is enabled by not configured',
+                       integration_name)
+        raise errors.ClientUnavailableError(integration_name, 'not configured')
+
+    return _SentryClient(yarl.URL(str(sentry_info.api_endpoint)),
+                         sentry_info.api_secret, settings['organization'])
+
+
+class _SentryClient(sprockets.mixins.http.HTTPClientMixin):
+    def __init__(self, api_endpoint: yarl.URL, api_secret: str,
+                 organization: str) -> None:
         super().__init__()
         self.logger = logging.getLogger(__package__).getChild('SentryClient')
 
-        settings = application.settings['automations']['sentry']
-        self.url = yarl.URL(settings['url'])
-        self.api_url = self.url / 'api' / '0'
-        self.enabled = settings['enabled']
-        self.organization = settings.get('organization')
-        self.token = settings.get('auth_token')
+        self.api_url = api_endpoint
+        self.url = api_endpoint.with_path('/')
+        self.organization = organization
+        self.api_secret = api_secret
         self.headers = {
             'Accept': 'application/json',
-            'Authorization': f'Bearer {self.token}',
+            'Authorization': f'Bearer {self.api_secret}',
         }
 
     async def api(self, url: yarl.URL | str, *, method: str = 'GET', **kwargs):
-        if not self.enabled:
-            raise errors.InternalServerError('Sentry client is not enabled',
-                                             title='Sentry Client Error')
-
         if not isinstance(url, yarl.URL):
             url = yarl.URL(url)
         if not url.is_absolute():
