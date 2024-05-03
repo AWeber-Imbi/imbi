@@ -7,7 +7,9 @@ import re
 import typing
 
 from imbi import common, errors
-from imbi.endpoints.integrations.models import Automation, automation
+from imbi.endpoints.integrations.models import (Automation, Integration,
+                                                automation, integration)
+
 if typing.TYPE_CHECKING:
     from imbi import app
 
@@ -16,6 +18,7 @@ if typing.TYPE_CHECKING:
 __all__ = [
     'Automation',
     'CookieCutter',
+    'Integration',
     'Namespace',
     'OperationsLog',
     'Project',
@@ -25,6 +28,7 @@ __all__ = [
     'ProjectType',
     'ProjectURL',
     'automation',
+    'integration',
     'namespace',
     'operations_log',
     'project',

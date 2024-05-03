@@ -67,28 +67,16 @@ class LoadConfigurationTests(ConfigurationTestCase):
 
 
 class SentryConfigurationTests(ConfigurationTestCase):
-    def test_that_default_is_disabled(self):
+    def test_that_default_is_enabled(self):
         yaml.dump(self.config, self.temp_file)
         config, _ = server.load_configuration(self.temp_file.name, False)
-        self.assertFalse(config['automations']['sentry']['enabled'])
+        self.assertTrue(config['automations']['sentry']['enabled'])
 
-    def test_that_sentry_is_enabled_when_fully_configured(self):
-        self.config['automations'] = {'sentry': {}}
+    def test_that_sentry_can_be_disabled(self):
+        self.config['automations'] = {'sentry': {'enabled': False}}
         yaml.dump(self.config, self.temp_file)
         loaded, _ = server.load_configuration(self.temp_file.name, False)
         self.assertFalse(loaded['automations']['sentry']['enabled'])
-        self.temp_file.seek(0)
-
-        self.config['automations']['sentry']['auth_token'] = '12345'
-        yaml.dump(self.config, self.temp_file)
-        loaded, _ = server.load_configuration(self.temp_file.name, False)
-        self.assertFalse(loaded['automations']['sentry']['enabled'])
-        self.temp_file.seek(0)
-
-        self.config['automations']['sentry']['organization'] = 'example-com'
-        yaml.dump(self.config, self.temp_file)
-        loaded, _ = server.load_configuration(self.temp_file.name, False)
-        self.assertTrue(loaded['automations']['sentry']['enabled'])
 
     def test_that_sentry_url_has_sensible_default(self):
         yaml.dump(self.config, self.temp_file)

@@ -16,6 +16,8 @@ __all__ = [
     'Automation',
     'AutomationCategory',
     'automation',
+    'Integration',
+    'integration',
 ]
 
 LOGGER = logging.getLogger(__name__)
@@ -92,6 +94,16 @@ class Automation(pydantic.BaseModel):
         return [v for v in value if v is not None and v is not None]
 
 
+class Integration(pydantic.BaseModel):
+    name: str
+    api_endpoint: pydantic.HttpUrl
+    api_secret: typing.Union[str, None] = None
+    created_at: datetime.datetime
+    created_by: str
+    last_modified_at: typing.Union[datetime.datetime, None] = None
+    last_modified_by: str = None
+
+
 async def automation(automation_slug: str,
                      application: 'app.Application') -> Automation | None:
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
@@ -122,3 +134,23 @@ async def automation(automation_slug: str,
             {'automation_slug': automation_slug})
         if result.row_count:
             return Automation.model_validate(result.row)
+
+
+async def integration(integration_name: str,
+                      application: 'app.Application') -> Integration | None:
+    def on_postgres_error(_metric_name: str, exc: Exception) -> None:
+        LOGGER.error('Failed to execute query for integration %s: %s',
+                     integration_name, exc)
+        raise errors.DatabaseError('Error loading Integration', error=exc)
+
+    async with application.postgres_connector(
+            on_error=on_postgres_error) as conn:
+        result = await conn.execute(
+            'SELECT i.name, i.api_endpoint, i.api_secret, i.created_at,'
+            '       i.created_by, i.last_modified_at, i.last_modified_by'
+            '  FROM v1.integrations AS i'
+            ' WHERE i.name = %(integration_name)s',
+            {'integration_name': integration_name},
+            metric_name='get-integration')
+        if result.row_count:
+            return Integration.model_validate(result.row)

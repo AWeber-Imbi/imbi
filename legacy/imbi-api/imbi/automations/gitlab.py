@@ -1,8 +1,8 @@
 import http
 import typing
 
-import imbi.clients.gitlab
 from imbi import automations, errors, models
+from imbi.clients import gitlab
 
 
 async def create_project(
@@ -23,19 +23,14 @@ async def create_project(
 
     @see https://gitlab.aweber.io/help/api/projects.md#create-project
     """
-    tokens = await context.user.fetch_integration_tokens(
-        automation.integration_name)
-    if not tokens:
-        raise errors.Forbidden('missing %s token for %s',
-                               automation.integration_name,
-                               context.user.username)
-
-    group_name = (project.namespace.gitlab_group_name
-                  or project.namespace.slug,
-                  project.project_type.gitlab_project_prefix
-                  or project.project_type.slug)
-    client = imbi.clients.gitlab.GitLabClient(context.user, tokens[0],
-                                              context.application)
+    client = await gitlab.create_client(context.application,
+                                        automation.integration_name,
+                                        context.user)
+    group_name = (
+        (project.namespace.gitlab_group_name or project.namespace.slug),
+        (project.project_type.gitlab_project_prefix
+         or project.project_type.slug),
+    )
     group_info = await client.fetch_group(*group_name)
     if not group_info:
         raise errors.ApplicationError(http.HTTPStatus.BAD_REQUEST,
@@ -95,15 +90,15 @@ async def delete_project(context: automations.AutomationContext,
     The project information is expected to be in ``context[create_project]``.
     """
     try:
-        gitlab_info = typing.cast(imbi.clients.gitlab.ProjectInfo,
-                                  context[create_project])
+        gitlab_info = typing.cast(gitlab.ProjectInfo, context[create_project])
     except KeyError:
         return
 
-    tokens = await context.user.fetch_integration_tokens('gitlab')
-    if not tokens:
-        return
-
-    client = imbi.clients.gitlab.GitLabClient(context.user, tokens[0],
-                                              context.application)
-    await client.delete_project(gitlab_info)
+    try:
+        client = await gitlab.create_client(context.application,
+                                            context.current_integration,
+                                            context.user)
+    except errors.ClientUnavailableError:
+        pass
+    else:
+        await client.delete_project(gitlab_info)

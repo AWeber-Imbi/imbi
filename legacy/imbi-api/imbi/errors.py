@@ -76,6 +76,12 @@ class Forbidden(ApplicationError):
         super().__init__(403, 'forbidden', log_message, *log_args, **kwargs)
 
 
+class ClientUnavailableError(Forbidden):
+    def __init__(self, client_name: str, log_message: str, *log_args):
+        message = log_message % log_args if log_args else log_message
+        super().__init__('%s not available: %s', client_name, message)
+
+
 class ItemNotFound(ApplicationError):
     def __init__(self, log_message=None, *log_args, **kwargs):
         kwargs.setdefault('title', 'Item not found')

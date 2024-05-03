@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import inspect
 import logging
@@ -46,6 +47,14 @@ class AutomationFailedError(Exception):
         self.error = error
 
 
+@dataclasses.dataclass
+class AutomationNote:
+    when: datetime.datetime
+    integration_name: str | None
+    automation_slug: str | None
+    message: str
+
+
 class AutomationContext:
     """Run automations with automated cleanup & injected context
 
@@ -66,6 +75,10 @@ class AutomationContext:
     The context has a number of attributes exported for use inside an
     action.
 
+    - *current_automation* is set to the slug of the executing automation
+      or ``None`` if no automation is active.
+    - *current_integration* is set to the name of the executing automations
+      integration or ``None`` if no automation is active.
     - *run_query* is a handle to the sprockets_postgres postgres_execute
       method. Use this for database access.
     - *user* is a `imbi.models.User` instance for the acting user. You
@@ -77,12 +90,33 @@ class AutomationContext:
                  query: QueryFunction) -> None:
         self.application = application
         self.logger = logging.getLogger(__name__).getChild('AutomationContext')
-        self.notes: list[tuple[datetime.datetime, str]] = []
+        self.notes: list[AutomationNote] = []
         self.user = user
         self.run_query = query
 
+        # these are managed inside `run_automation`
+        self._current_automation: str | None = None
+        self._current_integration: str | None = None
+
         self._cleanups: list[CompensatingAction] = []
         self._memory: dict[object, object] = {}
+
+    @property
+    def current_automation(self) -> str | None:
+        return self._current_automation
+
+    @current_automation.setter
+    def current_automation(self, a: imbi.models.Automation | None) -> None:
+        if a is None:
+            self._current_automation = None
+            self._current_integration = None
+        else:
+            self._current_automation = a.slug
+            self._current_integration = a.integration_name
+
+    @property
+    def current_integration(self) -> str | None:
+        return self._current_integration
 
     def note_progress(self, message_format: str, *args: object) -> None:
         """Add a note to the list of notes
@@ -90,15 +124,23 @@ class AutomationContext:
         These could be made available in an API response so don't
         log anything sensitive.
         """
-        self.logger.info(message_format, *args)
-        self.notes.append((datetime.datetime.now(datetime.timezone.utc),
-                           message_format % args if args else message_format))
+        prefix = ''
+        if self.current_automation:
+            prefix = f'{self.current_integration}/{self.current_automation} '
+        self.logger.info(prefix + message_format, *args)
+        self.notes.append(
+            AutomationNote(when=datetime.datetime.now(datetime.timezone.utc),
+                           integration_name=self.current_integration,
+                           automation_slug=self.current_automation,
+                           message=message_format %
+                           args if args else message_format))
 
     async def run_automation(self, automation: imbi.models.Automation,
                              *args: object, **kwargs: object) -> None:
-        self.logger.debug('running automation %s = %r with args %r %r',
-                          automation.slug, automation.callable, args, kwargs)
+        self.logger.debug('running automation %s = %r', automation.slug,
+                          automation.callable)
         try:
+            self.current_automation = automation
             result = automation.callable(self, automation, *args, **kwargs)
             if inspect.isawaitable(result):
                 await result
@@ -108,6 +150,8 @@ class AutomationContext:
                 automation.slug, error, len(self._cleanups))
             await self._run_cleanups(error)
             raise error
+        finally:
+            self.current_automation = None
 
     def add_callback(self, compensating_action: CompensatingAction) -> None:
         """Add a cleanup action"""

@@ -12,6 +12,8 @@ import tornado.web
 import yarl
 
 from imbi import errors, oauth2, user, version
+if typing.TYPE_CHECKING:
+    from imbi import app
 
 
 class Namespace(pydantic.BaseModel):
@@ -66,7 +68,21 @@ class GitLabAPIFailure(errors.ApplicationError):
                          *log_args, **kwargs)
 
 
-class GitLabClient(sprockets.mixins.http.HTTPClientMixin):
+async def create_client(
+    application: 'app.Application',
+    integration_name: str,
+    current_user: user.User,
+) -> '_GitLabClient':
+    tokens = await current_user.fetch_integration_tokens(integration_name)
+    if not tokens:
+        raise errors.ClientUnavailableError(
+            integration_name,
+            f'no {integration_name!r} token for {current_user.username}')
+
+    return _GitLabClient(current_user, tokens[0], application)
+
+
+class _GitLabClient(sprockets.mixins.http.HTTPClientMixin):
     """API Client for GitLab.
 
     This client sends authenticated HTTP requests to the GitLab API.
