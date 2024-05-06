@@ -70,8 +70,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
 
         client_secret = None
         if request.client_secret:
-            client_secret = self.application.encrypt_value(
-                request.client_secret)
+            client_secret = request.client_secret
 
         callback_url = yarl.URL(self.request.full_url())
         callback_url = callback_url.with_path(
@@ -142,8 +141,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
 
         original = details.model_dump(mode='json')
         if original['client_secret']:  # enable `test` on real client secret
-            original['client_secret'] = self.application.decrypt_value(
-                details.client_secret)
+            original['client_secret'] = details.client_secret
         # limit operations to protect secret
         patch.operations = {
             name: operation
@@ -168,8 +166,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             return
 
         if updated['client_secret']:
-            updated['client_secret'] = self.application.encrypt_value(
-                updated['client_secret'])
+            updated['client_secret'] = updated['client_secret']
         async with self.application.postgres_connector(
                 self.on_postgres_error, self.on_postgres_timing) as conn:
             # handle mismatch between representation and DB
