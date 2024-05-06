@@ -101,7 +101,7 @@ class Integration(pydantic.BaseModel):
     created_at: datetime.datetime
     created_by: str
     last_modified_at: typing.Union[datetime.datetime, None] = None
-    last_modified_by: str = None
+    last_modified_by: typing.Union[str, None] = None
 
 
 async def automation(automation_slug: str,
