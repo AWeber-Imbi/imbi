@@ -1,7 +1,14 @@
+import dataclasses
 import typing
 
 from imbi import automations, errors, models
 from imbi.clients import sentry
+
+
+@dataclasses.dataclass
+class SentryContext:
+    integration_name: str
+    project_info: sentry.ProjectInfo
 
 
 async def create_project(
@@ -33,7 +40,9 @@ async def create_project(
     sentry_project = await client.create_project(
         project.namespace.sentry_team_slug or project.namespace.slug,
         project.name)
-    context[create_project] = sentry_project
+    context[create_project] = SentryContext(
+        integration_name=automation.integration_name,
+        project_info=sentry_project)
     context.add_callback(_delete_project)
     context.note_progress('created Sentry project %s for Imbi project %s',
                           sentry_project.slug, project.id)
@@ -87,18 +96,16 @@ async def create_project(
 async def _delete_project(context: automations.AutomationContext,
                           _error: BaseException) -> None:
     try:
-        integration_name = typing.cast(str, context['integration_name'])
-        sentry_project = typing.cast(sentry.ProjectInfo,
-                                     context[create_project])
+        sentry_info = typing.cast(SentryContext, context[create_project])
     except KeyError:
         return
 
     try:
         client = await sentry.create_client(context.application,
-                                            integration_name)
+                                            sentry_info.integration_name)
     except errors.ClientUnavailableError:
         pass
     else:
         context.note_progress('removing sentry project %s due to error',
-                              sentry_project.slug)
-        await client.remove_project(sentry_project.slug)
+                              sentry_info.project_info.slug)
+        await client.remove_project(sentry_info.project_info.slug)

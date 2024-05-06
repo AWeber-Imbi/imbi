@@ -1,8 +1,15 @@
+import dataclasses
 import http
 import typing
 
 from imbi import automations, errors, models
 from imbi.clients import gitlab
+
+
+@dataclasses.dataclass
+class GitLabContext:
+    integration_name: str
+    project_info: gitlab.ProjectInfo
 
 
 async def create_project(
@@ -45,7 +52,8 @@ async def create_project(
         description=project.description,
         path=project.slug,
     )
-    context[create_project] = gitlab_info
+    context[create_project] = GitLabContext(
+        integration_name=automation.integration_name, project_info=gitlab_info)
     context.add_callback(delete_project)
     context.note_progress(
         'created GitLab project %s (id=%s) for Imbi project %s',
@@ -90,15 +98,15 @@ async def delete_project(context: automations.AutomationContext,
     The project information is expected to be in ``context[create_project]``.
     """
     try:
-        gitlab_info = typing.cast(gitlab.ProjectInfo, context[create_project])
+        gitlab_info = typing.cast(GitLabContext, context[create_project])
     except KeyError:
         return
 
     try:
         client = await gitlab.create_client(context.application,
-                                            context.current_integration,
+                                            gitlab_info.integration_name,
                                             context.user)
     except errors.ClientUnavailableError:
         pass
     else:
-        await client.delete_project(gitlab_info)
+        await client.delete_project(gitlab_info.project_info)
