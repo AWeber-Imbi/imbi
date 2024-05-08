@@ -185,7 +185,15 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
         project = await models.project(result.row['id'], self.application)
         self.logger.info('created project %s (%s) in %s', project.slug,
                          project.id, project.namespace.slug)
-        await self._run_automations(project, selected_automations)
+        try:
+            await self._run_automations(project, selected_automations)
+        except Exception as error:
+            self.logger.exception('_run_automations failure: %s', error)
+            self.logger.error('removing project %s due to error', project.id)
+            await self.postgres_execute(
+                'DELETE FROM v1.projects WHERE id = %s', [project.id])
+            raise errors.InternalServerError('Failed to run automations: %s',
+                                             error) from None
         await self.index_document(project.id)
 
         response = await self.postgres_execute(self.GET_SQL,
@@ -245,16 +253,12 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
         self.logger.info(
             'running create-project automations for project %s (%s): %r',
             project.slug, project.id, [a.slug for a in selected_automations])
-        cleanup = automations.query_runner(
-            'delete-project-by-id', 'DELETE FROM v1.projects WHERE id = %s',
-            [project.id])
         try:
             await automations.run_automations(selected_automations,
                                               project,
                                               application=self.application,
                                               user=self._current_user,
-                                              query_executor=self,
-                                              addt_callbacks=[cleanup])
+                                              query_executor=self)
         except errors.ApplicationError:  # this is meant for the end user
             raise
         except automations.AutomationFailedError as error:
