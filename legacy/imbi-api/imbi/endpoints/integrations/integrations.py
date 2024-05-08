@@ -11,14 +11,22 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT name, api_endpoint
+        SELECT name, api_endpoint,
+               CASE api_secret
+                    WHEN NULL THEN NULL
+                    ELSE LEFT(api_secret, 3) || '...' || RIGHT(api_secret, 3)
+               END AS api_secret
           FROM v1.integrations
          ORDER BY name
         """)
 
     GET_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT name, api_endpoint
+        SELECT name, api_endpoint,
+               CASE api_secret
+                    WHEN NULL THEN NULL
+                    ELSE LEFT(api_secret, 3) || '...' || RIGHT(api_secret, 3)
+               END AS api_secret
           FROM v1.integrations
          WHERE name = %(name)s
         """)
@@ -40,12 +48,15 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 class RecordRequestHandler(base.CRUDRequestHandler):
     NAME = 'integration'
     ID_KEY = 'name'
-    OMIT_FIELDS = ['api_secret']
 
     GET_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT name, api_endpoint, api_secret, created_at, created_by,
-               last_modified_at, last_modified_by
+        SELECT name, api_endpoint, created_at, created_by,
+               last_modified_at, last_modified_by,
+               CASE api_secret
+                    WHEN NULL THEN NULL
+                    ELSE LEFT(api_secret, 3) || '...' || RIGHT(api_secret, 3)
+               END AS api_secret
           FROM v1.integrations
          WHERE name = %(name)s
         """)

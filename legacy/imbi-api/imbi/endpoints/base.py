@@ -285,7 +285,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
     ITEM_NAME = None  # Used to create link headers for POST requests
     TTL = 300
 
-    OMIT_FIELDS: typing.Optional[list] = None
+    OMIT_FIELDS: typing.Optional[list] = None  # currently unused
     """Set this to omit specific fields from a record response.
 
     Set this to `None` for the previous behavior of omitting
