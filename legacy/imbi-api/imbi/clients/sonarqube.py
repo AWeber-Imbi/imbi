@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import typing
 import urllib.parse
@@ -120,54 +119,10 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
             'id': project_key,
         })
 
-        await asyncio.gather(
-            self._fix_main_branch(project_key, main_branch_name),
-            self._enable_pr_decoration(project_key, project.gitlab_project_id),
-            self._add_link_to_sonar(project_key, 'Imbi Project', public_url),
-        )
         return project_key, str(dashboard_url)
 
-    async def _fix_main_branch(self, project_key: str, main_branch_name: str):
-        """Sonar assumes that the "main" branch is named master.
-
-        This will cause main branches with any other name to be
-        treated as one-off branches.  You can *manually* fix this
-        by deleting the branch that was analyzed and renaming the
-        "master" branch.  Instead of requiring this for projects,
-        this method ensures that the "master" branch in SonarQube
-        matches the default branch in the SCM.
-
-        """
-        response = await self.api(
-            yarl.URL('/project_branches/list').with_query({
-                'project': project_key,
-            }))
-        if not response.ok:
-            self.logger.error('failed to list project branches for %s: %s',
-                              project_key, response.code)
-            return
-
-        self.logger.debug('making sure that main branch is %s for %s',
-                          main_branch_name, project_key)
-        main_branches = [
-            branch for branch in response.body['branches'] if branch['isMain']
-        ]
-        if main_branches and main_branches[0]['name'] != main_branch_name:
-            branch = main_branches[0]
-            self.logger.info('resetting main branch from %s to %s for %s',
-                             branch['name'], main_branch_name, project_key)
-            response = await self.api('/project_branches/rename',
-                                      method='POST',
-                                      body={
-                                          'project': project_key,
-                                          'name': main_branch_name,
-                                      })
-            if not response.ok:
-                self.logger.error('failed to rename main branch %s for %s: %s',
-                                  branch['name'], project_key, response.code)
-
-    async def _enable_pr_decoration(self, project_key: str,
-                                    gitlab_project_id: int):
+    async def enable_pr_decoration(self, project_key: str,
+                                   gitlab_project_id: int):
         """Enable GitLab MR decoration if it is available."""
         alm_enabled = await self._is_gitlab_alm_available()
         if not alm_enabled:
@@ -225,18 +180,3 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                 return False  # don't cache failures for now
 
         return bool(self.gitlab_alm_key)
-
-    async def _add_link_to_sonar(self, project_key: str, name: str,
-                                 url: yarl.URL):
-        """Add a named link to the SonarQube dashboard."""
-        self.logger.debug('adding link to Imbi project for %s', project_key)
-        response = await self.api(yarl.URL('/project_links/create'),
-                                  method='POST',
-                                  body={
-                                      'name': name,
-                                      'projectKey': project_key,
-                                      'url': str(url)
-                                  })
-        if not response.ok:
-            self.logger.error('failed to set the Imbi project link for %s: %s',
-                              project_key, response.code)
