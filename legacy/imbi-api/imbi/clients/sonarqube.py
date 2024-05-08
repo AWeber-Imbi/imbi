@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 import logging
 import typing
 import urllib.parse
 
 import sprockets.mixins.http
-import tornado.web
 import yarl
 
 from imbi import errors, models, version
+if typing.TYPE_CHECKING:
+    from imbi import app
 
 
 def generate_key(project: models.Project) -> str:
@@ -25,36 +28,43 @@ def generate_dashboard_link(project: models.Project,
             }))
 
 
-class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
+async def create_client(application: app.Application,
+                        integration_name: str) -> '_SonarQubeClient':
+    logger = logging.getLogger(__package__).getChild('create_client')
+    settings = application.settings['automations']['sonarqube']
+    if not settings['enabled']:
+        raise errors.ClientUnavailableError(integration_name, 'disabled')
+
+    sonarqube_info = await models.integration(integration_name, application)
+    if not sonarqube_info:
+        logger.warning('%r integration is enabled but not configured',
+                       integration_name)
+        raise errors.ClientUnavailableError(integration_name, 'not configured')
+    if not sonarqube_info.api_secret:
+        logger.warning('API secret is missing for %r', integration_name)
+        raise errors.ClientUnavailableError(integration_name, 'misconfigured')
+
+    return _SonarQubeClient(yarl.URL(str(sonarqube_info.api_endpoint)),
+                            sonarqube_info.api_secret)
+
+
+class _SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
     """API Client for SonarQube.
 
     This client uses the SonarQube HTTP API to automate aspects
     of managing projects.
 
     """
-    enabled: typing.Union[bool, None] = None
     gitlab_alm_key: typing.Union[bool, None, str] = None
 
-    def __init__(self, application: tornado.web.Application, *args, **kwargs):
+    def __init__(self, api_endpoint: yarl.URL, api_secret: str, *args,
+                 **kwargs):
         super().__init__(*args, **kwargs)
         self.logger = logging.getLogger(__package__).getChild(
             'SonarQubeClient')
-
-        self.settings = application.settings['automations']['sonarqube']
-        try:
-            self.admin_token = self.settings['admin_token']
-            self.sonar_url = yarl.URL(self.settings['url'])
-        except KeyError as error:
-            if self.__class__.enabled is None:
-                self.logger.warning(
-                    'disabling SonarQube integration due to'
-                    ' missing configuration: %s', error.args[0])
-                self.__class__.enabled = False
-            self.api_root = None
-            self.admin_token = None
-        else:
-            self.enabled = True
-            self.api_root = self.sonar_url / 'api'
+        self.api_url = api_endpoint
+        self.api_secret = api_secret
+        self.url = api_endpoint.with_path('/')
 
     async def api(self,
                   url: typing.Union[yarl.URL, str],
@@ -62,12 +72,10 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                   method: str = 'GET',
                   **kwargs) -> sprockets.mixins.http.HTTPResponse:
         """Make an authenticated API call."""
-        if not self.enabled:
-            raise RuntimeError('SonarQube integration is not enabled')
         if not isinstance(url, yarl.URL):
             url = yarl.URL(url)
         if not url.is_absolute():
-            new_url = self.api_root / url.path.lstrip('/')
+            new_url = self.api_url / url.path.lstrip('/')
             url = new_url.with_query(url.query)
 
         request_headers = kwargs.setdefault('request_headers', {})
@@ -79,7 +87,7 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
             kwargs['body'] = body.encode()
 
         kwargs.update({
-            'auth_username': self.admin_token,
+            'auth_username': self.api_secret,
             'auth_password': '',
             'user_agent': f'imbi/{version} (SonarQubeClient)',
         })
@@ -115,7 +123,7 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                                              title='SonarQube API Failure',
                                              sonar_response=response.body)
         project_key = response.body['project']['key']
-        dashboard_url = self.sonar_url.with_path('/dashboard').with_query({
+        dashboard_url = self.url.with_path('/dashboard').with_query({
             'id': project_key,
         })
 
