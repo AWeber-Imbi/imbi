@@ -217,6 +217,13 @@ async def run_automations(
             for automation in automations:
                 last_automation = automation
                 await context.run_automation(automation, *args, **kwargs)
+                # TODO dave-shawley:
+                #   it would be nice to optionally refresh *args and
+                #   **kwargs after running an automation. Consider
+                #   project-creation automations that add identifiers
+                #   and pass the project as args[0]... Currently they
+                #   have to query for identifiers which requires that
+                #   they know the name of the other integration :/
     except errors.ApplicationError:  # this is meant for the end user
         raise
     except Exception as error:

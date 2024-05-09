@@ -1,13 +1,22 @@
-import asyncio
+from __future__ import annotations
+
+import dataclasses
 import logging
 import typing
 import urllib.parse
 
 import sprockets.mixins.http
-import tornado.web
 import yarl
 
 from imbi import errors, models, version
+if typing.TYPE_CHECKING:
+    from imbi import app
+
+
+@dataclasses.dataclass
+class ProjectInfo:
+    key: str
+    dashboard_url: yarl.URL
 
 
 def generate_key(project: models.Project) -> str:
@@ -15,47 +24,51 @@ def generate_key(project: models.Project) -> str:
     return ':'.join([project.namespace.slug.lower(), project.slug.lower()])
 
 
-def generate_dashboard_link(project: models.Project,
-                            sonar_settings: dict) -> typing.Union[str, None]:
-    """Generate a link to the SonarQube dashboard for `project`."""
-    if sonar_settings['url']:
-        root = yarl.URL(sonar_settings['url'])
-        return str(
-            root.with_path('/dashboard').with_query({
-                'id': generate_key(project),
-            }))
+async def create_client(application: app.Application,
+                        integration_name: str) -> '_SonarQubeClient':
+    """Create a SonarQube API client
 
-
-class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
-    """API Client for SonarQube.
-
-    This client uses the SonarQube HTTP API to automate aspects
-    of managing projects.
-
+    The settings needed to create a client are in the application
+    settings and the database currently. This function finds them
+    and creates a client.  If the configuration is invalid or the
+    integration is disabled, a ``ClientUnavailableError`` is raised
+    with an appropriate message.
     """
-    enabled: typing.Union[bool, None] = None
-    gitlab_alm_key: typing.Union[bool, None, str] = None
+    logger = logging.getLogger(__package__).getChild('create_client')
+    settings = application.settings['automations']['sonarqube']
+    if not settings['enabled']:
+        raise errors.ClientUnavailableError(integration_name, 'disabled')
 
-    def __init__(self, application: tornado.web.Application, *args, **kwargs):
+    sonarqube_info = await models.integration(integration_name, application)
+    if not sonarqube_info:
+        logger.warning('%r integration is enabled but not configured',
+                       integration_name)
+        raise errors.ClientUnavailableError(integration_name, 'not configured')
+    if not sonarqube_info.api_secret:
+        logger.warning('API secret is missing for %r', integration_name)
+        raise errors.ClientUnavailableError(integration_name, 'misconfigured')
+
+    return _SonarQubeClient(yarl.URL(str(sonarqube_info.api_endpoint)),
+                            sonarqube_info.api_secret)
+
+
+class _SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
+    gitlab_alm_key: typing.Union[bool, None, str] = None
+    """Cached ALM key for gitlab
+
+    If we haven't checked the ALM configuration in the sonar server,
+    then this is `None`. If we have retrieved the ALM configuration
+    that this is either `False` if it is disabled or the integration
+    key (as a str) if it is enabled.
+    """
+    def __init__(self, api_endpoint: yarl.URL, api_secret: str, *args,
+                 **kwargs):
         super().__init__(*args, **kwargs)
         self.logger = logging.getLogger(__package__).getChild(
             'SonarQubeClient')
-
-        self.settings = application.settings['automations']['sonarqube']
-        try:
-            self.admin_token = self.settings['admin_token']
-            self.sonar_url = yarl.URL(self.settings['url'])
-        except KeyError as error:
-            if self.__class__.enabled is None:
-                self.logger.warning(
-                    'disabling SonarQube integration due to'
-                    ' missing configuration: %s', error.args[0])
-                self.__class__.enabled = False
-            self.api_root = None
-            self.admin_token = None
-        else:
-            self.enabled = True
-            self.api_root = self.sonar_url / 'api'
+        self.api_url = api_endpoint
+        self.api_secret = api_secret
+        self.url = api_endpoint.with_path('/')
 
     async def api(self,
                   url: typing.Union[yarl.URL, str],
@@ -63,12 +76,10 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                   method: str = 'GET',
                   **kwargs) -> sprockets.mixins.http.HTTPResponse:
         """Make an authenticated API call."""
-        if not self.enabled:
-            raise RuntimeError('SonarQube integration is not enabled')
         if not isinstance(url, yarl.URL):
             url = yarl.URL(url)
         if not url.is_absolute():
-            new_url = self.api_root / url.path.lstrip('/')
+            new_url = self.api_url / url.path.lstrip('/')
             url = new_url.with_query(url.query)
 
         request_headers = kwargs.setdefault('request_headers', {})
@@ -80,7 +91,7 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
             kwargs['body'] = body.encode()
 
         kwargs.update({
-            'auth_username': self.admin_token,
+            'auth_username': self.api_secret,
             'auth_password': '',
             'user_agent': f'imbi/{version} (SonarQubeClient)',
         })
@@ -91,11 +102,7 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                 self.logger.warning('response body: %r', response.body)
         return response
 
-    async def create_project(self,
-                             project: models.Project,
-                             *,
-                             main_branch_name='main',
-                             public_url: yarl.URL) -> typing.Tuple[str, str]:
+    async def create_project(self, project: models.Project) -> ProjectInfo:
         """Create a SonarQube project for `project`.
 
         :returns: a :class:`tuple` containing the assigned project key
@@ -116,84 +123,70 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                                              title='SonarQube API Failure',
                                              sonar_response=response.body)
         project_key = response.body['project']['key']
-        dashboard_url = self.sonar_url.with_path('/dashboard').with_query({
+        dashboard_url = self.url.with_path('/dashboard').with_query({
             'id': project_key,
         })
+        return ProjectInfo(key=project_key, dashboard_url=dashboard_url)
 
-        await asyncio.gather(
-            self._fix_main_branch(project_key, main_branch_name),
-            self._enable_pr_decoration(project_key, project.gitlab_project_id),
-            self._add_link_to_sonar(project_key, 'Imbi Project', public_url),
-        )
-        return project_key, str(dashboard_url)
+    async def remove_project(self, project: ProjectInfo) -> None:
+        """Remove an existing project"""
+        await self.api('/projects/delete', body={'project': project.key})
 
-    async def _fix_main_branch(self, project_key: str, main_branch_name: str):
-        """Sonar assumes that the "main" branch is named master.
+    async def enable_pr_decoration(self, project: ProjectInfo,
+                                   gitlab_project_id: int):
+        """Enable GitLab MR decoration if it is available
 
-        This will cause main branches with any other name to be
-        treated as one-off branches.  You can *manually* fix this
-        by deleting the branch that was analyzed and renaming the
-        "master" branch.  Instead of requiring this for projects,
-        this method ensures that the "master" branch in SonarQube
-        matches the default branch in the SCM.
+        The MR decoration settings contain the gitlab project ID.
+        This is used to post the analysis results to an MR when
+        an analysis runs. The GitLab application lifecycle
+        management (ALM) plugin in SonarQube may be unconfigured
+        or unavailable. The internal `_is_gitlab_alm_available`
+        method checks if it is configured at the system level.
+        We need to set the ALM binding for the project to the
+        GitLab project ID if SonarQube is configured to update
+        GitLab.
 
         """
-        response = await self.api(
-            yarl.URL('/project_branches/list').with_query({
-                'project': project_key,
-            }))
-        if not response.ok:
-            self.logger.error('failed to list project branches for %s: %s',
-                              project_key, response.code)
-            return
-
-        self.logger.debug('making sure that main branch is %s for %s',
-                          main_branch_name, project_key)
-        main_branches = [
-            branch for branch in response.body['branches'] if branch['isMain']
-        ]
-        if main_branches and main_branches[0]['name'] != main_branch_name:
-            branch = main_branches[0]
-            self.logger.info('resetting main branch from %s to %s for %s',
-                             branch['name'], main_branch_name, project_key)
-            response = await self.api('/project_branches/rename',
-                                      method='POST',
-                                      body={
-                                          'project': project_key,
-                                          'name': main_branch_name,
-                                      })
-            if not response.ok:
-                self.logger.error('failed to rename main branch %s for %s: %s',
-                                  branch['name'], project_key, response.code)
-
-    async def _enable_pr_decoration(self, project_key: str,
-                                    gitlab_project_id: int):
-        """Enable GitLab MR decoration if it is available."""
         alm_enabled = await self._is_gitlab_alm_available()
         if not alm_enabled:
             return
 
-        self.logger.debug('checking for PR decoration on %s', project_key)
+        if not gitlab_project_id:
+            self.logger.error('refusing to set PR repository to %r',
+                              gitlab_project_id)
+            return
+
+        self.logger.debug('checking for PR decoration on %s', project.key)
         response = await self.api(
             yarl.URL('/alm_settings/get_binding').with_query({
-                'project': project_key,
+                'project': project.key,
             }))
         if response.code == 404:  # not configured or doesn't exist
+            self.logger.debug(
+                'setting PR decoration for %s: almSetting=%r repository=%r',
+                project.key, self.gitlab_alm_key, gitlab_project_id)
             response = await self.api(
                 yarl.URL('/alm_settings/set_gitlab_binding'),
                 method='POST',
                 body={
                     'almSetting': self.gitlab_alm_key,
-                    'project': project_key,
+                    'project': project.key,
                     'repository': gitlab_project_id,
                 })
             if not response.ok:
-                self.logger.error('failed to enable PR decoration for %s: %s',
-                                  project_key, response.code)
+                self.logger.error('PR decoration failure %s: %s', project.key,
+                                  response.code)
+                raise errors.InternalServerError(
+                    'failed to enable PR decoration for %s: %s',
+                    project.key,
+                    response.code,
+                    title='SonarQube Client Failure')
         elif not response.ok:
-            self.logger.error(
-                'failed to check for GitLab integration for %s: %s',
-                project_key, response.code)
+            raise errors.InternalServerError(
+                'failed to retrieve ALB bindings for %s: %s',
+                project.key,
+                response.code,
+                title='SonarQube Client Failure')
 
     async def _is_gitlab_alm_available(self) -> bool:
         """Check if the SonarQube server has the GitLab ALM configured.
@@ -225,18 +218,3 @@ class SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
                 return False  # don't cache failures for now
 
         return bool(self.gitlab_alm_key)
-
-    async def _add_link_to_sonar(self, project_key: str, name: str,
-                                 url: yarl.URL):
-        """Add a named link to the SonarQube dashboard."""
-        self.logger.debug('adding link to Imbi project for %s', project_key)
-        response = await self.api(yarl.URL('/project_links/create'),
-                                  method='POST',
-                                  body={
-                                      'name': name,
-                                      'projectKey': project_key,
-                                      'url': str(url)
-                                  })
-        if not response.ok:
-            self.logger.error('failed to set the Imbi project link for %s: %s',
-                              project_key, response.code)

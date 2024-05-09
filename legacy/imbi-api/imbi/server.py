@@ -112,9 +112,6 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     if automations_grafana.get('url') \
             and automations_grafana.get('admin_token'):
         automations_grafana['enabled'] = True
-    automations_sonar = automations.get('sonarqube', {})
-    if automations_sonar.get('url') and automations_sonar.get('admin_token'):
-        automations_sonar['enabled'] = True
     footer_link = config.get('footer_link', {})
     google = config.get('google', {})
     http_settings = config.get('http', {})
@@ -124,6 +121,11 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     sentry = config.get('sentry', {})
     session = config.get('session', {})
     stats = config.get('stats', {})
+
+    # All sonar settings are in the database, but it can be disabled
+    # in the configuration file.
+    automations_sonar = automations.get('sonarqube', {})
+    automations_sonar.setdefault('enabled', True)
 
     automations_gitlab = automations.get('gitlab', {})
     automations_gitlab.setdefault(
