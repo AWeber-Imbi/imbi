@@ -56,9 +56,10 @@ class _SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
     gitlab_alm_key: typing.Union[bool, None, str] = None
     """Cached ALM key for gitlab
 
-    If the integration is enabled, this will be a string. If it is
-    not enabled and we know that it is isn't then, this will be
-    `false`.
+    If we haven't checked the ALM configuration in the sonar server,
+    then this is `None`. If we have retrieved the ALM configuration
+    that this is either `False` if it is disabled or the integration
+    key (as a str) if it is enabled.
     """
     def __init__(self, api_endpoint: yarl.URL, api_secret: str, *args,
                  **kwargs):
