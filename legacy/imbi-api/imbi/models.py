@@ -7,8 +7,8 @@ import re
 import typing
 
 from imbi import common, errors
-from imbi.endpoints.integrations.models import (Automation, Integration,
-                                                automation, integration)
+from imbi.automations.models import (Automation, Integration, automation,
+                                     integration)
 
 if typing.TYPE_CHECKING:
     from imbi import app
