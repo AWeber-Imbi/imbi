@@ -5,7 +5,6 @@ import typing
 
 import jsonpatch
 import pydantic
-import yarl
 
 from imbi import errors, postgres
 from imbi.endpoints import base
@@ -15,6 +14,7 @@ class OAuth2CreationRequest(pydantic.BaseModel):
     authorization_endpoint: pydantic.HttpUrl
     token_endpoint: pydantic.HttpUrl
     revoke_endpoint: typing.Union[pydantic.HttpUrl, None]
+    callback_url: typing.Union[pydantic.HttpUrl, None]
     client_id: str
     client_secret: typing.Union[str, None]
     use_pkce: bool
@@ -24,7 +24,7 @@ class OAuth2Details(pydantic.BaseModel):
     authorization_endpoint: pydantic.HttpUrl
     token_endpoint: pydantic.HttpUrl
     revoke_endpoint: typing.Union[pydantic.HttpUrl, None] = None
-    callback_url: pydantic.HttpUrl
+    callback_url: typing.Union[pydantic.HttpUrl, None]
     client_id: str
     client_secret: typing.Union[str, None]
     use_pkce: bool
@@ -72,10 +72,6 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
         if request.client_secret:
             client_secret = request.client_secret
 
-        callback_url = yarl.URL(self.request.full_url())
-        callback_url = callback_url.with_path(
-            self.reverse_url('gitlab-callback'))
-
         await self.postgres_execute(
             'INSERT INTO v1.oauth2_integrations ('
             '            name, api_endpoint, callback_url,'
@@ -89,7 +85,8 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             '       FROM v1.integrations AS i'
             '      WHERE i.name = %(integration_name)s', {
                 'integration_name': integration_name,
-                'callback_url': str(callback_url),
+                'callback_url': (str(request.callback_url)
+                                 if request.callback_url else None),
                 'authorization_endpoint': str(request.authorization_endpoint),
                 'token_endpoint': str(request.token_endpoint),
                 'revoke_endpoint': (str(request.revoke_endpoint)
@@ -103,7 +100,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
                 'authorization_endpoint': request.authorization_endpoint,
                 'token_endpoint': request.token_endpoint,
                 'revoke_endpoint': request.revoke_endpoint,
-                'callback_url': str(callback_url),
+                'callback_url': request.callback_url,
                 'client_id': request.client_id,
                 'client_secret': request.client_secret,
                 'use_pkce': request.use_pkce,

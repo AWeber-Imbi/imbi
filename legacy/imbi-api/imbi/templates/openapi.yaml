@@ -1419,6 +1419,10 @@ paths:
                       description: Optional name of associated Sentry team
                       type: string
                       nullable: true
+                    pagerduty_policy:
+                      description: Optional ID of associated PagerDuty escalation policy
+                      type: string
+                      nullable: true
                   required:
                     - name
                     - slug
@@ -1483,6 +1487,10 @@ paths:
                       description: Optional name of associated Sentry team
                       type: string
                       nullable: true
+                    pagerduty_policy:
+                      description: Optional ID of associated PagerDuty escalation policy
+                      type: string
+                      nullable: true
                   required:
                     - name
                     - slug
@@ -1542,6 +1550,10 @@ paths:
                   nullable: true
                 sentry_team_slug:
                   description: Optional name of associated Sentry team
+                  type: string
+                  nullable: true
+                pagerduty_policy:
+                  description: Optional ID of associated PagerDuty escalation policy
                   type: string
                   nullable: true
               required:

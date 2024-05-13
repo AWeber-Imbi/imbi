@@ -12,7 +12,7 @@ from psycopg2 import extensions
 
 from imbi import errors, postgres, slugify
 from imbi.endpoints import base
-from . import models
+from imbi.automations import models
 
 PathIdType: typing.TypeAlias = typing.Union[int, slugify.Slug]
 

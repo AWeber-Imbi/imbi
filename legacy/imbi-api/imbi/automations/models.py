@@ -8,7 +8,9 @@ import typing
 
 import pydantic
 
-from imbi import automations, errors, slugify
+from . import do_nothing
+from imbi import errors, slugify
+
 if typing.TYPE_CHECKING:
     from imbi import app
 
@@ -38,7 +40,7 @@ def verify_legal_callable(v):
 
 CallableType = typing.Annotated[pydantic.ImportString,
                                 pydantic.AfterValidator(verify_legal_callable),
-                                pydantic.Field(default=automations.do_nothing)]
+                                pydantic.Field(default=do_nothing)]
 PathIdType: typing.TypeAlias = typing.Union[int, slugify.Slug]
 
 

@@ -187,15 +187,14 @@ class TestCaseWithReset(TestCase):
                 json.loads(result.body.decode('utf-8'))['name'])
         return environments
 
-    def create_namespace(self) -> dict:
-        namespace_name = str(uuid.uuid4())
-        result = self.fetch('/namespaces',
-                            method='POST',
-                            json_body={
-                                'name': namespace_name,
-                                'slug': str(uuid.uuid4()),
-                                'icon_class': 'fas fa-blind'
-                            })
+    def create_namespace(self, **overrides) -> dict:
+        body = {
+            'name': str(uuid.uuid4()),
+            'slug': str(uuid.uuid4()),
+            'icon_class': 'fas fa-blind'
+        }
+        body.update(overrides)
+        result = self.fetch('/namespaces', method='POST', json_body=body)
         self.assertEqual(result.code, 200)
         return json.loads(result.body.decode('utf-8'))
 
@@ -240,4 +239,15 @@ class TestCaseWithReset(TestCase):
                                 'environment_urls': False
                             })
         self.assertEqual(result.code, 200)
+        return json.loads(result.body.decode('utf-8'))
+
+    def create_integration(self, **overrides) -> dict:
+        body = {
+            'name': str(uuid.uuid4()),
+            'api_endpoint': 'https://api.example.com',
+            'api_secret': None,
+        }
+        body.update(overrides)
+        result = self.fetch('/integrations', method='POST', json_body=body)
+        self.assertEqual(200, result.code)
         return json.loads(result.body.decode('utf-8'))
