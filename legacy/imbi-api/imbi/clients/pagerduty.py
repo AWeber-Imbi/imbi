@@ -22,6 +22,19 @@ class _CreateServiceResponse(pydantic.BaseModel):
     service: ServiceInfo
 
 
+class IntegrationInfo(pydantic.BaseModel):
+    id: str
+    name: str
+    type: str
+    self: pydantic.HttpUrl
+    html_url: pydantic.HttpUrl
+    integration_key: str
+
+
+class _CreateIntegrationResponse(pydantic.BaseModel):
+    integration: IntegrationInfo
+
+
 class _PagerDutyClient(sprockets.mixins.http.HTTPClientMixin):
     def __init__(self, info: models.Integration, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -90,7 +103,8 @@ class _PagerDutyClient(sprockets.mixins.http.HTTPClientMixin):
                 project.slug,
                 project.namespace.pagerduty_policy,
                 response.code,
-                title='PagerDuty API Failure')
+                title='PagerDuty API Failure',
+                detail=f'Failed to create service {body["name"]!r}')
 
         try:
             parsed_rsp = _CreateServiceResponse.model_validate(response.body)
@@ -98,9 +112,44 @@ class _PagerDutyClient(sprockets.mixins.http.HTTPClientMixin):
             raise errors.InternalServerError(
                 'Failed to parse the PagerDuty response: %s',
                 error,
-                title='PagerDuty API Failure')
+                title='PagerDuty API Failure',
+                detail='Failed to parse service creation response') from None
         else:
             return parsed_rsp.service
+
+    async def create_inbound_api_integration(
+            self, name: str, service: ServiceInfo) -> IntegrationInfo:
+        response = await self.api(
+            yarl.URL('/services') / service.id / 'integrations',
+            method='POST',
+            body={
+                'integration': {
+                    'name': name,
+                    'type': 'generic_events_api_inbound_integration'
+                }
+            },
+        )
+        if not response.ok:
+            self.logger.error('PagerDuty API failure: body %r', response.body)
+            raise errors.InternalServerError(
+                'POST %s failed: %s',
+                response.history[-1].effective_url,
+                response.code,
+                title='PagerDuty API Failure',
+                detail=f'Failed to create inbound API integration {name}')
+
+        try:
+            parsed_rsp = _CreateIntegrationResponse.model_validate(
+                response.body)
+        except pydantic.ValidationError as error:
+            raise errors.InternalServerError(
+                'Failed to parse the PagerDuty response: %s',
+                error,
+                title='PagerDuty API Failure',
+                detail='Failed to parse integration creation response'
+            ) from None
+        else:
+            return parsed_rsp.integration
 
     async def remove_service(self, service_id: str) -> None:
         """Delete `service_id` from PagerDuty"""

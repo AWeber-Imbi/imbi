@@ -2,6 +2,7 @@ import http.client
 import unittest.mock
 import uuid
 
+import sprockets.mixins.http
 from tornado import httputil
 
 from imbi import errors, models, version
@@ -29,7 +30,7 @@ class PagerDutyClientTestCase(base.TestCaseWithReset):
         config = self.settings.setdefault('automations', {})
         config['pagerduty'] = {'enabled': True}
 
-        self.client = self.run_until_complete(
+        self.client: pagerduty._PagerDutyClient = self.run_until_complete(
             pagerduty.create_client(self.app, self.integration['name']))
 
     def tearDown(self) -> None:
@@ -50,6 +51,15 @@ class PagerDutyClientTestCase(base.TestCaseWithReset):
         response.ok = True
         response.code = http.HTTPStatus.CREATED.value
         response.body = body
+        return response
+
+    @staticmethod
+    def create_error_response() -> sprockets.mixins.http.HTTPResponse:
+        response = unittest.mock.Mock()
+        response.ok = False
+        response.code = http.HTTPStatus.INTERNAL_SERVER_ERROR.value
+        response.history = [unittest.mock.Mock()]
+        response.history[0].effective_url = 'https://example.com/effective-url'
         return response
 
 
@@ -188,3 +198,58 @@ class PagerDutyProjectDeletionTests(PagerDutyClientTestCase):
         request_headers = httputil.HTTPHeaders(kwargs['request_headers'])
         self.assertEqual('Token token=my-secret',
                          request_headers['Authorization'])
+
+
+class PagerDutyCreateIntegrationTests(PagerDutyClientTestCase):
+    TRUNCATE_TABLES = [
+        'v1.environments', 'v1.integrations', 'v1.namespaces', 'v1.projects',
+        'v1.project_secrets', 'v1.project_types'
+    ]
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.namespace = self.create_namespace(pagerduty_policy='my-policy')
+        project = self.create_project()
+        self.project: models.Project = self.run_until_complete(
+            models.project(project['id'], self.app))
+        self.service = pagerduty.ServiceInfo(
+            id='SERVICE',
+            html_url='https://example.com/html_url',
+            self='https://example.com/self')
+
+    def test_creating_integration(self) -> None:
+        self.http_fetch_mock.return_value = self.create_successful_response({
+            'integration': {
+                'id': 'INTEGRATION',
+                'name': 'my-hook',
+                'type': 'whatever',
+                'self': 'https://example.com/self',
+                'html_url': 'https://example.com/html_url',
+                'integration_key': 'super secret key',
+            }
+        })
+        integration = self.run_until_complete(
+            self.client.create_inbound_api_integration('my-hook',
+                                                       self.service))
+        self.http_fetch_mock.assert_awaited_once_with(
+            'https://example.com/pagerduty/api/services/SERVICE/integrations',
+            method='POST',
+            body={
+                'integration': {
+                    'name': 'my-hook',
+                    'type': 'generic_events_api_inbound_integration',
+                }
+            },
+            content_type='application/json',
+            request_headers=unittest.mock.ANY,
+            user_agent=f'imbi/{version} (PagerDutyClient)',
+        )
+        self.assertEqual('INTEGRATION', integration.id)
+        self.assertEqual('super secret key', integration.integration_key)
+
+    def test_api_failure(self) -> None:
+        self.http_fetch_mock.return_value = self.create_error_response()
+        with self.assertRaises(errors.InternalServerError):
+            self.run_until_complete(
+                self.client.create_inbound_api_integration(
+                    'my-hook', self.service))
