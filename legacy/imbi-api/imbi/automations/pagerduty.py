@@ -42,6 +42,22 @@ async def create_service(
         integration_name=automation.integration_name, service_info=service)
     context.add_callback(_delete_project)
 
+    # NB -- the integration is a child resource of the service, so it
+    # will be deleted when we delete the service, extra cleanup not required
+    hook = await client.create_inbound_api_integration(
+        'pagerduty-inbound-events', service)
+    key = context.application.encrypt_value(hook.integration_key)
+    await context.run_query(
+        'INSERT INTO v1.project_secrets(project_id, name, value, created_by)'
+        '     VALUES (%(project_id)s, %(key_name)s, %(value)s, %(user)s)', {
+            'project_id': project.id,
+            'key_name': 'pagerduty-integration-key',
+            'value': key,
+            'user': context.user.username,
+        }, 'insert-pagerduty-keys')
+
+    # NB -- the DB fields are cascade deleted when the project is deleted,
+    # so extra cleanup is not required
     await context.run_query(
         'INSERT INTO v1.project_identifiers (external_id, integration_name,'
         '                                    project_id, created_by)'
