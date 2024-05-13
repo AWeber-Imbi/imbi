@@ -418,6 +418,8 @@ class RecordRequestHandler(project.RequestHandlerMixin, _RequestHandlerMixin,
                 raise errors.ItemNotFound()
 
             output = project.row
+            if output['environments']:
+                output['environments'] = sorted(output['environments'])
             output.update({
                 'facts': facts.rows,
                 'links': links.rows,
