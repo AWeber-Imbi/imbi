@@ -132,6 +132,9 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'enabled',
         automations_gitlab.get('project_link_type_id') is not None)
 
+    automations_pd = automations.get('pagerduty', {})
+    automations_pd.setdefault('enabled', True)
+
     # `enabled` is calculated at runtime so default it to "true" here
     # Keeping the setting so that the user can disable sentry via config
     automations_sentry = automations.get('sentry', {})
@@ -162,6 +165,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             },
             # see https://pycqa.github.io/isort/reference/isort/settings.html
             'isort': automations.get('isort', {}),
+            'pagerduty': automations_pd,
             'sentry': automations_sentry,
             'sonarqube': {
                 'enabled': automations_sonar.get('enabled', False),
