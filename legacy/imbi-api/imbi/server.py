@@ -225,7 +225,8 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'postgres_query_timeout': postgres.get('query_timeout'),
         'project_configuration': {
             'ssm_prefix_template': project_configuration.get(
-                'ssm_prefix_template')
+                'ssm_prefix_template',
+                '/{namespace_slug}/{project_type_slug}/{project_slug}/')
         },
         'project_url_template': config.get('project_url_template', None),
         'sentry_backend_dsn': sentry.get('backend_dsn'),
