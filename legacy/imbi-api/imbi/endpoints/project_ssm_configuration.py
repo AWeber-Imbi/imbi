@@ -112,9 +112,13 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                         }
                     }
         if not role_arn_exists:
-            raise web.HTTPError(
-                401,
-                reason='No role ARNs exist for this namespace & environment')
+            self.logger.info('Fetching SSM params for project %s, no role ARNs '
+                             'found for namespace %d in any environment: %s',
+                             project_info['project_slug'],
+                             project_info['namespace_id'],
+                             project_info['environments'])
+            self.send_response([])
+            return
 
         output = [{
             'name': name,
