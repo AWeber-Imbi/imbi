@@ -194,6 +194,7 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             auth_password=google_integration.client_secret)
         if response.code in (401, 403):
             await self.session.clear()
+            self.set_status(403)
             raise web.Finish()
         elif not response.ok:
             self.logger.error(
