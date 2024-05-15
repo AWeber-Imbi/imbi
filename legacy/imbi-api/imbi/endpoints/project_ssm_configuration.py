@@ -112,12 +112,11 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                         }
                     }
         if not role_arn_exists:
-            self.logger.info('Fetching SSM params for project %s, no role '
-                             'ARNs found for namespace %d in any '
-                             'environment: %s',
-                             project_info['project_slug'],
-                             project_info['namespace_id'],
-                             project_info['environments'])
+            self.logger.info(
+                'Fetching SSM params for project %s, no role '
+                'ARNs found for namespace %d in any '
+                'environment: %s', project_info['project_slug'],
+                project_info['namespace_id'], project_info['environments'])
             self.send_response([])
             return
 
@@ -165,9 +164,10 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                         reason=('Not authorized to access SSM in this '
                                 'namespace & environment'))
                 else:
-                    self.logger.error('Unexpected AWS credential failure for '
-                                      '%s and %s: %s',
-                                      imbi_user.username, role_arn, error_code)
+                    self.logger.error(
+                        'Unexpected AWS credential failure for '
+                        '%s and %s: %s', imbi_user.username, role_arn,
+                        error_code)
                     raise web.HTTPError(
                         500,
                         reason='Unexpected failure fetching AWS credentials')
