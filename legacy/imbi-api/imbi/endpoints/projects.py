@@ -397,7 +397,7 @@ class RecordRequestHandler(project.RequestHandlerMixin, _RequestHandlerMixin,
                gitlab_project_id=%(gitlab_project_id)s,
                sentry_project_slug=%(sentry_project_slug)s,
                sonarqube_project_key=%(sonarqube_project_key)s,
-               pagerduty_service_id=%(pagerduty_service_id)s
+               pagerduty_service_id=%(pagerduty_service_id)s,
                configuration_type=%(configuration_type)s
          WHERE id=%(id)s""")
 
