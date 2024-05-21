@@ -1,3 +1,4 @@
+import collections
 import os
 import re
 import urllib.parse
@@ -79,7 +80,7 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             project_info['project_type_slug'], project_info['namespace_slug'])
 
         role_arn_exists = False
-        params_by_path = {}
+        params_by_path = collections.defaultdict(dict)
         aws_session = aioboto3.Session()
         for environment in project_info['environments']:
             result = await self.postgres_execute(
@@ -101,16 +102,10 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                 aws_session, ssm_path_prefix, creds['access_key_id'],
                 creds['secret_access_key'], creds['session_token'])
             for param in params:
-                if param['Name'] in params_by_path:
-                    params_by_path[
-                        param['Name']]['values'][environment] = param['Value']
-                else:
-                    params_by_path[param['Name']] = {
-                        'type': param['Type'],
-                        'values': {
-                            environment: param['Value']
-                        }
-                    }
+                params_by_path[param['Name']][environment] = {
+                    'value': param['Value'],
+                    'type': param['Type']
+                }
         if not role_arn_exists:
             self.logger.info(
                 'Fetching SSM params for project %s, no role '
@@ -122,12 +117,12 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
 
         output = [{
             'name': name,
-            'type': data['type'],
             'values': [{
                 'environment': environment,
-                'value': value
-            } for environment, value in data['values'].items()]
-        } for name, data in params_by_path.items()]
+                'value': data['value'],
+                'type': data['type']
+            } for environment, data in d.items()]
+        } for name, d in params_by_path.items()]
         self.send_response(output)
 
     async def get_aws_credentials(self,

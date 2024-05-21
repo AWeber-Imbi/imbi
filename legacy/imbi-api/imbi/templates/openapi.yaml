@@ -5171,13 +5171,6 @@ paths:
                     name:
                       description: The SSM parameter path
                       type: string
-                    type:
-                      description: The SSM parameter type
-                      type: string
-                      enum:
-                        - String
-                        - SecureString
-                        - StringList
                     values:
                       description: The parameter values in each environment
                       type: array
@@ -5191,32 +5184,41 @@ paths:
                           value:
                             description: The parameter value
                             type: string
+                          type:
+                            description: The SSM parameter type
+                            type: string
+                            enum:
+                              - String
+                              - SecureString
+                              - StringList
                         additionalProperties: false
                         required:
                           - environment
                           - value
+                          - type
                   additionalProperties: false
                   required:
                     - name
-                    - type
                     - values
               examples:
                 records:
                   value:
                     - name: /foo/bar/baz
-                      type: String
                       values:
                         - environment: Testing
                           value: '42'
+                          type: String
                         - environment: Production
                           value: '9001'
+                          type: String
                     - name: biz/bap/boop
-                      type: SecureString
                       values:
                         - environment: Testing
                           value: password
+                          type: SecureString
                         - environment: Production
                           value: password123$
+                          type: SecureString
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1configuration~1ssm/get/responses/200/content/application~1json/schema'
@@ -5224,19 +5226,21 @@ paths:
                 records:
                   value:
                     - name: /foo/bar/baz
-                      type: String
                       values:
                         - environment: Testing
                           value: '42'
+                          type: String
                         - environment: Production
                           value: '9001'
+                          type: String
                     - name: biz/bap/boop
-                      type: SecureString
                       values:
                         - environment: Testing
                           value: password
+                          type: SecureString
                         - environment: Production
                           value: password123$
+                          type: SecureString
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
