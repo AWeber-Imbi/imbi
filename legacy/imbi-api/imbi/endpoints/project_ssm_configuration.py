@@ -61,15 +61,14 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                 project_info['project_slug'],
                 title='Wrong configuration type for project')
 
-        imbi_user = await self.get_current_user()
         env = os.environ.get('ENVIRONMENT', 'production').lower()
         google_integration = await oauth2.OAuth2Integration.by_name(
             self.application, f'google-{env}')
-        tokens = await google_integration.get_user_tokens(imbi_user)
+        tokens = await google_integration.get_user_tokens(self.current_user)
         if len(tokens) == 0:
             raise errors.Forbidden(
                 'No OAuth 2.0 tokens for %s',
-                imbi_user.username,
+                self.current_user.username,
                 title=('Not authorized to access SSM in this namespace &'
                        ' environment'))
         google_tokens = tokens[0]
@@ -95,7 +94,7 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             role_arn = result.row['role_arn']
 
             creds = await self.get_aws_credentials(aws_session, role_arn,
-                                                   imbi_user,
+                                                   self.current_user,
                                                    google_tokens.id_token,
                                                    google_tokens.refresh_token)
             params = await aws.get_parameters_by_path(
