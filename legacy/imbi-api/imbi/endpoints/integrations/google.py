@@ -1,5 +1,4 @@
 import logging
-import os
 import urllib.parse
 
 import aioredis
@@ -119,5 +118,4 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
 
     @property
     def integration_name(self):
-        env = os.environ.get('ENVIRONMENT', 'production').lower()
-        return f'google-{env}'
+        return self.settings['google']['integration_name']

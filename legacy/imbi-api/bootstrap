@@ -103,6 +103,7 @@ automations:
 google:
   enabled: true
   valid_domains: gmail.com
+  integration_name: google
 http:
   canonical_server_name: imbi.localhost
   processes: 1

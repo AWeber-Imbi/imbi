@@ -1,5 +1,4 @@
 import collections
-import os
 import re
 import urllib.parse
 
@@ -61,10 +60,13 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                 project_info['project_slug'],
                 title='Wrong configuration type for project')
 
-        env = os.environ.get('ENVIRONMENT', 'production').lower()
-        google_integration = await oauth2.OAuth2Integration.by_name(
-            self.application, f'google-{env}')
-        tokens = await google_integration.get_user_tokens(self.current_user)
+        if not self.settings['google']['integration_name']:
+            raise errors.Forbidden(
+                'No Google integration specified in configuration',
+                title='No Google integration specified in configuration')
+
+        tokens = await self.current_user.fetch_integration_tokens(
+            self.settings['google']['integration_name'])
         if len(tokens) == 0:
             raise errors.Forbidden(
                 'No OAuth 2.0 tokens for %s',
@@ -177,9 +179,8 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
 
     async def refresh_oauth2_tokens(self, username, external_id,
                                     refresh_token) -> str:
-        env = os.environ.get('ENVIRONMENT', 'production').lower()
         google_integration = await oauth2.OAuth2Integration.by_name(
-            self.application, f'google-{env}')
+            self.application, self.settings['google']['integration_name'])
         body = urllib.parse.urlencode({
             'grant_type': 'refresh_token',
             'redirect_uri': google_integration.callback_url,
