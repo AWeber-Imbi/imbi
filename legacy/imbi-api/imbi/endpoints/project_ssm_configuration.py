@@ -60,6 +60,10 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                 project_info['project_slug'],
                 title='Wrong configuration type for project')
 
+        if not self.settings['google']['enabled']:
+            raise errors.Forbidden('Google integration is disabled',
+                                   title='Google integration is disabled')
+
         if not self.settings['google']['integration_name']:
             raise errors.Forbidden(
                 'No Google integration specified in configuration',
