@@ -103,6 +103,7 @@ automations:
 google:
   enabled: true
   valid_domains: gmail.com
+  integration_name: google
 http:
   canonical_server_name: imbi.localhost
   processes: 1
@@ -127,6 +128,8 @@ opensearch:
   redis_url: redis://${TEST_HOST}:$(get_exposed_port redis 6379)/2
 postgres:
   url: postgres://postgres@${TEST_HOST}:$(get_exposed_port postgres 5432)/imbi
+project_configuration:
+  ssm_prefix_template: /{namespace_slug}/{project_type_slug}/{project_slug}/
 project_url_template: http://{slug}.service.{environment}.consul
 ops_log_ticket_slug_template: "https://github.com/AWeber-Imbi/Imbi/issues/{slug}"
 session:

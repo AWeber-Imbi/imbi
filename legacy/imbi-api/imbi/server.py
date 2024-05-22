@@ -118,6 +118,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     ldap = config.get('ldap', {})
     local_users = config.get('local_users', {})
     postgres = config.get('postgres', {})
+    project_configuration = config.get('project_configuration', {})
     sentry = config.get('sentry', {})
     session = config.get('session', {})
     stats = config.get('stats', {})
@@ -191,7 +192,8 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'frontend_url': config.get('frontend_url', None),
         'google': {
             'enabled': google.get('enabled', False),
-            'valid_domains': google.get('valid_domains', '').split(',')
+            'valid_domains': google.get('valid_domains', '').split(','),
+            'integration_name': google.get('integration_name', None)
         },
         'javascript_url': config.get('javascript_url', None),
         'ldap': {
@@ -222,6 +224,11 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'postgres_connection_timeout': postgres.get('connection_timeout'),
         'postgres_connection_ttl': postgres.get('connection_ttl'),
         'postgres_query_timeout': postgres.get('query_timeout'),
+        'project_configuration': {
+            'ssm_prefix_template': project_configuration.get(
+                'ssm_prefix_template',
+                '/{namespace_slug}/{project_type_slug}/{project_slug}/')
+        },
         'project_url_template': config.get('project_url_template', None),
         'sentry_backend_dsn': sentry.get('backend_dsn'),
         'sentry_ui_dsn': sentry.get('ui_dsn', 'false'),

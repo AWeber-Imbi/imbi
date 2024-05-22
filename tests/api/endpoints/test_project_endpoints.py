@@ -54,6 +54,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'pagerduty_service_id': None,
             'sentry_project_slug': None,
             'sonarqube_project_key': None,
+            'configuration_type': None,
         })
         self.assertDictEqual(record, response)
 
@@ -131,6 +132,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'pagerduty_service_id': None,
             'sentry_project_slug': None,
             'sonarqube_project_key': None,
+            'configuration_type': None,
         })
         self.assertDictEqual(record, response)
 

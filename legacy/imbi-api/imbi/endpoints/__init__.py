@@ -8,8 +8,9 @@ from . import (activity_feed, authentication_tokens, cookie_cutters, dashboard,
                project_activity_feed, project_dependencies,
                project_fact_history, project_fact_types, project_facts,
                project_link_types, project_links, project_notes,
-               project_score_history, project_secrets, project_types,
-               project_urls, projects, reports, status, ui)
+               project_score_history, project_secrets,
+               project_ssm_configuration, project_types, project_urls,
+               projects, reports, status, ui)
 
 URLS = [
     web.url(r'^/$', ui.IndexRequestHandler),
@@ -79,6 +80,9 @@ URLS = [
     web.url(r'^/projects/(?P<id>\d+)$',
             projects.RecordRequestHandler,
             name='project'),
+    web.url(r'^/projects/(?P<project_id>\d+)/configuration/ssm$',
+            project_ssm_configuration.CollectionRequestHandler,
+            name='project-configuration'),
     web.url(r'^/projects/(?P<project_id>\d+)/dependencies$',
             project_dependencies.CollectionRequestHandler,
             name='project-dependencies'),
