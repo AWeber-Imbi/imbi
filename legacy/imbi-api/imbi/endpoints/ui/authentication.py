@@ -1,4 +1,3 @@
-import os
 import uuid
 
 import aioredis
@@ -62,8 +61,7 @@ class GoogleLoginRequestHandler(base.RequestHandler):
 
     @property
     def integration_name(self):
-        env = os.environ.get('ENVIRONMENT', 'production').lower()
-        return f'google-{env}'
+        return self.settings['google']['integration_name']
 
 
 class LogoutRequestHandler(base.RequestHandler):
