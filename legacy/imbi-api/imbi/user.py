@@ -90,6 +90,12 @@ class User:
           FROM maintain_group_membership_from_ldap_groups(%(username)s,
                                                           %(groups)s)""")
 
+    SQL_FETCH_LAST_SEEN_AT = re.sub(
+        r'\s+', ' ', """\
+            SELECT last_seen_at
+              FROM v1.users
+             WHERE username = %(username)s""")
+
     SQL_UPDATE_LAST_SEEN_AT = re.sub(
         r'\s+', ' ', """\
             UPDATE v1.users
@@ -240,6 +246,15 @@ class User:
                      self.last_refreshed_at < self.last_seen_at)
         return ((self.REFRESH_AFTER < age)
                 or (self.last_refreshed_at < self.last_seen_at))
+
+    async def fetch_last_seen_at(self) -> None:
+        async with self._application.postgres_connector(
+                on_error=self.on_postgres_error) as conn:
+            result = await conn.execute(self.SQL_FETCH_LAST_SEEN_AT,
+                                        {'username': self.username},
+                                        'user-fetch-last-seen-at')
+            if result:
+                self.last_seen_at = result.row['last_seen_at']
 
     async def update_last_seen_at(self) -> None:
         """Update the last_seen_at column in the database for the user"""

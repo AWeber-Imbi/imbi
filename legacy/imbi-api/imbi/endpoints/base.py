@@ -125,6 +125,7 @@ class RequestHandler(cors.CORSMixin, postgres.RequestHandlerMixin,
     async def get_current_user(self) -> typing.Optional['user.User']:
         """Used by the system to manage authentication behaviors"""
         if self.session and self.session.user:
+            await self.session.user.fetch_last_seen_at()
             return self.session.user
         token = self.request.headers.get('Private-Token', None)
         if token:
