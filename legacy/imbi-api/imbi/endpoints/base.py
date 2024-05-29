@@ -504,25 +504,25 @@ class AdminCRUDRequestHandler(CRUDRequestHandler):
 
 
 @dataclasses.dataclass
-class PaginationToken:
+class TimeBasedPaginationToken:
     """Opaque token used in "next" links by the PaginatedRequestMixin"""
 
     start: datetime.datetime
     limit: int
     earliest: datetime.datetime
 
-    def with_start(self, start: datetime.datetime) -> PaginationToken:
+    def with_start(self, start: datetime.datetime) -> TimeBasedPaginationToken:
         """Create a new token with a different start value"""
-        return PaginationToken(start=start,
-                               limit=self.limit,
-                               earliest=self.earliest)
+        return TimeBasedPaginationToken(start=start,
+                                        limit=self.limit,
+                                        earliest=self.earliest)
 
     @classmethod
-    def from_header(cls, header_val: str) -> PaginationToken:
+    def from_header(cls, header_val: str) -> TimeBasedPaginationToken:
         """Create a token from an opaque header value"""
         raw_token = common.urlsafe_padded_b64decode(header_val)
         data = umsgpack.unpackb(raw_token)
-        return PaginationToken(
+        return TimeBasedPaginationToken(
             earliest=datetime.datetime.fromisoformat(data['earliest']),
             limit=data['limit'],
             start=(datetime.datetime.fromisoformat(data['start']) -
@@ -538,10 +538,9 @@ class PaginationToken:
             })).decode('ascii').rstrip('=')
 
 
-QueryMethod = typing.Callable[[dict[str, typing.Any]],
-                              typing.Coroutine[None, None,
-                                               list[tuple[datetime.datetime,
-                                                          typing.Any]]]]
+TimeBasedPaginationQueryMethod = typing.Callable[
+    [dict[str, typing.Any]],
+    typing.Coroutine[None, None, list[tuple[datetime.datetime, typing.Any]]]]
 """Type signature of the function called by PaginatedRequestHandler
 
 This is something that looks like:
@@ -553,7 +552,7 @@ This is something that looks like:
 """
 
 
-class PaginatedRequestMixin(web.RequestHandler):
+class TimeBasedPaginationMixin(web.RequestHandler):
     """Mix this in to repeatedly retrieve query results ordered by time
 
     Call the `fetch_items` method to call a specified query method
@@ -582,7 +581,8 @@ class PaginatedRequestMixin(web.RequestHandler):
 
     logger: logging.Logger
 
-    async def fetch_items(self, token: PaginationToken, query: QueryMethod,
+    async def fetch_items(self, token: TimeBasedPaginationToken,
+                          query: TimeBasedPaginationQueryMethod,
                           time_step: datetime.timedelta,
                           **initial_params) -> list[dict]:
         """Call this to iterate over a query function and collect the result
@@ -623,12 +623,13 @@ class PaginatedRequestMixin(web.RequestHandler):
 
         return [entry for _, entry in buckets]
 
-    def get_pagination_token_from_request(self) -> PaginationToken | None:
+    def get_pagination_token_from_request(
+            self) -> TimeBasedPaginationToken | None:
         """Retrieve the pagination token from the request"""
         token = self.get_query_argument('token', '')
         if token:
             try:
-                return PaginationToken.from_header(token)
+                return TimeBasedPaginationToken.from_header(token)
             except ValueError as error:
                 self.logger.warning('ignoring malformed token %r: %s', token,
                                     error)
