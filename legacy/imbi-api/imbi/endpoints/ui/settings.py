@@ -1,9 +1,15 @@
 import asyncio
+import re
 
 from imbi.endpoints import (base, cookie_cutters, environments, fact_types,
                             groups, namespaces, project_link_types,
                             project_types)
 from imbi.opensearch import project
+
+CONFIGURATION_TYPE_SQL = re.sub(
+    r'\s+', ' ', """\
+        SELECT unnest(enum_range(null, null::v1.configuration_type))
+            AS configuration_type""")
 
 
 class RequestHandler(base.RequestHandler):
@@ -25,6 +31,8 @@ class RequestHandler(base.RequestHandler):
             self.postgres_execute(
                 namespaces.CollectionRequestHandler.COLLECTION_SQL,
                 metric_name='namespaces'),
+            self.postgres_execute(CONFIGURATION_TYPE_SQL,
+                                  metric_name='configuration-types'),
             self.postgres_execute(
                 fact_types.CollectionRequestHandler.COLLECTION_SQL,
                 metric_name='project-fact-types'),
@@ -43,7 +51,7 @@ class RequestHandler(base.RequestHandler):
 
         automations = self.settings['automations']
 
-        oauth_details = results[8].rows
+        oauth_details = results[9].rows
         gitlab = {'enabled': False}
         cfg = automations.get('gitlab')
         if cfg:
@@ -90,12 +98,13 @@ class RequestHandler(base.RequestHandler):
                 'environments': results[1].rows,
                 'groups': results[2].rows,
                 'namespaces': results[3].rows,
-                'project_fact_types': results[4].rows,
-                'project_link_types': results[5].rows,
-                'project_types': results[6].rows
+                'project_configuration_types': results[4].rows,
+                'project_fact_types': results[5].rows,
+                'project_link_types': results[6].rows,
+                'project_types': results[7].rows
             },
             'opensearch': {
-                'fields': results[7]
+                'fields': results[8]
             },
             'ops_log_ticket_slug_template': self.
             settings['ops_log_ticket_slug_template'],
