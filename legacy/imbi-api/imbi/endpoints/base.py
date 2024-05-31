@@ -6,11 +6,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import dataclasses
 import datetime
 import logging
 import operator
-import typing
 import uuid
 from email import utils
 
@@ -19,6 +19,7 @@ import problemdetails
 import pydantic
 import sprockets.mixins.mediatype.content
 import sprockets_postgres as postgres
+import typing_extensions as typing
 import umsgpack
 import yarl
 from ietfparse import datastructures
@@ -633,6 +634,164 @@ class TimeBasedPaginationMixin(web.RequestHandler):
             except ValueError as error:
                 self.logger.warning('ignoring malformed token %r: %s', token,
                                     error)
+
+
+class PaginationToken:
+    """Opaque pagination token for use with PaginatedCollectionHandler
+
+    Pagination tokens are passed as the `token` query parameter
+    and are read from the request by the `from_request` class method.
+    The only field that is in the default token is `limit` which
+    defaults to 100.
+
+    Be aware that the body of the token is used as parameters to
+    the pagination query in the handler. This interplay between
+    the two classes is what should form the basis of your token.
+
+    Create a new subclass that contains additional content to
+    store in the token. There are a few rules that need to be
+    followed:
+
+    1. the keyword parameter names in `__init__` are required
+       to match the keys in the dict returned from `as_dict`
+    2. the `limit` parameter cannot be removed
+    3. all parameters to the initializer must have default
+       values unless they are path parameters to the handler
+    4. path parameter names must have corresponding initializer
+       parameter names
+
+    The easiest way to do this is to set the values that you
+    want for the first page as the defaults for the initializer
+    keyword params and add matching path parameter names. If the
+    token is not present in the request, the default token is
+    created by calling the initializer without only the path
+    parameters.
+
+    Then implement the `with_first` method to merge attributes
+    from the value parameter into `self.as_dict()` by passing
+    overrides.
+
+    .. code-block::
+
+       class MyToken(PaginationToken):
+          def __init__(self, *, name: str = '', project_id: int | str,
+                       **kwargs: object) -> None:
+             super().__init__(name=name, project_id=project_id, **kwargs)
+          def with_first(self, value: dict[str, object]) -> typing.Self:
+             kwargs = self.as_dict(name=value['name'])
+             return MyToken(**kwargs)
+
+    """
+    def __init__(self, *, limit: int = 100, **other_props: object):
+        self._data: dict[str, object] = {'limit': limit}
+        self._data.update(other_props)
+
+    @classmethod
+    def from_request(cls, req: httputil.HTTPServerRequest,
+                     **path_args: str) -> typing.Self:
+        """Generate a token for a request
+
+        If there is no token in the request, then a new token
+        is created by calling the initializer without parameters.
+        Otherwise, the content of the token is decoded and passed
+        as keyword parameters to create the token instance.
+        """
+        encoded_token = req.query_arguments.get('token')
+        if encoded_token:
+            try:
+                raw_token = common.urlsafe_padded_b64decode(
+                    encoded_token[0].decode())
+                data = umsgpack.unpackb(raw_token)
+            except (AttributeError, ValueError):
+                pass
+            else:
+                # Should we verify that path_args are present
+                # in the decoded token?  What happens if someone
+                # uses a token on a different URL?
+                return cls(**data)
+
+        token = cls(**path_args)
+        with contextlib.suppress(IndexError, KeyError):
+            token._data['limit'] = int(req.query_arguments['limit'][0])
+        return token
+
+    def as_dict(self, **overrides: object) -> dict[str, object]:
+        """The properties of the token as a dictionary
+
+        This is used to encode the token into a query string
+        value. The `overrides` parameter is a convenience for
+        implementing the `with_first` method.
+        """
+        data = self._data.copy()
+        data.update(overrides)
+        return data
+
+    def with_first(self, _value: dict[str, object]) -> typing.Self:
+        """Return a new token that uses `value` as the search target"""
+        raise NotImplementedError
+
+    @property
+    def limit(self) -> int:
+        return typing.cast(int, self._data['limit'])
+
+    def __str__(self) -> str:
+        data = umsgpack.packb(self.as_dict())
+        return base64.urlsafe_b64encode(data).decode().rstrip('=')
+
+
+class PaginatedCollectionHandler(CollectionRequestHandler):
+    """Implements a paginated `get` method
+
+    The `get` method uses a combination of the token returned
+    from `get_pagination_token_from_request` and the COLLECTION_SQL
+    query to retrieve and return pages of the collection.
+
+    Note that the dict form of the token is passed as the parameters
+    to the COLLECTION_SQL query.
+
+    """
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        if self.ID_KEY is None:
+            self._extract_keys = lambda itm: None
+        elif isinstance(self.ID_KEY, str):
+            self._extract_keys = lambda itm: (itm[self.ID_KEY], )
+        else:
+            self._extract_keys = lambda itm: tuple(itm[k] for k in self.ID_KEY)
+
+    def get_pagination_token_from_request(
+            self, **path_params: str) -> PaginationToken:
+        """Return a pagination token of the appropriate type
+
+        The keyword parameters will match the named patterns
+        from the URL match. These correspond with the keyword
+        parameters passed to the `get` method.
+        """
+        raise NotImplementedError()
+
+    async def get(self, **kwargs: str) -> None:
+        token = self.get_pagination_token_from_request(**kwargs)
+        params = token.as_dict()
+        params['limit'] += 1
+        rsp = await self.postgres_execute(self.COLLECTION_SQL, params)
+        items = rsp.rows
+        url = yarl.URL(self.request.uri)
+        if len(items) > token.limit:
+            items = items[:token.limit]
+            target = url.with_query(token=str(token.with_first(items[-1])))
+            self.add_header('Link', common.build_link_header(target, 'next'))
+        target = url.with_query(limit=token.limit)
+        self.add_header('Link', common.build_link_header(target, 'first'))
+
+        if self.ITEM_NAME is not None:
+            for item in items:
+                item.setdefault(
+                    'link',
+                    self.reverse_url(self.ITEM_NAME,
+                                     *self._extract_keys(item)),
+                )
+
+        self.send_response(items)
 
 
 ModelType = typing.TypeVar('ModelType', bound=pydantic.BaseModel)
