@@ -5427,6 +5427,102 @@ paths:
         required: true
         schema:
           type: number
+  '/projects/{id}/components':
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Retrieve project components
+      description: Retrieve the set of components that a project uses
+      tags:
+        - Components
+        - Projects
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                title: Project components
+                description: List of components that this project uses
+                type: array
+                items:
+                  type: object
+                  properties:
+                    package_url:
+                      description: Unique identifies the component
+                      type: string
+                      pattern: '^pkg:'
+                    name:
+                      description: Human-readable name of this component
+                      type: string
+                    version:
+                      description: Version number that the project requires
+                      type: string
+                    status:
+                      description: Status for this version of this component
+                      type: string
+                      enum:
+                        - Active
+                        - Deprecated
+                        - Forbidden
+                    icon_class:
+                      description: Optional Font Awesome icon class
+                      type: string
+                      nullable: true
+                    score:
+                      description: |
+                        Score for this component
+
+                        If this property is `null`, then this component is not included
+                        in the total project score calculation.
+                      type: integer
+                      minimum: 0
+                      maximum: 100
+                      nullable: true
+                    link:
+                      description: Link to the component
+                      type: string
+                      format: uri
+                  required:
+                    - package_url
+                    - name
+                    - version
+                    - status
+                    - icon_class
+                    - score
+                  example:
+                    package_url: 'pkg:pypi:imbi'
+                    name: Imbi
+                    version: 0.21.1
+                    status: Active
+                    icon_class: imbi imbi
+                    score: 100
+          headers:
+            Link:
+              $ref: '#/paths/~1components/get/responses/200/headers/Link'
+        '404':
+          $ref: '#/paths/~1components/get/responses/404'
+      parameters:
+        - name: limit
+          in: query
+          description: Optional page size
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: token
+          in: query
+          description: |
+            Pagination token
+
+            This is returned in the `"next"` link
+          required: false
+          schema:
+            type: string
   '/projects/{id}/configuration/ssm':
     parameters:
       - name: id

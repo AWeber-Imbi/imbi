@@ -133,3 +133,45 @@ class RecordRequestHandler(base.CRUDRequestHandler):
                 validation_errors=error.errors()) from None
         else:
             return True
+
+
+class ProjectComponentsToken(base.PaginationToken):
+    """Pagination token that includes the starting package URL and project"""
+    def __init__(self,
+                 *,
+                 starting_package: str = '',
+                 project_id: int | str,
+                 **kwargs) -> None:
+        try:
+            project_id = int(project_id)
+        except ValueError:
+            raise errors.BadRequest('Invalid project id %r, expected integer',
+                                    project_id)
+        super().__init__(starting_package=starting_package,
+                         project_id=project_id,
+                         **kwargs)
+
+    def with_first(self, value: dict[str, object]) -> typing.Self:
+        kwargs = self.as_dict(starting_package=value['package_url'])
+        return ProjectComponentsToken(**kwargs)
+
+
+class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
+    # the status & score columns will become "real" when we figure
+    # out how we want to score these in the future
+    COLLECTION_SQL = re.sub(
+        r'\s+', ' ', """\
+        SELECT c.package_url, c."name", v.version, c.icon_class,
+               c.status, NULL AS score
+          FROM v1.project_components AS p
+          JOIN v1.component_versions AS v ON v.id = p.version_id
+          JOIN v1.components AS c ON c.package_url = v.package_url
+         WHERE c.package_url > %(starting_package)s
+           AND p.project_id = %(project_id)s
+         ORDER BY c.package_url ASC
+        """)
+
+    def get_pagination_token_from_request(
+            self, *, project_id: str) -> ProjectComponentsToken:
+        return ProjectComponentsToken.from_request(self.request,
+                                                   project_id=project_id)
