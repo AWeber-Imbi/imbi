@@ -54,6 +54,10 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             'get-project-namespace-id')
         project_info = result.row
 
+        if not project_info['environments']:
+            self.send_response([])
+            return
+
         if project_info['configuration_type'] != 'ssm':
             raise errors.ItemNotFound(
                 'Project %s does not use SSM configuration',
