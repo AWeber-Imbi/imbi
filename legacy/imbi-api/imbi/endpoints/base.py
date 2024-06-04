@@ -54,8 +54,10 @@ def require_permission(permission):
                         'index.html',
                         javascript_url=self.application.settings.get(
                             'javascript_url'))
-                raise errors.Forbidden('%r does not have the "%s" permission',
-                                       self._current_user, permission)
+                raise errors.Forbidden(
+                    '%s(%s) does not have the "%s" permission',
+                    self._current_user.username, self._current_user.user_type,
+                    permission)
             return f(self, *args, **kwargs)
 
         return wrapped
