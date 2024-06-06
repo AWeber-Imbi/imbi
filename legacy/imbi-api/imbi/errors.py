@@ -71,6 +71,11 @@ class BadRequest(ApplicationError):
         super().__init__(400, 'bad-request', log_message, *log_args, **kwargs)
 
 
+class Unauthorized(ApplicationError):
+    def __init__(self, log_message, *log_args, **kwargs):
+        super().__init__(401, 'unauthorized', log_message, *log_args, **kwargs)
+
+
 class Forbidden(ApplicationError):
     def __init__(self, log_message, *log_args, **kwargs):
         super().__init__(403, 'forbidden', log_message, *log_args, **kwargs)
