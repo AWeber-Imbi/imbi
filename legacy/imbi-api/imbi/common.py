@@ -6,6 +6,8 @@ import decimal
 import typing
 
 import dateutil.parser
+import yarl
+from ietfparse import datastructures
 
 
 def coerce_project_fact_values(
@@ -70,3 +72,9 @@ def urlsafe_padded_b64decode(data: str) -> bytes:
     if pad_len:
         bin_data = bin_data.ljust(data_len + pad_len, b'=')
     return base64.urlsafe_b64decode(bin_data)
+
+
+def build_link_header(target: yarl.URL, rel: str, **parameters: str) -> str:
+    all_params = [('rel', rel)]
+    all_params.extend(parameters.items())
+    return str(datastructures.LinkHeader(str(target), all_params))

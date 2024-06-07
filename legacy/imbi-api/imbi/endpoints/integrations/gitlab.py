@@ -53,6 +53,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                                                       str(user_id),
                                                       token.access_token,
                                                       token.refresh_token)
+            await imbi_user.update_last_seen_at()
 
         # Revoke the gitlab token if we cannot use or save it.  This
         # is a catch-all case since GitLab does not remove tokens based
