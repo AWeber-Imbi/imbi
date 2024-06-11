@@ -28,3 +28,21 @@ async def get_parameters_by_path(session: aioboto3.Session, path: str,
                                              MaxResults=10):
             params.extend(page['Parameters'])
         return params
+
+
+async def put_parameter(session: aioboto3.Session,
+                        access_key_id: str,
+                        secret_access_key: str,
+                        session_token: str,
+                        path: str,
+                        param_type: str,
+                        value: str,
+                        overwrite: bool = False):
+    async with session.client('ssm',
+                              aws_access_key_id=access_key_id,
+                              aws_secret_access_key=secret_access_key,
+                              aws_session_token=session_token) as client:
+        await client.put_parameter(Name=path,
+                                   Value=value,
+                                   Type=param_type,
+                                   Overwrite=overwrite)
