@@ -51,12 +51,18 @@ class CollectionRequestHandler(base.PaginatedCollectionHandler):
 
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT package_url, "name", status, home_page, icon_class,
-               active_version, created_at, created_by,
-               last_modified_at, last_modified_by
-          FROM v1.components
-         WHERE package_url > %(starting_package)s
-         ORDER BY package_url ASC
+        SELECT c.package_url, c."name", c.status, c.home_page, c.icon_class,
+               c.active_version, COUNT(v.id) AS version_count,
+               COUNT(p.project_id) AS project_count, c.created_at,
+               c.created_by, c.last_modified_at, c.last_modified_by
+          FROM v1.components AS c
+          LEFT JOIN v1.component_versions AS v ON v.package_url = c.package_url
+          LEFT JOIN v1.project_components AS p ON p.version_id = v.id
+         WHERE c.package_url > %(starting_package)s
+         GROUP BY c.package_url, c."name", c.status, c.home_page, c.icon_class,
+                  c.active_version, c.created_at, c.created_by,
+                  c.last_modified_at, c.last_modified_by
+         ORDER BY c.package_url ASC
          LIMIT %(limit)s
         """)
     GET_SQL = re.sub(

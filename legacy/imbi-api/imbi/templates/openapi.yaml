@@ -595,12 +595,33 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1components/post/responses/200/content/application~1json/schema'
+                  allOf:
+                    - $ref: '#/paths/~1components/post/responses/200/content/application~1json/schema'
+                    - type: object
+                      properties:
+                        link:
+                          type: string
+                          format: uri
+                          description: Canonical link to this component
+                        project_count:
+                          type: number
+                          description: Number of projects using this component
+                        version_count:
+                          type: number
+                          description: Number of component versions discovered
+                      required:
+                        - link
+                        - project_count
+                        - version_count
+                      example:
+                        link: /components/pkg%3Apypi%3Aimbi
+                        project_count: 1
+                        version_count: 13
             application/msgpack:
               schema:
                 type: array
                 items:
-                  $ref: '#/paths/~1components/post/responses/200/content/application~1json/schema'
+                  $ref: '#/paths/~1components/get/responses/200/content/application~1json/schema/items'
           headers:
             Link:
               description: |
