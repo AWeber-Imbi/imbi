@@ -7776,6 +7776,112 @@ paths:
                     type: string
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
+  /reports/component-usage:
+    get:
+      description: Report of all defined components
+      summary: Component Usage
+      tags:
+        - Reports
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Single component usage report
+                  properties:
+                    name:
+                      description: Component name
+                      type: string
+                    package_url:
+                      description: |
+                        Unique identifier for the component following the
+                        [purl spec](https://github.com/package-url/purl-spec)
+                      type: string
+                      pattern: '^pkg:'
+                    active_version:
+                      description: Optional semantic version range that is considered the "current" version
+                      type: string
+                      nullable: true
+                    status:
+                      description: Status for *all* versions of this component
+                      type: string
+                      enum:
+                        - Active
+                        - Deprecated
+                        - Forbidden
+                    project_count:
+                      description: Number of projects using this component
+                      type: number
+                    version_count:
+                      description: Number of known versions of this component
+                      type: number
+                  required:
+                    - active_version
+                    - name
+                    - package_url
+                    - project_count
+                    - status
+                    - version_count
+                  example:
+                    active_version: ~0.21
+                    name: imbi
+                    package_url: 'pkg:pypi:imbi'
+                    status: Active
+                    project_count: 1
+                    version_count: 12
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  type: object
+                  description: Single component usage report
+                  properties:
+                    name:
+                      description: Component name
+                      type: string
+                    package_url:
+                      description: |
+                        Unique identifier for the component following the
+                        [purl spec](https://github.com/package-url/purl-spec)
+                      type: string
+                      pattern: '^pkg:'
+                    active_version:
+                      description: Optional semantic version range that is considered the "current" version
+                      type: string
+                      nullable: true
+                    status:
+                      description: Status for *all* versions of this component
+                      type: string
+                      enum:
+                        - Active
+                        - Deprecated
+                        - Forbidden
+                    project_count:
+                      description: Number of projects using this component
+                      type: number
+                    version_count:
+                      description: Number of known versions of this component
+                      type: number
+                  required:
+                    - active_version
+                    - name
+                    - package_url
+                    - project_count
+                    - status
+                    - version_count
+                  example:
+                    active_version: ~0.21
+                    name: imbi
+                    package_url: 'pkg:pypi:imbi'
+                    status: Active
+                    project_count: 1
+                    version_count: 12
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   /reports/namespace-shs-history:
     get:
       description: The history of stack health scores for all namespaces for the last 12 months
