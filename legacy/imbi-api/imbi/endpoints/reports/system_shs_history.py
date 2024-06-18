@@ -1,11 +1,9 @@
 import re
 
-from tornado import web
-
 from imbi.endpoints import base
 
 
-class RequestHandler(base.RequestHandler):
+class RequestHandler(base.AuthenticatedRequestHandler):
 
     NAME = 'reports-system-shs-history'
 
@@ -18,7 +16,6 @@ class RequestHandler(base.RequestHandler):
       GROUP BY scored_on
       ORDER BY scored_on ASC""")
 
-    @web.authenticated
     async def get(self):
         result = await self.postgres_execute(self.SQL, metric_name=self.NAME)
         self.send_response(result.rows)

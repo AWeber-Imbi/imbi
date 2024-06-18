@@ -1,11 +1,9 @@
 import re
 
-from tornado import web
-
 from imbi.endpoints import base
 
 
-class RequestHandler(base.RequestHandler):
+class RequestHandler(base.AuthenticatedRequestHandler):
 
     NAME = 'reports-namespace-kpis'
 
@@ -41,7 +39,6 @@ class RequestHandler(base.RequestHandler):
          GROUP BY namespace_id, namespace
          ORDER BY namespace;""")
 
-    @web.authenticated
     async def get(self):
         result = await self.postgres_execute(self.SQL, metric_name=self.NAME)
         self.send_response(result.rows)
