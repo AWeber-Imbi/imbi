@@ -64,24 +64,7 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                 project_info['project_slug'],
                 title='Wrong configuration type for project')
 
-        if not self.settings['google']['enabled']:
-            raise errors.Forbidden('Google integration is disabled',
-                                   title='Google integration is disabled')
-
-        if not self.settings['google']['integration_name']:
-            raise errors.Forbidden(
-                'No Google integration specified in configuration',
-                title='No Google integration specified in configuration')
-
-        tokens = await self.current_user.fetch_integration_tokens(
-            self.settings['google']['integration_name'])
-        if len(tokens) == 0:
-            raise errors.Forbidden(
-                'No OAuth 2.0 tokens for %s',
-                self.current_user.username,
-                title=('Not authorized to access SSM in this namespace &'
-                       ' environment'))
-        google_tokens = tokens[0]
+        google_tokens = await self._get_google_tokens()
 
         ssm_path_prefix = self.path_prefix(
             self.application.settings['project_configuration']
@@ -135,25 +118,7 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         self.send_response(output)
 
     async def post(self, *args, **kwargs) -> None:
-        if not self.settings['google']['enabled']:
-            raise errors.Forbidden('Google integration is disabled',
-                                   title='Google integration is disabled')
-
-        if not self.settings['google']['integration_name']:
-            raise errors.Forbidden(
-                'No Google integration specified in configuration',
-                title='No Google integration specified in configuration')
-
-        tokens = await self.current_user.fetch_integration_tokens(
-            self.settings['google']['integration_name'])
-        if len(tokens) == 0:
-            raise errors.Forbidden(
-                'No OAuth 2.0 tokens for %s',
-                self.current_user.username,
-                title=('Not authorized to access SSM in this namespace &'
-                       ' environment'))
-        google_tokens = tokens[0]
-
+        google_tokens = await self._get_google_tokens()
         aws_session = aioboto3.Session()
         body = self.get_request_body()
         for param in body['values']:
@@ -276,3 +241,23 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             refresh_token=response.body.get('refresh_token', None),
             id_token=response.body['id_token'])
         return response.body['id_token']
+
+    async def _get_google_tokens(self) -> oauth2.IntegrationToken:
+        if not self.settings['google']['enabled']:
+            raise errors.Forbidden('Google integration is disabled',
+                                   title='Google integration is disabled')
+
+        if not self.settings['google']['integration_name']:
+            raise errors.Forbidden(
+                'No Google integration specified in configuration',
+                title='No Google integration specified in configuration')
+
+        tokens = await self.current_user.fetch_integration_tokens(
+            self.settings['google']['integration_name'])
+        if len(tokens) == 0:
+            raise errors.Forbidden(
+                'No OAuth 2.0 tokens for %s',
+                self.current_user.username,
+                title=('Not authorized to access SSM in this namespace &'
+                       ' environment'))
+        return tokens[0]
