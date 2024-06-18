@@ -5682,7 +5682,7 @@ paths:
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
-          $ref: '#/paths/~1groups~1{name}/get/responses/404'
+          $ref: '#/paths/~1components/get/responses/404'
     post:
       description: Create a set of new SSM parameters for a name
       summary: Create SSM params
