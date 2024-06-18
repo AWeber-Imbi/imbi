@@ -213,17 +213,20 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                                                       imbi_user, id_token,
                                                       refresh_token, True)
             elif error.response['Error']['Code'] == 'AccessDenied':
-                raise web.HTTPError(
-                    401,
-                    reason=('Not authorized to access SSM in this '
-                            'namespace & environment'))
+                raise errors.Unauthorized(
+                    '%s unauthorized to assume AWS role %s',
+                    imbi_user.username,
+                    role_arn,
+                    reason='Not authorized to access SSM in this '
+                    'namespace & environment')
             else:
-                self.logger.error(
-                    'Unexpected AWS credential failure for '
-                    '%s and %s: %s', imbi_user.username, role_arn,
-                    error.response['Error']['Code'])
-                raise web.HTTPError(
-                    500, reason='Unexpected failure fetching AWS credentials')
+                raise errors.InternalServerError(
+                    'Unexpected AWS credential failure for'
+                    '%s assuming AWS role %s: %s',
+                    imbi_user.username,
+                    role_arn,
+                    error.response['Error']['Code'],
+                    reason='Unexpected failure fetching AWS credentials')
         creds = {
             'access_key_id': response['Credentials']['AccessKeyId'],
             'secret_access_key': response['Credentials']['SecretAccessKey'],

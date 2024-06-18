@@ -7,7 +7,7 @@ from tornado import web
 from imbi.endpoints import base
 
 
-class CollectionRequestHandler(base.PaginatedRequestMixin,
+class CollectionRequestHandler(base.TimeBasedPaginationMixin,
                                base.ValidatingRequestHandler):
 
     NAME = 'project-activity-feed'
@@ -114,12 +114,13 @@ class CollectionRequestHandler(base.PaginatedRequestMixin,
 
         return all_rows
 
-    async def _get_pagination_token(self, project_id) -> base.PaginationToken:
+    async def _get_pagination_token(
+            self, project_id) -> base.TimeBasedPaginationToken:
         token = self.get_pagination_token_from_request()
         if token is None:
             result = await self.postgres_execute(self.EARLIEST_EVENT_SQL,
                                                  {'project_id': project_id})
-            token = base.PaginationToken(
+            token = base.TimeBasedPaginationToken(
                 start=datetime.datetime.now(datetime.timezone.utc),
                 limit=int(self.get_query_argument('limit', '25')),
                 earliest=result.row['earliest'],

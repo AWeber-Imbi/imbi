@@ -10,7 +10,7 @@ from tornado import web
 from imbi.endpoints import base
 
 
-class CollectionRequestHandler(base.PaginatedRequestMixin,
+class CollectionRequestHandler(base.TimeBasedPaginationMixin,
                                base.ValidatingRequestHandler):
 
     NAME = 'activity-feed'
@@ -87,7 +87,7 @@ class CollectionRequestHandler(base.PaginatedRequestMixin,
         if token is None:
             self.logger.info('creating new token')
             result = await self.postgres_execute(self.EARLIEST_EVENT_SQL)
-            token = base.PaginationToken(
+            token = base.TimeBasedPaginationToken(
                 start=datetime.datetime.now(datetime.timezone.utc),
                 limit=int(self.get_query_argument('limit', '25')),
                 earliest=result.row['earliest'],
