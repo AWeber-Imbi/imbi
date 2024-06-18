@@ -134,6 +134,58 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         } for name, d in params_by_path.items()]
         self.send_response(output)
 
+    async def post(self, *args, **kwargs) -> None:
+        if not self.settings['google']['enabled']:
+            raise errors.Forbidden('Google integration is disabled',
+                                   title='Google integration is disabled')
+
+        if not self.settings['google']['integration_name']:
+            raise errors.Forbidden(
+                'No Google integration specified in configuration',
+                title='No Google integration specified in configuration')
+
+        tokens = await self.current_user.fetch_integration_tokens(
+            self.settings['google']['integration_name'])
+        if len(tokens) == 0:
+            raise errors.Forbidden(
+                'No OAuth 2.0 tokens for %s',
+                self.current_user.username,
+                title=('Not authorized to access SSM in this namespace &'
+                       ' environment'))
+        google_tokens = tokens[0]
+
+        aws_session = aioboto3.Session()
+        body = self.get_request_body()
+        for param in body['values']:
+            result = await self.postgres_execute(
+                self.GET_ROLE_ARN_SQL, {
+                    'environment': param['environment'],
+                    'namespace_id': body['namespace_id']
+                }, 'get-role-arn')
+            if not result.row:
+                raise errors.Forbidden('you cant do this')
+            role_arn = result.row['role_arn']
+
+            creds = await self.get_aws_credentials(aws_session, role_arn,
+                                                   self.current_user,
+                                                   google_tokens.id_token,
+                                                   google_tokens.refresh_token)
+            try:
+                await aws.put_parameter(aws_session, creds['access_key_id'],
+                                        creds['secret_access_key'],
+                                        creds['session_token'], body['name'],
+                                        body['type'], param['value'])
+            except botocore.exceptions.ClientError as error:
+                code = error.response['Error']['Code']
+                if code == 'UnsupportedParameterType':
+                    raise errors.BadRequest('UnsupportedParameterType')
+                elif code == 'ParameterAlreadyExists':
+                    raise errors.BadRequest('ParameterAlreadyExists')
+                elif code == 'ParameterLimitExceeded':
+                    raise errors.BadRequest('ParameterLimitExceeded')
+                else:
+                    raise errors.InternalServerError(code)
+
     async def get_aws_credentials(self,
                                   aws_session: aioboto3.Session,
                                   role_arn,
