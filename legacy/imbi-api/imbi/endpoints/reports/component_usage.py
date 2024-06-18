@@ -1,11 +1,9 @@
 import re
 
-from tornado import web
-
 from imbi.endpoints import base
 
 
-class RequestHandler(base.RequestHandler):
+class RequestHandler(base.AuthenticatedRequestHandler):
     NAME = 'reports-component-usage'
     SQL = re.sub(
         r'\s+', ' ', """\
@@ -18,7 +16,6 @@ class RequestHandler(base.RequestHandler):
          GROUP BY c.name, c.package_url, c.active_version
         """)
 
-    @web.authenticated
     async def get(self) -> None:
         result = await self.postgres_execute(self.SQL, metric_name=self.NAME)
         self.send_response(result.rows)
