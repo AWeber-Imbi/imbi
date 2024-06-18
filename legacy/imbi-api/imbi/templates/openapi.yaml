@@ -5250,7 +5250,82 @@ paths:
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
-          $ref: '#/paths/~1groups~1%7Bname%7D/get/responses/404'
+          $ref: '#/paths/~1groups~1{name}/get/responses/404'
+    post:
+      description: Create a set of new SSM parameters for a name
+      summary: Create SSM params
+      tags:
+        - Project Configuration
+      requestBody:
+        description: Parameters to create
+        content:
+          application/json:
+            schema:
+              title: Project SSM Configuration
+              description: SSM parameters for a given name
+              type: object
+              properties:
+                namespace_id:
+                  description: The namespace in which to perform add this parameter
+                  type: integer
+                name:
+                  description: The SSM parameter path
+                  type: string
+                type:
+                  description: The SSM parameter type
+                  type: string
+                  enum:
+                    - String
+                    - SecureString
+                    - StringList
+                values:
+                  description: The parameter values in each environment
+                  type: array
+                  items:
+                    description: The parameter value in this environment
+                    type: object
+                    properties:
+                      environment:
+                        description: The environment the parameter exists in
+                        type: string
+                      value:
+                        description: The parameter value
+                        type: string
+                    additionalProperties: false
+                    required:
+                      - environment
+                      - value
+              additionalProperties: false
+              required:
+                - name
+                - values
+                - type
+            example:
+              namespace_id: 5
+              name: /foo/bar/baz
+              type: String
+              values:
+                - environment: Testing
+                  value: '42'
+                - environment: Production
+                  value: '9001'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1projects~1{id}~1configuration~1ssm/post/requestBody/content/application~1json/schema'
+            example:
+              namespace_id: 5
+              name: /foo/bar/baz
+              type: String
+              values:
+                - environment: Testing
+                  value: '42'
+                - environment: Production
+                  value: '9001'
+      responses:
+        '204':
+          description: The request to add SSM parameters was successful
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   '/projects/{id}/facts':
     get:
       description: Retrieve the current facts for a project
