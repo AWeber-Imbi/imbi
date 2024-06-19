@@ -49,20 +49,10 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         return self.application.session_redis
 
     async def get(self, *args, **kwargs) -> None:
-        result = await self.postgres_execute(
-            self.GET_PROJECT_INFO_SQL, {'project_id': kwargs['project_id']},
-            'get-ssm-project-info')
-        project_info = result.row
-
+        project_info = await self._get_project_info(kwargs['project_id'])
         if not project_info['environments']:
             self.send_response([])
             return
-
-        if project_info['configuration_type'] != 'ssm':
-            raise errors.ItemNotFound(
-                'Project %s does not use SSM configuration',
-                project_info['project_slug'],
-                title='Wrong configuration type for project')
 
         google_tokens = await self._get_google_tokens()
 
@@ -243,6 +233,20 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             refresh_token=response.body.get('refresh_token', None),
             id_token=response.body['id_token'])
         return response.body['id_token']
+
+    async def _get_project_info(self, project_id) -> dict:
+        result = await self.postgres_execute(self.GET_PROJECT_INFO_SQL,
+                                             {'project_id': project_id},
+                                             'get-ssm-project-info')
+        project_info = result.row
+
+        if project_info['configuration_type'] != 'ssm':
+            raise errors.ItemNotFound(
+                'Project %s does not use SSM configuration',
+                project_info['project_slug'],
+                title='Wrong configuration type for project')
+
+        return project_info
 
     async def _get_google_tokens(self) -> oauth2.IntegrationToken:
         if not self.settings['google']['enabled']:
