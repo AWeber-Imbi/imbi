@@ -128,7 +128,9 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                     'namespace_id': body['namespace_id']
                 }, 'get-role-arn')
             if not result.row:
-                raise errors.Forbidden('you cant do this')
+                raise errors.Forbidden(
+                    'No role ARN found for namespace %d in %s',
+                    body['namespace_id'], param['environment'])
             role_arn = result.row['role_arn']
 
             creds = await self.get_aws_credentials(aws_session, role_arn,
