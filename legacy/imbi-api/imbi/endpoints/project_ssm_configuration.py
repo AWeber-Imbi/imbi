@@ -51,7 +51,7 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
     async def get(self, *args, **kwargs) -> None:
         result = await self.postgres_execute(
             self.GET_PROJECT_INFO_SQL, {'project_id': kwargs['project_id']},
-            'get-project-namespace-id')
+            'get-ssm-project-info')
         project_info = result.row
 
         if not project_info['environments']:
