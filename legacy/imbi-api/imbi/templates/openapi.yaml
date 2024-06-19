@@ -5704,6 +5704,60 @@ paths:
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1components/get/responses/404'
+    post:
+      description: Create a set of new SSM parameters for a name
+      summary: Create SSM params
+      tags:
+        - Project Configuration
+      requestBody:
+        description: Parameters to create
+        content:
+          application/json:
+            schema:
+              title: Project SSM Configuration
+              description: SSM parameters for a given name
+              type: object
+              properties:
+                name:
+                  description: The SSM parameter path after the project prefix
+                  type: string
+                type:
+                  description: The SSM parameter type
+                  type: string
+                  enum:
+                    - String
+                    - SecureString
+                    - StringList
+                values:
+                  description: The parameter values in each environment
+                  type: object
+                  additionalProperties:
+                    type: string
+              additionalProperties: false
+              required:
+                - name
+                - type
+                - values
+            example:
+              name: foo/bar/baz
+              type: String
+              values:
+                Testing: '42'
+                Production: '9001'
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1projects~1{id}~1configuration~1ssm/post/requestBody/content/application~1json/schema'
+            example:
+              name: foo/bar/baz
+              type: String
+              values:
+                Testing: '42'
+                Production: '9001'
+      responses:
+        '204':
+          description: The request to add SSM parameters was successful
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
   '/projects/{id}/facts':
     get:
       description: Retrieve the current facts for a project

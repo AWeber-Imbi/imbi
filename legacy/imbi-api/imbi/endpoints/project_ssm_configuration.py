@@ -49,39 +49,12 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         return self.application.session_redis
 
     async def get(self, *args, **kwargs) -> None:
-        result = await self.postgres_execute(
-            self.GET_PROJECT_INFO_SQL, {'project_id': kwargs['project_id']},
-            'get-project-namespace-id')
-        project_info = result.row
-
+        project_info = await self._get_project_info(kwargs['project_id'])
         if not project_info['environments']:
             self.send_response([])
             return
 
-        if project_info['configuration_type'] != 'ssm':
-            raise errors.ItemNotFound(
-                'Project %s does not use SSM configuration',
-                project_info['project_slug'],
-                title='Wrong configuration type for project')
-
-        if not self.settings['google']['enabled']:
-            raise errors.Forbidden('Google integration is disabled',
-                                   title='Google integration is disabled')
-
-        if not self.settings['google']['integration_name']:
-            raise errors.Forbidden(
-                'No Google integration specified in configuration',
-                title='No Google integration specified in configuration')
-
-        tokens = await self.current_user.fetch_integration_tokens(
-            self.settings['google']['integration_name'])
-        if len(tokens) == 0:
-            raise errors.Forbidden(
-                'No OAuth 2.0 tokens for %s',
-                self.current_user.username,
-                title=('Not authorized to access SSM in this namespace &'
-                       ' environment'))
-        google_tokens = tokens[0]
+        google_tokens = await self._get_google_tokens()
 
         ssm_path_prefix = self.path_prefix(
             self.application.settings['project_configuration']
@@ -133,6 +106,51 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             } for environment, data in d.items()]
         } for name, d in params_by_path.items()]
         self.send_response(output)
+
+    async def post(self, *args, **kwargs) -> None:
+        project_info = await self._get_project_info(kwargs['project_id'])
+        google_tokens = await self._get_google_tokens()
+        aws_session = aioboto3.Session()
+        body = self.get_request_body()
+
+        project_config = self.application.settings['project_configuration']
+        ssm_path_prefix = self.path_prefix(
+            project_config['ssm_prefix_template'],
+            project_info['project_slug'], project_info['project_type_slug'],
+            project_info['namespace_slug'])
+        name = ssm_path_prefix + body['name']
+
+        for environment, value in body['values'].items():
+            result = await self.postgres_execute(
+                self.GET_ROLE_ARN_SQL, {
+                    'environment': environment,
+                    'namespace_id': project_info['namespace_id']
+                }, 'get-role-arn')
+            if not result.row:
+                raise errors.Forbidden(
+                    'No role ARN found for namespace %d in %s',
+                    body['namespace_id'], environment)
+            role_arn = result.row['role_arn']
+
+            creds = await self.get_aws_credentials(aws_session, role_arn,
+                                                   self.current_user,
+                                                   google_tokens.id_token,
+                                                   google_tokens.refresh_token)
+            try:
+                await aws.put_parameter(aws_session, creds['access_key_id'],
+                                        creds['secret_access_key'],
+                                        creds['session_token'], name,
+                                        body['type'], value)
+            except botocore.exceptions.ClientError as error:
+                code = error.response['Error']['Code']
+                if code == 'UnsupportedParameterType':
+                    raise errors.BadRequest('UnsupportedParameterType')
+                elif code == 'ParameterAlreadyExists':
+                    raise errors.BadRequest('ParameterAlreadyExists')
+                elif code == 'ParameterLimitExceeded':
+                    raise errors.BadRequest('ParameterLimitExceeded')
+                else:
+                    raise errors.InternalServerError(code)
 
     async def get_aws_credentials(self,
                                   aws_session: aioboto3.Session,
@@ -224,3 +242,37 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             refresh_token=response.body.get('refresh_token', None),
             id_token=response.body['id_token'])
         return response.body['id_token']
+
+    async def _get_project_info(self, project_id) -> dict:
+        result = await self.postgres_execute(self.GET_PROJECT_INFO_SQL,
+                                             {'project_id': project_id},
+                                             'get-ssm-project-info')
+        project_info = result.row
+
+        if project_info['configuration_type'] != 'ssm':
+            raise errors.ItemNotFound(
+                'Project %s does not use SSM configuration',
+                project_info['project_slug'],
+                title='Wrong configuration type for project')
+
+        return project_info
+
+    async def _get_google_tokens(self) -> oauth2.IntegrationToken:
+        if not self.settings['google']['enabled']:
+            raise errors.Forbidden('Google integration is disabled',
+                                   title='Google integration is disabled')
+
+        if not self.settings['google']['integration_name']:
+            raise errors.Forbidden(
+                'No Google integration specified in configuration',
+                title='No Google integration specified in configuration')
+
+        tokens = await self.current_user.fetch_integration_tokens(
+            self.settings['google']['integration_name'])
+        if len(tokens) == 0:
+            raise errors.Forbidden(
+                'No OAuth 2.0 tokens for %s',
+                self.current_user.username,
+                title=('Not authorized to access SSM in this namespace &'
+                       ' environment'))
+        return tokens[0]

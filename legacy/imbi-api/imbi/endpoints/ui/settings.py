@@ -108,5 +108,7 @@ class RequestHandler(base.RequestHandler):
             },
             'ops_log_ticket_slug_template': self.
             settings['ops_log_ticket_slug_template'],
-            'project_url_template': self.settings['project_url_template']
+            'project_url_template': self.settings['project_url_template'],
+            'ssm_prefix_template': self.application.
+            settings['project_configuration']['ssm_prefix_template']
         })
