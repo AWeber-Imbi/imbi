@@ -113,10 +113,11 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         aws_session = aioboto3.Session()
         body = self.get_request_body()
 
+        project_config = self.application.settings['project_configuration']
         ssm_path_prefix = self.path_prefix(
-            self.application.settings['project_configuration']
-            ['ssm_prefix_template'], project_info['project_slug'],
-            project_info['project_type_slug'], project_info['namespace_slug'])
+            project_config['ssm_prefix_template'],
+            project_info['project_slug'], project_info['project_type_slug'],
+            project_info['namespace_slug'])
         name = ssm_path_prefix + body['name']
 
         for environment, value in body['values'].items():
