@@ -5697,11 +5697,8 @@ paths:
               description: SSM parameters for a given name
               type: object
               properties:
-                namespace_id:
-                  description: The namespace in which to perform add this parameter
-                  type: integer
                 name:
-                  description: The SSM parameter path
+                  description: The SSM parameter path after the project prefix
                   type: string
                 type:
                   description: The SSM parameter type
@@ -5712,47 +5709,29 @@ paths:
                     - StringList
                 values:
                   description: The parameter values in each environment
-                  type: array
-                  items:
-                    description: The parameter value in this environment
-                    type: object
-                    properties:
-                      environment:
-                        description: The environment the parameter exists in
-                        type: string
-                      value:
-                        description: The parameter value
-                        type: string
-                    additionalProperties: false
-                    required:
-                      - environment
-                      - value
+                  type: object
+                  additionalProperties:
+                    type: string
               additionalProperties: false
               required:
                 - name
-                - values
                 - type
+                - values
             example:
-              namespace_id: 5
-              name: /foo/bar/baz
+              name: foo/bar/baz
               type: String
               values:
-                - environment: Testing
-                  value: '42'
-                - environment: Production
-                  value: '9001'
+                Testing: '42'
+                Production: '9001'
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects~1{id}~1configuration~1ssm/post/requestBody/content/application~1json/schema'
             example:
-              namespace_id: 5
-              name: /foo/bar/baz
+              name: foo/bar/baz
               type: String
               values:
-                - environment: Testing
-                  value: '42'
-                - environment: Production
-                  value: '9001'
+                Testing: '42'
+                Production: '9001'
       responses:
         '204':
           description: The request to add SSM parameters was successful

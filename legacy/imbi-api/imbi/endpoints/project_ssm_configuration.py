@@ -108,19 +108,27 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         self.send_response(output)
 
     async def post(self, *args, **kwargs) -> None:
+        project_info = await self._get_project_info(kwargs['project_id'])
         google_tokens = await self._get_google_tokens()
         aws_session = aioboto3.Session()
         body = self.get_request_body()
-        for param in body['values']:
+
+        ssm_path_prefix = self.path_prefix(
+            self.application.settings['project_configuration']
+            ['ssm_prefix_template'], project_info['project_slug'],
+            project_info['project_type_slug'], project_info['namespace_slug'])
+        name = ssm_path_prefix + body['name']
+
+        for environment, value in body['values'].items():
             result = await self.postgres_execute(
                 self.GET_ROLE_ARN_SQL, {
-                    'environment': param['environment'],
-                    'namespace_id': body['namespace_id']
+                    'environment': environment,
+                    'namespace_id': project_info['namespace_id']
                 }, 'get-role-arn')
             if not result.row:
                 raise errors.Forbidden(
                     'No role ARN found for namespace %d in %s',
-                    body['namespace_id'], param['environment'])
+                    body['namespace_id'], environment)
             role_arn = result.row['role_arn']
 
             creds = await self.get_aws_credentials(aws_session, role_arn,
@@ -130,8 +138,8 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             try:
                 await aws.put_parameter(aws_session, creds['access_key_id'],
                                         creds['secret_access_key'],
-                                        creds['session_token'], body['name'],
-                                        body['type'], param['value'])
+                                        creds['session_token'], name,
+                                        body['type'], value)
             except botocore.exceptions.ClientError as error:
                 code = error.response['Error']['Code']
                 if code == 'UnsupportedParameterType':
