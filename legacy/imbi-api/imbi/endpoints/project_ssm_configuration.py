@@ -181,6 +181,8 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                 else:
                     raise errors.InternalServerError(code)
 
+        self.set_status(204)
+
     async def get_role_arn(self, environment,
                            namespace_id) -> typing.Optional[str]:
         result = await self.postgres_execute(self.GET_ROLE_ARN_SQL, {
