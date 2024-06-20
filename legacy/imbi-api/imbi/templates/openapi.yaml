@@ -5758,6 +5758,52 @@ paths:
           description: The request to add SSM parameters was successful
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
+    delete:
+      summary: Delete a set of SSM parameters
+      description: Delete SSM params
+      tags:
+        - Project Configuration
+      requestBody:
+        description: Parameters to delete
+        content:
+          application/json:
+            schema:
+              title: Project SSM Configuration
+              description: SSM parameters for a given name
+              type: object
+              properties:
+                name:
+                  description: The SSM parameter path after the project prefix
+                  type: string
+                environments:
+                  type: array
+                  items:
+                    description: Environments to delete this parameter in
+                    type: string
+              additionalProperties: false
+              required:
+                - name
+                - environments
+            example:
+              name: foo/bar/baz
+              environments:
+                - Testing
+                - Production
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1projects~1%7Bid%7D~1configuration~1ssm/delete/requestBody/content/application~1json/schema'
+            example:
+              name: foo/bar/baz
+              environments:
+                - Testing
+                - Production
+      responses:
+        '204':
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1components/get/responses/404'
   '/projects/{id}/facts':
     get:
       description: Retrieve the current facts for a project

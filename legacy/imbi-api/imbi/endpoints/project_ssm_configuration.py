@@ -1,5 +1,6 @@
 import collections
 import re
+import typing
 import urllib.parse
 
 import aioboto3
@@ -65,16 +66,12 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         params_by_path = collections.defaultdict(dict)
         aws_session = aioboto3.Session()
         for environment in project_info['environments']:
-            result = await self.postgres_execute(
-                self.GET_ROLE_ARN_SQL, {
-                    'environment': environment,
-                    'namespace_id': project_info['namespace_id']
-                }, 'get-role-arn')
-            if not result.row:
+            role_arn = await self.get_role_arn(environment,
+                                               project_info['namespace_id'])
+            if not role_arn:
                 continue
             else:
                 role_arn_exists = True
-            role_arn = result.row['role_arn']
 
             creds = await self.get_aws_credentials(aws_session, role_arn,
                                                    self.current_user,
@@ -121,16 +118,12 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         name = ssm_path_prefix + body['name']
 
         for environment, value in body['values'].items():
-            result = await self.postgres_execute(
-                self.GET_ROLE_ARN_SQL, {
-                    'environment': environment,
-                    'namespace_id': project_info['namespace_id']
-                }, 'get-role-arn')
-            if not result.row:
+            role_arn = await self.get_role_arn(environment,
+                                               project_info['namespace_id'])
+            if not role_arn:
                 raise errors.Forbidden(
                     'No role ARN found for namespace %d in %s',
-                    body['namespace_id'], environment)
-            role_arn = result.row['role_arn']
+                    project_info['namespace_id'], environment)
 
             creds = await self.get_aws_credentials(aws_session, role_arn,
                                                    self.current_user,
@@ -151,6 +144,54 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                     raise errors.BadRequest('ParameterLimitExceeded')
                 else:
                     raise errors.InternalServerError(code)
+
+    async def delete(self, *args, **kwargs):
+        project_info = await self._get_project_info(kwargs['project_id'])
+        google_tokens = await self._get_google_tokens()
+        aws_session = aioboto3.Session()
+        body = self.get_request_body()
+
+        project_config = self.application.settings['project_configuration']
+        ssm_path_prefix = self.path_prefix(
+            project_config['ssm_prefix_template'],
+            project_info['project_slug'], project_info['project_type_slug'],
+            project_info['namespace_slug'])
+        name = ssm_path_prefix + body['name']
+
+        for environment in set(body['environments']):
+            role_arn = await self.get_role_arn(environment,
+                                               project_info['namespace_id'])
+            if not role_arn:
+                raise errors.Forbidden(
+                    'No role ARN found for namespace %d in %s',
+                    project_info['namespace_id'], environment)
+            creds = await self.get_aws_credentials(aws_session, role_arn,
+                                                   self.current_user,
+                                                   google_tokens.id_token,
+                                                   google_tokens.refresh_token)
+
+            try:
+                await aws.delete_parameter(aws_session, creds['access_key_id'],
+                                           creds['secret_access_key'],
+                                           creds['session_token'], name)
+            except botocore.exceptions.ClientError as error:
+                code = error.response['Error']['Code']
+                if code == 'ParameterNotFound':
+                    continue
+                else:
+                    raise errors.InternalServerError(code)
+
+        self.set_status(204)
+
+    async def get_role_arn(self, environment,
+                           namespace_id) -> typing.Optional[str]:
+        result = await self.postgres_execute(self.GET_ROLE_ARN_SQL, {
+            'environment': environment,
+            'namespace_id': namespace_id
+        }, 'get-role-arn')
+        if not result.row:
+            return None
+        return result.row['role_arn']
 
     async def get_aws_credentials(self,
                                   aws_session: aioboto3.Session,
