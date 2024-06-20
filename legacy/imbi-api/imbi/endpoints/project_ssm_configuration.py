@@ -177,7 +177,7 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
             except botocore.exceptions.ClientError as error:
                 code = error.response['Error']['Code']
                 if code == 'ParameterNotFound':
-                    raise errors.ItemNotFound('ParameterNotFound')
+                    continue
                 else:
                     raise errors.InternalServerError(code)
 
