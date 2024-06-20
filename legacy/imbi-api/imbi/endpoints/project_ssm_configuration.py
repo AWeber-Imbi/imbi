@@ -1,5 +1,6 @@
 import collections
 import re
+import typing
 import urllib.parse
 
 import aioboto3
@@ -65,16 +66,12 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         params_by_path = collections.defaultdict(dict)
         aws_session = aioboto3.Session()
         for environment in project_info['environments']:
-            result = await self.postgres_execute(
-                self.GET_ROLE_ARN_SQL, {
-                    'environment': environment,
-                    'namespace_id': project_info['namespace_id']
-                }, 'get-role-arn')
-            if not result.row:
+            role_arn = await self.get_role_arn(environment,
+                                               project_info['namespace_id'])
+            if not role_arn:
                 continue
             else:
                 role_arn_exists = True
-            role_arn = result.row['role_arn']
 
             creds = await self.get_aws_credentials(aws_session, role_arn,
                                                    self.current_user,
@@ -121,16 +118,12 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         name = ssm_path_prefix + body['name']
 
         for environment, value in body['values'].items():
-            result = await self.postgres_execute(
-                self.GET_ROLE_ARN_SQL, {
-                    'environment': environment,
-                    'namespace_id': project_info['namespace_id']
-                }, 'get-role-arn')
-            if not result.row:
+            role_arn = await self.get_role_arn(environment,
+                                               project_info['namespace_id'])
+            if not role_arn:
                 raise errors.Forbidden(
                     'No role ARN found for namespace %d in %s',
                     project_info['namespace_id'], environment)
-            role_arn = result.row['role_arn']
 
             creds = await self.get_aws_credentials(aws_session, role_arn,
                                                    self.current_user,
@@ -166,17 +159,12 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
         name = ssm_path_prefix + body['name']
 
         for environment in set(body['environments']):
-            result = await self.postgres_execute(
-                self.GET_ROLE_ARN_SQL, {
-                    'environment': environment,
-                    'namespace_id': project_info['namespace_id']
-                }, 'get-role-arn')
-            if not result.row:
+            role_arn = await self.get_role_arn(environment,
+                                               project_info['namespace_id'])
+            if not role_arn:
                 raise errors.Forbidden(
                     'No role ARN found for namespace %d in %s',
                     project_info['namespace_id'], environment)
-            role_arn = result.row['role_arn']
-
             creds = await self.get_aws_credentials(aws_session, role_arn,
                                                    self.current_user,
                                                    google_tokens.id_token,
@@ -192,6 +180,16 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                     raise errors.ItemNotFound('ParameterNotFound')
                 else:
                     raise errors.InternalServerError(code)
+
+    async def get_role_arn(self, environment,
+                           namespace_id) -> typing.Optional[str]:
+        result = await self.postgres_execute(self.GET_ROLE_ARN_SQL, {
+            'environment': environment,
+            'namespace_id': namespace_id
+        }, 'get-role-arn')
+        if not result.row:
+            return None
+        return result.row['role_arn']
 
     async def get_aws_credentials(self,
                                   aws_session: aioboto3.Session,
