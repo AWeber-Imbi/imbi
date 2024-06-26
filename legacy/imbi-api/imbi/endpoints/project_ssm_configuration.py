@@ -96,11 +96,15 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
 
         output = [{
             'name': name,
-            'values': [{
-                'environment': environment,
-                'value': data['value'],
-                'type': data['type']
-            } for environment, data in d.items()]
+            'values': {
+                environment: {
+                    'value': data['value'],
+                    'type': data['type']
+                }
+                for environment, data in d.items()
+            },
+            'self': self.request.full_url() + '/' +
+            urllib.parse.quote(name, safe=[])
         } for name, d in params_by_path.items()]
         self.send_response(output)
 

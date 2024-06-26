@@ -5632,14 +5632,10 @@ paths:
                       type: string
                     values:
                       description: The parameter values in each environment
-                      type: array
-                      items:
-                        description: The parameter value in this environment
+                      type: object
+                      additionalProperties:
                         type: object
                         properties:
-                          environment:
-                            description: The environment the parameter exists in
-                            type: string
                           value:
                             description: The parameter value
                             type: string
@@ -5652,54 +5648,61 @@ paths:
                               - StringList
                         additionalProperties: false
                         required:
-                          - environment
                           - value
                           - type
+                    self:
+                      description: 'URL referring to this parameter for this project, with SSM name URL-encoded'
+                      type: string
                   additionalProperties: false
                   required:
+                    - self
                     - name
                     - values
               examples:
                 records:
                   value:
-                    - name: /foo/bar/baz
+                    - name: foo/bar/baz
                       values:
-                        - environment: Testing
+                        Testing:
                           value: '42'
                           type: String
-                        - environment: Production
+                        Production:
                           value: '9001'
                           type: String
+                      self: 'https://imbi.com/project/3/configuration/ssm/foo%2Fbar%2Fbaz'
                     - name: biz/bap/boop
                       values:
-                        - environment: Testing
+                        Testing:
                           value: password
                           type: SecureString
-                        - environment: Production
+                        Production:
                           value: password123$
                           type: SecureString
+                      self: 'https://imbi.com/project/3/configuration/ssm/biz%2Fbap%2Fboop'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1configuration~1ssm/get/responses/200/content/application~1json/schema'
               examples:
                 records:
                   value:
-                    - name: /foo/bar/baz
+                    - name: foo/bar/baz
                       values:
-                        - environment: Testing
+                        Testing:
                           value: '42'
                           type: String
-                        - environment: Production
+                        Production:
                           value: '9001'
                           type: String
+                      self: 'https://imbi.com/project/3/configuration/ssm/foo%2Fbar%2Fbaz'
                     - name: biz/bap/boop
                       values:
-                        - environment: Testing
+                        Testing:
                           value: password
                           type: SecureString
-                        - environment: Production
+                        Production:
                           value: password123$
                           type: SecureString
+                      self: 'https://imbi.com/project/3/configuration/ssm/biz%2Fbap%2Fboop'
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
@@ -5746,7 +5749,7 @@ paths:
                 Production: '9001'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1{id}~1configuration~1ssm/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1configuration~1ssm/post/requestBody/content/application~1json/schema'
             example:
               name: foo/bar/baz
               type: String
