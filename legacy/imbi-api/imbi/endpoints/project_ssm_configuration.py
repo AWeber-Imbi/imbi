@@ -137,7 +137,7 @@ class CollectionRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                 await aws.put_parameter(aws_session, creds['access_key_id'],
                                         creds['secret_access_key'],
                                         creds['session_token'], name,
-                                        body['type'], value)
+                                        value['type'], value['value'])
             except botocore.exceptions.ClientError as error:
                 code = error.response['Error']['Code']
                 if code == 'UnsupportedParameterType':

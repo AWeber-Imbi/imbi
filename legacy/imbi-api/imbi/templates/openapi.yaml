@@ -5724,38 +5724,51 @@ paths:
                 name:
                   description: The SSM parameter path after the project prefix
                   type: string
-                type:
-                  description: The SSM parameter type
-                  type: string
-                  enum:
-                    - String
-                    - SecureString
-                    - StringList
                 values:
                   description: The parameter values in each environment
                   type: object
                   additionalProperties:
-                    type: string
+                    type: object
+                    properties:
+                      value:
+                        description: The parameter value
+                        type: string
+                      type:
+                        description: The SSM parameter type
+                        type: string
+                        enum:
+                          - String
+                          - SecureString
+                          - StringList
+                    additionalProperties: false
+                    required:
+                      - value
+                      - type
               additionalProperties: false
               required:
                 - name
-                - type
                 - values
             example:
               name: foo/bar/baz
-              type: String
               values:
-                Testing: '42'
-                Production: '9001'
+                Testing:
+                  value: '42'
+                  type: String
+                Production:
+                  value: '9001'
+                  type: String
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects~1%7Bid%7D~1configuration~1ssm/post/requestBody/content/application~1json/schema'
             example:
               name: foo/bar/baz
-              type: String
               values:
-                Testing: '42'
-                Production: '9001'
+                Testing:
+                  value: '42'
+                  type: String
+                Production:
+                  value: '9001'
+                  type: String
       responses:
         '204':
           description: The request to add SSM parameters was successful
