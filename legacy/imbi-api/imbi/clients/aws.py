@@ -11,6 +11,18 @@ async def get_credentials(session: aioboto3.Session, role_arn: str,
             WebIdentityToken=id_token)
 
 
+async def get_parameter(name: str, session: aioboto3.Session,
+                        access_key_id: str, secret_access_key: str,
+                        session_token: str) -> dict:
+    """Fetch the SSM parameter at the specified name."""
+    async with session.client('ssm',
+                              aws_access_key_id=access_key_id,
+                              aws_secret_access_key=secret_access_key,
+                              aws_session_token=session_token) as client:
+        parameter = await client.get_parameter(Name=name, WithDecryption=True)
+        return parameter['Parameter']
+
+
 async def get_parameters_by_path(session: aioboto3.Session, path: str,
                                  access_key_id: str, secret_access_key: str,
                                  session_token: str) -> list:
