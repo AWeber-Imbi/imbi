@@ -5746,7 +5746,7 @@ paths:
                 Production: '9001'
           application/msgpack:
             schema:
-              $ref: '#/paths/~1projects~1{id}~1configuration~1ssm/post/requestBody/content/application~1json/schema'
+              $ref: '#/paths/~1projects~1%7Bid%7D~1configuration~1ssm/post/requestBody/content/application~1json/schema'
             example:
               name: foo/bar/baz
               type: String
@@ -6846,7 +6846,6 @@ paths:
                     url:
                       description: The link URL
                       type: string
-                      format: uri
                   additionalProperties: false
               examples:
                 records:
@@ -6895,7 +6894,6 @@ paths:
                     url:
                       description: The link URL
                       type: string
-                      format: uri
                   additionalProperties: false
               examples:
                 records:
@@ -6940,7 +6938,6 @@ paths:
                 url:
                   description: The link URL
                   type: string
-                  format: uri
               required:
                 - project_id
                 - link_type_id
