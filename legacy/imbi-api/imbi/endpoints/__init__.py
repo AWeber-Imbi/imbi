@@ -30,11 +30,11 @@ from . import (
     project_notes,
     project_score_history,
     project_secrets,
-    project_ssm_configuration,
     project_types,
     project_urls,
     projects,
     reports,
+    ssm,
     status,
     ui,
 )
@@ -116,9 +116,6 @@ URLS = [
     web.url(r'^/projects/(?P<project_id>\d+)/components$',
             components.ProjectComponentsRequestHandler,
             name='project-components'),
-    web.url(r'^/projects/(?P<project_id>\d+)/configuration/ssm$',
-            project_ssm_configuration.CollectionRequestHandler,
-            name='project-configuration'),
     web.url(r'^/projects/(?P<project_id>\d+)/dependencies$',
             project_dependencies.CollectionRequestHandler,
             name='project-dependencies'),
@@ -175,4 +172,4 @@ URLS = [
         project_urls.RecordRequestHandler,
         name='project-url'),
     web.url(r'^/status$', status.RequestHandler),
-] + integrations.URLS + ui.URLS + reports.URLS
+] + integrations.URLS + ui.URLS + reports.URLS + ssm.URLS

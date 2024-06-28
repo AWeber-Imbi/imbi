@@ -5820,6 +5820,36 @@ paths:
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
           $ref: '#/paths/~1components/get/responses/404'
+  '/projects/{id}/configuration/ssm/{name}':
+    parameters:
+      - name: id
+        in: path
+        description: ID of the project to get parameters for
+        required: true
+        schema:
+          type: number
+      - name: name
+        in: path
+        description: The URL-encoded SSM name of the parameter
+        required: true
+        schema:
+          type: string
+    patch:
+      description: Update an SSM parameter with a specific name
+      summary: Update SSM param
+      tags:
+        - Project Configuration
+      requestBody:
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
+      responses:
+        '200':
+          description: Success
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1components/get/responses/404'
   '/projects/{id}/facts':
     get:
       description: Retrieve the current facts for a project
