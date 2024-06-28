@@ -820,4 +820,5 @@ class PydanticHandlerMixin(RequestHandler):
                 'invalid-request-body',
                 'Failed to validate request body: %s',
                 error,
-                validation_errors=error.errors())
+                validation_errors=error.errors(include_input=False,
+                                               include_url=False))
