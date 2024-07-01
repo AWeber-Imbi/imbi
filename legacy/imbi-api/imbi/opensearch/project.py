@@ -20,37 +20,13 @@ FACT_DATA_TYPES = {
 }
 
 PROJECT = {
-    'id': {
-        'type': 'integer'
+    'archived': {
+        'type': 'boolean'
     },
     'created_at': {
         'type': 'date'
     },
     'created_by': {
-        'type': 'text'
-    },
-    'last_modified_at': {
-        'type': 'date'
-    },
-    'last_modified_by': {
-        'type': 'text'
-    },
-    'namespace': {
-        'type': 'text'
-    },
-    'namespace_slug': {
-        'type': 'text'
-    },
-    'project_type': {
-        'type': 'text'
-    },
-    'project_type_slug': {
-        'type': 'text'
-    },
-    'name': {
-        'type': 'text'
-    },
-    'slug': {
         'type': 'text'
     },
     'description': {
@@ -59,16 +35,25 @@ PROJECT = {
     'environments': {
         'type': 'text'
     },
-    'archived': {
-        'type': 'boolean'
-    },
     'gitlab_project_id': {
         'type': 'text'
     },
-    'sentry_project_slug': {
+    'id': {
+        'type': 'integer'
+    },
+    'last_modified_at': {
+        'type': 'date'
+    },
+    'last_modified_by': {
         'type': 'text'
     },
-    'sonarqube_project_key': {
+    'name': {
+        'type': 'text'
+    },
+    'namespace': {
+        'type': 'text'
+    },
+    'namespace_slug': {
         'type': 'text'
     },
     'pagerduty_service_id': {
@@ -76,7 +61,22 @@ PROJECT = {
     },
     'project_score': {
         'type': 'integer'
-    }
+    },
+    'project_type': {
+        'type': 'text'
+    },
+    'project_type_slug': {
+        'type': 'text'
+    },
+    'sentry_project_slug': {
+        'type': 'text'
+    },
+    'slug': {
+        'type': 'text'
+    },
+    'sonarqube_project_key': {
+        'type': 'text'
+    },
 }
 
 
