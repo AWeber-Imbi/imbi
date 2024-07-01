@@ -391,7 +391,8 @@ class CollectionRequestHandler(SSMRequestHandler):
                 }
                 for environment, data in d.items()
             },
-            'self': self.request.full_url() + '/' +
+            'self': self.reverse_url('project-ssm-parameters',
+                                     kwargs['project_id']) + '/' +
             urllib.parse.quote(name, safe=[])
         } for name, d in params_by_path.items()]
         self.send_response(output)
