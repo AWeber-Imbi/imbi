@@ -49,12 +49,13 @@ class ReplacePatch(pydantic.BaseModel, EnvironmentFieldMixin):
     def validate_replace(self, info: pydantic.ValidationInfo):
         environments = info.context.get('environments', [])
 
-        if self.path.count('/') != 2:
+        try:
+            _, environment, update_type = self.path.split('/')
+        except ValueError:
             raise ValueError(
                 f'Invalid path: {self.value}. Must replace type or value at '
                 'an environment')
 
-        _, environment, update_type = self.path.split('/')
         if environment not in environments:
             raise ValueError(
                 f'Invalid environment "{environment}", must be one of: '
