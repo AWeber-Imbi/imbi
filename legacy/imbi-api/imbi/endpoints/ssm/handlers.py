@@ -7,6 +7,7 @@ import aioboto3
 import aioredis
 import botocore.exceptions
 import jsonpatch
+import sprockets.mixins.http
 from tornado import web
 
 from imbi import errors, oauth2, user
@@ -22,7 +23,8 @@ def path_prefix(template: str, project_slug: str, project_type_slug: str,
         project_type_slug).replace('{namespace_slug}', namespace_slug)
 
 
-class SSMRequestHandler(base.ValidatingRequestHandler):
+class SSMRequestHandler(sprockets.mixins.http.HTTPClientMixin,
+                        base.ValidatingRequestHandler):
     GET_PROJECT_INFO_SQL = re.sub(
         r'\s+', ' ', """\
         SELECT n.id AS namespace_id,
