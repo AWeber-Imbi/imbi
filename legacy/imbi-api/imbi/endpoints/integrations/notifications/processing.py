@@ -3,56 +3,12 @@ from __future__ import annotations
 import asyncio
 import typing
 
-import jsonpointer
 import psycopg2
 import pydantic
 import sprockets_postgres
-from pydantic_core import core_schema
 
-from imbi import errors
+from imbi import common, errors
 from imbi.endpoints import base
-
-
-def validated_jsonpointer(
-        value: str | jsonpointer.JsonPointer) -> jsonpointer.JsonPointer:
-    """Convert a string to a valid jsonpointer.JsonPointer
-
-    The JsonPointer initializer does not fail when given an empty
-    string. This function raises `TypeError` and `ValueError` when
-    appropriate.
-
-    """
-    if isinstance(value, jsonpointer.JsonPointer):
-        return value
-    if not isinstance(value, str):
-        raise TypeError('Value must be a string')
-    try:
-        pointer = jsonpointer.JsonPointer(value)
-    except jsonpointer.JsonPointerException as error:
-        raise ValueError(error.args[0]) from error
-    else:
-        if not pointer.parts:
-            raise ValueError('JSON pointer must not be empty')
-        return jsonpointer.JsonPointer(value)
-
-
-def _jptr_core_schema(*_) -> core_schema.CoreSchema:
-    """Small helper for use with pydantic.GetPydanticSchema"""
-    validator = core_schema.no_info_plain_validator_function(
-        validated_jsonpointer)
-    return core_schema.json_or_python_schema(json_schema=validator,
-                                             python_schema=validator)
-
-
-def _jptr_json_schema(*_) -> pydantic.json_schema.JsonSchemaValue:
-    """Small helper for use with pydantic.GetPydanticSchema"""
-    return {'type': 'string', 'format': 'json-pointer'}
-
-
-JsonPointer = typing.Annotated[
-    jsonpointer.JsonPointer,
-    pydantic.GetPydanticSchema(_jptr_core_schema, _jptr_json_schema)]
-"""Pydantic capable version of a jsonpointer.JsonPointer"""
 
 
 class Integration(pydantic.BaseModel):
@@ -63,13 +19,13 @@ class Integration(pydantic.BaseModel):
 class NotificationRule(pydantic.BaseModel):
     """Extracts selected columns from v1.notification_rules"""
     fact_type_id: int
-    pattern: JsonPointer
+    pattern: common.JsonPointer
 
 
 class NotificationFilter(pydantic.BaseModel):
     """Extracts selected columns from v1.notification_filters"""
     name: str
-    pattern: JsonPointer
+    pattern: common.JsonPointer
     operation: str
     value: str
     action: str
@@ -78,7 +34,7 @@ class NotificationFilter(pydantic.BaseModel):
 class Notification(pydantic.BaseModel):
     """Model of a v1.notifications row and related entities"""
     integration: Integration
-    id_pattern: JsonPointer
+    id_pattern: common.JsonPointer
     verification_token: typing.Union[str, None] = None
     documentation: typing.Union[str, None] = None
     default_action: str
