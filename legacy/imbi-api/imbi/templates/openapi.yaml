@@ -5606,14 +5606,10 @@ paths:
                       type: string
                     values:
                       description: The parameter values in each environment
-                      type: array
-                      items:
-                        description: The parameter value in this environment
+                      type: object
+                      additionalProperties:
                         type: object
                         properties:
-                          environment:
-                            description: The environment the parameter exists in
-                            type: string
                           value:
                             description: The parameter value
                             type: string
@@ -5626,54 +5622,61 @@ paths:
                               - StringList
                         additionalProperties: false
                         required:
-                          - environment
                           - value
                           - type
+                    self:
+                      description: 'URL referring to this parameter for this project, with SSM name URL-encoded'
+                      type: string
                   additionalProperties: false
                   required:
+                    - self
                     - name
                     - values
               examples:
                 records:
                   value:
-                    - name: /foo/bar/baz
+                    - name: foo/bar/baz
                       values:
-                        - environment: Testing
+                        Testing:
                           value: '42'
                           type: String
-                        - environment: Production
+                        Production:
                           value: '9001'
                           type: String
+                      self: 'https://imbi.com/project/3/configuration/ssm/foo%2Fbar%2Fbaz'
                     - name: biz/bap/boop
                       values:
-                        - environment: Testing
+                        Testing:
                           value: password
                           type: SecureString
-                        - environment: Production
+                        Production:
                           value: password123$
                           type: SecureString
+                      self: 'https://imbi.com/project/3/configuration/ssm/biz%2Fbap%2Fboop'
             application/msgpack:
               schema:
                 $ref: '#/paths/~1projects~1%7Bid%7D~1configuration~1ssm/get/responses/200/content/application~1json/schema'
               examples:
                 records:
                   value:
-                    - name: /foo/bar/baz
+                    - name: foo/bar/baz
                       values:
-                        - environment: Testing
+                        Testing:
                           value: '42'
                           type: String
-                        - environment: Production
+                        Production:
                           value: '9001'
                           type: String
+                      self: 'https://imbi.com/project/3/configuration/ssm/foo%2Fbar%2Fbaz'
                     - name: biz/bap/boop
                       values:
-                        - environment: Testing
+                        Testing:
                           value: password
                           type: SecureString
-                        - environment: Production
+                        Production:
                           value: password123$
                           type: SecureString
+                      self: 'https://imbi.com/project/3/configuration/ssm/biz%2Fbap%2Fboop'
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
         '404':
@@ -5695,38 +5698,51 @@ paths:
                 name:
                   description: The SSM parameter path after the project prefix
                   type: string
-                type:
-                  description: The SSM parameter type
-                  type: string
-                  enum:
-                    - String
-                    - SecureString
-                    - StringList
                 values:
                   description: The parameter values in each environment
                   type: object
                   additionalProperties:
-                    type: string
+                    type: object
+                    properties:
+                      value:
+                        description: The parameter value
+                        type: string
+                      type:
+                        description: The SSM parameter type
+                        type: string
+                        enum:
+                          - String
+                          - SecureString
+                          - StringList
+                    additionalProperties: false
+                    required:
+                      - value
+                      - type
               additionalProperties: false
               required:
                 - name
-                - type
                 - values
             example:
               name: foo/bar/baz
-              type: String
               values:
-                Testing: '42'
-                Production: '9001'
+                Testing:
+                  value: '42'
+                  type: String
+                Production:
+                  value: '9001'
+                  type: String
           application/msgpack:
             schema:
               $ref: '#/paths/~1projects~1%7Bid%7D~1configuration~1ssm/post/requestBody/content/application~1json/schema'
             example:
               name: foo/bar/baz
-              type: String
               values:
-                Testing: '42'
-                Production: '9001'
+                Testing:
+                  value: '42'
+                  type: String
+                Production:
+                  value: '9001'
+                  type: String
       responses:
         '204':
           description: The request to add SSM parameters was successful
@@ -5774,6 +5790,36 @@ paths:
       responses:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1components/get/responses/404'
+  '/projects/{id}/configuration/ssm/{name}':
+    parameters:
+      - name: id
+        in: path
+        description: ID of the project to get parameters for
+        required: true
+        schema:
+          type: number
+      - name: name
+        in: path
+        description: The URL-encoded SSM name of the parameter
+        required: true
+        schema:
+          type: string
+    patch:
+      description: Update an SSM parameter with a specific name
+      summary: Update SSM param
+      tags:
+        - Project Configuration
+      requestBody:
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
+      responses:
+        '200':
+          description: Success
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
         '401':
           $ref: '#/paths/~1groups/get/responses/401'
         '404':

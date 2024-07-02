@@ -6,8 +6,11 @@ import decimal
 import typing
 
 import dateutil.parser
+import jsonpointer
+import pydantic
 import yarl
 from ietfparse import datastructures
+from pydantic_core import core_schema
 
 
 def coerce_project_fact_values(
@@ -78,3 +81,45 @@ def build_link_header(target: yarl.URL, rel: str, **parameters: str) -> str:
     all_params = [('rel', rel)]
     all_params.extend(parameters.items())
     return str(datastructures.LinkHeader(str(target), all_params))
+
+
+def validated_jsonpointer(
+        value: str | jsonpointer.JsonPointer) -> jsonpointer.JsonPointer:
+    """Convert a string to a valid jsonpointer.JsonPointer
+
+    The JsonPointer initializer does not fail when given an empty
+    string. This function raises `TypeError` and `ValueError` when
+    appropriate.
+
+    """
+    if isinstance(value, jsonpointer.JsonPointer):
+        return value
+    if not isinstance(value, str):
+        raise TypeError('Value must be a string')
+    try:
+        pointer = jsonpointer.JsonPointer(value)
+    except jsonpointer.JsonPointerException as error:
+        raise ValueError(error.args[0]) from error
+    else:
+        if not pointer.parts:
+            raise ValueError('JSON pointer must not be empty')
+        return jsonpointer.JsonPointer(value)
+
+
+def _jptr_core_schema(*_) -> core_schema.CoreSchema:
+    """Small helper for use with pydantic.GetPydanticSchema"""
+    validator = core_schema.no_info_plain_validator_function(
+        validated_jsonpointer)
+    return core_schema.json_or_python_schema(json_schema=validator,
+                                             python_schema=validator)
+
+
+def _jptr_json_schema(*_) -> pydantic.json_schema.JsonSchemaValue:
+    """Small helper for use with pydantic.GetPydanticSchema"""
+    return {'type': 'string', 'format': 'json-pointer'}
+
+
+JsonPointer = typing.Annotated[
+    jsonpointer.JsonPointer,
+    pydantic.GetPydanticSchema(_jptr_core_schema, _jptr_json_schema)]
+"""Pydantic capable version of a jsonpointer.JsonPointer"""

@@ -6,7 +6,7 @@ import uuid
 
 import pydantic
 
-from imbi.endpoints.integrations.notifications import processing
+from imbi import common
 from tests import base
 
 
@@ -467,7 +467,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
 class EdgeTests(unittest.TestCase):
     def test_json_pointer_validation(self) -> None:
-        Adapter = pydantic.TypeAdapter(processing.JsonPointer)
+        Adapter = pydantic.TypeAdapter(common.JsonPointer)
         with self.assertRaises(TypeError):
             Adapter.validate_python(1.0)
         with self.assertRaises(ValueError):
