@@ -810,10 +810,13 @@ ModelType = typing.TypeVar('ModelType', bound=pydantic.BaseModel)
 
 
 class PydanticHandlerMixin(RequestHandler):
-    def parse_request_body_as(self,
-                              model_cls: typing.Type[ModelType]) -> ModelType:
+    def parse_request_body_as(
+            self,
+            model_cls: typing.Type[ModelType],
+            context: typing.Optional[dict] = None) -> ModelType:
         try:
-            return model_cls.model_validate(self.get_request_body())
+            return model_cls.model_validate(self.get_request_body(),
+                                            context=context)
         except pydantic.ValidationError as error:
             raise errors.ApplicationError(
                 422,
