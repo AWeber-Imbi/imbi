@@ -7,7 +7,6 @@ import aioboto3
 import aioredis
 import botocore.exceptions
 import jsonpatch
-import pydantic
 from tornado import web
 
 from imbi import errors, oauth2, user
@@ -267,7 +266,7 @@ class SSMRequestHandler(base.ValidatingRequestHandler):
         return response.body['id_token']
 
 
-class RecordRequestHandler(SSMRequestHandler):
+class RecordRequestHandler(SSMRequestHandler, base.PydanticHandlerMixin):
     async def patch(self, *args, **kwargs):
         request_body = self.get_request_body()
         try:
@@ -278,11 +277,8 @@ class RecordRequestHandler(SSMRequestHandler):
         project_info = await self._get_project_info(kwargs['project_id'])
         pydantic_context = {'environments': project_info['environments']}
 
-        try:
-            patches = models.SSMPatchBody.model_validate(
-                request_body, context=pydantic_context)
-        except pydantic.ValidationError as e:
-            raise errors.BadRequest('Invalid JSON patch: %s', e)
+        patches = self.parse_request_body_as(models.SSMPatchBody,
+                                             context=pydantic_context)
 
         google_tokens = await self._get_google_tokens()
         ssm_path_prefix = path_prefix(
