@@ -86,6 +86,25 @@ class Namespace:
 
 
 @dataclasses.dataclass
+class ProjectComponent:
+    name: str
+    package_url: str
+    status: str
+    version: str
+
+    COLLECTION_SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
+        SELECT c.name, pc.package_url, c.status, v.version
+          FROM v1.project_components AS pc
+          JOIN v1.component_versions AS v
+            ON pc.package_url = v.package_url AND pc.version_id = v.id
+          JOIN v1.components AS c ON c.package_url = pc.package_url
+         WHERE pc.project_id = %(obj_id)s
+         ORDER BY pc.package_url, v.version
+        """)
+
+
+@dataclasses.dataclass
 class ProjectFact:
     id: int
     name: str
@@ -271,6 +290,7 @@ class Project:
     links: dict[str, str]
     urls: dict[str, str]
     project_score: int
+    components: list[dict[str, str]]
 
     SQL: typing.ClassVar = re.sub(
         r'\s+', ' ', """\
@@ -392,31 +412,45 @@ async def project(project_id: int, application: 'app.Application') -> Project:
                                     'project-model-load')
         if result.row_count:
             values = dict(result.row)
-            result = await asyncio.gather(
+            results: tuple[Namespace, ProjectType, list[ProjectFact],
+                           list[ProjectLink], list[ProjectURL],
+                           list[ProjectIdentifier], list[ProjectComponent]]
+            results = await asyncio.gather(
                 namespace(values['namespace_id'], application),
                 project_type(values['project_type_id'], application),
                 project_facts(project_id, application),
                 project_links(project_id, application),
                 project_urls(project_id, application),
                 project_identifiers(project_id, application),
+                project_components(project_id, application),
             )
             del values['namespace_id']
             del values['project_type_id']
             values.update({
-                'namespace': result[0],
-                'project_type': result[1],
+                'namespace': results[0],
+                'project_type': results[1],
                 'facts': {value.name: value.value
-                          for value in result[2]},
+                          for value in results[2]},
                 'links': {value.link_type: value.url
-                          for value in result[3]},
+                          for value in results[3]},
                 'urls': {value.environment: value.url
-                         for value in result[4]},
+                         for value in results[4]},
                 'identifiers': {
                     value.integration_name: value.external_id
-                    for value in result[5]
+                    for value in results[5]
                 },
+                'components': [{
+                    'name': c.name,
+                    'version': c.version
+                } for c in results[6]]
             })
             return Project(**values)
+
+
+async def project_components(
+        project_id: int,
+        application: 'app.Application') -> list[ProjectComponent]:
+    return await _load_collection(ProjectComponent, project_id, application)
 
 
 async def project_facts(project_id: int,
