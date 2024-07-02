@@ -28,6 +28,7 @@ from . import (
     project_link_types,
     project_links,
     project_notes,
+    project_sbom,
     project_score_history,
     project_secrets,
     project_ssm_configuration,
@@ -175,4 +176,4 @@ URLS = [
         project_urls.RecordRequestHandler,
         name='project-url'),
     web.url(r'^/status$', status.RequestHandler),
-] + integrations.URLS + ui.URLS + reports.URLS
+] + integrations.URLS + project_sbom.URLS + reports.URLS + ui.URLS
