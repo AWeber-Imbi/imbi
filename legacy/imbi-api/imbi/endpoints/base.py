@@ -15,6 +15,7 @@ import uuid
 from email import utils
 
 import jsonpatch
+import openapi_core.casting.schemas.exceptions
 import problemdetails
 import pydantic
 import sprockets.mixins.mediatype.content
@@ -252,6 +253,12 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
 
         try:
             self.application.validate_request(self.request)
+        except openapi_core.casting.schemas.exceptions.CastError as err:
+            raise errors.InternalServerError(
+                'OpenAPI spec casting failure in %s: %s',
+                self.__class__.__name__,
+                err,
+                title='OpenAPI Cast Error')
         except DeserializeError as err:
             raise errors.BadRequest('Failed to deserialize body: %s',
                                     err,

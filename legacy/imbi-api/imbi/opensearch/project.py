@@ -23,6 +23,29 @@ PROJECT = {
     'archived': {
         'type': 'boolean'
     },
+    'components': {
+        'type': 'nested',
+        'properties': {
+            'name': {
+                'type': 'text',
+                'fields': {
+                    'keyword': {
+                        'type': 'keyword',
+                        'ignore_above': 256
+                    }
+                }
+            },
+            'version': {
+                'type': 'text',
+                'fields': {
+                    'keyword': {
+                        'type': 'keyword',
+                        'ignore_above': 16
+                    }
+                }
+            },
+        }
+    },
     'created_at': {
         'type': 'date'
     },
