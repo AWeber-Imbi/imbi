@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import enum
+import functools
 import typing
 
 import pydantic
@@ -33,20 +34,10 @@ class Component(pydantic.BaseModel):
     external_references: list[ExternalReference] = pydantic.Field(
         default_factory=list, alias='externalReferences')
 
-    _package_purl: typing.Union[str, None] = None
-
-    @pydantic.field_validator('purl', mode='after')
-    @classmethod
-    def cache_package_purl(cls, value: str,
-                           info: pydantic.ValidationInfo) -> str:
-        _package_purl = value.partition('@')[0] if value else None
-        info.data['_package_purl'] = _package_purl
-        return value
-
-    @property
+    @functools.cached_property
     def package_purl(self) -> typing.Union[str, None]:
         """Package URL without trailing info (eg, version, fragment, etc)"""
-        return self._package_purl
+        return self.purl.partition('@')[0] if self.purl else None
 
     @property
     def home_page(self) -> typing.Union[str, None]:
