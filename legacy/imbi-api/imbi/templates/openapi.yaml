@@ -412,6 +412,252 @@ paths:
           schema:
             type: string
             format: uuid
+  /aws-roles:
+    get:
+      description: Retrieve all AWS roles
+      summary: Get Collection
+      tags:
+        - AWS
+      responses:
+        '200':
+          description: Success
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  title: AWS Role
+                  description: |
+                    An AWS Role used to perform operations in the AWS cloud
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for AWS roles
+                      type: number
+                    role_arn:
+                      description: AWS ARN of the role
+                      type: string
+                    environment:
+                      description: Name of the environment this role is associated with
+                      type: string
+                    namespace_id:
+                      description: ID of the namespace this role is associated with
+                      type: number
+                    created_at:
+                      description: The timestamp when the role was created
+                      type: string
+                      format: date-time
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                  required:
+                    - id
+                    - role_arn
+                    - environment
+                    - namespace_id
+                    - created_at
+                    - created_by
+                  additionalProperties: false
+              examples:
+                records:
+                  summary: All AWS roles
+                  value:
+                    - id: 1
+                      role_arn: 'arn:aws:iam::1234567890:role/imbi'
+                      environment: Production
+                      namespace_id: 4
+                      created_at: 1964-01-01T19:11:11.000Z
+                      created_by: test_user
+                    - id: 2
+                      role_arn: 'arn:aws:iam::987654321:role/imbi'
+                      environment: Staging
+                      namespace_id: 3
+                      created_at: 1964-01-01T19:11:11.000Z
+                      created_by: test_user
+            application/msgpack:
+              schema:
+                type: array
+                items:
+                  title: AWS Role
+                  description: |
+                    An AWS Role used to perform operations in the AWS cloud
+                  type: object
+                  properties:
+                    id:
+                      description: The surrogate key for AWS roles
+                      type: number
+                    role_arn:
+                      description: AWS ARN of the role
+                      type: string
+                    environment:
+                      description: Name of the environment this role is associated with
+                      type: string
+                    namespace_id:
+                      description: ID of the namespace this role is associated with
+                      type: number
+                    created_at:
+                      description: The timestamp when the role was created
+                      type: string
+                      format: date-time
+                    created_by:
+                      description: The user that created the record
+                      type: string
+                  required:
+                    - id
+                    - role_arn
+                    - environment
+                    - namespace_id
+                    - created_at
+                    - created_by
+                  additionalProperties: false
+              examples:
+                records:
+                  summary: All AWS roles
+                  value:
+                    - id: 1
+                      role_arn: 'arn:aws:iam::1234567890:role/imbi'
+                      environment: Production
+                      namespace_id: 4
+                      created_at: 1964-01-01T19:11:11.000Z
+                      created_by: test_user
+                    - id: 2
+                      role_arn: 'arn:aws:iam::987654321:role/imbi'
+                      environment: Staging
+                      namespace_id: 3
+                      created_at: 1964-01-01T19:11:11.000Z
+                      created_by: test_user
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+    post:
+      summary: Create AWS role
+      description: Create a new AWS role
+      tags:
+        - AWS
+      requestBody:
+        description: The AWS role to create
+        content:
+          application/json:
+            schema:
+              title: AWS Role
+              description: |
+                An AWS Role used to perform operations in the AWS cloud
+              type: object
+              properties:
+                role_arn:
+                  description: AWS ARN of the role
+                  type: string
+                environment:
+                  description: Name of the environment this role is associated with
+                  type: string
+                namespace_id:
+                  description: ID of the namespace this role is associated with
+                  type: number
+              required:
+                - role_arn
+                - environment
+                - namespace_id
+              additionalProperties: false
+            examples:
+              record:
+                summary: A role for a specific environment and namespace
+                value:
+                  role_arn: 'arn:aws:iam::1234567890:role/imbi'
+                  environment: Production
+                  namespace_id: 4
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1aws-roles/post/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: A role for a specific environment and namespace
+                value:
+                  role_arn: 'arn:aws:iam::1234567890:role/imbi'
+                  environment: Production
+                  namespace_id: 4
+      responses:
+        '200':
+          description: 'The request to create, update, or retrieve the environment was successful'
+          headers:
+            Cache-Control:
+              $ref: '#/paths/~1groups/get/responses/200/headers/Cache-Control'
+            Last-Modified:
+              $ref: '#/paths/~1groups/post/responses/200/headers/Last-Modified'
+            Link:
+              $ref: '#/paths/~1components/get/responses/200/headers/Link'
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1aws-roles/post/requestBody/content/application~1json/examples/record'
+            application/msgpack:
+              schema:
+                $ref: '#/paths/~1environments/post/requestBody/content/application~1json/schema'
+              examples:
+                record:
+                  $ref: '#/paths/~1aws-roles/post/requestBody/content/application~1json/examples/record'
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '409':
+          $ref: '#/paths/~1groups/post/responses/409'
+  '/aws-roles/{id}':
+    get:
+      summary: Get an AWS role
+      description: Retrieve an AWS role for a specific namespace and environment
+      tags:
+        - AWS
+      responses:
+        '200':
+          $ref: '#/paths/~1aws-roles/post/responses/200'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1components/get/responses/404'
+    patch:
+      summary: Update Record
+      description: 'Update an AWS role, providing a JSON Patch (RFC-6209) payload of update operations to apply.'
+      tags:
+        - AWS
+      requestBody:
+        $ref: '#/paths/~1groups~1%7Bname%7D/patch/requestBody'
+      responses:
+        '200':
+          $ref: '#/paths/~1aws-roles/post/responses/200'
+        '304':
+          $ref: '#/paths/~1groups~1%7Bname%7D/patch/responses/304'
+        '400':
+          $ref: '#/paths/~1groups/post/responses/400'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1components/get/responses/404'
+        '409':
+          $ref: '#/paths/~1groups/post/responses/409'
+    delete:
+      summary: Delete Record
+      description: Remove an AWS role
+      tags:
+        - AWS
+      responses:
+        '204':
+          $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1components/get/responses/404'
+    parameters:
+      - name: id
+        in: path
+        description: Surrogate ID for AWS role
+        required: true
+        schema:
+          type: number
   /components:
     post:
       summary: Create Component
