@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import http
 import typing
 
@@ -132,11 +133,9 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
 
 class ComponentVersionMap:
     def __init__(self, connector: sprockets_postgres.PostgresConnector,
-                 package_urls) -> None:
-        self._cache: dict[models.PackageURL, models.VersionMap] = {
-            url: {}
-            for url in package_urls
-        }
+                 package_urls: set[models.PackageURL]) -> None:
+        self._purls_from_bom = package_urls.copy()
+        self._cache: dict[models.PackageURL, models.VersionMap] = {}
         self._cache_primed = False
         self._connector = connector
 
@@ -149,13 +148,17 @@ class ComponentVersionMap:
             return await self._insert_component_version(component)
 
     async def _fetch_components(self) -> None:
+        """Fetch component versions from the database for PURLs in the BoM"""
+        cache = collections.defaultdict(dict)
         result = await self._connector.execute(
             'SELECT id, package_url, version'
             '  FROM v1.component_versions'
-            ' WHERE package_url = ANY(%s)', [list(self._cache.keys())],
+            ' WHERE package_url = ANY(%s)', [list(self._purls_from_bom)],
             metric_name='get-component-versions')
         for row in result:
-            self._cache[row['package_url']][row['version']] = row['id']
+            cache[row['package_url']][row['version']] = row['id']
+        self._cache.clear()
+        self._cache.update(cache)
         self._cache_primed = True
 
     async def _insert_component_version(self,
