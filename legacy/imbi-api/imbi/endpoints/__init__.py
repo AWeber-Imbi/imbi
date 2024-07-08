@@ -4,6 +4,7 @@ from imbi import constants
 from . import (
     activity_feed,
     authentication_tokens,
+    aws_roles,
     components,
     cookie_cutters,
     dashboard,
@@ -51,6 +52,10 @@ URLS = [
             constants.UUID_PATTERN),
         authentication_tokens.RequestHandler,
     ),
+    web.url(r'^/aws-roles$', aws_roles.CollectionRequestHandler),
+    web.url(r'^/aws-roles/(?P<id>\d+)$',
+            aws_roles.RecordRequestHandler,
+            name='aws-role'),
     web.url(r'/components$',
             components.CollectionRequestHandler,
             name='components'),
