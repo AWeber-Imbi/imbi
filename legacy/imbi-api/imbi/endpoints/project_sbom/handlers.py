@@ -8,6 +8,7 @@ import sprockets_postgres
 from psycopg2 import sql
 
 import imbi.models
+import imbi.opensearch.project
 from imbi import errors
 from imbi.endpoints import base
 from imbi.endpoints.project_sbom import graph, models
@@ -69,12 +70,20 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
                     version_id = await version_map.get_version_id(component)
                     project_components.add(
                         (component.package_purl, version_id))
+                    # update the project model instance for indexing purposes
+                    # see _reindex_project() and imbi.models.project()
+                    project.components.append({
+                        'name': component.package_purl,
+                        'version': component.version
+                    })
 
             await self._insert_project_components(connector, project,
                                                   project_components)
             self.logger.debug('processed %s components for project %s(%s)',
                               len(project_components), project.slug,
                               project.id)
+
+        await self._reindex_project(project)
 
         self.set_status(http.HTTPStatus.NO_CONTENT)
 
@@ -129,6 +138,10 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
                     query.as_string(transaction.cursor.raw),
                     metric_name='insert-project-component-batch')
                 del rows_to_add[:batch_size]
+
+    async def _reindex_project(self, project: imbi.models.Project) -> None:
+        index = imbi.opensearch.project.ProjectIndex(self.application)
+        await index.index_document(project)
 
 
 class ComponentVersionMap:

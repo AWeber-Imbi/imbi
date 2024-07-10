@@ -291,6 +291,7 @@ class Project:
     urls: dict[str, str]
     project_score: int
     components: list[dict[str, str]]
+    component_versions: list[str]
 
     SQL: typing.ClassVar = re.sub(
         r'\s+', ' ', """\
@@ -440,9 +441,12 @@ async def project(project_id: int, application: 'app.Application') -> Project:
                     for value in results[5]
                 },
                 'components': [{
-                    'name': c.name,
+                    'name': c.package_url,
                     'version': c.version
-                } for c in results[6]]
+                } for c in results[6]],
+                'component_versions': [
+                    f'{c.package_url}@{c.version}' for c in results[6]
+                ]
             })
             return Project(**values)
 
