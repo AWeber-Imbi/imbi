@@ -50,7 +50,7 @@ class CollectionRequestHandler(projects.ProjectAttributeCollectionMixin,
           RETURNING project_id, dependency_id""")
 
     async def get(self, *args, **kwargs):
-        if 'dependency' in self.get_query_arguments('includes'):
+        if 'dependency' in self.get_query_arguments('include'):
             result = await self.postgres_execute(
                 self.COLLECTION_WITH_DEPENDENCY_SQL,
                 kwargs,
