@@ -46,6 +46,8 @@ PathIdType: typing.TypeAlias = typing.Union[int, slugify.Slug]
 
 class AutomationCategory(enum.Enum):
     CREATE_PROJECT = 'create-project'
+    CREATE_DEPENDENCY = 'create-project-dependency'
+    REMOVE_DEPENDENCY = 'remove-project-dependency'
 
 
 class Automation(pydantic.BaseModel):
