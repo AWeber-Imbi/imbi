@@ -1,5 +1,4 @@
 import asyncio
-import graphlib
 import re
 import typing
 
@@ -219,11 +218,8 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
         if not selected_automations:
             return
 
-        lookup = {a.slug: a for a in selected_automations}
-        dag = graphlib.TopologicalSorter()
-        for automation in selected_automations:
-            dag.add(automation.slug, *automation.depends_on)
-        ordered_automations = [lookup[a] for a in dag.static_order()]
+        ordered_automations = automations.sort_automations(
+            selected_automations)
 
         self.logger.info(
             'running create-project automations for project %s (%s): %r',

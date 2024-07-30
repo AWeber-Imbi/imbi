@@ -6,6 +6,7 @@ import inspect
 import logging
 import types
 
+import graphlib
 import sprockets_postgres  # type: ignore[import-untyped]
 import typing_extensions as typing
 
@@ -290,3 +291,16 @@ async def retrieve_automations(
     if error:
         raise errors.BadRequest('Invalid automation request', **error)
     return automation_instances
+
+
+def sort_automations(
+    automations: typing.Sequence[models.Automation]
+) -> typing.Sequence[models.Automation]:
+    if not automations:
+        return automations
+
+    lookup = {a.slug: a for a in automations}
+    dag = graphlib.TopologicalSorter()
+    for automation in automations:
+        dag.add(automation.slug, *automation.depends_on)
+    return [lookup[a] for a in dag.static_order()]
