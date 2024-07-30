@@ -9,7 +9,7 @@ import types
 import sprockets_postgres  # type: ignore[import-untyped]
 import typing_extensions as typing
 
-from imbi import errors
+from imbi import errors, models
 
 if typing.TYPE_CHECKING:  # pragma: nocover
     import imbi.app
@@ -255,3 +255,38 @@ def query_runner(
         await context.run_query(query, *args, **kwargs)
 
     return runner
+
+
+async def retrieve_automations(
+        application: imbi.app.Application, slugs: typing.Iterable[str],
+        project_type_id: int) -> list[models.Automation]:
+    """Retrieve a list of automations by slug and validate them
+
+    If a slug doesn't exist in the database or any automation is
+    not applicable to the project type, then an exception is raised.
+
+    """
+    automation_instances = [
+        await models.automation(slug, application) for slug in slugs
+    ]
+    required_automations = set()
+    for a in automation_instances:
+        required_automations.update(a.depends_on)
+    required_automations.difference_update(
+        {a.slug
+         for a in automation_instances})
+    error = {
+        'nonexistent_automations': [
+            name for name, matched in zip(slugs, automation_instances)
+            if matched is None
+        ],
+        'invalid_automations': [
+            a.name for a in automation_instances
+            if a is not None and project_type_id not in a.applies_to_ids
+        ],
+        'missing_required_automations': list(required_automations),
+    }
+    error = {label: value for label, value in error.items() if value}
+    if error:
+        raise errors.BadRequest('Invalid automation request', **error)
+    return automation_instances
