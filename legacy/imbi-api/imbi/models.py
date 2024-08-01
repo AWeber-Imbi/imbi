@@ -105,6 +105,21 @@ class ProjectComponent:
 
 
 @dataclasses.dataclass
+class ProjectDependency:
+    project_id: int
+    dependency_id: int
+    created_at: datetime.datetime
+    created_by: str
+
+    SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
+            SELECT project_id, dependency_id, created_at, created_by
+              FROM v1.project_dependencies
+             WHERE project_id = %(project_id)s
+               AND dependency_id = %(dependency_id)s""")
+
+
+@dataclasses.dataclass
 class ProjectFact:
     id: int
     name: str
@@ -455,6 +470,27 @@ async def project_components(
         project_id: int,
         application: 'app.Application') -> list[ProjectComponent]:
     return await _load_collection(ProjectComponent, project_id, application)
+
+
+async def project_dependency(
+        project_id: int, dependency_id: int,
+        application: 'app.Application') -> ProjectDependency:
+    def on_postgres_error(_metric_name: str, exc: Exception) -> None:
+        LOGGER.error(
+            'Failed to execute query for project dependency '
+            '(project_id: %s, dependency_id: %s): %s', project_id,
+            dependency_id, exc)
+        raise errors.DatabaseError('Error loading ProjectDependency',
+                                   error=exc)
+
+    async with application.postgres_connector(
+            on_error=on_postgres_error) as conn:
+        result = await conn.execute(ProjectDependency.SQL, {
+            'project_id': project_id,
+            'dependency_id': dependency_id
+        }, 'model-load')
+        if result.row_count:
+            return ProjectDependency(**result.row)
 
 
 async def project_facts(project_id: int,
