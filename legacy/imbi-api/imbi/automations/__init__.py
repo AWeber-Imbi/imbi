@@ -10,7 +10,7 @@ import graphlib
 import sprockets_postgres  # type: ignore[import-untyped]
 import typing_extensions as typing
 
-from imbi import errors, models
+from imbi import errors
 
 if typing.TYPE_CHECKING:  # pragma: nocover
     import imbi.app
@@ -260,7 +260,7 @@ def query_runner(
 
 async def retrieve_automations(
         application: imbi.app.Application, slugs: typing.Iterable[str],
-        project_type_id: int) -> list[models.Automation]:
+        project_type_id: int) -> list[imbi.models.Automation]:
     """Retrieve a list of automations by slug and validate them
 
     If a slug doesn't exist in the database or any automation is
@@ -268,7 +268,7 @@ async def retrieve_automations(
 
     """
     automation_instances = [
-        await models.automation(slug, application) for slug in slugs
+        await imbi.models.automation(slug, application) for slug in slugs
     ]
     required_automations = set()
     for a in automation_instances:
@@ -294,8 +294,8 @@ async def retrieve_automations(
 
 
 def sort_automations(
-    automations: typing.Sequence[models.Automation]
-) -> typing.Sequence[models.Automation]:
+    automations: typing.Sequence[imbi.models.Automation]
+) -> typing.Sequence[imbi.models.Automation]:
     if not automations:
         return automations
 
