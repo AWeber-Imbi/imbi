@@ -1,5 +1,7 @@
+import typing
 import re
 
+from imbi import automations, models, errors
 from imbi.endpoints import base, projects
 
 
@@ -70,6 +72,75 @@ class CollectionRequestHandler(projects.ProjectAttributeCollectionMixin,
             self.send_response(response)
         else:
             await super().get(*args, **kwargs)
+
+    async def post(self, *args, **kwargs):
+        values = self.get_request_body()
+        values['project_id'] = kwargs['project_id']
+        values['username'] = self._current_user.username
+        dependent_project = await models.project(values['project_id'],
+                                                 self.application)
+        selected_automations = await automations.retrieve_automations(
+            self.application, values.get('automations', []),
+            dependent_project.project_type.id)
+
+        result = await self.postgres_execute(self.POST_SQL, values,
+                                             f'post-{self.NAME}')
+        if not result.row_count:
+            raise errors.DatabaseError('Failed to create project dependency',
+                                       title='Failed to create record')
+
+        dependency = await models.project_dependency(
+            result.row['project_id'], result.row['dependency_id'],
+            self.application)
+
+        try:
+            await self._run_automations(dependency, selected_automations)
+        except Exception as error:
+            self.logger.exception('_run_automations failure: %s', error)
+            self.logger.error(
+                'removing dependency (project: %s, '
+                'dependency: %s) due to error', dependency.project_id,
+                dependency.dependency_id)
+            await self.postgres_execute(
+                'DELETE FROM v1.project_dependencies'
+                '     WHERE project_id = %(project_id)s'
+                '       AND dependency_id = %(dependency_id)s', {
+                    'project_id': dependency.project_id,
+                    'dependency_id': dependency.dependency_id
+                })
+            raise errors.InternalServerError('Failed to run automations: %s',
+                                             error) from None
+
+        await self.index_document(dependent_project.id)
+        self.send_response(vars(dependency))
+
+    async def _run_automations(
+            self, dependency: models.ProjectDependency,
+            selected_automations: typing.Sequence[models.Automation]) -> None:
+        """Run a list of automations for the dependency
+
+        If an automation fails, then an InternalServerError is raised.
+        """
+        if not selected_automations:
+            return
+
+        ordered_automations = automations.sort_automations(
+            selected_automations)
+
+        self.logger.info(
+            'running automations for dependency '
+            '(project: %s, dependency: %s): %r', dependency.project_id,
+            dependency.dependency_id, [a.slug for a in ordered_automations])
+        try:
+            await automations.run_automations(ordered_automations,
+                                              dependency,
+                                              application=self.application,
+                                              user=self._current_user,
+                                              query_executor=self)
+        except errors.ApplicationError:  # this is meant for the end user
+            raise
+        except automations.AutomationFailedError as error:
+            raise errors.InternalServerError(str(error)) from None
 
 
 class RecordRequestHandler(projects.ProjectAttributeCRUDMixin,
