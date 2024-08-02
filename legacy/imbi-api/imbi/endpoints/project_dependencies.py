@@ -24,7 +24,7 @@ class _DependencyRequestMixin:
         INSERT INTO v1.project_dependencies
                     (project_id, dependency_id, created_by)
              VALUES (%(project_id)s, %(dependency_id)s, %(username)s)
-          RETURNING project_id, dependency_id""")
+          RETURNING project_id, dependency_id, created_at, created_by""")
 
     async def _run_automations(
             self, dependency: models.ProjectDependency,
@@ -117,9 +117,11 @@ class CollectionRequestHandler(projects.ProjectAttributeCollectionMixin,
             raise errors.DatabaseError('Failed to create project dependency',
                                        title='Failed to create record')
 
-        dependency = await models.project_dependency(
-            result.row['project_id'], result.row['dependency_id'],
-            self.application)
+        dependency = models.ProjectDependency(
+            project_id=result.row['project_id'],
+            dependency_id=result.row['dependency_id'],
+            created_at=result.row['created_at'],
+            created_by=result.row['created_by'])
 
         try:
             await self._run_automations(dependency, selected_automations)
