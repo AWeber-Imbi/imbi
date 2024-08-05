@@ -190,4 +190,5 @@ class RecordRequestHandler(projects.ProjectAttributeCRUDMixin,
             raise errors.InternalServerError('Failed to run automations: %s',
                                              error) from None
 
+        await self.index_document(kwargs['project_id'])
         self.set_status(204, reason='Item Deleted')
