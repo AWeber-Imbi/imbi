@@ -118,6 +118,13 @@ class ProjectDependency:
              WHERE project_id = %(project_id)s
                AND dependency_id = %(dependency_id)s""")
 
+    COLLECTION_SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
+            SELECT project_id, dependency_id, created_at, created_by
+              FROM v1.project_dependencies
+             WHERE project_id = %(obj_id)s
+            """)
+
 
 @dataclasses.dataclass
 class ProjectFact:
@@ -307,6 +314,7 @@ class Project:
     project_score: int
     components: list[dict[str, str]]
     component_versions: list[str]
+    dependencies: typing.Optional[list[int]]
 
     SQL: typing.ClassVar = re.sub(
         r'\s+', ' ', """\
@@ -431,7 +439,8 @@ async def project(project_id: int, application: 'app.Application') -> Project:
             values = dict(result.row)
             results: tuple[Namespace, ProjectType, list[ProjectFact],
                            list[ProjectLink], list[ProjectURL],
-                           list[ProjectIdentifier], list[ProjectComponent]]
+                           list[ProjectIdentifier], list[ProjectComponent],
+                           list[ProjectDependency]]
             results = await asyncio.gather(
                 namespace(values['namespace_id'], application),
                 project_type(values['project_type_id'], application),
@@ -440,6 +449,7 @@ async def project(project_id: int, application: 'app.Application') -> Project:
                 project_urls(project_id, application),
                 project_identifiers(project_id, application),
                 project_components(project_id, application),
+                project_dependencies(project_id, application),
             )
             del values['namespace_id']
             del values['project_type_id']
@@ -462,7 +472,8 @@ async def project(project_id: int, application: 'app.Application') -> Project:
                 } for c in results[6]],
                 'component_versions': [
                     f'{c.package_url}@{c.version}' for c in results[6]
-                ]
+                ],
+                'dependencies': [d.dependency_id for d in results[7]]
             })
             return Project(**values)
 
@@ -480,6 +491,12 @@ async def project_dependency(
                        application,
                        project_id=project_id,
                        dependency_id=dependency_id)
+
+
+async def project_dependencies(
+        project_id: int,
+        application: 'app.Application') -> list[ProjectDependency]:
+    return await _load_collection(ProjectDependency, project_id, application)
 
 
 async def project_facts(project_id: int,

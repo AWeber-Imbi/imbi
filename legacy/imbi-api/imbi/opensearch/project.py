@@ -52,6 +52,9 @@ PROJECT = {
     'created_by': {
         'type': 'text'
     },
+    'dependencies': {
+        'type': 'integer'
+    },
     'description': {
         'type': 'text'
     },
