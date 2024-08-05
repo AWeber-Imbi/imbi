@@ -105,6 +105,21 @@ class ProjectComponent:
 
 
 @dataclasses.dataclass
+class ProjectDependency:
+    project_id: int
+    dependency_id: int
+    created_at: datetime.datetime
+    created_by: str
+
+    SQL: typing.ClassVar = re.sub(
+        r'\s+', ' ', """\
+            SELECT project_id, dependency_id, created_at, created_by
+              FROM v1.project_dependencies
+             WHERE project_id = %(project_id)s
+               AND dependency_id = %(dependency_id)s""")
+
+
+@dataclasses.dataclass
 class ProjectFact:
     id: int
     name: str
@@ -357,16 +372,17 @@ class OperationsLog:
          WHERE o.id=%(id)s""")
 
 
-async def _load(model: dataclasses.dataclass, obj_id: int,
-                application: 'app.Application') -> dataclasses.dataclass:
+async def _load(model: dataclasses.dataclass, application: 'app.Application',
+                **params) -> dataclasses.dataclass:
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
-        LOGGER.error('Failed to execute query for project %s: %s', obj_id, exc)
+        LOGGER.error('Failed to execute query for %s with params %r: %s',
+                     model.__class__.__name__, params, exc)
         raise errors.DatabaseError(f'Error loading {model.__class__.__name__}',
                                    error=exc)
 
     async with application.postgres_connector(
             on_error=on_postgres_error) as conn:
-        result = await conn.execute(model.SQL, {'id': obj_id}, 'model-load')
+        result = await conn.execute(model.SQL, params, 'model-load')
         if result.row_count:
             return model(**result.row)
 
@@ -392,12 +408,12 @@ async def _load_collection(model: dataclasses.dataclass,
 
 async def namespace(namespace_id: int,
                     application: 'app.Application') -> Namespace:
-    return await _load(Namespace, namespace_id, application)
+    return await _load(Namespace, application, id=namespace_id)
 
 
 async def operations_log(ops_log_id: int,
                          application: 'app.Application') -> OperationsLog:
-    return await _load(OperationsLog, ops_log_id, application)
+    return await _load(OperationsLog, application, id=ops_log_id)
 
 
 async def project(project_id: int, application: 'app.Application') -> Project:
@@ -457,6 +473,15 @@ async def project_components(
     return await _load_collection(ProjectComponent, project_id, application)
 
 
+async def project_dependency(
+        project_id: int, dependency_id: int,
+        application: 'app.Application') -> ProjectDependency:
+    return await _load(ProjectDependency,
+                       application,
+                       project_id=project_id,
+                       dependency_id=dependency_id)
+
+
 async def project_facts(project_id: int,
                         application: 'app.Application') \
         -> list[ProjectFact]:
@@ -477,7 +502,7 @@ async def project_links(project_id: int,
 
 async def project_type(project_type_id: int,
                        application: 'app.Application') -> ProjectType:
-    return await _load(ProjectType, project_type_id, application)
+    return await _load(ProjectType, application, id=project_type_id)
 
 
 async def project_urls(project_id: int,

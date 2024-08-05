@@ -2389,6 +2389,8 @@ paths:
                     type: string
                     enum:
                       - create-project
+                      - create-project-dependency
+                      - remove-project-dependency
                 callable:
                   allOf:
                     - description: |
@@ -2474,6 +2476,8 @@ paths:
                       type: string
                       enum:
                         - create-project
+                        - create-project-dependency
+                        - remove-project-dependency
                   applies_to:
                     description: Project type slugs that this automation can be run for
                     type: array
@@ -7541,13 +7545,17 @@ paths:
               schema:
                 type: array
                 items:
-                  title: Project
+                  title: Project Dependency
                   description: A record that indicates one project is dependent upon another
                   type: object
                   properties:
                     project_id:
                       description: The ID of the project that has the dependency
                       type: number
+                    created_at:
+                      description: The timestamp when the dependency was created
+                      type: string
+                      format: iso8601-timestamp
                     created_by:
                       description: The username indicating who created the record
                       type: string
@@ -7575,22 +7583,28 @@ paths:
                   summary: Multiple records
                   value:
                     - project_id: 2
+                      created_at: 1964-01-01T19:11:11.000Z
                       created_by: test_user
                       dependency_id: 1
                     - project_id: 3
+                      created_at: 1964-01-01T19:11:11.000Z
                       created_by: test_user
                       dependency_id: 1
             application/msgpack:
               schema:
                 type: array
                 items:
-                  title: Project
+                  title: Project Dependency
                   description: A record that indicates one project is dependent upon another
                   type: object
                   properties:
                     project_id:
                       description: The ID of the project that has the dependency
                       type: number
+                    created_at:
+                      description: The timestamp when the dependency was created
+                      type: string
+                      format: iso8601-timestamp
                     created_by:
                       description: The username indicating who created the record
                       type: string
@@ -7618,9 +7632,11 @@ paths:
                   summary: Multiple records
                   value:
                     - project_id: 2
+                      created_at: 1964-01-01T19:11:11.000Z
                       created_by: test_user
                       dependency_id: 1
                     - project_id: 3
+                      created_at: 1964-01-01T19:11:11.000Z
                       created_by: test_user
                       dependency_id: 1
         '401':
@@ -7635,10 +7651,16 @@ paths:
         content:
           application/json:
             schema:
-              title: Project
+              title: Project Dependency
               description: A record that indicates one project is dependent upon another
               type: object
               properties:
+                automations:
+                  description: List of automations to run while creating the project dependency
+                  type: array
+                  items:
+                    type: string
+                  nullable: true
                 dependency_id:
                   description: The ID of the project that is depended upon
                   type: number
@@ -7727,6 +7749,37 @@ paths:
       description: Remove a project dependency record
       tags:
         - Project Dependencies
+      requestBody:
+        description: Specify optional automation slugs to run
+        content:
+          application/json:
+            schema:
+              title: Project Dependency
+              description: A record that indicates one project is dependent upon another
+              type: object
+              properties:
+                automations:
+                  description: List of automations to run while creating the project dependency
+                  type: array
+                  items:
+                    type: string
+                  nullable: true
+              additionalProperties: false
+            examples:
+              record:
+                summary: Optional automations to run
+                value:
+                  automations:
+                    - create-pagerduty-dependency
+          application/msgpack:
+            schema:
+              $ref: '#/paths/~1projects~1%7Bid%7D~1dependencies~1%7Bdependency_id%7D/delete/requestBody/content/application~1json/schema'
+            examples:
+              record:
+                summary: Optional automations to run
+                value:
+                  automations:
+                    - create-pagerduty-dependency
       responses:
         '204':
           $ref: '#/paths/~1groups~1%7Bname%7D/delete/responses/204'

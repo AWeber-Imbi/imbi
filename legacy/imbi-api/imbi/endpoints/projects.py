@@ -1,5 +1,4 @@
 import asyncio
-import graphlib
 import re
 import typing
 
@@ -176,8 +175,9 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
             if name not in values:
                 values[name] = self.DEFAULTS.get(name)
 
-        selected_automations = await self._retrieve_automations(
-            values.get('automations', []), values['project_type_id'])
+        selected_automations = await automations.retrieve_automations(
+            self.application, values.get('automations', []),
+            values['project_type_id'])
 
         result = await self.postgres_execute(self.POST_SQL, values,
                                              f'post-{self.NAME}')
@@ -208,41 +208,6 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
             raise errors.InternalServerError(
                 'Newly created project not found - id=%s', project.id)
 
-    async def _retrieve_automations(
-            self, slugs: typing.Iterable[str],
-            project_type_id: int) -> list[models.Automation]:
-        """Retrieve a list of automations by slug and validate them
-
-        If a slug doesn't exist in the database or any automation is
-        not applicable to the project type, then an exception is raised.
-
-        """
-        automation_instances = [
-            await models.automation(slug, self.application) for slug in slugs
-        ]
-        required_automations = set()
-        for a in automation_instances:
-            required_automations.update(a.depends_on)
-        required_automations.difference_update(
-            {a.slug
-             for a in automation_instances})
-        error = {
-            'nonexistent_automations': [
-                name for name, matched in zip(slugs, automation_instances)
-                if matched is None
-            ],
-            'invalid_automations': [
-                a.name for a in automation_instances
-                if a is not None and project_type_id not in a.applies_to_ids
-            ],
-            'missing_required_automations': list(required_automations),
-        }
-        error = {label: value for label, value in error.items() if value}
-        if error:
-            raise errors.BadRequest('Invalid project creation request',
-                                    **error)
-        return automation_instances
-
     async def _run_automations(
             self, project: models.Project,
             selected_automations: typing.Sequence[models.Automation]) -> None:
@@ -253,11 +218,8 @@ class CollectionRequestHandler(project.RequestHandlerMixin,
         if not selected_automations:
             return
 
-        lookup = {a.slug: a for a in selected_automations}
-        dag = graphlib.TopologicalSorter()
-        for automation in selected_automations:
-            dag.add(automation.slug, *automation.depends_on)
-        ordered_automations = [lookup[a] for a in dag.static_order()]
+        ordered_automations = automations.sort_automations(
+            selected_automations)
 
         self.logger.info(
             'running create-project automations for project %s (%s): %r',
