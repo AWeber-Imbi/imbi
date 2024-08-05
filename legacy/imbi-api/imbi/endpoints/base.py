@@ -25,7 +25,7 @@ import umsgpack
 import yarl
 from ietfparse import datastructures
 from openapi_core.deserializing.exceptions import DeserializeError
-from openapi_core.schema.media_types.exceptions import InvalidContentType
+from openapi_core.templating.media_types.exceptions import MediaTypeNotFound
 from openapi_core.templating.paths.exceptions import \
     OperationNotFound, PathNotFound
 from openapi_core.unmarshalling.schemas.exceptions import ValidateError
@@ -270,7 +270,7 @@ class ValidatingRequestHandler(AuthenticatedRequestHandler):
                 title='OpenAPI Security Error')
         except OperationNotFound as err:
             raise errors.MethodNotAllowed(err.method.upper())
-        except InvalidContentType as err:
+        except MediaTypeNotFound as err:
             raise errors.UnsupportedMediaType(err.mimetype)
         except PathNotFound as err:
             raise errors.InternalServerError('OpenAPI Spec Error: %s',

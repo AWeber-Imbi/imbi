@@ -9,7 +9,7 @@ import umsgpack
 import validators
 import yaml
 from jsonschema import validators as jsonschema_validators
-from openapi_core.schema.specs import factories, models
+from openapi_core.spec import paths
 from tornado import template
 
 from imbi import transcoders
@@ -71,7 +71,7 @@ _openapi_deserializers = {
 _openapi_spec_dict = {}
 
 
-def create_spec(settings: dict) -> models.Spec:
+def create_spec(settings: dict) -> paths.SpecPath:
     """Create and return the OpenAPI v3 Spec Model"""
     if not _openapi_spec_dict:
         loader = template.Loader(str(settings['template_path']))
@@ -85,9 +85,9 @@ def create_spec(settings: dict) -> models.Spec:
         '',
         _openapi_spec_dict,
         handlers=openapi_spec_validator.default_handlers)
-    spec_factory = factories.SpecFactory(spec_resolver,
-                                         config={'validate_spec': False})
-    return spec_factory.create(_openapi_spec_dict, spec_url='')
+    dereferencer = openapi_spec_validator.validators.Dereferencer(
+        spec_resolver)
+    return paths.SpecPath.from_spec(_openapi_spec_dict, dereferencer)
 
 
 def request_validator(settings: dict) -> tornado_openapi3.RequestValidator:
