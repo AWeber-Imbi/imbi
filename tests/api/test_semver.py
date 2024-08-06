@@ -1,7 +1,9 @@
-import unittest
+import json
+import unittest.mock
 from collections import abc
 
-import packaging.version
+import pydantic
+import semantic_version
 
 from imbi import semver
 
@@ -82,7 +84,7 @@ class VersionRangeErrorHandlingTests(unittest.TestCase):
         self.assertIn('1.2.3', semver.parse_semver_range('1.2.3'))
 
     def test_contains_works_with_version(self) -> None:
-        self.assertIn(packaging.version.Version('1.2.3'),
+        self.assertIn(semantic_version.Version('1.2.3'),
                       semver.parse_semver_range('1.2.3'))
 
     def test_contains_with_other_instance_types(self) -> None:
@@ -90,3 +92,54 @@ class VersionRangeErrorHandlingTests(unittest.TestCase):
         self.assertNotIn(1, ver_range)
         self.assertNotIn(True, ver_range)
         self.assertNotIn(object(), ver_range)
+
+
+class PydanticModelTests(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.adapter = pydantic.TypeAdapter(semver.VersionRange)
+        self.value = semver.VersionRange('~1.2.3')
+
+    def test_core_schema_validation(self) -> None:
+        self.assertEqual(self.value, self.adapter.validate_json('"~1.2.3"'))
+        self.assertEqual(self.value, self.adapter.validate_python(self.value))
+
+    def test_core_schema_serialization(self) -> None:
+        result = json.loads(self.adapter.serializer.to_json(self.value))
+        self.assertEqual(self.value.spec, result)
+        self.assertEqual(self.value.spec,
+                         self.adapter.serializer.to_python(self.value))
+
+
+class UtilityFunctionTests(unittest.TestCase):
+    def test_equality(self) -> None:
+        self.assertEqual(semver.VersionRange('1'), semver.VersionRange('1'))
+        self.assertNotEqual(semver.VersionRange('1'), '1')
+
+    def test_hashing(self) -> None:
+        v1 = semver.VersionRange('1.2.3')
+        v2 = semver.VersionRange('~1.2.3')
+        self.assertEqual(hash(v1), hash(semver.VersionRange(v1.spec)))
+        self.assertEqual(hash(v1), hash(v1))
+        self.assertNotEqual(hash(v1), hash(v2))
+
+    def test_repr(self) -> None:
+        v1 = semver.VersionRange('1.2.3')
+        v2 = eval(repr(v1), {'VersionRange': semver.VersionRange})
+        self.assertEqual(v1, v2)
+
+    def test_str(self) -> None:
+        v = semver.VersionRange('~1.2.3')
+        self.assertEqual('VersionRange(~1.2.3)', str(v))
+
+    def test_validation(self) -> None:
+        v = semver.VersionRange('~1.2.3')
+        self.assertEqual(v, semver.VersionRange._validate(v))
+        self.assertEqual(v, semver.VersionRange._validate('~1.2.3'))
+        with self.assertRaises(TypeError):
+            semver.VersionRange._validate(1.2)
+
+    def test_json_schema(self) -> None:
+        schema = pydantic.TypeAdapter(semver.VersionRange).json_schema()
+        self.assertEqual('string', schema['type'])
+        self.assertEqual(1, schema['minLength'])
