@@ -1,38 +1,13 @@
 from __future__ import annotations
 
-import enum
 import re
 
 import pydantic
 import typing_extensions as typing
 
-from imbi import errors, semver
+from imbi import errors
 from imbi.endpoints import base
-
-
-class ComponentStatus(str, enum.Enum):
-    ACTIVE = 'Active'
-    DEPRECATED = 'Deprecated'
-    FORBIDDEN = 'Forbidden'
-
-
-class Component(pydantic.BaseModel):
-    package_url: str = pydantic.constr(pattern=r'^pkg:')
-    name: str
-    status: ComponentStatus
-    icon_class: str
-    active_version: typing.Union[semver.VersionRange, None]
-    home_page: typing.Union[str, None]
-
-
-class ComponentToken(base.PaginationToken):
-    """Pagination token that includes the starting package URL"""
-    def __init__(self, *, starting_package: str = '', **kwargs) -> None:
-        super().__init__(starting_package=starting_package, **kwargs)
-
-    def with_first(self, value: dict[str, object]) -> typing.Self:
-        kwargs = self.as_dict(starting_package=value['package_url'])
-        return ComponentToken(**kwargs)
+from imbi.endpoints.components import models
 
 
 class CollectionRequestHandler(base.PaginatedCollectionHandler):
@@ -83,8 +58,8 @@ class CollectionRequestHandler(base.PaginatedCollectionHandler):
           RETURNING *
         """)
 
-    def get_pagination_token_from_request(self) -> ComponentToken:
-        return ComponentToken.from_request(self.request)
+    def get_pagination_token_from_request(self) -> models.ComponentToken:
+        return models.ComponentToken.from_request(self.request)
 
     @base.require_permission('admin')
     async def post(self, *args, **kwargs) -> None:
@@ -130,7 +105,7 @@ class RecordRequestHandler(base.CRUDRequestHandler):
 
     def _check_validity(self, instance: dict[str, typing.Any]) -> bool:
         try:
-            Component.model_validate(instance)
+            models.Component.model_validate(instance)
         except pydantic.ValidationError as error:
             all_errors = error.errors(include_context=False)
             raise errors.BadRequest(
@@ -141,27 +116,6 @@ class RecordRequestHandler(base.CRUDRequestHandler):
                 validation_errors=all_errors) from None
         else:
             return True
-
-
-class ProjectComponentsToken(base.PaginationToken):
-    """Pagination token that includes the starting package URL and project"""
-    def __init__(self,
-                 *,
-                 starting_package: str = '',
-                 project_id: int | str,
-                 **kwargs) -> None:
-        try:
-            project_id = int(project_id)
-        except ValueError:
-            raise errors.BadRequest('Invalid project id %r, expected integer',
-                                    project_id)
-        super().__init__(starting_package=starting_package,
-                         project_id=project_id,
-                         **kwargs)
-
-    def with_first(self, value: dict[str, object]) -> typing.Self:
-        kwargs = self.as_dict(starting_package=value['package_url'])
-        return ProjectComponentsToken(**kwargs)
 
 
 class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
@@ -180,6 +134,6 @@ class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
         """)
 
     def get_pagination_token_from_request(
-            self, *, project_id: str) -> ProjectComponentsToken:
-        return ProjectComponentsToken.from_request(self.request,
-                                                   project_id=project_id)
+            self, *, project_id: str) -> models.ProjectComponentsToken:
+        return models.ProjectComponentsToken.from_request(
+            self.request, project_id=project_id)
