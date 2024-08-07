@@ -56,12 +56,6 @@ URLS = [
     web.url(r'^/aws-roles/(?P<id>\d+)$',
             aws_roles.RecordRequestHandler,
             name='aws-role'),
-    web.url(r'/components$',
-            components.CollectionRequestHandler,
-            name='components'),
-    web.url(r'/components/(?P<package_url>.+)$',
-            components.RecordRequestHandler,
-            name='component'),
     web.url(r'^/cookie-cutters$', cookie_cutters.CollectionRequestHandler),
     web.url(r'^/cookie-cutters/(?P<name>[\w_\-%\+]+)$',
             cookie_cutters.RecordRequestHandler,
@@ -119,9 +113,6 @@ URLS = [
     web.url(r'^/projects/(?P<id>\d+)$',
             projects.RecordRequestHandler,
             name='project'),
-    web.url(r'^/projects/(?P<project_id>\d+)/components$',
-            components.ProjectComponentsRequestHandler,
-            name='project-components'),
     web.url(r'^/projects/(?P<project_id>\d+)/dependencies$',
             project_dependencies.CollectionRequestHandler,
             name='project-dependencies'),
@@ -178,4 +169,11 @@ URLS = [
         project_urls.RecordRequestHandler,
         name='project-url'),
     web.url(r'^/status$', status.RequestHandler),
-] + integrations.URLS + project_sbom.URLS + reports.URLS + ssm.URLS + ui.URLS
+]
+
+URLS += components.URLS
+URLS += integrations.URLS
+URLS += project_sbom.URLS
+URLS += reports.URLS
+URLS += ssm.URLS
+URLS += ui.URLS
