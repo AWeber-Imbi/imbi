@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import re
+import typing
 
 import jsonpatch
+import psycopg2.errors
+import psycopg2.errorcodes
 import pydantic
 
 from imbi import errors
 from imbi.endpoints import base
-from imbi.endpoints.components import models
+from imbi.endpoints.components import models, scoring
 
 
 class CollectionRequestHandler(base.PaginatedCollectionHandler):
@@ -138,7 +141,64 @@ class RecordRequestHandler(base.CRUDRequestHandler):
             raise errors.DatabaseError('No rows were returned from PATCH_SQL',
                                        title='failed to update record')
 
+        if self._project_update_required(original, updated):
+            tags = {
+                'key': 'bulk_update',
+                'operation': 'component_score',
+                'endpoint': self.NAME
+            }
+            async with self.application.stats.track_duration(tags):
+                await self._update_affected_projects(updated.package_url)
+
         await self._get({'package_url': updated.package_url})
+
+    def _project_update_required(self, original: models.Component,
+                                 updated: models.Component) -> bool:
+        # only update if we have a fact id to worry about
+        config = self.settings.get('project_configuration', {}) or {}
+        if config.get('component_score_fact_id') is not None:
+            # status change will always affect component scores
+            if updated.status != original.status:
+                return True
+            # if the final status is active, then we only care if the
+            # active version has changed
+            if (updated.status == models.ComponentStatus.ACTIVE
+                    and updated.active_version != original.active_version):
+                return True
+        return False
+
+    async def _update_affected_projects(self, package_url: str) -> None:
+        # the following is used to propagate foreign key violations
+        # to our code ... these can happen if a project is removed
+        # between the time that we retrieve the affected projects
+        # and when we upsert the project fact
+        def on_postgres_error(metric_name: str,
+                              exc: Exception) -> typing.Optional[Exception]:
+            if isinstance(exc, psycopg2.errors.ForeignKeyViolation):
+                raise exc
+            else:
+                return self.on_postgres_error(metric_name, exc)
+
+        result = await self.postgres_execute(
+            'SELECT DISTINCT project_id'
+            '  FROM v1.project_components'
+            ' WHERE package_url = %(package_url)s',
+            {'package_url': package_url},
+            metric_name='retrieve-affected-projects')
+        if result:
+            project_ids = {row['project_id'] for row in result}
+            self.logger.info('found %s projects affected by this change',
+                             len(project_ids))
+            async with self.application.postgres_connector(
+                    on_postgres_error, self.on_postgres_timing) as connector:
+                for project_id in project_ids:
+                    try:
+                        await scoring.update_component_score_for_project(
+                            project_id, connector, self.application)
+                    except psycopg2.errors.ForeignKeyViolation as exc:
+                        self.logger.warning(
+                            'failed to update component score for project'
+                            ' id %s: %s', project_id, exc)
 
 
 class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
@@ -146,8 +206,8 @@ class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
     # out how we want to score these in the future
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT c.package_url, c."name", v.version, c.icon_class,
-               c.status, c.active_version, c.home_page
+        SELECT c.package_url, c."name", c.icon_class, c.status,
+               c.active_version, v.version
           FROM v1.project_components AS p
           JOIN v1.component_versions AS v ON v.id = p.version_id
           JOIN v1.components AS c ON c.package_url = v.package_url
@@ -169,11 +229,14 @@ class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
 
         """
         item['link'] = self.reverse_url('component', item['package_url'])
-        project_component = models.Component.model_validate(item)
+        project_component = scoring.ProjectComponentRow.model_validate(item)
         if project_component.active_version is None:
             item['status'] = models.ProjectComponentStatus.UNSCORED
         elif project_component.status == models.ComponentStatus.ACTIVE:
-            item['status'] = models.ProjectComponentStatus.UP_TO_DATE
+            if project_component.version in project_component.active_version:
+                item['status'] = models.ProjectComponentStatus.UP_TO_DATE
+            else:
+                item['status'] = models.ProjectComponentStatus.OUTDATED
 
     def get_pagination_token_from_request(
             self, *, project_id: str) -> models.ProjectComponentsToken:

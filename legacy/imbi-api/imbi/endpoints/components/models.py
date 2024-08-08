@@ -23,6 +23,21 @@ class ProjectComponentStatus(str, enum.Enum):
     FORBIDDEN = 'Forbidden'
 
 
+class ProjectStatus(str, enum.Enum):
+    """Component Score project fact values"""
+    OKAY = 'Okay'
+    NEEDS_WORK = 'Needs Work'
+    UNACCEPTABLE = 'Unacceptable'
+
+
+class ProjectComponentRow(pydantic.BaseModel):
+    """Result of retrieving components associated with a project"""
+    package_url: str
+    status: ComponentStatus
+    active_version: typing.Union[semver.VersionRange, None]
+    version: str
+
+
 class Component(pydantic.BaseModel):
     package_url: str = pydantic.constr(pattern=r'^pkg:')
     name: str
