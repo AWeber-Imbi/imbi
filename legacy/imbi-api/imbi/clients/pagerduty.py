@@ -35,6 +35,22 @@ class _CreateIntegrationResponse(pydantic.BaseModel):
     integration: IntegrationInfo
 
 
+class RelationshipServiceInfo(pydantic.BaseModel):
+    id: str
+    type: str
+
+
+class ServiceRelationship(pydantic.BaseModel):
+    supporting_service: RelationshipServiceInfo
+    dependent_service: RelationshipServiceInfo
+    id: str
+    type: str
+
+
+class _GetServiceDependenciesResponse(pydantic.BaseModel):
+    relationships: list[ServiceRelationship]
+
+
 class _PagerDutyClient(sprockets.mixins.http.HTTPClientMixin):
     def __init__(self, info: models.Integration, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -154,6 +170,97 @@ class _PagerDutyClient(sprockets.mixins.http.HTTPClientMixin):
     async def remove_service(self, service_id: str) -> None:
         """Delete `service_id` from PagerDuty"""
         await self.api(yarl.URL('/services') / service_id, method='DELETE')
+
+    async def get_service_dependencies(
+            self, service_id) -> list[ServiceRelationship]:
+        self.logger.debug('fetching PagerDuty service dependencies for %s',
+                          service_id)
+        response = await self.api(
+            f'/service_dependencies/technical_services/{service_id}')
+        if not response.ok:
+            raise errors.InternalServerError(
+                'GET %s failed to fetch service dependencies for %s: %s',
+                response.history[-1].effective_url,
+                service_id,
+                response.code,
+                title='PagerDuty API Failure',
+                detail=f'Failed to fetch service dependencies for {service_id}'
+            )
+        try:
+            parsed_rsp = _GetServiceDependenciesResponse.model_validate(
+                response.body)
+        except pydantic.ValidationError as error:
+            raise errors.InternalServerError(
+                'Failed to parse the PagerDuty response: %s',
+                error,
+                title='PagerDuty API Failure',
+                detail='Failed to parse fetch service dependencies response'
+            ) from None
+        else:
+            return parsed_rsp.relationships
+
+    async def create_service_dependency(self, supporting_service_id: str,
+                                        dependent_service_id: str) -> None:
+        """Create a dependency between two services"""
+        body = {
+            'relationships': [{
+                'supporting_service': {
+                    'id': supporting_service_id,
+                    'type': 'service',
+                },
+                'dependent_service': {
+                    'id': dependent_service_id,
+                    'type': 'service',
+                }
+            }]
+        }
+        self.logger.debug('creating PagerDuty service dependency with: %r',
+                          body)
+        response = await self.api('/service_dependencies/associate',
+                                  method='POST',
+                                  body=body)
+        if not response.ok:
+            raise errors.InternalServerError(
+                'POST %s failed for service association %s to %s: %s',
+                response.history[-1].effective_url,
+                supporting_service_id,
+                dependent_service_id,
+                response.code,
+                title='PagerDuty API Failure',
+                detail=f'Failed to associate service {supporting_service_id} '
+                f'as dependency of service {dependent_service_id}')
+
+    async def remove_service_dependency(self, supporting_service_id: str,
+                                        dependent_service_id: str) -> None:
+        """Remove a dependency between two services"""
+        body = {
+            'relationships': [{
+                'supporting_service': {
+                    'id': supporting_service_id,
+                    'type': 'service',
+                },
+                'dependent_service': {
+                    'id': dependent_service_id,
+                    'type': 'service',
+                }
+            }]
+        }
+        self.logger.debug('removing PagerDuty service dependency with: %r',
+                          body)
+        response = await self.api('/service_dependencies/disassociate',
+                                  method='POST',
+                                  body=body)
+        if not response.ok:
+            raise errors.InternalServerError(
+                'POST %s failed for service disassociation %s to %s: %s',
+                response.history[-1].effective_url,
+                supporting_service_id,
+                dependent_service_id,
+                response.code,
+                title='PagerDuty API Failure',
+                detail='Failed to disassociate service '
+                f'{supporting_service_id} as dependency of service '
+                f'{dependent_service_id}')
 
 
 async def create_client(application: app.Application,
