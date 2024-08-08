@@ -15,6 +15,14 @@ class ComponentStatus(str, enum.Enum):
     FORBIDDEN = 'Forbidden'
 
 
+class ProjectComponentStatus(str, enum.Enum):
+    UNSCORED = 'Unscored'
+    UP_TO_DATE = 'Up-to-date'
+    OUTDATED = 'Outdated'
+    DEPRECATED = 'Deprecated'
+    FORBIDDEN = 'Forbidden'
+
+
 class Component(pydantic.BaseModel):
     package_url: str = pydantic.constr(pattern=r'^pkg:')
     name: str

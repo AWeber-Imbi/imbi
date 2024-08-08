@@ -809,6 +809,9 @@ class PaginatedCollectionHandler(CollectionRequestHandler):
                     self.reverse_url(self.ITEM_NAME,
                                      *self._extract_keys(item)),
                 )
+        if hasattr(self, '_postprocess_item'):
+            for item in items:
+                self._postprocess_item(item)
 
         self.send_response(items)
 

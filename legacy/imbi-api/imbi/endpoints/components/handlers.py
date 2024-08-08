@@ -147,7 +147,7 @@ class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
         SELECT c.package_url, c."name", v.version, c.icon_class,
-               c.status, NULL AS score
+               c.status, c.active_version, c.home_page
           FROM v1.project_components AS p
           JOIN v1.component_versions AS v ON v.id = p.version_id
           JOIN v1.components AS c ON c.package_url = v.package_url
@@ -155,6 +155,25 @@ class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
            AND p.project_id = %(project_id)s
          ORDER BY c.package_url ASC
         """)
+
+    def _postprocess_item(self, item) -> None:
+        """Convert the database item into what the API exposes
+
+        Initially, ``item['status']`` is the *component's* status which
+        match the *project component's* status for everything except for
+        ``Active``. The project component status for active components
+        is either ``Unscored``, ``Up-to-date``, or ``Outdated`` based
+        on the component's active version.
+
+        We also want to add a link to the component details.
+
+        """
+        item['link'] = self.reverse_url('component', item['package_url'])
+        project_component = models.Component.model_validate(item)
+        if project_component.active_version is None:
+            item['status'] = models.ProjectComponentStatus.UNSCORED
+        elif project_component.status == models.ComponentStatus.ACTIVE:
+            item['status'] = models.ProjectComponentStatus.UP_TO_DATE
 
     def get_pagination_token_from_request(
             self, *, project_id: str) -> models.ProjectComponentsToken:
