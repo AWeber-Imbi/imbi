@@ -14,8 +14,11 @@ if typing.TYPE_CHECKING:
 
 
 async def update_component_score_for_project(
-        project_id: int, connector: sprockets_postgres.PostgresConnector,
-        app: imbi.app.Application):
+        project_id: int,
+        connector: sprockets_postgres.PostgresConnector,
+        app: imbi.app.Application,
+        *,
+        index_project: bool = True):
     logger = logging.getLogger(__package__).getChild(
         'update_component_score_for_project')
 
@@ -99,7 +102,8 @@ async def update_component_score_for_project(
                 },
                 metric_name='set-component-score')
 
-            project = await imbi.models.project(project_id, app)
-            if project is not None:  # may have been removed
-                index = imbi.opensearch.project.ProjectIndex(app)
-                await index.index_document(project)
+            if index_project:
+                project = await imbi.models.project(project_id, app)
+                if project is not None:  # may have been removed
+                    index = imbi.opensearch.project.ProjectIndex(app)
+                    await index.index_document(project)

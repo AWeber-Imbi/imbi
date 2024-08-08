@@ -12,6 +12,7 @@ import imbi.opensearch.project
 from imbi import errors
 from imbi.endpoints import base
 from imbi.endpoints.project_sbom import graph, models
+from imbi.endpoints.components import scoring
 
 
 class SBOMInjectionHandler(base.PydanticHandlerMixin,
@@ -82,6 +83,9 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
             self.logger.debug('processed %s components for project %s(%s)',
                               len(project_components), project.slug,
                               project.id)
+
+            await scoring.update_component_score_for_project(
+                project.id, connector, self.application, index_project=False)
 
         await self._reindex_project(project)
 
