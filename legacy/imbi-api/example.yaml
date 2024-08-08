@@ -7,22 +7,34 @@
 
 # automations:
 #   gitlab:
+#     enabled: false
 #     project_link_type_id: ~
 #     restrict_to_user: true
 #   grafana:
-#     admin_token: ~
+#     enabled: false
 #     project_link_type_id: ~
-#     url: ~
+#   pagerduty:
+#     enabled: true
+#     project_link_type_id: ~
 #   sentry:
-#     admin_token: ~
-#     backend_dsn: false
+#     enabled: true
 #     project_link_type_id: ~
-#     ui_dsn: false
-#     url: ~
+#     url: https://sentry.io
 #   sonarqube:
+#     enabled: false
 #     admin_token: ~
 #     project_link_type_id: ~
 #     url: ~
+
+# cors: ~
+
+google:
+  enabled: true
+  valid_domains: "example.com"
+  integration_name: "google"
+  # enabled: false
+  # valid_domains: ""
+  # integration_name: ~
 
 http:
   canonical_server_name: imbi.tld
@@ -60,6 +72,10 @@ postgres:
   # min_pool_size: 1
   # max_pool_size: 10
   # query_timeout: 120  # Maximum number of seconds to wait on a query
+
+# project_configuration:
+#   component_score_fact_id: ~
+#   ssm_prefix_template: "/{namespace_slug}/{project_type_slug}/{project_slug}/"
 
 # project_url_template: ~
 

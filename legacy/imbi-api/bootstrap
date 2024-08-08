@@ -83,23 +83,12 @@ automations:
     restrict_to_user: true
   grafana:
     project_link_type_id: ~
-  # see https://pycqa.github.io/isort/reference/isort/settings.html
-  isort:
-    force_grid_wrap: 0
-    known_first_party: ['acceptance', 'tests']
-    multi_line_output: 3
-    profile: pycharm
-    use_parentheses: false
   sentry:
     project_link_type_id: ~
   sonarqube:
     admin_token: ~
     project_link_type_id: ~
     url: ~
-  # see https://github.com/google/yapf#knobs
-  yapf:
-    allow_multiline_dictionary_keys: true
-    allow_split_before_dict_value: false
 google:
   enabled: true
   valid_domains: gmail.com
@@ -129,6 +118,7 @@ opensearch:
 postgres:
   url: postgres://postgres@${TEST_HOST}:$(get_exposed_port postgres 5432)/imbi
 project_configuration:
+  component_score_fact_id: ~
   ssm_prefix_template: /{namespace_slug}/{project_type_slug}/{project_slug}/
 project_url_template: http://{slug}.service.{environment}.consul
 ops_log_ticket_slug_template: "https://github.com/AWeber-Imbi/Imbi/issues/{slug}"
