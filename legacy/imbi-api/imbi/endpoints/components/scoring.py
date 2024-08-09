@@ -22,7 +22,7 @@ async def update_component_score_for_project(
     logger = logging.getLogger(__package__).getChild(
         'update_component_score_for_project')
 
-    fact_id = app.settings['project_configuration']['component_score_fact_id']
+    fact_id = app.settings['components']['project_fact_type_id']
     if not fact_id:
         return
 

@@ -26,6 +26,9 @@
 #     project_link_type_id: ~
 #     url: ~
 
+# components:
+#   project_fact_type_id: ~
+
 # cors: ~
 
 google:
@@ -74,7 +77,6 @@ postgres:
   # query_timeout: 120  # Maximum number of seconds to wait on a query
 
 # project_configuration:
-#   component_score_fact_id: ~
 #   ssm_prefix_template: "/{namespace_slug}/{project_type_slug}/{project_slug}/"
 
 # project_url_template: ~

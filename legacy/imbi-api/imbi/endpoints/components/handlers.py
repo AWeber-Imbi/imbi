@@ -160,8 +160,8 @@ class RecordRequestHandler(base.CRUDRequestHandler):
     def _project_update_required(self, original: models.Component,
                                  updated: models.Component) -> bool:
         # only update if we have a fact id to worry about
-        config = self.settings.get('project_configuration', {}) or {}
-        if config.get('component_score_fact_id') is not None:
+        config = self.settings.get('components', {}) or {}
+        if config.get('project_fact_type_id') is not None:
             # status change will always affect component scores
             if updated.status != original.status:
                 return True

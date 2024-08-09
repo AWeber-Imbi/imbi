@@ -89,6 +89,8 @@ automations:
     admin_token: ~
     project_link_type_id: ~
     url: ~
+components:
+  project_fact_type_id: ~
 google:
   enabled: true
   valid_domains: gmail.com
@@ -118,7 +120,6 @@ opensearch:
 postgres:
   url: postgres://postgres@${TEST_HOST}:$(get_exposed_port postgres 5432)/imbi
 project_configuration:
-  component_score_fact_id: ~
   ssm_prefix_template: /{namespace_slug}/{project_type_slug}/{project_slug}/
 project_url_template: http://{slug}.service.{environment}.consul
 ops_log_ticket_slug_template: "https://github.com/AWeber-Imbi/Imbi/issues/{slug}"
