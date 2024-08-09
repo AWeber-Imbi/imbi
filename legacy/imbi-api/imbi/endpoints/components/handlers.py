@@ -4,6 +4,7 @@ import re
 import typing
 
 import jsonpatch
+import jsonpointer
 import psycopg2.errors
 import psycopg2.errorcodes
 import pydantic
@@ -112,7 +113,11 @@ class RecordRequestHandler(base.CRUDRequestHandler):
 
         original = models.Component.model_validate(result.row)
         original_dict = original.model_dump()
-        patch = jsonpatch.JsonPatch(self.get_request_body())
+        try:
+            patch = jsonpatch.JsonPatch(self.get_request_body())
+        except (jsonpatch.JsonPatchException,
+                jsonpointer.JsonPointerException) as error:
+            raise errors.BadJsonPatch(error)
         updated_dict = patch.apply(original_dict)
         if all(original_dict[k] == updated_dict[k] for k in updated_dict):
             self._add_self_link(self.request.path)
