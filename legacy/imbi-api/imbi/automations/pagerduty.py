@@ -181,11 +181,15 @@ async def disassociate_service_dependency(
 
 async def _get_service_id(context: automations.AutomationContext,
                           project_id: int) -> typing.Optional[str]:
-    result = await context.run_query(
-        'SELECT pagerduty_service_id'
-        '  FROM v1.projects'
-        ' WHERE id = %(project_id)s', {'project_id': project_id},
-        'get-pagerduty-service-id')
+    result = result = await context.run_query(
+        'SELECT external_id'
+        '  FROM v1.project_identifiers'
+        ' WHERE project_id = %(project_id)s'
+        '   AND integration_name = %(integration_name)s', {
+            'project_id': project_id,
+            'integration_name': context.current_integration,
+        },
+        metric_name='get-pagerduty-service-id')
     if not result.row_count:
         return None
     return result.row['pagerduty_service_id']
