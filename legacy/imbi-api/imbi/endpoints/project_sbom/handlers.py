@@ -12,6 +12,7 @@ import imbi.opensearch.project
 from imbi import errors
 from imbi.endpoints import base
 from imbi.endpoints.project_sbom import graph, models
+from imbi.endpoints.components import scoring
 
 
 class SBOMInjectionHandler(base.PydanticHandlerMixin,
@@ -27,8 +28,7 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
         sbom: models.SBOM = self.parse_request_body_as(models.SBOM)
         target_ref = await self._find_project_ref(sbom)
         if target_ref not in {d.ref for d in sbom.dependencies}:
-            raise errors.ApplicationError(
-                http.HTTPStatus.UNPROCESSABLE_ENTITY, 'unprocessable-entity',
+            raise errors.UnprocessableEntity(
                 'target_ref %r is not in the SBoM dependency list', target_ref)
 
         components: dict[models.BOMRef, models.Component] = {}
@@ -55,9 +55,7 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
                 try:
                     component = components[bom_ref]
                 except KeyError:
-                    raise errors.ApplicationError(
-                        http.HTTPStatus.UNPROCESSABLE_ENTITY,
-                        'unprocessable-entity',
+                    raise errors.UnprocessableEntity(
                         'unknown component %r referenced as dependency of %r',
                         bom_ref, target_ref)
                 if not component.purl:
@@ -82,6 +80,9 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
             self.logger.debug('processed %s components for project %s(%s)',
                               len(project_components), project.slug,
                               project.id)
+
+            await scoring.update_component_score_for_project(
+                project.id, connector, self.application, index_project=False)
 
         await self._reindex_project(project)
 

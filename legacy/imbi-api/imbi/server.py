@@ -112,6 +112,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     if automations_grafana.get('url') \
             and automations_grafana.get('admin_token'):
         automations_grafana['enabled'] = True
+    component_cfg = config.get('components', {})
     footer_link = config.get('footer_link', {})
     google = config.get('google', {})
     http_settings = config.get('http', {})
@@ -179,6 +180,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'yapf': automations.get('yapf', {}),
         },
         'canonical_server_name': http_settings['canonical_server_name'],
+        'components': component_cfg,
         'compress_response': http_settings.get('compress_response', True),
         'cookie_secret': http_settings.get('cookie_secret', 'imbi'),
         'cors': config.get('cors', None),
@@ -227,7 +229,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'project_configuration': {
             'ssm_prefix_template': project_configuration.get(
                 'ssm_prefix_template',
-                '/{namespace_slug}/{project_type_slug}/{project_slug}/')
+                '/{namespace_slug}/{project_type_slug}/{project_slug}/'),
         },
         'project_url_template': config.get('project_url_template', None),
         'sentry_backend_dsn': sentry.get('backend_dsn'),

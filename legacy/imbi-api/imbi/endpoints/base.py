@@ -809,6 +809,9 @@ class PaginatedCollectionHandler(CollectionRequestHandler):
                     self.reverse_url(self.ITEM_NAME,
                                      *self._extract_keys(item)),
                 )
+        if hasattr(self, '_postprocess_item'):
+            for item in items:
+                self._postprocess_item(item)
 
         self.send_response(items)
 
@@ -825,9 +828,7 @@ class PydanticHandlerMixin(RequestHandler):
             return model_cls.model_validate(self.get_request_body(),
                                             context=context)
         except pydantic.ValidationError as error:
-            raise errors.ApplicationError(
-                422,
-                'invalid-request-body',
+            raise errors.UnprocessableEntity(
                 'Failed to validate request body: %s',
                 error,
                 validation_errors=error.errors(include_input=False,

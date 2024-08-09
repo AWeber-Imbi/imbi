@@ -5711,22 +5711,14 @@ paths:
                       description: Status for this version of this component
                       type: string
                       enum:
-                        - Active
                         - Deprecated
                         - Forbidden
+                        - Outdated
+                        - Unscored
+                        - Up-to-date
                     icon_class:
                       description: Optional Font Awesome icon class
                       type: string
-                      nullable: true
-                    score:
-                      description: |
-                        Score for this component
-
-                        If this property is `null`, then this component is not included
-                        in the total project score calculation.
-                      type: integer
-                      minimum: 0
-                      maximum: 100
                       nullable: true
                     link:
                       description: Link to the component
@@ -5738,14 +5730,12 @@ paths:
                     - version
                     - status
                     - icon_class
-                    - score
                   example:
                     package_url: 'pkg:pypi:imbi'
                     name: Imbi
                     version: 0.21.1
-                    status: Active
+                    status: Up-to-date
                     icon_class: imbi imbi
-                    score: 100
             application/msgpack:
               schema:
                 title: Project components
@@ -5768,22 +5758,14 @@ paths:
                       description: Status for this version of this component
                       type: string
                       enum:
-                        - Active
                         - Deprecated
                         - Forbidden
+                        - Outdated
+                        - Unscored
+                        - Up-to-date
                     icon_class:
                       description: Optional Font Awesome icon class
                       type: string
-                      nullable: true
-                    score:
-                      description: |
-                        Score for this component
-
-                        If this property is `null`, then this component is not included
-                        in the total project score calculation.
-                      type: integer
-                      minimum: 0
-                      maximum: 100
                       nullable: true
                     link:
                       description: Link to the component
@@ -5795,14 +5777,12 @@ paths:
                     - version
                     - status
                     - icon_class
-                    - score
                   example:
                     package_url: 'pkg:pypi:imbi'
                     name: Imbi
                     version: 0.21.1
-                    status: Active
+                    status: Up-to-date
                     icon_class: imbi imbi
-                    score: 100
           headers:
             Link:
               $ref: '#/paths/~1components/get/responses/200/headers/Link'
