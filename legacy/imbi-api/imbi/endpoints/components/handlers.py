@@ -234,7 +234,7 @@ class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
 
         """
         item['link'] = self.reverse_url('component', item['package_url'])
-        project_component = scoring.ProjectComponentRow.model_validate(item)
+        project_component = models.ProjectComponentRow.model_validate(item)
         if project_component.active_version is None:
             item['status'] = models.ProjectComponentStatus.UNSCORED
         elif project_component.status == models.ComponentStatus.ACTIVE:
