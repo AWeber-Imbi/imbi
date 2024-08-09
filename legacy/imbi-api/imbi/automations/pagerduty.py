@@ -104,3 +104,92 @@ async def _delete_project(context: automations.AutomationContext,
         context.note_progress('removing PagerDuty service %s due to error',
                               pd_info.service_info.id)
         await client.remove_service(pd_info.service_info.id)
+
+
+async def associate_service_dependency(
+    context: automations.AutomationContext,
+    automation: models.Automation,
+    dependency: models.ProjectDependency,
+) -> None:
+    if not (dependent_service_id := await _get_service_id(
+            context, dependency.project_id)):
+        context.note_progress(
+            'Pagerduty service not set up for '
+            'project %d, skipping automation', dependency.project_id)
+        return
+
+    if not (dependency_service_id := await _get_service_id(
+            context, dependency.dependency_id)):
+        context.note_progress(
+            'Pagerduty service not set up for '
+            'project %d, skipping automation', dependency.dependency_id)
+        return
+
+    client = await pagerduty.create_client(context.application,
+                                           automation.integration_name)
+
+    service_dependencies = await client.get_service_dependencies(
+        dependency.project_id)
+    for d in service_dependencies:
+        if d.supporting_service.id == dependency_service_id:
+            context.note_progress(
+                'Pagerduty service dependency already exists '
+                'between %s and %s, skipping automation',
+                dependency.project_id, dependency.dependency_id)
+            return
+
+    await client.create_service_dependency(
+        supporting_service_id=dependency_service_id,
+        dependent_service_id=dependent_service_id)
+
+
+async def disassociate_service_dependency(
+    context: automations.AutomationContext,
+    automation: models.Automation,
+    dependency: models.ProjectDependency,
+) -> None:
+    if not (dependent_service_id := await _get_service_id(
+            context, dependency.project_id)):
+        context.note_progress(
+            'Pagerduty service not set up for '
+            'project %d, skipping automation', dependency.project_id)
+        return
+
+    if not (dependency_service_id := await _get_service_id(
+            context, dependency.dependency_id)):
+        context.note_progress(
+            'Pagerduty service not set up for '
+            'project %d, skipping automation', dependency.dependency_id)
+        return
+
+    client = await pagerduty.create_client(context.application,
+                                           automation.integration_name)
+
+    service_dependencies = await client.get_service_dependencies(
+        dependency.project_id)
+    for d in service_dependencies:
+        if d.supporting_service.id == dependency_service_id:
+            await client.remove_service_dependency(
+                supporting_service_id=dependency_service_id,
+                dependent_service_id=dependent_service_id)
+            return
+    context.note_progress(
+        'Pagerduty service dependency does not exist '
+        'between %s and %s, skipping automation', dependency.project_id,
+        dependency.dependency_id)
+
+
+async def _get_service_id(context: automations.AutomationContext,
+                          project_id: int) -> typing.Optional[str]:
+    result = result = await context.run_query(
+        'SELECT external_id'
+        '  FROM v1.project_identifiers'
+        ' WHERE project_id = %(project_id)s'
+        '   AND integration_name = %(integration_name)s', {
+            'project_id': project_id,
+            'integration_name': context.current_integration,
+        },
+        metric_name='get-pagerduty-service-id')
+    if not result.row_count:
+        return None
+    return result.row['pagerduty_service_id']
