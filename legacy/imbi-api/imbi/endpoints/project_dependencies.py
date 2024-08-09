@@ -165,7 +165,8 @@ class RecordRequestHandler(projects.ProjectAttributeCRUDMixin,
         dependent_project = await models.project(kwargs['project_id'],
                                                  self.application)
         selected_automations = await automations.retrieve_automations(
-            self.application, kwargs.get('automations', []),
+            self.application,
+            self.get_request_body().get('automations', []),
             dependent_project.project_type.id)
 
         result = await self.postgres_execute(self.DELETE_SQL, kwargs,
