@@ -267,8 +267,9 @@ async def retrieve_automations(
     not applicable to the project type, then an exception is raised.
 
     """
+    from imbi import models
     automation_instances = [
-        await imbi.models.automation(slug, application) for slug in slugs
+        await models.automation(slug, application) for slug in slugs
     ]
     required_automations = set()
     for a in automation_instances:
