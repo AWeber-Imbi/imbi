@@ -125,8 +125,7 @@ class ProcessingHandler(base.RequestHandler):
             elif len(values) == 1:
                 body[arg] = values[0].decode('utf-8')
             else:
-                raise errors.ApplicationError(
-                    422, 'unprocessable-entity',
+                raise errors.UnprocessableEntity(
                     'multiple query arguments with same name %r', arg)
         await self._process_notification(integration_name, notification_name,
                                          body)

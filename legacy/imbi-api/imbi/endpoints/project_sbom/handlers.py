@@ -28,8 +28,7 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
         sbom: models.SBOM = self.parse_request_body_as(models.SBOM)
         target_ref = await self._find_project_ref(sbom)
         if target_ref not in {d.ref for d in sbom.dependencies}:
-            raise errors.ApplicationError(
-                http.HTTPStatus.UNPROCESSABLE_ENTITY, 'unprocessable-entity',
+            raise errors.UnprocessableEntity(
                 'target_ref %r is not in the SBoM dependency list', target_ref)
 
         components: dict[models.BOMRef, models.Component] = {}
@@ -56,9 +55,7 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
                 try:
                     component = components[bom_ref]
                 except KeyError:
-                    raise errors.ApplicationError(
-                        http.HTTPStatus.UNPROCESSABLE_ENTITY,
-                        'unprocessable-entity',
+                    raise errors.UnprocessableEntity(
                         'unknown component %r referenced as dependency of %r',
                         bom_ref, target_ref)
                 if not component.purl:

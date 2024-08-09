@@ -125,10 +125,7 @@ class RecordRequestHandler(base.PydanticHandlerMixin,
             patch = jsonpatch.JsonPatch(self.get_request_body())
         except (jsonpatch.JsonPatchException,
                 jsonpatch.JsonPointerException) as error:
-            raise errors.ApplicationError(http.HTTPStatus.UNPROCESSABLE_ENTITY,
-                                          'bad-patch',
-                                          'Failed to deserialize patch: %s',
-                                          error)
+            raise errors.BadJsonPatch(error)
 
         details = await self._get_oauth2_details(integration_name)
         if not details:

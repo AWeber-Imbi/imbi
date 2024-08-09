@@ -5,8 +5,12 @@ that provide a customizable ``type`` member along with some useful
 functionality for specific error cases.
 
 """
+from __future__ import annotations
+
 import typing
 
+import jsonpatch
+import jsonpointer
 import problemdetails
 import pydantic
 import tornado.httputil
@@ -108,6 +112,19 @@ class UnsupportedMediaType(ApplicationError):
         super().__init__(415, 'unsupported-media-type',
                          '%s is not a supported media type', media_type,
                          **kwargs)
+
+
+class UnprocessableEntity(ApplicationError):
+    def __init__(self, log_message: str, *log_args, **kwargs) -> None:
+        fragment = kwargs.pop('fragment', 'unprocessable-entity')
+        super().__init__(422, fragment, log_message, *log_args, **kwargs)
+
+
+class BadJsonPatch(UnprocessableEntity):
+    def __init__(self, error: jsonpatch.JsonPatchException
+                 | jsonpointer.JsonPointerException, **kwargs) -> None:
+        kwargs.setdefault('title', 'Invalid JSON Patch')
+        super().__init__('Failed to parse JSON patch: %s', error)
 
 
 class InternalServerError(ApplicationError):
