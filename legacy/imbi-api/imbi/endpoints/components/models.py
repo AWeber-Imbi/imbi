@@ -23,11 +23,11 @@ class ProjectComponentStatus(str, enum.Enum):
     FORBIDDEN = 'Forbidden'
 
 
-class ProjectStatus(str, enum.Enum):
+class ProjectStatus(int, enum.Enum):
     """Component Score project fact values"""
-    OKAY = 'Okay'
-    NEEDS_WORK = 'Needs Work'
-    UNACCEPTABLE = 'Unacceptable'
+    OKAY = 100
+    NEEDS_WORK = 80
+    UNACCEPTABLE = 0
 
 
 class ProjectComponentRow(pydantic.BaseModel):
