@@ -199,8 +199,8 @@ class _PagerDutyClient(sprockets.mixins.http.HTTPClientMixin):
         else:
             return parsed_rsp.relationships
 
-    async def create_service_dependency(self, supporting_service_id: str,
-                                        dependent_service_id: str) -> None:
+    async def associate_service_dependency(self, supporting_service_id: str,
+                                           dependent_service_id: str) -> None:
         """Create a dependency between two services"""
         body = {
             'relationships': [{
@@ -230,8 +230,9 @@ class _PagerDutyClient(sprockets.mixins.http.HTTPClientMixin):
                 detail=f'Failed to associate service {supporting_service_id} '
                 f'as dependency of service {dependent_service_id}')
 
-    async def remove_service_dependency(self, supporting_service_id: str,
-                                        dependent_service_id: str) -> None:
+    async def disassociate_service_dependency(
+            self, supporting_service_id: str,
+            dependent_service_id: str) -> None:
         """Remove a dependency between two services"""
         body = {
             'relationships': [{
