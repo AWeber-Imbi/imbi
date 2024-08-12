@@ -89,8 +89,8 @@ automations:
     admin_token: ~
     project_link_type_id: ~
     url: ~
-components:
-  project_fact_type_id: ~
+component_scoring:
+  enabled: true
 google:
   enabled: true
   valid_domains: gmail.com

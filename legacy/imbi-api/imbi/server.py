@@ -112,7 +112,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     if automations_grafana.get('url') \
             and automations_grafana.get('admin_token'):
         automations_grafana['enabled'] = True
-    component_cfg = config.get('components', {})
+    component_cfg = config.get('component_scoring', {})
     footer_link = config.get('footer_link', {})
     google = config.get('google', {})
     http_settings = config.get('http', {})
@@ -142,6 +142,8 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     automations_sentry = automations.get('sentry', {})
     automations_sentry.setdefault('enabled', True)
     automations_sentry.setdefault('url', 'https://sentry.io/')
+
+    component_cfg.setdefault('enabled', False)
 
     module_path = pathlib.Path(sys.modules['imbi'].__file__).parent
 
@@ -180,7 +182,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             'yapf': automations.get('yapf', {}),
         },
         'canonical_server_name': http_settings['canonical_server_name'],
-        'components': component_cfg,
+        'component_scoring': component_cfg,
         'compress_response': http_settings.get('compress_response', True),
         'cookie_secret': http_settings.get('cookie_secret', 'imbi'),
         'cors': config.get('cors', None),
