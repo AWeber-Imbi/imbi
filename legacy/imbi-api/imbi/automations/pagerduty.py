@@ -138,7 +138,7 @@ async def associate_service_dependency(
                 dependency.project_id, dependency.dependency_id)
             return
 
-    await client.create_service_dependency(
+    await client.associate_service_dependency(
         supporting_service_id=dependency_service_id,
         dependent_service_id=dependent_service_id)
 
@@ -169,7 +169,7 @@ async def disassociate_service_dependency(
         dependency.project_id)
     for d in service_dependencies:
         if d.supporting_service.id == dependency_service_id:
-            await client.remove_service_dependency(
+            await client.disassociate_service_dependency(
                 supporting_service_id=dependency_service_id,
                 dependent_service_id=dependent_service_id)
             return

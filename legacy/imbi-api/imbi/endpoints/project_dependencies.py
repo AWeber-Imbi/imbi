@@ -157,6 +157,7 @@ class RecordRequestHandler(projects.ProjectAttributeCRUDMixin,
            AND dependency_id=%(dependency_id)s""")
 
     async def delete(self, *args, **kwargs):
+        body = self.get_request_body() if self.request.body else {}
         dependency = await models.project_dependency(kwargs['project_id'],
                                                      kwargs['dependency_id'],
                                                      self.application)
@@ -165,7 +166,7 @@ class RecordRequestHandler(projects.ProjectAttributeCRUDMixin,
         dependent_project = await models.project(kwargs['project_id'],
                                                  self.application)
         selected_automations = await automations.retrieve_automations(
-            self.application, kwargs.get('automations', []),
+            self.application, body.get('automations', []),
             dependent_project.project_type.id)
 
         result = await self.postgres_execute(self.DELETE_SQL, kwargs,
