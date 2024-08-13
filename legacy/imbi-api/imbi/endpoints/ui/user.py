@@ -23,6 +23,7 @@ class AvailableAutomationsHandler(base.AuthenticatedRequestHandler):
         project_types = self.get_query_arguments('project_type')
 
         query = sql.SQL('SELECT DISTINCT a.name AS automation_name,'
+                        '                a.categories,'
                         '                i.name AS integration_name,'
                         '                a.slug AS automation_slug'
                         '          FROM v1.integrations AS i'
