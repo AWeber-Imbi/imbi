@@ -68,4 +68,10 @@ class AvailableAutomationsHandler(base.AuthenticatedRequestHandler):
             query = sql.SQL(' AND ').join([query, clause])
 
         result = await self.postgres_execute(query, params)
-        self.send_response(result.rows)
+
+        # arrays of custom types come out as strings like '{foo,bar,baz}'
+        response = [{
+            **row,
+            'categories': row['categories'].lstrip('{').rstrip('}').split(',')
+        } for row in result.rows]
+        self.send_response(response)
