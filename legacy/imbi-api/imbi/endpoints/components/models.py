@@ -27,7 +27,7 @@ class ProjectStatus(int, enum.Enum):
     """Component Score project fact values"""
     OKAY = 100
     NEEDS_WORK = 80
-    UNACCEPTABLE = 0
+    UNACCEPTABLE = 20
 
 
 class ProjectComponentRow(pydantic.BaseModel):
