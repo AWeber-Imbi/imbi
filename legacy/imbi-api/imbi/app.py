@@ -268,16 +268,12 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
             })
 
         # Create range values that encompass the ProjectStatus enum
-        # values in imbi.endpoints.components.models. We want a wide
-        # range in the center for flexibility in introducing more
-        # "yellow/orange" categories in the future.
+        # values in imbi.endpoints.components.models. Note that we start
+        # at zero and use a value slightly greater than that upper bound
+        # of the last range as the start of the next range.
         config['project_fact_type_id'] = result.row['id']
-        last_value = 0.0
-        for max_value in (
-                20,  # arbitrary low-end of middle range
-                imbi.endpoints.components.models.ProjectStatus.NEEDS_WORK,
-                imbi.endpoints.components.models.ProjectStatus.OKAY,
-        ):
+        lower = 0.0
+        for upper in sorted(imbi.endpoints.components.models.ProjectStatus):
             await transaction.execute(
                 'INSERT INTO v1.project_fact_type_ranges('
                 '               created_by, fact_type_id, min_value,'
@@ -287,10 +283,10 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
                 ')', {
                     'created_by': 'system',
                     'fact_id': config['project_fact_type_id'],
-                    'min_value': last_value,
-                    'max_value': max_value,
+                    'min_value': lower,
+                    'max_value': float(upper),
                 })
-            last_value = float(max_value) + 0.01
+            lower = float(upper) + 0.01
 
         self.logger.info('created Component Score fact named %r with id %r',
                          fact_name, config['project_fact_type_id'])
