@@ -23,6 +23,7 @@ class AvailableAutomationsHandler(base.AuthenticatedRequestHandler):
         project_types = self.get_query_arguments('project_type')
 
         query = sql.SQL('SELECT DISTINCT a.name AS automation_name,'
+                        '                a.categories,'
                         '                i.name AS integration_name,'
                         '                a.slug AS automation_slug'
                         '          FROM v1.integrations AS i'
@@ -67,4 +68,10 @@ class AvailableAutomationsHandler(base.AuthenticatedRequestHandler):
             query = sql.SQL(' AND ').join([query, clause])
 
         result = await self.postgres_execute(query, params)
-        self.send_response(result.rows)
+
+        # arrays of custom types come out as strings like '{foo,bar,baz}'
+        response = [{
+            **row,
+            'categories': row['categories'].lstrip('{').rstrip('}').split(',')
+        } for row in result.rows]
+        self.send_response(response)
