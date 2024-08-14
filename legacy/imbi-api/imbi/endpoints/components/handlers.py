@@ -234,11 +234,15 @@ class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
 
         """
         item['link'] = self.reverse_url('component', item['package_url'])
-        project_component = models.ProjectComponentRow.model_validate(item)
-        if project_component.active_version is None:
-            item['status'] = models.ProjectComponentStatus.UNSCORED
-        elif project_component.status == models.ComponentStatus.ACTIVE:
-            if project_component.version in project_component.active_version:
+        row = models.ProjectComponentRow.model_validate(item)
+        if row.status == models.ComponentStatus.FORBIDDEN:
+            item['status'] = models.ProjectComponentStatus.FORBIDDEN
+        elif row.status == models.ComponentStatus.DEPRECATED:
+            item['status'] = models.ProjectComponentStatus.DEPRECATED
+        elif row.status == models.ComponentStatus.ACTIVE:
+            if row.active_version is None:
+                item['status'] = models.ProjectComponentStatus.UNSCORED
+            elif row.version in row.active_version:
                 item['status'] = models.ProjectComponentStatus.UP_TO_DATE
             else:
                 item['status'] = models.ProjectComponentStatus.OUTDATED
