@@ -192,4 +192,4 @@ async def _get_service_id(context: automations.AutomationContext,
         metric_name='get-pagerduty-service-id')
     if not result.row_count:
         return None
-    return result.row['pagerduty_service_id']
+    return result.row['external_id']
