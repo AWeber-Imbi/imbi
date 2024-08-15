@@ -129,7 +129,7 @@ async def associate_service_dependency(
                                            automation.integration_name)
 
     service_dependencies = await client.get_service_dependencies(
-        dependency.project_id)
+        dependent_service_id)
     for d in service_dependencies:
         if d.supporting_service.id == dependency_service_id:
             context.note_progress(
@@ -166,7 +166,7 @@ async def disassociate_service_dependency(
                                            automation.integration_name)
 
     service_dependencies = await client.get_service_dependencies(
-        dependency.project_id)
+        dependent_service_id)
     for d in service_dependencies:
         if d.supporting_service.id == dependency_service_id:
             await client.disassociate_service_dependency(
