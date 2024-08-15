@@ -8058,6 +8058,271 @@ paths:
                       description: The user that last modified the record
                       type: string
                       format: datetime
+  '/projects/{id}/score-detail':
+    get:
+      description: Retrieve project score calculation details
+      summary: Project Score Report
+      tags:
+        - Project Scores
+      parameters:
+        - name: id
+          in: path
+          description: Identifies the project of the SBoM overwrite
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Report generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  score:
+                    description: Project score as calculated by the API
+                    type: number
+                  scored_facts:
+                    description: List of facts contributing to the project score
+                    type: array
+                    items:
+                      anyOf:
+                        - title: enum
+                          allOf:
+                            - type: object
+                              properties:
+                                name:
+                                  type: string
+                                data_type:
+                                  type: string
+                                value:
+                                  description: Current fact value
+                                  oneOf:
+                                    - type: string
+                                    - type: boolean
+                                    - type: number
+                                  nullable: true
+                                score:
+                                  description: '**Unweighted** score'
+                                  type: number
+                                weight:
+                                  type: number
+                            - type: object
+                              properties:
+                                fact_type:
+                                  type: string
+                                  enum:
+                                    - enum
+                                enums:
+                                  description: List of possible values
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      value:
+                                        type: string
+                                      score:
+                                        description: '**Unweighted** score for this value'
+                                        type: number
+                                      selected:
+                                        description: Is this the current fact value?
+                                        type: boolean
+                        - title: free-form
+                          allOf:
+                            - $ref: '#/paths/~1projects~1%7Bid%7D~1score-detail/get/responses/200/content/application~1json/schema/properties/scored_facts/items/anyOf/0/allOf/0'
+                            - type: object
+                              properties:
+                                fact_type:
+                                  type: string
+                                  enum:
+                                    - free-form
+                        - title: range
+                          allOf:
+                            - $ref: '#/paths/~1projects~1%7Bid%7D~1score-detail/get/responses/200/content/application~1json/schema/properties/scored_facts/items/anyOf/0/allOf/0'
+                            - type: object
+                              properties:
+                                fact_type:
+                                  type: string
+                                  enum:
+                                    - range
+                                ranges:
+                                  description: List of scored ranges
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      value:
+                                        description: lower and upper range bounds
+                                        type: array
+                                        items:
+                                          type: number
+                                        minItems: 2
+                                        maxItems: 2
+                                        minimum: 0
+                                        maximum: 100
+                                      score:
+                                        description: '**Unweighted** score for this value'
+                                        type: number
+                                      selected:
+                                        description: Is this the current fact value?
+                                        type: boolean
+                  unscored_facts:
+                    description: List of facts **NOT** contributing to the project score
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        fact_type:
+                          type: string
+                          enum:
+                            - enum
+                            - free-form
+                            - range
+                        data_type:
+                          type: string
+                        value:
+                          oneOf:
+                            - type: string
+                            - type: boolean
+                            - type: number
+                          nullable: true
+                        score:
+                          title: Always null
+                          type: number
+                          nullable: true
+                        weight:
+                          title: Always zero
+                          type: number
+                          minimum: 0
+                          maximum: 0
+            application/msgpack:
+              schema:
+                type: object
+                properties:
+                  score:
+                    description: Project score as calculated by the API
+                    type: number
+                  scored_facts:
+                    description: List of facts contributing to the project score
+                    type: array
+                    items:
+                      anyOf:
+                        - title: enum
+                          allOf:
+                            - type: object
+                              properties:
+                                name:
+                                  type: string
+                                data_type:
+                                  type: string
+                                value:
+                                  description: Current fact value
+                                  oneOf:
+                                    - type: string
+                                    - type: boolean
+                                    - type: number
+                                  nullable: true
+                                score:
+                                  description: '**Unweighted** score'
+                                  type: number
+                                weight:
+                                  type: number
+                            - type: object
+                              properties:
+                                fact_type:
+                                  type: string
+                                  enum:
+                                    - enum
+                                enums:
+                                  description: List of possible values
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      value:
+                                        type: string
+                                      score:
+                                        description: '**Unweighted** score for this value'
+                                        type: number
+                                      selected:
+                                        description: Is this the current fact value?
+                                        type: boolean
+                        - title: free-form
+                          allOf:
+                            - $ref: '#/paths/~1projects~1%7Bid%7D~1score-detail/get/responses/200/content/application~1json/schema/properties/scored_facts/items/anyOf/0/allOf/0'
+                            - type: object
+                              properties:
+                                fact_type:
+                                  type: string
+                                  enum:
+                                    - free-form
+                        - title: range
+                          allOf:
+                            - $ref: '#/paths/~1projects~1%7Bid%7D~1score-detail/get/responses/200/content/application~1json/schema/properties/scored_facts/items/anyOf/0/allOf/0'
+                            - type: object
+                              properties:
+                                fact_type:
+                                  type: string
+                                  enum:
+                                    - range
+                                ranges:
+                                  description: List of scored ranges
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      value:
+                                        description: lower and upper range bounds
+                                        type: array
+                                        items:
+                                          type: number
+                                        minItems: 2
+                                        maxItems: 2
+                                        minimum: 0
+                                        maximum: 100
+                                      score:
+                                        description: '**Unweighted** score for this value'
+                                        type: number
+                                      selected:
+                                        description: Is this the current fact value?
+                                        type: boolean
+                  unscored_facts:
+                    description: List of facts **NOT** contributing to the project score
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        fact_type:
+                          type: string
+                          enum:
+                            - enum
+                            - free-form
+                            - range
+                        data_type:
+                          type: string
+                        value:
+                          oneOf:
+                            - type: string
+                            - type: boolean
+                            - type: number
+                          nullable: true
+                        score:
+                          title: Always null
+                          type: number
+                          nullable: true
+                        weight:
+                          title: Always zero
+                          type: number
+                          minimum: 0
+                          maximum: 0
+        '401':
+          $ref: '#/paths/~1groups/get/responses/401'
+        '404':
+          $ref: '#/paths/~1components/get/responses/404'
   '/projects/{id}/score-history':
     get:
       description: Retrieve the score history for a specific project.
