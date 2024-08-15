@@ -30,7 +30,6 @@ try:
 except ImportError:
     sentry_logging, sentry_tornado = None, None
 
-import imbi.endpoints.components.models
 from imbi import (cors, endpoints, errors, keychain, openapi, permissions,
                   stats, transcoders, version)
 from imbi.clients import opensearch
@@ -44,11 +43,14 @@ SIGNED_VALUE_PATTERN = re.compile(r'^(?:[1-9][0-9]*)\|(?:.*)$')
 
 
 class Application(sprockets_postgres.ApplicationMixin, app.Application):
-    def __init__(self, **settings):
+    def __init__(self, *, initializing: bool = False, **settings: object):
         LOGGER.info('imbi v%s starting', settings['version'])
         settings['default_handler_class'] = default.RequestHandler
         settings['permissions'] = permissions.PERMISSIONS
+
         super(Application, self).__init__(endpoints.URLS, **settings)
+
+        self._initializing = initializing  # running with --initialize
         self._ready_to_serve = False
         self._request_logger = logging.getLogger('imbi')
         self.keychain = keychain.Keychain(self.settings['encryption_key'])
@@ -186,6 +188,57 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         """
         self.openapi_validator.validate(request).raise_for_errors()
 
+    async def update_scoring_settings(
+            self, transaction: sprockets_postgres.PostgresConnector) -> None:
+        """Make component-scoring settings consistent
+
+        This ensures that if component_scoring[enabled] is True, then:
+
+        1. the fact exists in the database
+        2. component_scoring[fact_name] is **set**
+        3. component_scoring[project_fact_type_id] is set
+
+        If component_scoring[enabled] is falsey, then:
+
+        1. component_scoring[enabled] is ``False``
+        2. component_scoring[fact_name] is **set**
+        3. component_scoring[project_fact_type_id] is ``None``
+
+        Note that this is called from `imbi --initialize` as well.
+
+        """
+        config = self.settings.get('component_scoring', {})
+        fact_name = config.setdefault('fact_name', 'Component Score')
+        if not config.get('enabled'):
+            self.logger.info(
+                'Component scoring feature is disabled in configuration')
+            config['enabled'] = False
+            config['project_fact_type_id'] = None
+            return
+
+        component_fact_id: int | None = config.get('project_fact_type_id')
+        if component_fact_id is not None:
+            self.logger.info('Using score fact ID %r from configuration',
+                             component_fact_id)
+            return
+
+        result = await transaction.execute(
+            'SELECT id'
+            '  FROM v1.project_fact_types'
+            ' WHERE name = %(fact_name)s', {'fact_name': fact_name})
+        if result:
+            self.logger.info('Found score fact ID %r in database',
+                             result.row['id'])
+            config['project_fact_type_id'] = result.row['id']
+        else:
+            if not self._initializing:
+                self.logger.warning(
+                    'Score fact %r does not exist, disabling Component scoring'
+                    ' feature. Run with --initialize to create fact',
+                    fact_name)
+            config['enabled'] = False
+            config['project_fact_type_id'] = None
+
     @property
     def ready_to_serve(self) -> bool:
         """Indicates if the service is available to respond to HTTP requests"""
@@ -209,84 +262,4 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
 
         async with self.postgres_connector(on_duration=on_timing) as connector:
             async with connector.transaction() as transaction:
-                await self._enable_component_scoring(transaction)
-
-    async def _enable_component_scoring(
-        self,
-        transaction: sprockets_postgres.PostgresConnector,
-    ) -> None:
-        """Enable component scoring feature
-
-        The goal of this method is to create a "component score" project
-        fact type if the feature is enabled. It also ensures that component
-        scoring settings (self.settings) are consistent. Specifically, if
-        the `enabled` key is truthy, then `project_fact_type_id` is set to
-        the correct project fact identifier; otherwise, `enabled` is falsy
-        and the project fact identifier is unset.
-
-        Though it sounds complex, it is cleaner than having to check if
-        the feature is enabled *and* the fact type ID is configured.
-
-        """
-        config = self.settings.get('component_scoring', {})
-        if not config.get('enabled'):
-            config['enabled'] = False  # ensure that `enabled' key exists
-            config['project_fact_type_id'] = None  # make this consistent too
-            return
-
-        component_fact_id: int | None = config.get('project_fact_type_id')
-        if component_fact_id is not None:
-            return
-
-        fact_name = config.get('fact_name', 'Component Score')
-        result = await transaction.execute(
-            'SELECT id'
-            '  FROM v1.project_fact_types'
-            ' WHERE name = %(fact_name)s', {'fact_name': fact_name},
-            metric_name='get-project-fact-type')
-        if result:
-            self.logger.debug('found %r project fact type with id %r',
-                              fact_name, result.row['id'])
-            config['project_fact_type_id'] = result.row['id']
-            return
-
-        self.logger.debug('creating Component Score fact type named %r',
-                          fact_name)
-        result = await transaction.execute(
-            'INSERT INTO v1.project_fact_types('
-            '              created_by, name, fact_type, data_type,'
-            '              project_type_ids, ui_options)'
-            '     VALUES (%(created_by)s, %(name)s, %(fact_type)s,'
-            '             %(data_type)s, %(empty_array)s, %(ui_options)s)'
-            '  RETURNING id', {
-                'empty_array': [],
-                'ui_options': ['read-only'],
-                'created_by': 'system',
-                'fact_type': 'range',
-                'data_type': 'integer',
-                'name': fact_name,
-            })
-
-        # Create range values that encompass the ProjectStatus enum
-        # values in imbi.endpoints.components.models. Note that we start
-        # at zero and use a value slightly greater than that upper bound
-        # of the last range as the start of the next range.
-        config['project_fact_type_id'] = result.row['id']
-        lower = 0.0
-        for upper in sorted(imbi.endpoints.components.models.ProjectStatus):
-            await transaction.execute(
-                'INSERT INTO v1.project_fact_type_ranges('
-                '               created_by, fact_type_id, min_value,'
-                '               max_value, score)'
-                '     VALUES (%(created_by)s, %(fact_id)s, %(min_value)s,'
-                '             %(max_value)s, %(max_value)s'
-                ')', {
-                    'created_by': 'system',
-                    'fact_id': config['project_fact_type_id'],
-                    'min_value': lower,
-                    'max_value': float(upper),
-                })
-            lower = float(upper) + 0.01
-
-        self.logger.info('created Component Score fact named %r with id %r',
-                         fact_name, config['project_fact_type_id'])
+                await self.update_scoring_settings(transaction)

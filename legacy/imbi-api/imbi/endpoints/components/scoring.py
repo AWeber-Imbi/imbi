@@ -107,3 +107,64 @@ async def update_component_score_for_project(
                 if project is not None:  # may have been removed
                     index = imbi.opensearch.project.ProjectIndex(app)
                     await index.index_document(project)
+
+
+async def enable_component_scoring(app: imbi.app.Application) -> None:
+    """Enable the project component scoring feature
+
+    1. creates the database rows for the fact type
+    2. updates app.settings[component_scoring]
+
+    """
+    logger = logging.getLogger(__package__).getChild(
+        'enable_component_scoring')
+
+    app_config = app.settings.setdefault('component_scoring', {})
+    if app_config['enabled']:  # nothing to do here
+        return
+
+    connector: sprockets_postgres.PostgresConnector
+    transaction: sprockets_postgres.PostgresConnector
+    async with app.postgres_connector() as connector:
+        async with connector.transaction() as transaction:
+            # Create a new project fact using the configured name
+            fact_name = app_config['fact_name']
+            logger.info('Creating %r project fact type', fact_name)
+            result = await transaction.execute(
+                'INSERT INTO v1.project_fact_types('
+                '               created_by, name, fact_type, data_type,'
+                '               project_type_ids, ui_options)'
+                '     VALUES (%(created_by)s, %(name)s, %(fact_type)s,'
+                '             %(data_type)s, %(empty)s, %(ui_options)s)'
+                '  RETURNING id', {
+                    'created_by': 'system',
+                    'data_type': 'integer',
+                    'empty': [],
+                    'fact_type': 'range',
+                    'name': fact_name,
+                    'ui_options': ['read-only'],
+                })
+
+            # Create range values that encompass the ProjectStatus enum
+            # values in imbi.endpoints.components.models. Note that we start
+            # at zero and use a value slightly greater than that upper bound
+            # of the last range as the start of the next range.
+            app_config['project_fact_type_id'] = result.row['id']
+            lower_bound = 0.0
+            for upper_bound in sorted(models.ProjectStatus):
+                await transaction.execute(
+                    'INSERT INTO v1.project_fact_type_ranges('
+                    '               created_by, fact_type_id, min_value,'
+                    '               max_value, score)'
+                    '     VALUES (%(created_by)s, %(fact_type_id)s,'
+                    '             %(min_value)s, %(max_value)s,'
+                    '             %(max_value)s)', {
+                        'created_by': 'system',
+                        'fact_type_id': app_config['project_fact_type_id'],
+                        'max_value': float(upper_bound),
+                        'min_value': lower_bound,
+                    })
+                lower_bound = float(upper_bound) + 0.01
+
+    logger.info('Created %r project fact type with ID %r', fact_name,
+                app_config['project_fact_type_id'])
