@@ -18,6 +18,7 @@ from tornado import ioloop
 
 from imbi import app, pkgfiles, version
 from imbi.endpoints import static
+from imbi.endpoints.components import scoring
 from imbi.opensearch import operations_log, project
 
 LOGGER = logging.getLogger(__name__)
@@ -68,8 +69,11 @@ def run() -> None:
 async def initialize(settings: dict, logging_settings: dict, build: bool):
     logging_config.dictConfig(logging_settings)
     loop = ioloop.IOLoop.current()
-    """Initialize the OpenSearch Indexes"""
-    application = app.Application(**settings)
+
+    # this may be modified by application startup
+    enable_scoring = settings['component_scoring']['enabled']
+
+    application = app.Application(initializing=True, **settings)
     await application._postgres_on_start(application, loop)
     await application.on_start(application, loop)
 
@@ -78,6 +82,9 @@ async def initialize(settings: dict, logging_settings: dict, build: bool):
 
     # Initialize the OperationsLog Index
     await operations_log.initialize(application, build)
+
+    if enable_scoring:
+        await scoring.enable_component_scoring(application)
 
     LOGGER.info('Initialization is complete')
     await application._postgres_shutdown(loop)
