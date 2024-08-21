@@ -7,10 +7,55 @@ import typing_extensions as typing
 
 import imbi.models
 import imbi.opensearch.project
+import imbi.semver
 from imbi.endpoints.components import models
 
 if typing.TYPE_CHECKING:
     import imbi.app
+
+
+async def update_component_version_statuses(
+    component: models.Component,
+    connector: sprockets_postgres.PostgresConnector,
+) -> None:
+    if (component.status == models.ComponentStatus.DEPRECATED
+            or component.status == models.ComponentStatus.FORBIDDEN
+            or component.active_version is None):
+        new_status = (component.status.value if component.status
+                      in (models.ComponentStatus.DEPRECATED,
+                          models.ComponentStatus.FORBIDDEN) else
+                      models.ProjectComponentStatus.UNSCORED.value)
+        await connector.execute(
+            'UPDATE v1.component_versions'
+            '   SET status = %(new_status)s'
+            ' WHERE package_url = %(package_url)s', {
+                'package_url': component.package_url,
+                'new_status': new_status
+            },
+            metric_name=f'bulk-update-component-version-{new_status}')
+        return
+
+    transaction: sprockets_postgres.PostgresConnector
+    async with connector.transaction() as transaction:
+        result = await transaction.execute(
+            'SELECT id, version, status'
+            '  FROM v1.component_versions'
+            ' WHERE package_url = %(package_url)s'
+            '   FOR UPDATE', {'package_url': component.package_url})
+        for row in result:
+            new_status = (models.ProjectComponentStatus.UP_TO_DATE.value
+                          if row['version'] in component.active_version else
+                          models.ProjectComponentStatus.OUTDATED.value)
+            await transaction.execute(
+                'UPDATE v1.component_versions'
+                '   SET status = %(new_status)s'
+                '  WHERE id = %(version_id)s'
+                ' AND status = %(old_status)s', {
+                    'new_status': new_status,
+                    'old_status': row['status'],
+                    'version_id': row['id']
+                },
+                metric_name='update-component-version-status')
 
 
 async def update_component_score_for_project(
@@ -24,12 +69,13 @@ async def update_component_score_for_project(
 
     fact_id = app.settings['component_scoring']['project_fact_type_id']
     if not fact_id:
+        logger.debug('skipping component score update, scoring fact not set')
         return
 
     transaction: sprockets_postgres.PostgresConnector
     async with connector.transaction() as transaction:
         result = await transaction.execute(
-            'SELECT value'
+            'SELECT value::INTEGER'
             '  FROM v1.project_facts'
             ' WHERE project_id = %(project_id)s'
             '   AND fact_type_id = %(fact_id)s', {
@@ -38,53 +84,36 @@ async def update_component_score_for_project(
             })
         current_status = result.row['value'] if result else None
 
+        counts = {name: 0 for name in models.ProjectComponentStatus}
         result = await transaction.execute(
-            'SELECT c.package_url, c.status, c.active_version, v.version'
+            'SELECT v.status, COUNT(v.id) AS num_components'
             '  FROM v1.project_components AS p'
             '  JOIN v1.component_versions AS v'
-            '    ON p.package_url = v.package_url AND p.version_id = v.id'
-            '  JOIN v1.components AS c ON v.package_url = c.package_url'
-            ' WHERE project_id = %(project_id)s'
-            '   AND ((c.status = %(active)s AND c.active_version IS NOT NULL)'
-            '        OR c.status != %(active)s)', {
-                'active': 'Active',
+            '    ON v.package_url = p.package_url AND p.version_id = v.id'
+            ' WHERE p.project_id = %(project_id)s'
+            '   AND v.status != %(unscored)s'
+            ' GROUP BY v.status', {
                 'project_id': project_id,
+                'unscored': models.ProjectComponentStatus.UNSCORED.value,
             },
             metric_name='retrieve-tracked-components')
+        counts.update({row['status']: row['num_components'] for row in result})
+        deprecated = counts[models.ProjectComponentStatus.DEPRECATED.value]
+        forbidden = counts[models.ProjectComponentStatus.FORBIDDEN.value]
+        outdated = counts[models.ProjectComponentStatus.OUTDATED.value]
+        up_to_date = counts[models.ProjectComponentStatus.UP_TO_DATE.value]
 
-        outdated = set()
-        up_to_date = set()
-        deprecated = set()
-        forbidden = set()
-        rows = [
-            models.ProjectComponentRow.model_validate(row) for row in result
-        ]
-        for row in rows:
-            logger.debug('examining %s', row)
-            if row.status == models.ComponentStatus.ACTIVE:
-                if row.version in row.active_version:
-                    up_to_date.add(row.package_url)
-                else:
-                    outdated.add(row.package_url)
-            elif row.status == models.ComponentStatus.DEPRECATED:
-                deprecated.add(row.package_url)
-            elif row.status == models.ComponentStatus.FORBIDDEN:
-                forbidden.add(row.package_url)
-
-        logger.debug('%s up_to_date, %s outdated, %s deprecated, %s forbidden',
-                     len(up_to_date), len(outdated), len(deprecated),
-                     len(forbidden))
         if not deprecated and not forbidden and not outdated:
             status = models.ProjectStatus.OKAY
-        elif not forbidden and (len(up_to_date) > len(outdated) or deprecated):
+        elif not forbidden and (up_to_date > outdated or deprecated):
             status = models.ProjectStatus.NEEDS_WORK
         else:
             status = models.ProjectStatus.UNACCEPTABLE
 
-        if status != current_status:
+        if status.value != current_status:
             logger.info(
-                'updating component score from %s to %s for project %s',
-                current_status or 'NULL', status, project_id)
+                'updating component score from %r to %r for project %s',
+                current_status or 'NULL', status.value, project_id)
             await transaction.execute(
                 'INSERT INTO v1.project_facts(project_id, fact_type_id, value,'
                 '                             recorded_at, recorded_by)'

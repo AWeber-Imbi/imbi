@@ -146,30 +146,72 @@ class RecordRequestHandler(base.CRUDRequestHandler):
             raise errors.DatabaseError('No rows were returned from PATCH_SQL',
                                        title='failed to update record')
 
-        if self._project_update_required(original, updated):
-            tags = {
-                'key': 'bulk_update',
-                'operation': 'component_score',
-                'endpoint': self.NAME
-            }
-            async with self.application.stats.track_duration(tags):
-                await self._update_affected_projects(updated.package_url)
+        # the following is used to propagate foreign key violations
+        # to our code ... these can happen if a project is removed
+        # between the time that we retrieve the affected projects
+        # and when we upsert the project fact
+        def on_postgres_error(metric_name: str,
+                              exc: Exception) -> typing.Optional[Exception]:
+            if isinstance(exc, psycopg2.errors.ForeignKeyViolation):
+                raise exc
+            else:
+                return self.on_postgres_error(metric_name, exc)
+
+        tags = {'key': 'bulk_update', 'endpoint': self.NAME}
+        async with self.application.postgres_connector(
+                on_postgres_error, self.on_postgres_timing) as connector:
+            if self._version_update_required(original, updated):
+                tags['operation'] = 'component_versions'
+                async with self.application.stats.track_duration(tags):
+                    await scoring.update_component_version_statuses(
+                        updated, connector)
+            if self._project_update_required(original, updated):
+                tags['operation'] = 'component_score'
+                async with self.application.stats.track_duration(tags):
+                    await self._update_affected_projects(updated.package_url)
 
         await self._get({'package_url': updated.package_url})
+
+    def _version_update_required(self, original: models.Component,
+                                 updated: models.Component) -> bool:
+        if original.status != updated.status:
+            self.logger.debug('VERSION UPDATE REQUIRED: status=%s->%s',
+                              original.status, updated.status)
+            return True
+        if (updated.status == models.ComponentStatus.ACTIVE
+                and updated.active_version != original.active_version):
+            self.logger.debug('VERSION UPDATE REQUIRED: active_version=%r->%r',
+                              original.active_version, updated.active_version)
+            return True
+        self.logger.debug(
+            'VERSION UPDATE NOT REQUIRED status=%s->%s active_version=%r->%r',
+            original.status, updated.status, original.active_version,
+            updated.active_version)
+        return False
 
     def _project_update_required(self, original: models.Component,
                                  updated: models.Component) -> bool:
         # only update if we have a fact id to worry about
-        config = self.settings.get('components', {}) or {}
+        config = self.settings['component_scoring']
         if config.get('project_fact_type_id') is not None:
             # status change will always affect component scores
             if updated.status != original.status:
+                self.logger.debug('PROJECT UPDATE REQUIRED: status=%s->%s',
+                                  original.status, updated.status)
                 return True
             # if the final status is active, then we only care if the
             # active version has changed
             if (updated.status == models.ComponentStatus.ACTIVE
                     and updated.active_version != original.active_version):
+                self.logger.debug(
+                    'PROJECT UPDATE REQUIRED: active_version=%s->%s',
+                    original.active_version, updated.active_version)
                 return True
+        self.logger.debug(
+            'PROJECT UPDATE NOT REQUIRED: fact_type_id=%r status=%s->%s'
+            ' active_version=%s->%s', config.get('project_fact_type_id'),
+            original.status, updated.status, original.active_version,
+            updated.active_version)
         return False
 
     async def _update_affected_projects(self, package_url: str) -> None:
@@ -185,15 +227,20 @@ class RecordRequestHandler(base.CRUDRequestHandler):
                 return self.on_postgres_error(metric_name, exc)
 
         result = await self.postgres_execute(
-            'SELECT DISTINCT project_id'
+            'SELECT DISTINCT project_id, version_id'
             '  FROM v1.project_components'
             ' WHERE package_url = %(package_url)s',
             {'package_url': package_url},
             metric_name='retrieve-affected-projects')
         if result:
+            version_ids = {row['version_id'] for row in result}
+            self.logger.info('found %s versions affected by this change',
+                             len(version_ids))
+
             project_ids = {row['project_id'] for row in result}
             self.logger.info('found %s projects affected by this change',
                              len(project_ids))
+
             async with self.application.postgres_connector(
                     on_postgres_error, self.on_postgres_timing) as connector:
                 for project_id in project_ids:
@@ -207,12 +254,10 @@ class RecordRequestHandler(base.CRUDRequestHandler):
 
 
 class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
-    # the status & score columns will become "real" when we figure
-    # out how we want to score these in the future
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT c.package_url, c."name", c.icon_class, c.status,
-               c.active_version, v.version
+        SELECT c.package_url, c."name", c.icon_class,
+               c.active_version, v.status
           FROM v1.project_components AS p
           JOIN v1.component_versions AS v ON v.id = p.version_id
           JOIN v1.components AS c ON c.package_url = v.package_url
@@ -222,30 +267,8 @@ class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
         """)
 
     def _postprocess_item(self, item) -> None:
-        """Convert the database item into what the API exposes
-
-        Initially, ``item['status']`` is the *component's* status which
-        match the *project component's* status for everything except for
-        ``Active``. The project component status for active components
-        is either ``Unscored``, ``Up-to-date``, or ``Outdated`` based
-        on the component's active version.
-
-        We also want to add a link to the component details.
-
-        """
+        """Add component links to our response items"""
         item['link'] = self.reverse_url('component', item['package_url'])
-        row = models.ProjectComponentRow.model_validate(item)
-        if row.status == models.ComponentStatus.FORBIDDEN:
-            item['status'] = models.ProjectComponentStatus.FORBIDDEN
-        elif row.status == models.ComponentStatus.DEPRECATED:
-            item['status'] = models.ProjectComponentStatus.DEPRECATED
-        elif row.status == models.ComponentStatus.ACTIVE:
-            if row.active_version is None:
-                item['status'] = models.ProjectComponentStatus.UNSCORED
-            elif row.version in row.active_version:
-                item['status'] = models.ProjectComponentStatus.UP_TO_DATE
-            else:
-                item['status'] = models.ProjectComponentStatus.OUTDATED
 
     def get_pagination_token_from_request(
             self, *, project_id: str) -> models.ProjectComponentsToken:

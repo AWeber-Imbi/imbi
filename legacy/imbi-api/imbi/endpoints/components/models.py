@@ -15,6 +15,7 @@ class ComponentStatus(str, enum.Enum):
     FORBIDDEN = 'Forbidden'
 
 
+# When you modify this, update the outdated_components report
 class ProjectComponentStatus(str, enum.Enum):
     UNSCORED = 'Unscored'
     UP_TO_DATE = 'Up-to-date'
@@ -28,14 +29,6 @@ class ProjectStatus(int, enum.Enum):
     OKAY = 100
     NEEDS_WORK = 80
     UNACCEPTABLE = 20
-
-
-class ProjectComponentRow(pydantic.BaseModel):
-    """Result of retrieving components associated with a project"""
-    package_url: str
-    status: ComponentStatus
-    active_version: typing.Union[semver.VersionRange, None]
-    version: str
 
 
 class Component(pydantic.BaseModel):
