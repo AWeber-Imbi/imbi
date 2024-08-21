@@ -150,6 +150,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
     automations_sentry.setdefault('enabled', True)
     automations_sentry.setdefault('url', 'https://sentry.io/')
 
+    component_cfg.setdefault('fact_name', 'Component Score')
     component_cfg.setdefault('enabled', False)
 
     module_path = pathlib.Path(sys.modules['imbi'].__file__).parent
