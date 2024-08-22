@@ -84,7 +84,6 @@ async def update_component_score_for_project(
             })
         current_status = result.row['value'] if result else None
 
-        counts = {name: 0 for name in models.ProjectComponentStatus}
         result = await transaction.execute(
             'SELECT v.status, COUNT(v.id) AS num_components'
             '  FROM v1.project_components AS p'
@@ -97,18 +96,10 @@ async def update_component_score_for_project(
                 'unscored': models.ProjectComponentStatus.UNSCORED.value,
             },
             metric_name='retrieve-tracked-components')
-        counts.update({row['status']: row['num_components'] for row in result})
-        deprecated = counts[models.ProjectComponentStatus.DEPRECATED.value]
-        forbidden = counts[models.ProjectComponentStatus.FORBIDDEN.value]
-        outdated = counts[models.ProjectComponentStatus.OUTDATED.value]
-        up_to_date = counts[models.ProjectComponentStatus.UP_TO_DATE.value]
 
-        if not deprecated and not forbidden and not outdated:
-            status = models.ProjectStatus.OKAY
-        elif not forbidden and (up_to_date > outdated or deprecated):
-            status = models.ProjectStatus.NEEDS_WORK
-        else:
-            status = models.ProjectStatus.UNACCEPTABLE
+        counts = {name: 0 for name in models.ProjectComponentStatus}
+        counts.update({row['status']: row['num_components'] for row in result})
+        status = models.ProjectStatus.calculate(counts)
 
         if status.value != current_status:
             logger.info(
