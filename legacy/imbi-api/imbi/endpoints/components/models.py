@@ -23,6 +23,13 @@ class ProjectComponentStatus(str, enum.Enum):
     FORBIDDEN = 'Forbidden'
 
 
+# these are considered "out of date" for scoring purposes
+OUTDATED_COMPONENT_STATUSES = frozenset((
+    ProjectComponentStatus.DEPRECATED.value,
+    ProjectComponentStatus.FORBIDDEN.value,
+    ProjectComponentStatus.OUTDATED.value,
+))
+
 # Describes the expected `stats` dict for ProjectStatus.calculate
 ProjectStatusCalculateStats = typing.TypedDict(
     'ProjectStatusCalculateStats',
