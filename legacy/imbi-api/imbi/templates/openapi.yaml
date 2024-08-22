@@ -5707,6 +5707,10 @@ paths:
                     version:
                       description: Version number that the project requires
                       type: string
+                    active_version:
+                      description: Optional "active" version specification
+                      type: string
+                      nullable: true
                     status:
                       description: Status for this version of this component
                       type: string
@@ -5754,6 +5758,10 @@ paths:
                     version:
                       description: Version number that the project requires
                       type: string
+                    active_version:
+                      description: Optional "active" version specification
+                      type: string
+                      nullable: true
                     status:
                       description: Status for this version of this component
                       type: string

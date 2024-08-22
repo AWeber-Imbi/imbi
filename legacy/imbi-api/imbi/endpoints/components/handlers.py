@@ -257,7 +257,7 @@ class ProjectComponentsRequestHandler(base.PaginatedCollectionHandler):
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
         SELECT c.package_url, c."name", c.icon_class,
-               c.active_version, v.status
+               c.active_version, v.version, v.status
           FROM v1.project_components AS p
           JOIN v1.component_versions AS v ON v.id = p.version_id
           JOIN v1.components AS c ON c.package_url = v.package_url
