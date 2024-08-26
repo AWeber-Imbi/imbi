@@ -23,19 +23,39 @@ class ProjectComponentStatus(str, enum.Enum):
     FORBIDDEN = 'Forbidden'
 
 
+# these are considered "out of date" for scoring purposes
+OUTDATED_COMPONENT_STATUSES = frozenset((
+    ProjectComponentStatus.DEPRECATED.value,
+    ProjectComponentStatus.FORBIDDEN.value,
+    ProjectComponentStatus.OUTDATED.value,
+))
+
+# Describes the expected `stats` dict for ProjectStatus.calculate
+ProjectStatusCalculateStats = typing.TypedDict(
+    'ProjectStatusCalculateStats',
+    {e.value: int
+     for e in ProjectComponentStatus},
+    total=False,
+)
+
+
 class ProjectStatus(int, enum.Enum):
     """Component Score project fact values"""
     OKAY = 100
     NEEDS_WORK = 80
     UNACCEPTABLE = 20
 
-
-class ProjectComponentRow(pydantic.BaseModel):
-    """Result of retrieving components associated with a project"""
-    package_url: str
-    status: ComponentStatus
-    active_version: typing.Union[semver.VersionRange, None]
-    version: str
+    @classmethod
+    def calculate(cls, stats: ProjectStatusCalculateStats) -> typing.Self:
+        deprecated = stats[ProjectComponentStatus.DEPRECATED.value]
+        forbidden = stats[ProjectComponentStatus.FORBIDDEN.value]
+        outdated = stats[ProjectComponentStatus.OUTDATED.value]
+        up_to_date = stats[ProjectComponentStatus.UP_TO_DATE.value]
+        if not deprecated and not forbidden and not outdated:
+            return cls.OKAY
+        if not forbidden and (up_to_date > outdated or deprecated):
+            return cls.NEEDS_WORK
+        return cls.UNACCEPTABLE
 
 
 class Component(pydantic.BaseModel):

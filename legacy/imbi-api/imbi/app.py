@@ -207,8 +207,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         Note that this is called from `imbi --initialize` as well.
 
         """
-        config = self.settings.get('component_scoring', {})
-        fact_name = config.setdefault('fact_name', 'Component Score')
+        config = self.settings['component_scoring']
         if not config.get('enabled'):
             self.logger.info(
                 'Component scoring feature is disabled in configuration')
@@ -222,6 +221,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
                              component_fact_id)
             return
 
+        fact_name = config['fact_name']
         result = await transaction.execute(
             'SELECT id'
             '  FROM v1.project_fact_types'
