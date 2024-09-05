@@ -1,4 +1,4 @@
-import collections
+import collections.abc
 import decimal
 import operator
 import typing
@@ -46,6 +46,11 @@ class RangeScoreDetail(ScoreDetail):
     ranges: list[RangeValue]
 
 
+FactId = int
+FactRow = collections.abc.Mapping[str, typing.Union[int, str, float]]
+FactMap = collections.abc.Mapping[FactId, collections.abc.Sequence[FactRow]]
+
+
 class ProjectScoreDetailHandler(base.AuthenticatedRequestHandler):
     """Implementation of the v1.project_score() stored proc in Python
 
@@ -65,34 +70,21 @@ class ProjectScoreDetailHandler(base.AuthenticatedRequestHandler):
             raise errors.ItemNotFound()
 
         facts = await models.project_facts(project_id, self.application)
-
-        result = await self.postgres_execute(
+        enum_details = await self._gather_facts(
+            [f.id for f in facts if f.fact_type == 'enum'],
             'SELECT fact_type_id, value, score'
             '  FROM v1.project_fact_type_enums'
-            ' WHERE fact_type_id IN %(fact_type_ids)s', {
-                'fact_type_ids': tuple(f.id
-                                       for f in facts if f.fact_type == 'enum')
-            })
-        enum_details = collections.defaultdict(list)
-        for row in result:
-            enum_details[row['fact_type_id']].append(row)
-        for enum_value in enum_details.values():
-            enum_value.sort(key=lambda e: (e['score'], e['value']),
-                            reverse=True)
-
-        result = await self.postgres_execute(
+            ' WHERE fact_type_id IN %(fact_type_ids)s',
+            'score',
+            'value',
+        )
+        range_details = await self._gather_facts(
+            [f.id for f in facts if f.fact_type == 'range'],
             'SELECT fact_type_id, score, min_value, max_value'
             '  FROM v1.project_fact_type_ranges'
-            ' WHERE fact_type_id IN %(fact_type_ids)s', {
-                'fact_type_ids': tuple(
-                    f.id for f in facts if f.fact_type == 'range')
-            })
-        range_details = collections.defaultdict(list)
-        for row in result:
-            range_details[row['fact_type_id']].append(row)
-        for range_value in range_details.values():
-            range_value.sort(key=operator.itemgetter('score'), reverse=True)
-
+            ' WHERE fact_type_id IN %(fact_type_ids)s',
+            'score',
+        )
         scored_facts = sorted((f for f in facts if f.weight),
                               key=operator.attrgetter('weight'),
                               reverse=True)
@@ -119,6 +111,18 @@ class ProjectScoreDetailHandler(base.AuthenticatedRequestHandler):
                     'weight': 0,
                 } for f in facts if not f.weight]
             })
+
+    async def _gather_facts(self, fact_ids: collections.abc.Sequence[int],
+                            query: str, *sort_params: str) -> FactMap:
+        details = collections.defaultdict[int, list[dict]](list)
+        if fact_ids:
+            result = await self.postgres_execute(
+                query, {'fact_type_ids': tuple(fact_ids)})
+            for row in result:
+                details[row['fact_type_id']].append(row)
+        for value in details.values():
+            value.sort(key=operator.itemgetter(*sort_params), reverse=True)
+        return details
 
     @staticmethod
     def _generate_score_detail(
