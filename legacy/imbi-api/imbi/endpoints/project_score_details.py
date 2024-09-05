@@ -108,7 +108,7 @@ class ProjectScoreDetailHandler(base.AuthenticatedRequestHandler):
             for row in result:
                 enum_details[row['fact_type_id']].append(row)
         for enum_value in enum_details.values():
-            enum_value.sort(key=lambda e: (e['score'], e['value']),
+            enum_value.sort(key=operator.itemgetter('score', 'value'),
                             reverse=True)
         return enum_details
 
