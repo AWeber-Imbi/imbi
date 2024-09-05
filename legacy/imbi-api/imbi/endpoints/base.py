@@ -150,6 +150,13 @@ class RequestHandler(cors.CORSMixin, postgres.RequestHandlerMixin,
         namespace.update({'version': version})
         return namespace
 
+    def on_postgres_error(self, metric_name: str,
+                          exc: Exception) -> Exception | None:
+        self.logger.exception('processing postgres error: %s',
+                              exc.__class__.__name__,
+                              exc_info=exc)
+        return super().on_postgres_error(metric_name, exc)
+
     def on_postgres_timing(self, metric_name: str, duration: float) -> None:
         """Invoked by sprockets-postgres after each query"""
         self.application.loop.add_callback(
