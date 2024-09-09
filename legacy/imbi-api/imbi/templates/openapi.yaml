@@ -3173,7 +3173,7 @@ paths:
                     ticket_slug:
                       description: An optional slug of the ticket that the change was made for
                       type: string
-                      pattern: '^[\w-]+$'
+                      pattern: '^[-,\w]+$'
                       nullable: true
                     version:
                       description: An optional version that the change was made for
@@ -3301,7 +3301,7 @@ paths:
                     ticket_slug:
                       description: An optional slug of the ticket that the change was made for
                       type: string
-                      pattern: '^[\w-]+$'
+                      pattern: '^[-,\w]+$'
                       nullable: true
                     version:
                       description: An optional version that the change was made for
@@ -3417,13 +3417,14 @@ paths:
                 ticket_slug:
                   description: An optional slug of the ticket that the change was made for
                   type: string
-                  pattern: '^[\w-]+$'
+                  pattern: '^[-,\w]+$'
                   nullable: true
                 version:
                   description: An optional version that the change was made for
                   type: string
                   nullable: true
               required:
+                - recorded_at
                 - recorded_by
                 - environment
                 - change_type
