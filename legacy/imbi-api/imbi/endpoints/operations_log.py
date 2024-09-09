@@ -1,9 +1,10 @@
 import re
+import typing_extensions as typing
 from urllib import parse
 
 import yarl
 
-from imbi import models
+from imbi import errors, models
 from imbi.endpoints import base
 from imbi.opensearch import operations_log
 
@@ -157,6 +158,12 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
         self.send_response(rows)
 
     async def post(self, *_args, **kwargs):
+        request = self.get_request_body()
+        if not request.get('description', '').strip():
+            raise errors.BadRequest(
+                'Invalid description',
+                detail='The request did not validate',
+                errors=["'description' is required to be a non-empty string"])
         result = await self._post(kwargs)
         await self.index_document(result['id'])
 
@@ -190,6 +197,10 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
     async def patch(self, *args, **kwargs):
         await super().patch(*args, **kwargs)
         await self.index_document(kwargs['id'])
+
+    @staticmethod
+    def _check_validity(instance: dict[str, typing.Any]) -> bool:
+        return bool(instance.get('description') or '')
 
 
 class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
