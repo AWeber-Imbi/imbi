@@ -342,6 +342,7 @@ class Project:
 @dataclasses.dataclass
 class OperationsLog:
     id: int
+    occurred_at: datetime.datetime
     recorded_at: datetime.datetime
     recorded_by: str
     display_name: str
@@ -359,6 +360,7 @@ class OperationsLog:
     SQL: typing.ClassVar = re.sub(
         r'\s+', ' ', """\
         SELECT o.id,
+               o.occurred_at,
                o.recorded_at,
                o.recorded_by,
                u.display_name,
