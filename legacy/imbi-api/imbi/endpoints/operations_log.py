@@ -1,4 +1,6 @@
+import datetime
 import re
+
 import typing_extensions as typing
 from urllib import parse
 
@@ -12,9 +14,9 @@ from imbi.opensearch import operations_log
 class _RequestHandlerMixin:
     ID_KEY = 'id'
     FIELDS = [
-        'id', 'recorded_at', 'recorded_by', 'completed_at', 'project_id',
-        'environment', 'change_type', 'description', 'link', 'notes',
-        'ticket_slug', 'version'
+        'change_type', 'completed_at', 'description', 'environment', 'id',
+        'link', 'notes', 'occurred_at', 'project_id', 'recorded_at',
+        'recorded_by', 'ticket_slug', 'version'
     ]
 
     GET_SQL = re.sub(
@@ -23,7 +25,8 @@ class _RequestHandlerMixin:
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
                p.name AS project_name, u.email_address,
-               u.display_name, 'OperationsLogEntry' AS "type"
+               u.display_name, 'OperationsLogEntry' AS "type",
+               o.occurred_at
           FROM v1.operations_log AS o
           JOIN v1.users AS u ON u.username = o.recorded_by
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
@@ -42,22 +45,22 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
                p.name AS project_name, u.email_address, u.display_name,
-               'OperationsLogEntry' as "type"
+               'OperationsLogEntry' as "type", o.occurred_at
           FROM v1.operations_log AS o
           JOIN v1.users AS u ON u.username = o.recorded_by
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
           {{WHERE}}
-      ORDER BY o.recorded_at {{ORDER}}, o.id {{ORDER}}
+      ORDER BY o.occurred_at {{ORDER}}, o.id {{ORDER}}
          LIMIT %(limit)s""")
 
     VALUE_FILTER_CHUNK = re.sub(
         r'\s+', ' ', """\
-        ((o.recorded_at = %(recorded_at_anchor)s AND o.id {{OP}} %(id_anchor)s)
-        OR o.recorded_at {{OP}} %(recorded_at_anchor)s)""")
+        ((o.occurred_at = %(recorded_at_anchor)s AND o.id {{OP}} %(id_anchor)s)
+        OR o.occurred_at {{OP}} %(recorded_at_anchor)s)""")
 
     FILTER_CHUNKS = {
-        'from': 'o.recorded_at >= %(from)s',
-        'to': 'o.recorded_at < %(to)s',
+        'from': 'o.occurred_at >= %(from)s',
+        'to': 'o.occurred_at < %(to)s',
         'project_id': 'o.project_id = %(project_id)s',
         'namespace_id': 'p.namespace_id = %(namespace_id)s',
     }
@@ -65,13 +68,13 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
     POST_SQL = re.sub(
         r'\s+', ' ', """\
         INSERT INTO v1.operations_log
-                    (recorded_by, recorded_at, completed_at,
+                    (recorded_by, recorded_at, completed_at, occurred_at,
                      project_id, environment, change_type, description,
                      link, notes, ticket_slug, version)
-             VALUES (%(recorded_by)s, %(recorded_at)s, %(completed_at)s,
-                     %(project_id)s, %(environment)s, %(change_type)s,
-                     %(description)s, %(link)s, %(notes)s, %(ticket_slug)s,
-                     %(version)s)
+             VALUES (%(username)s, CURRENT_TIMESTAMP, %(completed_at)s,
+                     %(occurred_at)s, %(project_id)s, %(environment)s,
+                     %(change_type)s, %(description)s, %(link)s, %(notes)s,
+                     %(ticket_slug)s, %(version)s)
           RETURNING id""")
 
     async def get(self, *args, **kwargs):
@@ -138,7 +141,7 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
             next_anchor = rows[-1]
             query = dict(request_url.query)
             query.update({
-                'recorded_at_anchor': next_anchor['recorded_at'],
+                'recorded_at_anchor': next_anchor['occurred_at'],
                 'id_anchor': next_anchor['id'],
                 'page_direction': 'next',
             })
@@ -148,7 +151,7 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
             previous_anchor = rows[0]
             query = dict(request_url.query)
             query.update({
-                'recorded_at_anchor': previous_anchor['recorded_at'],
+                'recorded_at_anchor': previous_anchor['occurred_at'],
                 'id_anchor': previous_anchor['id'],
                 'page_direction': 'previous',
             })
@@ -164,6 +167,12 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
                 'Invalid description',
                 detail='The request did not validate',
                 errors=["'description' is required to be a non-empty string"])
+
+        # implement INSERT ... DEFAULT since using `psycopg2.sql.DEFAULT`
+        # gets lost somewhere in the stack :/
+        now = datetime.datetime.now(datetime.timezone.utc)
+        request['occurred_at'] = request.get('occurred_at') or now
+
         result = await self._post(kwargs)
         await self.index_document(result['id'])
 
@@ -177,8 +186,7 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
     PATCH_SQL = re.sub(
         r'\s+', ' ', """\
         UPDATE v1.operations_log
-           SET recorded_by = %(recorded_by)s,
-               recorded_at = %(recorded_at)s,
+           SET occurred_at = %(occurred_at)s,
                completed_at = %(completed_at)s,
                project_id = %(project_id)s,
                environment = %(environment)s,

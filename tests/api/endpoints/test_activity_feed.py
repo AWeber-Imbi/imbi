@@ -73,8 +73,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
                 json_body={
                     'change_type': 'Deployed',
                     'environment': self.environments[0],
-                    'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-                    'recorded_at': now(),
+                    'occurred_at': now(),
                     'notes': notes[-1],
                     'description': 'Deployed app',
                 },

@@ -3112,8 +3112,12 @@ paths:
                     id:
                       description: Surrogate ID for deleting and modifying entries
                       type: number
+                    occurred_at:
+                      description: Timestamp indicating when the event occurred
+                      type: string
+                      format: iso8601-timestamp
                     recorded_at:
-                      description: Timestamp indicating when the change was made
+                      description: Timestamp indicating when the event was recorded
                       type: string
                       format: iso8601-timestamp
                     recorded_by:
@@ -3240,8 +3244,12 @@ paths:
                     id:
                       description: Surrogate ID for deleting and modifying entries
                       type: number
+                    occurred_at:
+                      description: Timestamp indicating when the event occurred
+                      type: string
+                      format: iso8601-timestamp
                     recorded_at:
-                      description: Timestamp indicating when the change was made
+                      description: Timestamp indicating when the event was recorded
                       type: string
                       format: iso8601-timestamp
                     recorded_by:
@@ -3371,13 +3379,11 @@ paths:
               description: Describes an audit log entry for entity operational changes
               type: object
               properties:
-                recorded_at:
-                  description: Timestamp indicating when the change was made
+                occurred_at:
+                  description: Timestamp indicating when the event occurred
                   type: string
                   format: iso8601-timestamp
-                recorded_by:
-                  description: The user who recorded the change
-                  type: string
+                  nullable: true
                 completed_at:
                   description: 'If specified, indicates the change occurred over a span of time'
                   type: string
@@ -3424,8 +3430,6 @@ paths:
                   type: string
                   nullable: true
               required:
-                - recorded_at
-                - recorded_by
                 - environment
                 - change_type
                 - description

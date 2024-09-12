@@ -45,8 +45,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'change_type': 'Deployed',
             'environment': self.environments[0],
             'project_id': self.project['id'],
-            'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-            'recorded_at': now(),
+            'occurred_at': now(),
             'description': 'deployed app',
             'notes': '',
         }

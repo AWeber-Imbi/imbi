@@ -118,6 +118,26 @@ class TestCase(testing.SprocketsHttpTestCase):
                 self.assertEqual(link.target, expectation)
                 break
 
+    @staticmethod
+    def extract_link_header(response, rel):
+        by_rel = {
+            header.parameters[0][1]: header
+            for header in headers.parse_link(response.headers['Link'])
+        }
+        try:
+            return by_rel[rel].target
+        except KeyError:
+            return None
+
+    def assert_has_link(self, response, rel):
+        link = self.extract_link_header(response, rel)
+        self.assertIsNotNone(link, f'Expected {rel!r} link not found')
+        return link
+
+    def assert_no_link(self, response, rel):
+        link = self.extract_link_header(response, rel)
+        self.assertIsNone(link, f'Unexpected {rel!r} link found')
+
     def validate_response(self, response):
         """Validate the response using the OpenAPI expectations"""
         validator = tornado_openapi3.ResponseValidator(

@@ -1,8 +1,8 @@
+import datetime
 import json
 import uuid
 
 import jsonpatch
-from ietfparse import headers
 
 from imbi.endpoints import operations_log
 from tests import base
@@ -27,170 +27,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.project_type = self.create_project_type()
         self.project = self.create_project()
 
-    def test_get_static_collection(self):
-        records = []
-        for i in range(10):
-            record = {
-                'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-                'recorded_at': '2021-08-30T00:00:00+00:00',
-                'environment': self.environment,
-                'project_id': self.project['id'],
-                'change_type': 'Upgraded',
-                'description': str(uuid.uuid4()),
-                'link': str(uuid.uuid4()),
-                'notes': str(uuid.uuid4()),
-                'ticket_slug': str(uuid.uuid4()),
-                'version': str(uuid.uuid4()),
-            }
-            result = self.fetch('/operations-log',
-                                method='POST',
-                                json_body=record)
-            self.assertEqual(result.code, 200)
-            records.append(json.loads(result.body.decode('utf-8')))
-
-        # page 1
-        namespace_id = self.namespace['id']
-        result = self.fetch(
-            f'/operations-log?limit=4&namespace_id={namespace_id}')
-        self.assertEqual(result.code, 200)
-        response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(len(response), 4)
-        for i in range(4):
-            self.assertDictEqual(response[i], records[9 - i])
-        link_headers = headers.parse_link(result.headers['Link'])
-        next_link = None
-        for header in link_headers:
-            link_rel = header.parameters[0][1]
-            self.assertNotEqual(link_rel, 'previous')
-            if link_rel == 'next':
-                next_link = header.target
-        self.assertIsNotNone(next_link)
-
-        # page 2
-        result = self.fetch(next_link)
-        self.assertEqual(result.code, 200)
-        response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(len(response), 4)
-        for i in range(4):
-            self.assertDictEqual(response[i], records[5 - i])
-        link_headers = headers.parse_link(result.headers['Link'])
-        next_link, previous_link = None, None
-        for header in link_headers:
-            link_rel = header.parameters[0][1]
-            if link_rel == 'next':
-                next_link = header.target
-            elif link_rel == 'previous':
-                previous_link = header.target
-        self.assertIsNotNone(next_link)
-        self.assertIsNotNone(previous_link)
-
-        # page 3
-        result = self.fetch(next_link)
-        self.assertEqual(result.code, 200)
-        response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(len(response), 2)
-        for i in range(2):
-            self.assertDictEqual(response[i], records[1 - i])
-        link_headers = headers.parse_link(result.headers['Link'])
-        next_link, previous_link = None, None
-        for header in link_headers:
-            link_rel = header.parameters[0][1]
-            self.assertNotEqual(link_rel, 'next')
-            if link_rel == 'previous':
-                previous_link = header.target
-        self.assertIsNotNone(previous_link)
-
-        # page 2
-        result = self.fetch(previous_link)
-        self.assertEqual(result.code, 200)
-        response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(len(response), 4)
-        for i in range(4):
-            self.assertDictEqual(response[i], records[5 - i])
-        link_headers = headers.parse_link(result.headers['Link'])
-        next_link, previous_link = None, None
-        for header in link_headers:
-            link_rel = header.parameters[0][1]
-            if link_rel == 'next':
-                next_link = header.target
-            elif link_rel == 'previous':
-                previous_link = header.target
-        self.assertIsNotNone(next_link)
-        self.assertIsNotNone(previous_link)
-
-        # page 1
-        result = self.fetch(previous_link)
-        self.assertEqual(result.code, 200)
-        response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(len(response), 4)
-        for i in range(4):
-            self.assertDictEqual(response[i], records[9 - i])
-        link_headers = headers.parse_link(result.headers['Link'])
-        next_link = None
-        for header in link_headers:
-            link_rel = header.parameters[0][1]
-            self.assertNotEqual(link_rel, 'previous')
-            if link_rel == 'next':
-                next_link = header.target
-        self.assertIsNotNone(next_link)
-
-    def test_get_concurrently_updated_collection(self):
-        records = []
-        for i in range(6):
-            record = {
-                'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-                'recorded_at': f'2021-08-30T00:00:0{i}+00:00',
-                'environment': self.environment,
-                'project_id': self.project['id'],
-                'change_type': 'Upgraded',
-                'description': str(uuid.uuid4()),
-                'link': str(uuid.uuid4()),
-                'notes': str(uuid.uuid4()),
-                'ticket_slug': str(uuid.uuid4()),
-                'version': str(uuid.uuid4()),
-            }
-            result = self.fetch('/operations-log',
-                                method='POST',
-                                json_body=record)
-            self.assertEqual(result.code, 200)
-            records.append(json.loads(result.body.decode('utf-8')))
-
-        # page 1
-        result = self.fetch('/operations-log?limit=3')
-        self.assertEqual(result.code, 200)
-        response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(len(response), 3)
-        for i in range(3):
-            self.assertDictEqual(response[i], records[5 - i])
-        link_headers = headers.parse_link(result.headers['Link'])
-        next_link = None
-        for header in link_headers:
-            link_rel = header.parameters[0][1]
-            self.assertNotEqual(link_rel, 'previous')
-            if link_rel == 'next':
-                next_link = header.target
-        self.assertIsNotNone(next_link)
-
-        # page 2
-        result = self.fetch(next_link)
-        self.assertEqual(result.code, 200)
-        response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(len(response), 3)
-        for i in range(3):
-            self.assertDictEqual(response[i], records[2 - i])
-        link_headers = headers.parse_link(result.headers['Link'])
-        next_link, previous_link = None, None
-        for header in link_headers:
-            link_rel = header.parameters[0][1]
-            self.assertNotEqual(link_rel, 'next')
-            if link_rel == 'previous':
-                previous_link = header.target
-        self.assertIsNotNone(previous_link)
-
-        # insert record
+    def create_record(self, **overrides):
         record = {
-            'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-            'recorded_at': '2021-08-30T00:00:03+00:00',
             'environment': self.environment,
             'project_id': self.project['id'],
             'change_type': 'Upgraded',
@@ -200,47 +38,123 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'ticket_slug': str(uuid.uuid4()),
             'version': str(uuid.uuid4()),
         }
+        record.update(overrides)
         result = self.fetch('/operations-log', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
-        records.insert(4, json.loads(result.body.decode('utf-8')))
+        return json.loads(result.body.decode('utf-8'))
+
+    def assert_records_equal(
+        self,
+        actual_records,
+        expected_records,
+    ):
+        self.assertEqual(
+            [r['id'] for r in actual_records],
+            [r['id'] for r in expected_records],
+            f'actual: {[r["id"] for r in actual_records]!r}',
+        )
+        for (actual, expected) in zip(actual_records, expected_records):
+            self.assertDictEqual(actual, expected)
+
+    def test_get_static_collection(self):
+        records = [self.create_record() for _ in range(10)]
+
+        # page 1
+        namespace_id = self.namespace['id']
+        result = self.fetch(
+            f'/operations-log?limit=4&namespace_id={namespace_id}')
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        self.assert_records_equal(response, reversed(records[6:10]))
+        next_link = self.assert_has_link(result, 'next')
+        self.assert_no_link(result, 'previous')
+
+        # page 2
+        result = self.fetch(next_link)
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        self.assert_records_equal(response, reversed(records[2:6]))
+        next_link = self.assert_has_link(result, 'next')
+        self.assert_has_link(result, 'previous')
+
+        # page 3
+        result = self.fetch(next_link)
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        self.assert_records_equal(response, reversed(records[:2]))
+        self.assert_no_link(result, 'next')
+        previous_link = self.assert_has_link(result, 'previous')
+
+        # page 2
+        result = self.fetch(previous_link)
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        self.assert_records_equal(response, reversed(records[2:6]))
+        self.assert_has_link(result, 'next')
+        previous_link = self.assert_has_link(result, 'previous')
+
+        # page 1
+        result = self.fetch(previous_link)
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        self.assert_records_equal(response, reversed(records[6:]))
+        self.assert_has_link(result, 'next')
+        self.assert_no_link(result, 'previous')
+
+    def test_get_concurrently_updated_collection(self):
+        when = datetime.datetime(2021,
+                                 8,
+                                 30,
+                                 0,
+                                 0,
+                                 0,
+                                 tzinfo=datetime.timezone.utc)
+        records = [
+            self.create_record(occurred_at=when.replace(
+                second=seconds).isoformat()) for seconds in range(6)
+        ]
+
+        # page 1
+        result = self.fetch('/operations-log?limit=3')
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        self.assert_records_equal(response, reversed(records[3:6]))
+        next_link = self.assert_has_link(result, 'next')
+
+        # page 2
+        result = self.fetch(next_link)
+        self.assertEqual(result.code, 200)
+        response = json.loads(result.body.decode('utf-8'))
+        self.assertEqual(len(response), 3)
+        self.assert_records_equal(response, reversed(records[:3]))
+        self.assert_no_link(result, 'next')
+        previous_link = self.assert_has_link(result, 'previous')
+
+        # insert record
+        record = self.create_record(occurred_at=when.replace(
+            second=3).isoformat())
+        self.assertEqual(result.code, 200)
+        records.insert(4, record)
 
         # previous page (now page 2/3)
         result = self.fetch(previous_link)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(len(response), 3)
-        for i in range(3):
-            self.assertDictEqual(response[i], records[5 - i])
-        link_headers = headers.parse_link(result.headers['Link'])
-        next_link, previous_link = None, None
-        for header in link_headers:
-            link_rel = header.parameters[0][1]
-            if link_rel == 'next':
-                next_link = header.target
-            elif link_rel == 'previous':
-                previous_link = header.target
-        self.assertIsNotNone(next_link)
-        self.assertIsNotNone(previous_link)
+        self.assert_records_equal(response, reversed(records[3:6]))
+        self.assert_has_link(result, 'next')
+        previous_link = self.assert_has_link(result, 'previous')
 
         # previous page (now page 1/3)
         result = self.fetch(previous_link)
         self.assertEqual(result.code, 200)
         response = json.loads(result.body.decode('utf-8'))
-        self.assertEqual(len(response), 1)
-        self.assertDictEqual(response[0], records[6])
-        link_headers = headers.parse_link(result.headers['Link'])
-        next_link, previous_link = None, None
-        for header in link_headers:
-            link_rel = header.parameters[0][1]
-            self.assertNotEqual(link_rel, 'previous')
-            if link_rel == 'next':
-                next_link = header.target
-        self.assertIsNotNone(next_link)
+        self.assert_records_equal(response, records[6:7])
+        self.assert_has_link(result, 'next')
+        self.assert_no_link(result, 'previous')
 
     def test_operations_log_lifecycle(self):
         record = {
-            'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-            'recorded_at': '2021-08-30T00:00:00+00:00',
+            'occurred_at': '2021-08-30T00:00:00+00:00',
             'environment': self.environment,
             'change_type': 'Upgraded',
             'description': str(uuid.uuid4()),
@@ -313,8 +227,6 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_create_with_missing_fields(self):
         record = {
-            'recorded_by': self.USERNAME[self.ADMIN_ACCESS],
-            'recorded_at': '2021-08-30T00:00:00+00:00',
             'environment': self.environment,
             'change_type': 'Upgraded',
             'description': 'Upgraded app',
