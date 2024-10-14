@@ -363,7 +363,7 @@ class OperationsLog:
                o.occurred_at,
                o.recorded_at,
                o.recorded_by,
-               u.display_name,
+               COALESCE(u.display_name, o.recorded_by) AS display_name,
                o.completed_at,
                o.project_id,
                p.name AS project_name,

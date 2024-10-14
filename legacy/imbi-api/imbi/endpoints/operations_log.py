@@ -24,11 +24,13 @@ class _RequestHandlerMixin:
         SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
-               p.name AS project_name, u.email_address,
-               u.display_name, 'OperationsLogEntry' AS "type",
+               COALESCE(u.email_address, 'UNKNOWN') AS email_address,
+               COALESCE(u.display_name, o.recorded_by) AS display_name,
+               p.name AS project_name,
+               'OperationsLogEntry' AS "type",
                o.occurred_at
           FROM v1.operations_log AS o
-          JOIN v1.users AS u ON u.username = o.recorded_by
+          LEFT JOIN v1.users AS u ON u.username = o.recorded_by
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
          WHERE o.id = %(id)s""")
 
@@ -44,10 +46,12 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
         SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
-               p.name AS project_name, u.email_address, u.display_name,
+               p.name AS project_name,
+               COALESCE(u.email_address, 'UNKNOWN') AS email_address,
+               COALESCE(u.display_name, o.recorded_by) AS display_name,
                'OperationsLogEntry' as "type", o.occurred_at
           FROM v1.operations_log AS o
-          JOIN v1.users AS u ON u.username = o.recorded_by
+          LEFT JOIN v1.users AS u ON u.username = o.recorded_by
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
           {{WHERE}}
       ORDER BY o.occurred_at {{ORDER}}, o.id {{ORDER}}
