@@ -9,9 +9,13 @@ if typing.TYPE_CHECKING:
 
 LOGGER = logging.getLogger(__name__)
 
+# Make sure that the field names match models.OperationsLog.SQL
 OPS_LOG = {
     'id': {
         'type': 'integer'
+    },
+    'occurred_at': {
+        'type': 'date'
     },
     'recorded_at': {
         'type': 'date'
