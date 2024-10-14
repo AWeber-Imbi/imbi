@@ -15,6 +15,7 @@ import uuid
 from email import utils
 
 import jsonpatch
+import jsonpointer
 import openapi_core.casting.schemas.exceptions
 import problemdetails
 import pydantic
@@ -429,8 +430,14 @@ class CRUDRequestHandler(ValidatingRequestHandler):
                 original[key] = str(value)
 
         # Apply the patch to the current value
-        patch = jsonpatch.JsonPatch(patch_value)
-        updated = patch.apply(original)
+        try:
+            patch = jsonpatch.JsonPatch(patch_value)
+            updated = patch.apply(original)
+        except (jsonpatch.JsonPatchException,
+                jsonpointer.JsonPointerException) as error:
+            raise errors.UnprocessableEntity('Failed to apply JSON patch: %s',
+                                             error,
+                                             detail=str(error))
 
         # Bail early if there are no changes
         if not {
