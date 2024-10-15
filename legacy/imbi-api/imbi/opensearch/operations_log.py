@@ -50,6 +50,9 @@ OPS_LOG = {
     'notes': {
         'type': 'text'
     },
+    'performed_by': {
+        'type': 'text'
+    },
     'ticket_slug': {
         'type': 'text'
     },

@@ -354,6 +354,7 @@ class OperationsLog:
     description: typing.Optional[str]
     link: typing.Optional[str]
     notes: typing.Optional[str]
+    performed_by: typing.Optional[str]
     ticket_slug: typing.Optional[str]
     version: typing.Optional[str]
 
@@ -363,7 +364,10 @@ class OperationsLog:
                o.occurred_at,
                o.recorded_at,
                o.recorded_by,
-               COALESCE(u.display_name, o.recorded_by) AS display_name,
+               COALESCE(
+                  u.display_name,
+                  COALESCE(u2.display_name, o.recorded_by)
+               ) AS display_name,
                o.completed_at,
                o.project_id,
                p.name AS project_name,
@@ -372,11 +376,14 @@ class OperationsLog:
                o.description,
                o.link,
                o.notes,
+               o.performed_by,
                o.ticket_slug,
                o.version
           FROM v1.operations_log AS o
      LEFT JOIN v1.users AS u
-            ON u.username = o.recorded_by
+            ON u.username = o.performed_by
+     LEFT JOIN v1.users AS u2
+            ON u2.username = o.recorded_by
      LEFT JOIN v1.projects AS p
             ON o.project_id = p.id
          WHERE o.id=%(id)s""")

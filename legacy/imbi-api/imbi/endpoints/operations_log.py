@@ -14,9 +14,9 @@ from imbi.opensearch import operations_log
 class _RequestHandlerMixin:
     ID_KEY = 'id'
     FIELDS = [
-        'change_type', 'completed_at', 'description', 'environment', 'id',
-        'link', 'notes', 'occurred_at', 'project_id', 'recorded_at',
-        'recorded_by', 'ticket_slug', 'version'
+        'change_type', 'completed_at', 'performed_by', 'description',
+        'environment', 'id', 'link', 'notes', 'occurred_at', 'project_id',
+        'recorded_at', 'recorded_by', 'ticket_slug', 'version'
     ]
 
     GET_SQL = re.sub(
@@ -24,13 +24,21 @@ class _RequestHandlerMixin:
         SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
-               COALESCE(u.email_address, 'UNKNOWN') AS email_address,
-               COALESCE(u.display_name, o.recorded_by) AS display_name,
+               COALESCE(
+                  u.email_address,
+                  COALESCE(u2.email_address, 'UNKNOWN')
+               ) AS email_address,
+               COALESCE(
+                  u.display_name,
+                  COALESCE(u2.display_name, o.recorded_by)
+               ) AS display_name,
                p.name AS project_name,
                'OperationsLogEntry' AS "type",
-               o.occurred_at
+               o.occurred_at,
+               o.performed_by
           FROM v1.operations_log AS o
-          LEFT JOIN v1.users AS u ON u.username = o.recorded_by
+          LEFT JOIN v1.users AS u ON u.username = o.performed_by
+          LEFT JOIN v1.users AS u2 ON u2.username = o.recorded_by
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
          WHERE o.id = %(id)s""")
 
@@ -47,11 +55,18 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
                o.project_id, o.environment, o.change_type, o.description,
                o.link, o.notes, o.ticket_slug, o.version,
                p.name AS project_name,
-               COALESCE(u.email_address, 'UNKNOWN') AS email_address,
-               COALESCE(u.display_name, o.recorded_by) AS display_name,
-               'OperationsLogEntry' as "type", o.occurred_at
+               COALESCE(
+                   u.email_address,
+                   COALESCE(u2.email_address, 'UNKNOWN')
+               ) AS email_address,
+               COALESCE(
+                   u.display_name,
+                   COALESCE(u2.display_name, o.recorded_by)
+               ) AS display_name,
+               'OperationsLogEntry' as "type", o.occurred_at, o.performed_by
           FROM v1.operations_log AS o
-          LEFT JOIN v1.users AS u ON u.username = o.recorded_by
+          LEFT JOIN v1.users AS u ON u.username = o.performed_by
+          LEFT JOIN v1.users AS u2 ON u2.username = o.recorded_by
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
           {{WHERE}}
       ORDER BY o.occurred_at {{ORDER}}, o.id {{ORDER}}
@@ -74,11 +89,11 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
         INSERT INTO v1.operations_log
                     (recorded_by, recorded_at, completed_at, occurred_at,
                      project_id, environment, change_type, description,
-                     link, notes, ticket_slug, version)
+                     link, notes, ticket_slug, version, performed_by)
              VALUES (%(username)s, CURRENT_TIMESTAMP, %(completed_at)s,
                      %(occurred_at)s, %(project_id)s, %(environment)s,
                      %(change_type)s, %(description)s, %(link)s, %(notes)s,
-                     %(ticket_slug)s, %(version)s)
+                     %(ticket_slug)s, %(version)s, %(performed_by)s)
           RETURNING id""")
 
     async def get(self, *args, **kwargs):
@@ -192,6 +207,7 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
         UPDATE v1.operations_log
            SET occurred_at = %(occurred_at)s,
                completed_at = %(completed_at)s,
+               performed_by = %(performed_by)s,
                project_id = %(project_id)s,
                environment = %(environment)s,
                change_type = %(change_type)s,
