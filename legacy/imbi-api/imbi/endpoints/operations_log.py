@@ -187,12 +187,16 @@ class CollectionRequestHandler(operations_log.RequestHandlerMixin,
                 detail='The request did not validate',
                 errors=["'description' is required to be a non-empty string"])
 
-        # implement INSERT ... DEFAULT since using `psycopg2.sql.DEFAULT`
-        # gets lost somewhere in the stack :/
-        now = datetime.datetime.now(datetime.timezone.utc)
-        request['occurred_at'] = request.get('occurred_at') or now
+        overrides = {}
+        if not request.get('occurred_at'):
+            # implement INSERT ... DEFAULT since using `psycopg2.sql.DEFAULT`
+            # gets lost somewhere in the stack :/
+            overrides['occurred_at'] = datetime.datetime.now(
+                datetime.timezone.utc)
+        if request.get('performed_by') == self._current_user.username:
+            overrides['performed_by'] = None
 
-        result = await self._post(kwargs)
+        result = await self._post(kwargs, overrides)
         await self.index_document(result['id'])
 
 
@@ -226,8 +230,9 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
         await super().patch(*args, **kwargs)
         await self.index_document(kwargs['id'])
 
-    @staticmethod
-    def _check_validity(instance: dict[str, typing.Any]) -> bool:
+    def _check_validity(self, instance: dict[str, typing.Any]) -> bool:
+        if instance.get('performed_by') == self._current_user.username:
+            instance['performed_by'] = None
         return bool(instance.get('description') or '')
 
 

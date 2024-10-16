@@ -469,8 +469,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         # Send the new record as a response
         await self._get(self._get_query_kwargs(updated))
 
-    async def _post(self, kwargs) -> dict:
-        values = self.get_request_body()
+    async def _post(self, kwargs, overrides=None) -> dict:
+        values = self.get_request_body().copy()  # avoid mutating cached copy
 
         # Handle compound keys for child object CRUD
         if isinstance(self.ID_KEY, list):
@@ -486,6 +486,9 @@ class CRUDRequestHandler(ValidatingRequestHandler):
                 values[name] = self.DEFAULTS.get(name)
 
         values['username'] = self._current_user.username
+        if overrides:
+            values.update(overrides)
+
         result = await self.postgres_execute(self.POST_SQL, values,
                                              'post-{}'.format(self.NAME))
         if not result.row_count:
