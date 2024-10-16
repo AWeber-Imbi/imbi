@@ -3134,6 +3134,10 @@ paths:
                       type: string
                       format: iso8601-timestamp
                       nullable: true
+                    performed_by:
+                      description: Identifies the user that performed the action
+                      type: string
+                      nullable: true
                     project_id:
                       description: The ID of the project that was changed
                       type: number
@@ -3191,6 +3195,7 @@ paths:
                     - id: 1
                       recorded_at: 2021-05-21T18:39:24.197Z
                       recorded_by: gavinr
+                      performed_by: null
                       type: OperationsLogEntry
                       display_name: Gavin M. Roy
                       email_address: gavinr@example.com
@@ -3206,6 +3211,7 @@ paths:
                     - id: 2
                       recorded_at: 2021-05-21T18:42:00.000Z
                       recorded_by: gavinr
+                      performed_by: null
                       type: OperationsLogEntry
                       display_name: Gavin M. Roy
                       email_address: gavinr@example.com
@@ -3221,6 +3227,7 @@ paths:
                     - id: 3
                       recorded_at: 2021-05-21T19:00:00.000Z
                       recorded_by: gavinr
+                      performed_by: null
                       type: OperationsLogEntry
                       display_name: Gavin M. Roy
                       email_address: gavinr@example.com
@@ -3266,6 +3273,10 @@ paths:
                       type: string
                       format: iso8601-timestamp
                       nullable: true
+                    performed_by:
+                      description: Identifies the user that performed the action
+                      type: string
+                      nullable: true
                     project_id:
                       description: The ID of the project that was changed
                       type: number
@@ -3323,6 +3334,7 @@ paths:
                     - id: 1
                       recorded_at: 2021-05-21T18:39:24.197Z
                       recorded_by: gavinr
+                      performed_by: null
                       type: OperationsLogEntry
                       display_name: Gavin M. Roy
                       email_address: gavinr@example.com
@@ -3338,6 +3350,7 @@ paths:
                     - id: 2
                       recorded_at: 2021-05-21T18:42:00.000Z
                       recorded_by: gavinr
+                      performed_by: null
                       type: OperationsLogEntry
                       display_name: Gavin M. Roy
                       email_address: gavinr@example.com
@@ -3353,6 +3366,7 @@ paths:
                     - id: 3
                       recorded_at: 2021-05-21T19:00:00.000Z
                       recorded_by: gavinr
+                      performed_by: null
                       type: OperationsLogEntry
                       display_name: Gavin M. Roy
                       email_address: gavinr@example.com
@@ -3389,6 +3403,9 @@ paths:
                   type: string
                   format: iso8601-timestamp
                   nullable: true
+                performed_by:
+                  description: Identifies the user that performed the action
+                  type: string
                 project_id:
                   description: The ID of the project that was changed
                   type: number
@@ -3438,8 +3455,7 @@ paths:
               record:
                 summary: An operations log entry example
                 value:
-                  recorded_at: 2021-05-21T18:39:24.197Z
-                  recorded_by: gavinr
+                  performed_by: daves
                   completed_at: null
                   project_id: 100
                   environment: Testing
@@ -3456,8 +3472,7 @@ paths:
               record:
                 summary: An operations log entry example
                 value:
-                  recorded_at: 2021-05-21T18:39:24.197Z
-                  recorded_by: gavinr
+                  performed_by: daves
                   completed_at: null
                   project_id: 100
                   environment: Testing
@@ -3487,10 +3502,11 @@ paths:
                     recorded_at: 2021-05-21T18:39:24.197Z
                     recorded_by: gavinr
                     type: OperationsLogEntry
-                    display_name: Gavin M. Roy
-                    email_address: gavinr@example.com
+                    display_name: Dave Shawley
+                    email_address: daves@example.com
                     completed_at: null
                     project_id: 100
+                    performed_by: daves
                     environment: Testing
                     change_type: Deployment
                     description: Added the Operations Log functionality
@@ -3509,10 +3525,11 @@ paths:
                     recorded_at: 2021-05-21T18:39:24.197Z
                     recorded_by: gavinr
                     type: OperationsLogEntry
-                    display_name: Gavin M. Roy
-                    email_address: gavinr@example.com
+                    display_name: Dave Shawley
+                    email_address: daves@example.com
                     completed_at: null
                     project_id: 100
+                    performed_by: daves
                     environment: Testing
                     change_type: Deployment
                     description: Added the Operations Log functionality

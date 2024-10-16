@@ -15,6 +15,7 @@ import uuid
 from email import utils
 
 import jsonpatch
+import jsonpointer
 import openapi_core.casting.schemas.exceptions
 import problemdetails
 import pydantic
@@ -419,7 +420,7 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         original = dict(result.row)
         for key in {
                 'created_at', 'created_by', 'last_modified_at',
-                'last_modified_by'
+                'last_modified_by', 'recorded_at', 'recorded_by'
         }:
             if key in original:
                 del original[key]
@@ -429,8 +430,14 @@ class CRUDRequestHandler(ValidatingRequestHandler):
                 original[key] = str(value)
 
         # Apply the patch to the current value
-        patch = jsonpatch.JsonPatch(patch_value)
-        updated = patch.apply(original)
+        try:
+            patch = jsonpatch.JsonPatch(patch_value)
+            updated = patch.apply(original)
+        except (jsonpatch.JsonPatchException,
+                jsonpointer.JsonPointerException) as error:
+            raise errors.UnprocessableEntity('Failed to apply JSON patch: %s',
+                                             error,
+                                             detail=str(error))
 
         # Bail early if there are no changes
         if not {
@@ -462,8 +469,8 @@ class CRUDRequestHandler(ValidatingRequestHandler):
         # Send the new record as a response
         await self._get(self._get_query_kwargs(updated))
 
-    async def _post(self, kwargs) -> dict:
-        values = self.get_request_body()
+    async def _post(self, kwargs, overrides=None) -> dict:
+        values = self.get_request_body().copy()  # avoid mutating cached copy
 
         # Handle compound keys for child object CRUD
         if isinstance(self.ID_KEY, list):
@@ -479,6 +486,9 @@ class CRUDRequestHandler(ValidatingRequestHandler):
                 values[name] = self.DEFAULTS.get(name)
 
         values['username'] = self._current_user.username
+        if overrides:
+            values.update(overrides)
+
         result = await self.postgres_execute(self.POST_SQL, values,
                                              'post-{}'.format(self.NAME))
         if not result.row_count:
