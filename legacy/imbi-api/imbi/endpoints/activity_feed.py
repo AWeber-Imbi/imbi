@@ -30,15 +30,25 @@ class CollectionRequestHandler(base.TimeBasedPaginationMixin,
 
     OPERATIONS_LOG_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT 'OperationsLogEntry' AS "type", o.id,
-               o.recorded_at, o.recorded_by, o.completed_at,
-               o.project_id, o.environment, o.change_type,
-               o.description, o.link, o.notes, o.ticket_slug,
-               o.version, p.name AS project_name,
-               u.email_address, u.display_name
+        SELECT o.id, o.recorded_at, o.recorded_by, o.completed_at,
+               o.project_id, o.environment, o.change_type, o.description,
+               o.link, o.notes, o.ticket_slug, o.version,
+               COALESCE(
+                  u.email_address,
+                  COALESCE(u2.email_address, 'UNKNOWN')
+               ) AS email_address,
+               COALESCE(
+                  u.display_name,
+                  COALESCE(u2.display_name, o.recorded_by)
+               ) AS display_name,
+               p.name AS project_name,
+               'OperationsLogEntry' AS "type",
+               o.occurred_at,
+               o.performed_by
           FROM v1.operations_log AS o
           LEFT JOIN v1.projects AS p ON p.id = o.project_id
-          LEFT JOIN v1.users AS u ON u.username = o.recorded_by
+          LEFT JOIN v1.users AS u ON u.username = o.performed_by
+          LEFT JOIN v1.users AS u2 ON u2.username = o.recorded_by
          WHERE recorded_at >  %(earlier)s
            AND recorded_at <= %(later)s
          ORDER BY o.recorded_at DESC, o.id DESC
