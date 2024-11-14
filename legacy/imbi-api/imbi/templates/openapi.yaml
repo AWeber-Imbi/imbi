@@ -3600,10 +3600,19 @@ paths:
           pattern: ^\d+$
   /operations-log/build-search-index:
     post:
-      summary: Index the operations log
-      description: Queue all operations log entries to be added to the opensearch index
+      summary: Index operations log entries
+      description: |-
+        Queue operations log entries to be added to the opensearch index. If the `id`
+        query parameter is not given, then all operations log entries are reindexed.
       tags:
         - Operations Log
+      parameters:
+        - name: id
+          in: query
+          description: Optional operation entry ID(s) to reindex
+          required: false
+          schema:
+            type: integer
       responses:
         '200':
           description: The request to index the operations log was successful
@@ -8674,10 +8683,19 @@ paths:
           type: string
   /projects/build-search-index:
     post:
-      summary: Index all projects
-      description: Queue all projects to be added to the opensearch index
+      summary: Index projects
+      description: |-
+        Queue projects to be added to the opensearch index. If the `id` query
+        parameter is not given, then all projects are reindexed.
       tags:
         - Projects
+      parameters:
+        - name: id
+          in: query
+          description: Optional project ID(s) to reindex
+          required: false
+          schema:
+            type: integer
       responses:
         '200':
           description: The request to index all projects was successful

@@ -6,7 +6,7 @@ from urllib import parse
 
 import yarl
 
-from imbi import errors, models
+from imbi import errors, opensearch
 from imbi.endpoints import base
 from imbi.opensearch import operations_log
 
@@ -236,22 +236,11 @@ class RecordRequestHandler(operations_log.RequestHandlerMixin,
         return bool(instance.get('description') or '')
 
 
-class SearchIndexRequestHandler(operations_log.RequestHandlerMixin,
+class SearchIndexRequestHandler(opensearch.SearchIndexRequestHandler,
+                                operations_log.RequestHandlerMixin,
                                 base.ValidatingRequestHandler):
     SQL = re.sub(
         r'\s+', ' ', """\
         SELECT id
           FROM v1.operations_log
          ORDER BY id""")
-
-    async def post(self):
-        result = await self.postgres_execute(self.SQL)
-        for row in result:
-            value = await models.operations_log(row['id'], self.application)
-            await self.search_index.index_document(value)
-
-        self.send_response({
-            'status': 'ok',
-            'message': f'Queued {len(result)} operations log entries for '
-            'indexing'
-        })

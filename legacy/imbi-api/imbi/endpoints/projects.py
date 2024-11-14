@@ -2,7 +2,7 @@ import asyncio
 import re
 import typing
 
-from imbi import automations, errors, models
+from imbi import automations, errors, models, opensearch
 from imbi.endpoints import base
 from imbi.opensearch import project
 
@@ -401,28 +401,11 @@ class RecordRequestHandler(project.RequestHandlerMixin, _RequestHandlerMixin,
         await self.index_document(kwargs['id'])
 
 
-class SearchRequestHandler(project.RequestHandlerMixin,
-                           base.AuthenticatedRequestHandler):
-    async def get(self):
-        result = await self.search_index.search(self.get_query_argument('s'))
-        self.send_response(result)
-
-
-class SearchIndexRequestHandler(project.RequestHandlerMixin,
+class SearchIndexRequestHandler(opensearch.SearchIndexRequestHandler,
+                                project.RequestHandlerMixin,
                                 base.ValidatingRequestHandler):
     SQL = re.sub(
         r'\s+', ' ', """\
         SELECT id
           FROM v1.projects
          ORDER BY id""")
-
-    async def post(self):
-        result = await self.postgres_execute(self.SQL)
-        for row in result:
-            value = await models.project(row['id'], self.application)
-            await self.search_index.index_document(value)
-
-        self.send_response({
-            'status': 'ok',
-            'message': f'Queued {len(result)} projects for indexing'
-        })
