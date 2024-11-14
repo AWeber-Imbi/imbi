@@ -130,6 +130,17 @@ class ProjectIndex:
         await self.application.opensearch.index_document(
             self.INDEX, str(project.id), self._project_to_dict(project))
 
+    async def index_document_by_id(self, project_id: int) -> bool:
+        try:
+            project = await models.project(project_id, self.application)
+        except errors.DatabaseError as error:
+            LOGGER.warning(
+                'Failed to retrieve project %s while indexing by id: %s',
+                project_id, error)
+            return False
+        await self.index_document(project)
+        return True
+
     async def search(self, query: str, max_results: int = 1000) \
             -> dict[str, list[dict]]:
         return await self.application.opensearch.search(
