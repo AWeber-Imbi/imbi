@@ -7,6 +7,7 @@ import psycopg2
 import pydantic
 import sprockets_postgres
 
+import imbi.opensearch.project
 from imbi import common, errors
 from imbi.endpoints import base
 
@@ -112,6 +113,8 @@ class ProcessingHandler(base.RequestHandler):
             return
 
         await self._update_facts(project, updates)
+        search_index = imbi.opensearch.project.ProjectIndex(self.application)
+        await search_index.index_document_by_id(project.id)
 
     async def get(self, *, integration_name: str, notification_name: str,
                   **_kwargs: str) -> None:

@@ -3,7 +3,7 @@ import dataclasses
 import logging
 import typing
 
-from imbi import models
+from imbi import errors, models
 if typing.TYPE_CHECKING:
     from imbi import app
 
@@ -85,6 +85,17 @@ class OperationsLogIndex:
     async def index_document(self, ops_log: models.OperationsLog):
         await self.application.opensearch.index_document(
             self.INDEX, str(ops_log.id), self._ops_log_to_dict(ops_log), True)
+
+    async def index_document_by_id(self, ops_log_id: int) -> bool:
+        try:
+            doc = await models.operations_log(ops_log_id, self.application)
+        except errors.DatabaseError as error:
+            LOGGER.warning(
+                'Failed to retrieve ops log %s while indexing by id: %s',
+                ops_log_id, error)
+            return False
+        await self.index_document(doc)
+        return True
 
     async def search(self, query: str, max_results: int = 1000) \
             -> dict[str, list[dict]]:
