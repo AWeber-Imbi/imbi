@@ -401,13 +401,6 @@ class RecordRequestHandler(project.RequestHandlerMixin, _RequestHandlerMixin,
         await self.index_document(kwargs['id'])
 
 
-class SearchRequestHandler(project.RequestHandlerMixin,
-                           base.AuthenticatedRequestHandler):
-    async def get(self):
-        result = await self.search_index.search(self.get_query_argument('s'))
-        self.send_response(result)
-
-
 class SearchIndexRequestHandler(opensearch.SearchIndexRequestHandler,
                                 project.RequestHandlerMixin,
                                 base.ValidatingRequestHandler):
