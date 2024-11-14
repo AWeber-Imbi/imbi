@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import asyncio
+import copy
 import dataclasses
 import logging
 import typing
 
-from imbi import errors, models
+from imbi import models, opensearch
+
 if typing.TYPE_CHECKING:
     from imbi import app
 
@@ -62,53 +66,20 @@ OPS_LOG = {
 }
 
 
-class OperationsLogIndex:
+class OperationsLogIndex(opensearch.SearchIndex[models.OperationsLog]):
     """Class for interacting with the OpenSearch OperationsLog index"""
 
     INDEX = 'operations-log'
 
-    def __init__(self, application: 'app.Application'):
-        self.application = application
-
-    async def create_index(self):
-        LOGGER.debug('Creating operations-log index in OpenSearch')
-        await self.application.opensearch.create_index(self.INDEX)
-
-    async def create_mapping(self):
-        await self.application.opensearch.create_mapping(
-            self.INDEX, await self._build_mappings())
-
-    async def delete_document(self, ops_log_id: typing.Union[int, str]):
-        await self.application.opensearch.delete_document(
-            self.INDEX, str(ops_log_id))
-
-    async def index_document(self, ops_log: models.OperationsLog):
-        await self.application.opensearch.index_document(
-            self.INDEX, str(ops_log.id), self._ops_log_to_dict(ops_log), True)
-
-    async def index_document_by_id(self, ops_log_id: int) -> bool:
-        try:
-            doc = await models.operations_log(ops_log_id, self.application)
-        except errors.DatabaseError as error:
-            LOGGER.warning(
-                'Failed to retrieve ops log %s while indexing by id: %s',
-                ops_log_id, error)
-            return False
-        await self.index_document(doc)
-        return True
-
-    async def search(self, query: str, max_results: int = 1000) \
-            -> dict[str, list[dict]]:
-        return await self.application.opensearch.search(
-            self.INDEX, query, max_results)
+    def __init__(self, application) -> None:
+        super().__init__(application, models.operations_log)
 
     async def _build_mappings(self):
-        defn = dict(OPS_LOG)
-        return defn
+        return copy.deepcopy(OPS_LOG)
 
-    @staticmethod
-    def _ops_log_to_dict(value: models.OperationsLog) -> dict:
-        return dataclasses.asdict(value)
+    def _serialize_document(
+            self, doc: models.OperationsLog) -> dict[str, typing.Any]:
+        return dataclasses.asdict(doc)
 
 
 class RequestHandlerMixin:

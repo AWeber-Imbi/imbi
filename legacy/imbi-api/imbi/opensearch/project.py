@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 import asyncio
 import dataclasses
 import logging
 import typing
 
+import imbi.opensearch
 from imbi import errors, models
 from imbi.clients import opensearch
+
 if typing.TYPE_CHECKING:
     from imbi import app
 
@@ -106,45 +110,13 @@ PROJECT = {
 }
 
 
-class ProjectIndex:
+class ProjectIndex(imbi.opensearch.SearchIndex[models.Project]):
     """Class for interacting with the OpenSearch Project index"""
 
     INDEX = 'projects'
 
-    def __init__(self, application: 'app.Application'):
-        self.application = application
-
-    async def create_index(self):
-        LOGGER.debug('Creating projects index in OpenSearch')
-        await self.application.opensearch.create_index(self.INDEX)
-
-    async def create_mapping(self):
-        await self.application.opensearch.create_mapping(
-            self.INDEX, await self._build_mappings())
-
-    async def delete_document(self, project_id: typing.Union[int, str]):
-        await self.application.opensearch.delete_document(
-            self.INDEX, str(project_id))
-
-    async def index_document(self, project: models.Project):
-        await self.application.opensearch.index_document(
-            self.INDEX, str(project.id), self._project_to_dict(project))
-
-    async def index_document_by_id(self, project_id: int) -> bool:
-        try:
-            project = await models.project(project_id, self.application)
-        except errors.DatabaseError as error:
-            LOGGER.warning(
-                'Failed to retrieve project %s while indexing by id: %s',
-                project_id, error)
-            return False
-        await self.index_document(project)
-        return True
-
-    async def search(self, query: str, max_results: int = 1000) \
-            -> dict[str, list[dict]]:
-        return await self.application.opensearch.search(
-            self.INDEX, query, max_results)
+    def __init__(self, application) -> None:
+        super().__init__(application, models.project)
 
     async def searchable_fields(self) -> list[dict]:
         fields = []
@@ -207,19 +179,18 @@ class ProjectIndex:
                 }
         return defn
 
+    def _serialize_document(self, doc: models.Project) -> dict:
+        output = dataclasses.asdict(doc)
+        for key in ['namespace', 'project_type']:
+            output[f'{key}_slug'] = output[key]['slug']
+            output[key] = output[key]['name']
+        return output
+
     @staticmethod
     def _on_postgres_error(metric_name: str, exc: Exception) -> None:
         LOGGER.error('Failed to execute query for collection %s: %s',
                      metric_name, exc)
         raise errors.DatabaseError(f'Error executing {metric_name}', error=exc)
-
-    @staticmethod
-    def _project_to_dict(value: models.Project) -> dict:
-        output = dataclasses.asdict(value)
-        for key in ['namespace', 'project_type']:
-            output[f'{key}_slug'] = output[key]['slug']
-            output[key] = output[key]['name']
-        return output
 
 
 class RequestHandlerMixin:
