@@ -417,12 +417,15 @@ class SearchIndexRequestHandler(project.RequestHandlerMixin,
          ORDER BY id""")
 
     async def post(self):
-        result = await self.postgres_execute(self.SQL)
-        for row in result:
-            value = await models.project(row['id'], self.application)
-            await self.search_index.index_document(value)
-
+        projects_to_index = []
+        if ids := self.get_query_arguments('id'):
+            projects_to_index.extend(int(arg) for arg in ids)
+        else:
+            result = await self.postgres_execute(self.SQL)
+            projects_to_index.extend(r['id'] for r in result)
+        for project_id in projects_to_index:
+            await self.search_index.index_document_by_id(project_id)
         self.send_response({
             'status': 'ok',
-            'message': f'Queued {len(result)} projects for indexing'
+            'message': f'Queued {len(projects_to_index)} projects for indexing'
         })
