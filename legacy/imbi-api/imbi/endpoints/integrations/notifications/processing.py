@@ -296,7 +296,8 @@ class ProcessingHandler(base.RequestHandler):
             if ignores:
                 should_process = False
                 for f, v in ignores:
-                    self.logger.info('ignoring %s matched %r', f.name, v)
+                    self.logger.info('ignoring %s found %r instead of %r',
+                                     f.name, v, f.value)
             elif process:
                 should_process = True
                 for f, v in process:
