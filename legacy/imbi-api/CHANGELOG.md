@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+
+## [0.22.13] - 2024-11-26
 ### Fixed
 - Handle notifications on projects connected to more than one external project
 
@@ -104,7 +106,8 @@ components and maintain it
 - Add PostgreSQL helper functions for dynamic `INSERT` and `UPDATE` queries
 - Use pydantic validation for the stuff that OpenAPI doesn't handle
 
-[Unreleased]: https://github.com/AWeber-Imbi/imbi-api/compare/0.22.12...HEAD
+[Unreleased]: https://github.com/AWeber-Imbi/imbi-api/compare/0.22.13...HEAD
+[0.22.13]: https://github.com/AWeber-Imbi/imbi-api/compare/0.22.12...0.22.13
 [0.22.12]: https://github.com/AWeber-Imbi/imbi-api/compare/0.22.11...0.22.12
 [0.22.11]: https://github.com/AWeber-Imbi/imbi-api/compare/0.22.10...0.22.11
 [0.22.10]: https://github.com/AWeber-Imbi/imbi-api/compare/0.22.9...0.22.10
