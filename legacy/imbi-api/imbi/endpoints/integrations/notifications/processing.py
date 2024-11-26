@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import typing
+from collections import abc
 
 import psycopg2
 import pydantic
@@ -97,24 +98,22 @@ class ProcessingHandler(base.RequestHandler):
             [__package__, integration_name, notification_name])
         notification = await self._get_notification(integration_name,
                                                     notification_name)
-        self.logger.info('processing notification %s/%s default %r',
-                         integration_name, notification_name,
-                         notification.default_action)
         if not self._evaluate_filters(notification, body):
             return
 
-        project = await self._get_project(notification, body)
-        if not project:
-            return
-
-        updates = await self._gather_updates(project, notification, body)
-        if not updates:
-            self.logger.info('no updates found')
-            return
-
-        await self._update_facts(project, updates)
+        self.logger.info('processing notification %s/%s default %r',
+                         integration_name, notification_name,
+                         notification.default_action)
         search_index = imbi.opensearch.project.ProjectIndex(self.application)
-        await search_index.index_document_by_id(project.id)
+        for project in await self._get_projects(notification, body):
+            self.logger.debug('checking for updates on imbi project id=%s',
+                              project.id)
+            updates = await self._gather_updates(project, notification, body)
+            if updates:
+                self.logger.info('updating %s facts on imbi project id=%s',
+                                 len(updates), project.id)
+                await self._update_facts(project, updates)
+                await search_index.index_document_by_id(project.id)
 
     async def get(self, *, integration_name: str, notification_name: str,
                   **_kwargs: str) -> None:
@@ -307,13 +306,13 @@ class ProcessingHandler(base.RequestHandler):
             should_process = notification.default_action == 'process'
         return should_process
 
-    async def _get_project(self, notification: Notification,
-                           body) -> ProjectInfo | None:
+    async def _get_projects(self, notification: Notification,
+                            body) -> abc.Iterable[ProjectInfo]:
         surrogate_project_id = notification.id_pattern.resolve(body, None)
         if surrogate_project_id is None:
             self.logger.warning('failed to find surrogate project id using %s',
                                 notification.id_pattern)
-            return None
+            return []
 
         self.logger.debug('looking for project %s@%s', surrogate_project_id,
                           notification.integration.name)
@@ -334,12 +333,8 @@ class ProcessingHandler(base.RequestHandler):
                 surrogate_project_id,
                 notification.integration.name,
             )
-            return None
-
-        project = ProjectInfo.model_validate(result.row)
-        self.logger.debug('found project %r for %s@%s', project.id,
-                          surrogate_project_id, notification.integration.name)
-        return project
+            return []
+        return [ProjectInfo.model_validate(r) for r in result.rows]
 
     async def _gather_updates(self, project: ProjectInfo,
                               notification: Notification,

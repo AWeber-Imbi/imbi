@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### Fixed
+- Handle notifications on projects connected to more than one external project
 
 ## [0.22.12] - 2024-11-15
 ### Changed
