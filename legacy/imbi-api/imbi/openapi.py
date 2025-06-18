@@ -44,7 +44,7 @@ class ISO8601Formatter:
 class URIFormatter:
     @staticmethod
     def validate(value) -> bool:
-        return validators.url(value)
+        return validators.url(value, validate_scheme=lambda _: True)
 
     @staticmethod
     def unmarshal(value: str) -> str:
