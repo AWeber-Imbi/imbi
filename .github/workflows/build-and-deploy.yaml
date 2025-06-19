@@ -25,7 +25,7 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        run: twine upload api/dist/imbi-${{ steps.get_version.outputs.version }}.tar.gz
+        run: python3 -m twine upload api/dist/imbi-${{ steps.get_version.outputs.version }}.tar.gz
         shell: bash
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
