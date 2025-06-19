@@ -3,13 +3,6 @@ REVISION = $(shell git rev-parse HEAD | cut -b 1-7)
 .PHONY: all
 all: dist
 
-.PHONY: deploy_setup
-deploy_setup:
-	apt-get install -y python3 curl
-	curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-	python3 get-pip.py --user
-	pip3 install --upgrade setuptools twine packaging
-
 .PHONY: setup
 setup: openapi/node_modules ui/node_modules
 

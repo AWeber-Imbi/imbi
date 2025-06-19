@@ -17,7 +17,13 @@ jobs:
         run: echo "::set-output name=version::$(tr -d '\n' < api/VERSION)"
         shell: bash
       - name: Setup API Environment
-        run: sudo make deploy_setup
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt update
+          apt install python3.12 python3.12-venv
+          python3.12 -m venv /tmp/sandbox
+          . /tmp/sandbox/bin/activate
+          pip install --upgrade setuptools twine packaging
         shell: bash
       - name: Build
         run: make dist
@@ -25,7 +31,7 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-        run: python3 -m twine upload api/dist/imbi-${{ steps.get_version.outputs.version }}.tar.gz
+        run: twine upload api/dist/imbi-${{ steps.get_version.outputs.version }}.tar.gz
         shell: bash
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
