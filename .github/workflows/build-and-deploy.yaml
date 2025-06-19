@@ -9,7 +9,7 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags') && github.repository == 'AWeber-Imbi/imbi'
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: true
       - name: Get the version
