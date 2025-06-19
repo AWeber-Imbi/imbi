@@ -16,14 +16,10 @@ jobs:
         id: get_version
         run: echo "::set-output name=version::$(tr -d '\n' < api/VERSION)"
         shell: bash
-      - name: Setup API Environment
-        run: |
-          export DEBIAN_FRONTEND=noninteractive
-          apt update
-          apt install python3.12 python3.12-venv
-          python3.12 -m venv /tmp/sandbox
-          . /tmp/sandbox/bin/activate
-          pip install --upgrade setuptools twine packaging
+      - name: Setup python
+        uses: actions/setup-python@v5
+      - name: Install dependencies
+        run: pip install --upgrade setuptools twine packaging
         shell: bash
       - name: Build
         run: make dist
