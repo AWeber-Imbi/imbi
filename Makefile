@@ -7,7 +7,7 @@ all: dist
 deploy_setup:
 	apt-get install -y python3 curl
 	curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-	python3 get-pip.py
+	python3 get-pip.py --user
 	pip3 install --upgrade setuptools twine
 
 .PHONY: setup
