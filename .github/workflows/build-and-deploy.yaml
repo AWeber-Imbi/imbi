@@ -14,7 +14,7 @@ jobs:
           submodules: true
       - name: Get the version
         id: get_version
-        run: echo "::set-output name=version::$(tr -d '\n' < api/VERSION)"
+        run: echo "version=$(tr -d '\n' < api/VERSION)" >> $GITHUB_OUTPUT
         shell: bash
       - name: Setup python
         uses: actions/setup-python@v5
