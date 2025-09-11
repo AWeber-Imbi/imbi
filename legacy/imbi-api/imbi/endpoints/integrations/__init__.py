@@ -4,11 +4,20 @@ Integration Endpoints
 """
 from tornado import web
 
-from . import automations, gitlab, google, integrations, notifications, oauth2
+from . import (
+    automations,
+    github,
+    gitlab,
+    google,
+    integrations,
+    notifications,
+    oauth2,
+)
 
 SLUG = r'[\w_\-%\+]+'
 
 URLS = [
+    web.url(r'^/github/auth', github.RedirectHandler, name='github-callback'),
     web.url(r'^/gitlab/auth', gitlab.RedirectHandler, name='gitlab-callback'),
     web.url(r'^/gitlab/namespaces', gitlab.UserNamespacesHandler),
     web.url(r'^/gitlab/projects', gitlab.ProjectsHandler),
