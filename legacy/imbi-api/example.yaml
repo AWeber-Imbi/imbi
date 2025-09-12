@@ -10,6 +10,9 @@
 #     enabled: false
 #     project_link_type_id: ~
 #     restrict_to_user: true
+#   github:
+#     enabled: false
+#     project_link_type_id: ~
 #   grafana:
 #     enabled: false
 #     project_link_type_id: ~
