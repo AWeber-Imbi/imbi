@@ -13,8 +13,14 @@ if typing.TYPE_CHECKING:
     from imbi import app
 
 
+class RepositoryOwner(pydantic.BaseModel):
+    login: str
+
+
 class Repository(pydantic.BaseModel):
     id: int
+    name: str
+    owner: RepositoryOwner
     html_url: str
 
 
