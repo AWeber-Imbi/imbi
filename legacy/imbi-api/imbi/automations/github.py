@@ -146,8 +146,6 @@ async def delete_repository(context: automations.AutomationContext,
     except errors.ClientUnavailableError:
         pass
     else:
-        # Extract org and repo name from the repository info
-        # The repository name format should be "org/repo"
-        org_repo = github_info.repository.html_url.rstrip('/').split('/')[-2:]
-        org, repo = org_repo
+        org = github_info.repository.owner.login
+        repo = github_info.repository.name
         await client.delete_repository(org, repo)
