@@ -5,6 +5,32 @@ from imbi import automations, errors, models
 from imbi.clients import github
 
 
+async def get_associated_namespaces(
+    context: automations.AutomationContext,
+    namespace_id: int,
+) -> list[str]:
+    """Get associated namespace slugs for a given namespace.
+
+    Args:
+        context: Automation context for database queries
+        namespace_id: The namespace ID to look up associations for
+
+    Returns:
+        List of associated namespace slugs (may be empty if no associations
+        exist)
+    """
+    result = await context.run_query(
+        'SELECT DISTINCT n.slug '
+        'FROM v1.namespaces n '
+        'JOIN v1.namespace_associations na ON n.id = na.child_namespace_id '
+        'WHERE na.parent_namespace_id = %(namespace_id)s', {
+            'namespace_id': namespace_id,
+        },
+        metric_name='get-namespace-associations')
+
+    return [row['slug'] for row in result.rows]
+
+
 @dataclasses.dataclass
 class GitHubContext:
     integration_name: str
@@ -26,14 +52,15 @@ async def create_repository(
     The github repository information is saved in the context using the
     function object (eg, `create_repository`) as the key.
 
-    @see https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28#create-an-organization-repository
+    @see https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28
+    #create-an-organization-repository
     """
     client = await github.create_client(context.application,
                                         automation.integration_name,
                                         context.user)
-    
+
     org = project.project_type.slug
-    
+
     repository = await client.create_repository(
         org=org,
         name=project.slug,
@@ -41,13 +68,32 @@ async def create_repository(
         namespace_slug=project.namespace.slug,
         description=project.description,
     )
-    
+
     context[create_repository] = GitHubContext(
         integration_name=automation.integration_name, repository=repository)
     context.add_callback(delete_repository)
     context.note_progress(
-        'created GitHub repository %s/%s (id=%s) for Imbi project %s',
-        org, repository.id, repository.id, project.id)
+        'created GitHub repository %s/%s (id=%s) for Imbi project %s', org,
+        repository.id, repository.id, project.id)
+
+    associated_namespaces = await get_associated_namespaces(
+        context, project.namespace.id)
+
+    if associated_namespaces:
+        teams_to_assign = [ns.lower() for ns in associated_namespaces]
+    else:
+        # No associations, use the namespace itself
+        teams_to_assign = [project.namespace.slug.lower()]
+
+    for team_slug in teams_to_assign:
+        try:
+            await client.add_team_to_repository(org, project.slug, team_slug)
+            context.note_progress('added team %s to GitHub repository %s/%s',
+                                  team_slug, org, project.slug)
+        except Exception as e:
+            context.note_progress(
+                'warning: failed to add team %s to repository %s/%s: %s',
+                team_slug, org, project.slug, str(e))
 
     await context.run_query(
         'INSERT INTO v1.project_identifiers'
@@ -85,7 +131,8 @@ async def delete_repository(context: automations.AutomationContext,
                             _error: BaseException):
     """Compensating action that deletes a GitHub repository
 
-    The repository information is expected to be in ``context[create_repository]``.
+    The repository information is expected to be in
+    ``context[create_repository]``.
     """
     try:
         github_info = typing.cast(GitHubContext, context[create_repository])
