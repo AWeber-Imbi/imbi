@@ -5,7 +5,7 @@ from imbi import automations, errors, models
 from imbi.clients import github
 
 
-async def get_associated_namespaces(
+async def _get_associated_namespaces(
     context: automations.AutomationContext,
     namespace_id: int,
 ) -> list[str]:
@@ -76,7 +76,7 @@ async def create_repository(
         'created GitHub repository %s/%s (id=%s) for Imbi project %s', org,
         repository.id, repository.id, project.id)
 
-    associated_namespaces = await get_associated_namespaces(
+    associated_namespaces = await _get_associated_namespaces(
         context, project.namespace.id)
 
     if associated_namespaces:
