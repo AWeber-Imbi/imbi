@@ -170,5 +170,5 @@ class OAuth2Integration:
         self.token_endpoint = UNSET_URL
         self.revoke_endpoint = None
         self.client_id = ''
-        self.client_secret = ''
+        self.client_secret = ''  # nosec B105
         self.public_client = True
