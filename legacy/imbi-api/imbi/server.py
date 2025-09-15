@@ -141,6 +141,11 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
         'enabled',
         automations_gitlab.get('project_link_type_id') is not None)
 
+    automations_github = automations.get('github', {})
+    automations_github.setdefault(
+        'enabled',
+        automations_github.get('project_link_type_id') is not None)
+
     automations_pd = automations.get('pagerduty', {})
     automations_pd.setdefault('enabled', True)
 
@@ -169,6 +174,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
 
     settings = {
         'automations': {
+            'github': automations_github,
             'gitlab': automations_gitlab,
             'grafana': {
                 'enabled': automations_grafana.get('enabled', False),

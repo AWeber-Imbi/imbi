@@ -68,6 +68,22 @@ class RequestHandler(base.RequestHandler):
             gitlab['enabled'] = (cfg['enabled']
                                  and gitlab.get('clientId') is not None)
 
+        github = {'enabled': False}
+        cfg = automations.get('github')
+        if cfg:
+            github['project_link_type_id'] = cfg.get('project_link_type_id')
+            github_auth = [r for r in oauth_details if r['name'] == 'github']
+            if github_auth:
+                github_auth = github_auth[0]
+                github.update({
+                    'authorizationEndpoint': github_auth[
+                        'authorization_endpoint'],
+                    'clientId': github_auth['client_id'],
+                    'redirectURI': github_auth['callback_url'],
+                })
+            github['enabled'] = (cfg['enabled']
+                                 and github.get('clientId') is not None)
+
         sentry = {'enabled': False}
         cfg = automations.get('sentry')
         if cfg:
@@ -81,6 +97,7 @@ class RequestHandler(base.RequestHandler):
                     'project_link_type_id': automations['grafana']
                     ['project_link_type_id']
                 },
+                'github': github,
                 'gitlab': gitlab,
                 'sentry': {
                     'enabled': automations['sentry']['enabled'],
