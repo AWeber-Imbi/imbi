@@ -61,13 +61,16 @@ async def create_repository(
 
     org = project.project_type.slug
 
+    settings = context.application.settings['automations']['github']
+    default_attributes = settings.get('default_respository_attributes', {})
+
     repository = await client.create_repository(
         org=org,
         name=project.slug,
         project_id=project.id,
         namespace_slug=project.namespace.slug,
         description=project.description,
-    )
+        **default_attributes)
 
     context[create_repository] = GitHubContext(
         integration_name=automation.integration_name, repository=repository)
@@ -110,7 +113,6 @@ async def create_repository(
         'registered GitHub identifier %s for Imbi project %s', repository.id,
         project.id)
 
-    settings = context.application.settings['automations']['github']
     link_type_id = settings.get('project_link_type_id', None)
     if link_type_id is not None:
         await context.run_query(
