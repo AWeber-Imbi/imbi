@@ -169,7 +169,7 @@ class GitHubClient(sprockets.mixins.http.HTTPClientMixin):
             'delete_branch_on_merge': True,
             'custom_properties': {
                 'imbi_project_id': str(project_id),
-                'team': namespace_slug.upper(),
+                'team': namespace_slug.lower(),
             },
             **attributes
         }
