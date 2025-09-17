@@ -59,7 +59,7 @@ async def create_repository(
                                         automation.integration_name,
                                         context.user)
 
-    org = project.project_type.slug
+    org = project.project_type.github_org or project.project_type.slug
 
     settings = context.application.settings['automations']['github']
     default_attributes = settings.get('default_respository_attributes', {})
