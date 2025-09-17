@@ -181,11 +181,19 @@ class GitHubClient(sprockets.mixins.http.HTTPClientMixin):
         )
         if response.ok:
             return Repository.model_validate(response.body)
-        raise GitHubAPIFailure(
-            response,
-            'failed to create repository %s',
-            name,
-        )
+        else:
+            if response.code == http.HTTPStatus.UNPROCESSABLE_ENTITY:
+                self.logger.error(
+                    'failed to create repository %s/%s (422): %s',
+                    org,
+                    name,
+                    response.body,
+                )
+            raise GitHubAPIFailure(
+                response,
+                'failed to create repository %s',
+                name,
+            )
 
     async def delete_repository(self, org: str, repo: str) -> None:
         """Delete a repository on GitHub.
