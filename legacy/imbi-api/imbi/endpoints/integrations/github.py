@@ -74,7 +74,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
             content_type=sprockets.mixins.http.CONTENT_TYPE_JSON,
             request_headers={
                 'X-GitHub-Api-Version': '2022-11-28',
-                'Accept': sprockets.mixins.http.CONTENT_TYPE_JSON
+                'Accept': str(sprockets.mixins.http.CONTENT_TYPE_JSON)
             })
         if not response.ok:
             self.logger.error('failed to exchange auth code for token: %s %s',
@@ -98,7 +98,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
             str(self.integration.api_endpoint / 'user'),
             request_headers={
                 'X-GitHub-Api-Version': '2022-11-28',
-                'Accept': sprockets.mixins.http.CONTENT_TYPE_JSON,
+                'Accept': str(sprockets.mixins.http.CONTENT_TYPE_JSON),
                 'Authorization': f'Bearer {token.access_token}'
             })
         if response.ok:
@@ -128,7 +128,7 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
             content_type=sprockets.mixins.http.CONTENT_TYPE_JSON,
             request_headers={
                 'X-GitHub-Api-Version': '2022-11-28',
-                'Accept': sprockets.mixins.http.CONTENT_TYPE_JSON,
+                'Accept': str(sprockets.mixins.http.CONTENT_TYPE_JSON),
             },
         )
 
