@@ -26,7 +26,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             'description': str(uuid.uuid4()),
             'icon_class': 'fas fa-blind',
             'environment_urls': False,
-            'gitlab_project_prefix': 'foo'
+            'gitlab_project_prefix': 'foo',
+            'github_org': 'test-org'
         })
 
         # Create

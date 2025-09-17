@@ -216,6 +216,7 @@ class ProjectType:
     icon_class: typing.Optional[str]
     environment_urls: bool
     gitlab_project_prefix: typing.Optional[str]
+    github_org: typing.Optional[str]
 
     SQL: typing.ClassVar = re.sub(
         r'\s+', ' ', """\
@@ -230,7 +231,8 @@ class ProjectType:
                description,
                icon_class,
                environment_urls,
-               gitlab_project_prefix
+               gitlab_project_prefix,
+               github_org
           FROM v1.project_types
          WHERE id=%(id)s""")
 
