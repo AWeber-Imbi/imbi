@@ -77,7 +77,8 @@ class RedirectHandler(sprockets.mixins.http.HTTPClientMixin,
                 'Accept': str(sprockets.mixins.http.CONTENT_TYPE_JSON)
             })
         if not response.ok:
-            self.logger.error('failed to exchange auth code for token: %s',
+            self.logger.error('failed to exchange auth code for token: (%s) %s',
+                              response.code,
                               response.body)
             raise errors.InternalServerError(
                 'failed exchange auth code for token: %s',
