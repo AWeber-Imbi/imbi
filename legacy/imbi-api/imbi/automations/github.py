@@ -77,7 +77,7 @@ async def create_repository(
     context.add_callback(delete_repository)
     context.note_progress(
         'created GitHub repository %s/%s (id=%s) for Imbi project %s', org,
-        repository.id, repository.id, project.id)
+        repository.name, repository.id, project.id)
 
     associated_namespaces = await _get_associated_namespaces(
         context, project.namespace.id)
