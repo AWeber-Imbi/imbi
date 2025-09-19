@@ -154,15 +154,14 @@ inside of imbi.  The first thing that you need to do is create the OAuth 2 appli
 
 # Releasing a new version
 
-To release a new version of Imbi, update the submodules in the main repo and tag
-the release. GitHub Actions will perform all the build steps including:
+## DDL Updates
 
-- Creating the production UI build
-- Copy the UI build into the Python project and build the Python package
-- Upload the Python package to PyPI
-- Create the Docker image and upload it to Docker Hub
+Database schema updates may be required for the API or other tests to pass. To release a new DDL version, tag the GitHub DDL repository to create a new docker tag that will be picked up by the api docker-compose file.
 
-These are roughly the commands used:
+## Main Release Process
+
+1. Update the VERSION file in imbi-api manually
+2. Update submodules and tag the release
 
 ```bash
 git submodule update --remote --merge
@@ -172,5 +171,9 @@ git tag [VERSION]
 git push origin [VERSION]
 ```
 
-What it does not currently do is update the VERSION file in imbi-api.  You
-must do this manually before updating this repository.
+GitHub Actions will perform all the build steps including:
+
+- Creating the production UI build
+- Copy the UI build into the Python project and build the Python package
+- Upload the Python package to PyPI
+- Create the Docker image and upload it to Docker Hub
