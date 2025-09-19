@@ -86,9 +86,10 @@ class GitHubClient(sprockets.mixins.http.HTTPClientMixin):
         request_headers = kwargs.setdefault('request_headers', {})
         request_headers.update(self.headers)
         if kwargs.get('body', None) is not None:
-            request_headers[
-                'Content-Type'] = str(sprockets.mixins.http.CONTENT_TYPE_JSON)
-            kwargs['content_type'] = str(sprockets.mixins.http.CONTENT_TYPE_JSON)
+            request_headers['Content-Type'] = str(
+                sprockets.mixins.http.CONTENT_TYPE_JSON)
+            kwargs['content_type'] = str(
+                sprockets.mixins.http.CONTENT_TYPE_JSON)
         kwargs['user_agent'] = f'imbi/{version} (GitHubClient)'
         self.logger.debug('%s %s', method, url)
 
