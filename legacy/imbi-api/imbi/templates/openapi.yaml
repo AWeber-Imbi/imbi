@@ -4998,6 +4998,10 @@ paths:
                       description: Prefix for this project type in GitLab
                       type: string
                       nullable: true
+                    github_org:
+                      description: 'GitHub organization to use when creating repositories, overrides project type slug if set'
+                      type: string
+                      nullable: true
                   additionalProperties: false
               examples:
                 records:
@@ -5054,6 +5058,10 @@ paths:
                       description: Prefix for this project type in GitLab
                       type: string
                       nullable: true
+                    github_org:
+                      description: 'GitHub organization to use when creating repositories, overrides project type slug if set'
+                      type: string
+                      nullable: true
                   additionalProperties: false
               examples:
                 records:
@@ -5108,6 +5116,10 @@ paths:
                   default: false
                 gitlab_project_prefix:
                   description: Prefix for this project type in GitLab
+                  type: string
+                  nullable: true
+                github_org:
+                  description: 'GitHub organization to use when creating repositories, overrides project type slug if set'
                   type: string
                   nullable: true
               required:
