@@ -124,6 +124,7 @@ class GitHubClient(sprockets.mixins.http.HTTPClientMixin):
         response = await super().http_fetch(
             url,
             method='POST',
+            allow_nonstandard_methods=True,
         )
         if response.ok:
             self.logger.debug('refresh response: %r', response.body)
