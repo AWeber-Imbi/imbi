@@ -16,11 +16,15 @@ from imbi.endpoints import base
 from imbi.endpoints.ssm import models
 
 
-def path_prefix(template: str, project_slug: str, project_type_slug: str,
-                namespace_slug: str) -> str:
+def path_prefix(template: str,
+                project_slug: str,
+                project_type_slug: str,
+                namespace_slug: str,
+                ssm_path_override: typing.Optional[str] = None) -> str:
+    project_type = ssm_path_override or project_type_slug
     return template.replace('{project_slug}', project_slug).replace(
-        '{project_type_slug}',
-        project_type_slug).replace('{namespace_slug}', namespace_slug)
+        '{project_type_slug}', project_type).replace('{namespace_slug}',
+                                                     namespace_slug)
 
 
 class SSMRequestHandler(sprockets.mixins.http.HTTPClientMixin,
@@ -31,6 +35,7 @@ class SSMRequestHandler(sprockets.mixins.http.HTTPClientMixin,
                n.aws_ssm_slug AS namespace_slug,
                p.slug AS project_slug,
                t.slug AS project_type_slug,
+               t.ssm_path_override,
                p.configuration_type,
                p.environments
           FROM v1.namespaces AS n
@@ -286,7 +291,8 @@ class RecordRequestHandler(SSMRequestHandler, base.PydanticHandlerMixin):
         ssm_path_prefix = path_prefix(
             self.application.settings['project_configuration']
             ['ssm_prefix_template'], project_info['project_slug'],
-            project_info['project_type_slug'], project_info['namespace_slug'])
+            project_info['project_type_slug'], project_info['namespace_slug'],
+            project_info['ssm_path_override'])
         name = ssm_path_prefix + urllib.parse.unquote(kwargs['name'])
         aws_session = aioboto3.Session()
 
@@ -344,7 +350,8 @@ class CollectionRequestHandler(SSMRequestHandler):
         ssm_path_prefix = path_prefix(
             self.application.settings['project_configuration']
             ['ssm_prefix_template'], project_info['project_slug'],
-            project_info['project_type_slug'], project_info['namespace_slug'])
+            project_info['project_type_slug'], project_info['namespace_slug'],
+            project_info['ssm_path_override'])
 
         role_arn_exists = False
         params_by_path = collections.defaultdict(dict)
@@ -403,7 +410,8 @@ class CollectionRequestHandler(SSMRequestHandler):
         ssm_path_prefix = path_prefix(project_config['ssm_prefix_template'],
                                       project_info['project_slug'],
                                       project_info['project_type_slug'],
-                                      project_info['namespace_slug'])
+                                      project_info['namespace_slug'],
+                                      project_info['ssm_path_override'])
         name = ssm_path_prefix + body['name']
 
         for environment, value in body['values'].items():
@@ -422,7 +430,8 @@ class CollectionRequestHandler(SSMRequestHandler):
         ssm_path_prefix = path_prefix(project_config['ssm_prefix_template'],
                                       project_info['project_slug'],
                                       project_info['project_type_slug'],
-                                      project_info['namespace_slug'])
+                                      project_info['namespace_slug'],
+                                      project_info['ssm_path_override'])
         name = ssm_path_prefix + body['name']
 
         for environment in set(body['environments']):
