@@ -18,10 +18,18 @@ class Integration(pydantic.BaseModel):
     name: str
 
 
+class NotificationRuleTransformation(pydantic.BaseModel):
+    """Extracts selected columns from v1.notification_rule_transformations"""
+    input_value: str
+    output_value: str
+
+
 class NotificationRule(pydantic.BaseModel):
     """Extracts selected columns from v1.notification_rules"""
     fact_type_id: int
     pattern: common.JsonPointer
+    transformations: typing.List[
+        NotificationRuleTransformation] = pydantic.Field(default_factory=list)
 
 
 class NotificationFilter(pydantic.BaseModel):
@@ -203,11 +211,19 @@ class ProcessingHandler(base.RequestHandler):
                 ' WHERE integration_name = %(integration_name)s'
                 '   AND notification_name = %(notification_name)s',
                 parameters=key,
-                metric_name='fetch-notification-rules')
+                metric_name='fetch-notification-rules'),
+            self.postgres_execute(
+                'SELECT fact_type_id, input_value, output_value'
+                '  FROM v1.notification_rule_transformations'
+                ' WHERE integration_name = %(integration_name)s'
+                '   AND notification_name = %(notification_name)s',
+                parameters=key,
+                metric_name='fetch-notification-transformations')
         ]
         results: tuple[sprockets_postgres.QueryResult, ...]
         results = await asyncio.gather(*queries)
-        integration_data, notification_data, filters, rules = results
+        (integration_data, notification_data, filters, rules,
+         transformations) = results
 
         if not integration_data.row:
             raise errors.ItemNotFound('Integration %r not found',
@@ -219,8 +235,25 @@ class ProcessingHandler(base.RequestHandler):
         integration = Integration.model_validate(integration_data.row)
         notification_data.row['integration'] = integration.model_dump()
         notification = Notification.model_validate(notification_data.row)
-        notification.rules.extend(
-            NotificationRule.model_validate(row) for row in rules.rows)
+
+        # Group transformations by fact_type_id
+        transformations_by_fact_type = {}
+        for row in transformations.rows:
+            fact_type_id = row['fact_type_id']
+            if fact_type_id not in transformations_by_fact_type:
+                transformations_by_fact_type[fact_type_id] = []
+            transformations_by_fact_type[fact_type_id].append(
+                NotificationRuleTransformation.model_validate(row))
+
+        # Create rules with potential associated transformations
+        for row in rules.rows:
+            rule_data = dict(row)
+            fact_type_id = rule_data['fact_type_id']
+            rule_data['transformations'] = transformations_by_fact_type.get(
+                fact_type_id, [])
+            notification.rules.append(
+                NotificationRule.model_validate(rule_data))
+
         notification.filters.extend(
             NotificationFilter.model_validate(row) for row in filters.rows)
 
@@ -359,8 +392,18 @@ class ProcessingHandler(base.RequestHandler):
         updates = {}
         valid_fact_type_ids = {r['id'] for r in result}
         for rule in notification.rules:
-            if rule.fact_type_id in valid_fact_type_ids:
-                value = rule.pattern.resolve(body, unspecified)
-                if value is not unspecified:
-                    updates[rule.fact_type_id] = value
+            if rule.fact_type_id not in valid_fact_type_ids:
+                continue
+            value = rule.pattern.resolve(body, unspecified)
+            if value is unspecified:
+                continue
+            transformed_value = value
+            for transformation in rule.transformations:
+                if str(value) == transformation.input_value:
+                    transformed_value = transformation.output_value
+                    self.logger.debug(
+                        'Applied transformation for fact_type_id %s: %r -> %r',
+                        rule.fact_type_id, value, transformed_value)
+                    break
+            updates[rule.fact_type_id] = transformed_value
         return updates
