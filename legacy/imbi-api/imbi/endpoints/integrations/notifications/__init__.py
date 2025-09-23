@@ -4,6 +4,7 @@ from . import filters
 from . import notifications
 from . import processing
 from . import rules
+from . import transformations
 
 PREFIX = r'^/integrations/(?P<integration_name>[^/]+)/notifications'
 SLUG = r'[\w_\-%\+]+'
@@ -30,6 +31,16 @@ URLS = [
         r'/(?P<fact_type_id>\d+)$',
         rules.RecordRequestHandler,
         name=rules.RecordRequestHandler.NAME),
+    web.url(
+        fr'{PREFIX}/(?P<notification_name>{SLUG})/rules'
+        r'/(?P<fact_type_id>\d+)/transformations$',
+        transformations.CollectionRequestHandler,
+        name=transformations.CollectionRequestHandler.NAME),
+    web.url(
+        fr'{PREFIX}/(?P<notification_name>{SLUG})/rules'
+        r'/(?P<fact_type_id>\d+)/transformations/(?P<id>\d+)$',
+        transformations.RecordRequestHandler,
+        name=transformations.RecordRequestHandler.NAME),
     web.url(
         fr'{PREFIX}/(?P<notification_name>{SLUG})'
         r'/(?P<action>delete|get|post|put)$',
