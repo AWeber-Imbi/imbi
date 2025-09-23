@@ -12,7 +12,8 @@ class _RequestHandlerMixin:
     ]
 
 
-class CollectionRequestHandler(_RequestHandlerMixin, base.CollectionRequestHandler):
+class CollectionRequestHandler(_RequestHandlerMixin,
+                               base.CollectionRequestHandler):
     NAME = 'notification-rule-transformations'
     ITEM_NAME = 'notification-rule-transformation'
 
@@ -50,9 +51,9 @@ class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
 
     GET_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT id, fact_type_id, integration_name, notification_name, input_value,
-               output_value, created_at, created_by, last_modified_at,
-               last_modified_by
+        SELECT id, fact_type_id, integration_name, notification_name,
+               input_value, output_value, created_at, created_by,
+               last_modified_at, last_modified_by
           FROM v1.notification_rule_transformations
          WHERE id = %(id)s
         """)
