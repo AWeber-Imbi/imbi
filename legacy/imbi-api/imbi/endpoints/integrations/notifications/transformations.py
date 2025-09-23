@@ -6,7 +6,6 @@ from imbi.endpoints import base
 class CollectionRequestHandler(base.CollectionRequestHandler):
     NAME = 'notification-rule-transformations'
     ITEM_NAME = 'notification-rule-transformation'
-    ID_KEY = ['integration_name', 'notification_name', 'fact_type_id']
     FIELDS = []
 
     COLLECTION_SQL = re.sub(
@@ -40,6 +39,7 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
 
 class RecordRequestHandler(base.CRUDRequestHandler):
     NAME = 'notification-rule-transformation'
+    ID_KEY = 'id'
     FIELDS = [
         'id', 'fact_type_id', 'integration_name', 'notification_name',
         'input_value', 'output_value'
@@ -47,14 +47,11 @@ class RecordRequestHandler(base.CRUDRequestHandler):
 
     GET_SQL = re.sub(
         r'\s+', ' ', """\
-        SELECT fact_type_id, integration_name, notification_name, input_value,
+        SELECT id, fact_type_id, integration_name, notification_name, input_value,
                output_value, created_at, created_by, last_modified_at,
                last_modified_by
           FROM v1.notification_rule_transformations
-         WHERE integration_name = %(integration_name)s
-           AND notification_name = %(notification_name)s
-           AND fact_type_id = %(fact_type_id)s
-           AND input_value = %(input_value)s
+         WHERE id = %(id)s
         """)
 
     PATCH_SQL = re.sub(
@@ -63,19 +60,13 @@ class RecordRequestHandler(base.CRUDRequestHandler):
            SET output_value = %(output_value)s,
                last_modified_at = CURRENT_TIMESTAMP,
                last_modified_by = %(username)s
-         WHERE fact_type_id = %(fact_type_id)s
-           AND integration_name = %(integration_name)s
-           AND notification_name = %(notification_name)s
-           AND input_value = %(input_value)s
+         WHERE id = %(id)s
         """)
 
     DELETE_SQL = re.sub(
         r'\s+', ' ', """\
         DELETE FROM v1.notification_rule_transformations
-         WHERE fact_type_id = %(fact_type_id)s
-           AND integration_name = %(integration_name)s
-           AND notification_name = %(notification_name)s
-           AND input_value = %(input_value)s
+         WHERE id = %(id)s
         """)
 
     @base.require_permission('admin')
