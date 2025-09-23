@@ -3,10 +3,18 @@ import re
 from imbi.endpoints import base
 
 
-class CollectionRequestHandler(base.CollectionRequestHandler):
+class _RequestHandlerMixin:
+
+    ID_KEY = 'id'
+    FIELDS = [
+        'id', 'fact_type_id', 'integration_name', 'notification_name',
+        'input_value', 'output_value'
+    ]
+
+
+class CollectionRequestHandler(_RequestHandlerMixin, base.CollectionRequestHandler):
     NAME = 'notification-rule-transformations'
     ITEM_NAME = 'notification-rule-transformation'
-    FIELDS = []
 
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
@@ -37,13 +45,8 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
         await super().post(*args, **kwargs)
 
 
-class RecordRequestHandler(base.CRUDRequestHandler):
+class RecordRequestHandler(_RequestHandlerMixin, base.CRUDRequestHandler):
     NAME = 'notification-rule-transformation'
-    ID_KEY = 'id'
-    FIELDS = [
-        'id', 'fact_type_id', 'integration_name', 'notification_name',
-        'input_value', 'output_value'
-    ]
 
     GET_SQL = re.sub(
         r'\s+', ' ', """\
