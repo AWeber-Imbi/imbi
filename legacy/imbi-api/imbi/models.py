@@ -217,6 +217,7 @@ class ProjectType:
     environment_urls: bool
     gitlab_project_prefix: typing.Optional[str]
     github_org: typing.Optional[str]
+    ssm_path_override: typing.Optional[str]
 
     SQL: typing.ClassVar = re.sub(
         r'\s+', ' ', """\
@@ -232,7 +233,8 @@ class ProjectType:
                icon_class,
                environment_urls,
                gitlab_project_prefix,
-               github_org
+               github_org,
+               ssm_path_override
           FROM v1.project_types
          WHERE id=%(id)s""")
 

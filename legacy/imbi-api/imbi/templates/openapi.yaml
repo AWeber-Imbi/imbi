@@ -5163,6 +5163,10 @@ paths:
                       description: 'GitHub organization to use when creating repositories, overrides project type slug if set'
                       type: string
                       nullable: true
+                    ssm_path_override:
+                      description: Override the slug of this type when generating SSM paths
+                      type: string
+                      nullable: true
                   additionalProperties: false
               examples:
                 records:
@@ -5223,6 +5227,10 @@ paths:
                       description: 'GitHub organization to use when creating repositories, overrides project type slug if set'
                       type: string
                       nullable: true
+                    ssm_path_override:
+                      description: Override the slug of this type when generating SSM paths
+                      type: string
+                      nullable: true
                   additionalProperties: false
               examples:
                 records:
@@ -5281,6 +5289,10 @@ paths:
                   nullable: true
                 github_org:
                   description: 'GitHub organization to use when creating repositories, overrides project type slug if set'
+                  type: string
+                  nullable: true
+                ssm_path_override:
+                  description: Override the slug of this type when generating SSM paths
                   type: string
                   nullable: true
               required:

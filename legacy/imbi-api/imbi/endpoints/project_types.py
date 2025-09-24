@@ -8,7 +8,8 @@ class _RequestHandlerMixin:
     ID_KEY = 'id'
     FIELDS = [
         'id', 'name', 'plural_name', 'description', 'icon_class',
-        'environment_urls', 'gitlab_project_prefix', 'github_org'
+        'environment_urls', 'gitlab_project_prefix', 'github_org',
+        'ssm_path_override'
     ]
     DEFAULTS = {'icon_class': 'fas fa-folder'}
 
@@ -17,7 +18,8 @@ class _RequestHandlerMixin:
         SELECT id, "name", created_at, created_by,
                last_modified_at, last_modified_by,
                description, plural_name, slug, icon_class,
-               environment_urls, gitlab_project_prefix, github_org
+               environment_urls, gitlab_project_prefix, github_org,
+               ssm_path_override
           FROM v1.project_types
          WHERE id=%(id)s""")
 
@@ -31,7 +33,8 @@ class CollectionRequestHandler(_RequestHandlerMixin,
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
         SELECT id, "name", plural_name, description, slug, icon_class,
-               environment_urls, gitlab_project_prefix, github_org
+               environment_urls, gitlab_project_prefix, github_org,
+               ssm_path_override
           FROM v1.project_types
          ORDER BY "name" ASC""")
 
@@ -40,10 +43,11 @@ class CollectionRequestHandler(_RequestHandlerMixin,
         INSERT INTO v1.project_types
                     ("name", created_by, plural_name, description,
                      slug, icon_class, environment_urls, gitlab_project_prefix,
-                     github_org)
+                     github_org, ssm_path_override)
              VALUES (%(name)s, %(username)s, %(plural_name)s, %(description)s,
                      %(slug)s, %(icon_class)s, %(environment_urls)s,
-                     %(gitlab_project_prefix)s, %(github_org)s)
+                     %(gitlab_project_prefix)s, %(github_org)s,
+                     %(ssm_path_override)s)
           RETURNING id""")
 
 
@@ -65,5 +69,6 @@ class RecordRequestHandler(_RequestHandlerMixin, base.AdminCRUDRequestHandler):
                icon_class=%(icon_class)s,
                environment_urls=%(environment_urls)s,
                gitlab_project_prefix=%(gitlab_project_prefix)s,
-               github_org=%(github_org)s
+               github_org=%(github_org)s,
+               ssm_path_override=%(ssm_path_override)s
          WHERE id=%(id)s""")
