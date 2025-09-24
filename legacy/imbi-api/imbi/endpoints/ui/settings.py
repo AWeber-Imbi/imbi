@@ -99,6 +99,9 @@ class RequestHandler(base.RequestHandler):
                 },
                 'github': github,
                 'gitlab': gitlab,
+                'pagerduty': {
+                    'enabled': automations['pagerduty']['enabled'],
+                },
                 'sentry': {
                     'enabled': automations['sentry']['enabled'],
                     'project_link_type_id': automations['sentry']
