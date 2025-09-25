@@ -83,6 +83,8 @@ class ProcessingHandler(base.RequestHandler):
     path.
 
     """
+    _notification: Notification
+
     async def prepare(self) -> None:
         # make sure that the appropriate handler is being invoked
         # based on the last portion of the path
@@ -92,6 +94,29 @@ class ProcessingHandler(base.RequestHandler):
             raise errors.BadRequest(
                 'request method %r does not match expected %r',
                 self.request.method.upper(), method_from_path)
+
+        integration_name = self.path_kwargs['integration_name']
+        notification_name = self.path_kwargs['notification_name']
+        self._notification = await self._get_notification(
+            integration_name, notification_name)
+
+        if self._notification.verification_token:
+            self.logger.info('Performing webhook verification for %s/%s',
+                             integration_name, notification_name)
+            headers = dict(self.request.headers)
+            body = self.request.body
+
+            if not self._verify_webhook(integration_name, headers, body,
+                                        self._notification.verification_token):
+                self.logger.warning('Webhook verification failed for %s/%s',
+                                    integration_name, notification_name)
+                raise errors.Unauthorized(
+                    'Webhook verification failed for %s/%s',
+                    integration_name, notification_name)
+        else:
+            self.logger.debug('No verification token configured for %s/%s, '
+                              'skipping verification',
+                              integration_name, notification_name)
 
     async def _process_notification(self, integration_name, notification_name,
                                     body) -> None:
@@ -104,19 +129,17 @@ class ProcessingHandler(base.RequestHandler):
         """
         self.logger.name = '.'.join(
             [__package__, integration_name, notification_name])
-        notification = await self._get_notification(integration_name,
-                                                    notification_name)
-        if not self._evaluate_filters(notification, body):
+        if not self._evaluate_filters(self._notification, body):
             return
 
         self.logger.info('processing notification %s/%s default %r',
                          integration_name, notification_name,
-                         notification.default_action)
+                         self._notification.default_action)
         search_index = imbi.opensearch.project.ProjectIndex(self.application)
-        for project in await self._get_projects(notification, body):
+        for project in await self._get_projects(self._notification, body):
             self.logger.debug('checking for updates on imbi project id=%s',
                               project.id)
-            updates = await self._gather_updates(project, notification, body)
+            updates = await self._gather_updates(project, self._notification, body)
             if updates:
                 self.logger.info('updating %s facts on imbi project id=%s',
                                  len(updates), project.id)
@@ -258,6 +281,46 @@ class ProcessingHandler(base.RequestHandler):
             NotificationFilter.model_validate(row) for row in filters.rows)
 
         return notification
+
+    def _verify_github_webhook(self, headers: dict, body: bytes,
+                               verification_token: str) -> bool:
+        """Verify GitHub webhook signature.
+
+        Args:
+            headers: HTTP request headers
+            body: Raw request body
+            verification_token: The verification token from the database
+
+        Returns:
+            True if verification passes, False otherwise
+        """
+        raise NotImplementedError('GitHub webhook verification is not implemented')
+
+    def _verify_webhook(self, integration_name: str, headers: dict, body: bytes,
+                        verification_token: str) -> bool:
+        """Route webhook verification to appropriate integration handler.
+
+        Args:
+            integration_name: Name of the integration (e.g., 'github')
+            headers: HTTP request headers
+            body: Raw request body
+            verification_token: The verification token from the database
+
+        Returns:
+            True if verification passes
+
+        Raises:
+            BadRequest: For unsupported integrations with verification tokens
+        """
+        if integration_name.lower() == 'github':
+            return self._verify_github_webhook(headers, body, verification_token)
+        else:
+            self.logger.warning(
+                'Verification token configured for unsupported integration %r',
+                integration_name)
+            raise errors.BadRequest(
+                'Webhook verification not supported for integration %r',
+                integration_name)
 
     def _coerce_value(
         self,
