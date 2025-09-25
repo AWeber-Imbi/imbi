@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import typing
 from collections import abc
 
@@ -63,6 +65,32 @@ T: typing.TypeAlias = typing.TypeVar('T')
 Pair: typing.TypeAlias = tuple[T, T]
 
 
+def verify_hmac_signature(payload: bytes,
+                          secret: str,
+                          signature: str,
+                          hash_prefix: str = 'sha256=') -> bool:
+    """Verify HMAC signature for webhook payloads.
+
+    Args:
+        payload: Raw request body bytes
+        secret: Secret token for HMAC generation
+        signature: Expected signature from request header
+        hash_prefix: Prefix for the hash (default: 'sha256=')
+
+    Returns:
+        True if signature is valid, False otherwise
+    """
+    if not signature:
+        return False
+
+    hash_object = hmac.new(secret.encode('utf-8'),
+                           msg=payload,
+                           digestmod=hashlib.sha256)
+    expected_signature = hash_prefix + hash_object.hexdigest()
+
+    return hmac.compare_digest(expected_signature, signature)
+
+
 class ProcessingHandler(base.RequestHandler):
     """Handle incoming notifications from integrated applications.
 
@@ -83,6 +111,8 @@ class ProcessingHandler(base.RequestHandler):
     path.
 
     """
+    _notification: Notification
+
     async def prepare(self) -> None:
         # make sure that the appropriate handler is being invoked
         # based on the last portion of the path
@@ -92,6 +122,30 @@ class ProcessingHandler(base.RequestHandler):
             raise errors.BadRequest(
                 'request method %r does not match expected %r',
                 self.request.method.upper(), method_from_path)
+
+        integration_name = self.path_kwargs['integration_name']
+        notification_name = self.path_kwargs['notification_name']
+        self._notification = await self._get_notification(
+            integration_name, notification_name)
+
+        if self._notification.verification_token:
+            self.logger.info('Performing webhook verification for %s/%s',
+                             integration_name, notification_name)
+            headers = dict(self.request.headers)
+            body = self.request.body
+
+            if not self._verify_webhook(integration_name, notification_name,
+                                        headers, body,
+                                        self._notification.verification_token):
+                self.logger.warning('Webhook verification failed for %s/%s',
+                                    integration_name, notification_name)
+                raise errors.Unauthorized(
+                    'Webhook verification failed for %s/%s', integration_name,
+                    notification_name)
+        else:
+            self.logger.debug(
+                'No verification token configured for %s/%s, '
+                'skipping verification', integration_name, notification_name)
 
     async def _process_notification(self, integration_name, notification_name,
                                     body) -> None:
@@ -104,19 +158,18 @@ class ProcessingHandler(base.RequestHandler):
         """
         self.logger.name = '.'.join(
             [__package__, integration_name, notification_name])
-        notification = await self._get_notification(integration_name,
-                                                    notification_name)
-        if not self._evaluate_filters(notification, body):
+        if not self._evaluate_filters(self._notification, body):
             return
 
         self.logger.info('processing notification %s/%s default %r',
                          integration_name, notification_name,
-                         notification.default_action)
+                         self._notification.default_action)
         search_index = imbi.opensearch.project.ProjectIndex(self.application)
-        for project in await self._get_projects(notification, body):
+        for project in await self._get_projects(self._notification, body):
             self.logger.debug('checking for updates on imbi project id=%s',
                               project.id)
-            updates = await self._gather_updates(project, notification, body)
+            updates = await self._gather_updates(project, self._notification,
+                                                 body)
             if updates:
                 self.logger.info('updating %s facts on imbi project id=%s',
                                  len(updates), project.id)
@@ -258,6 +311,68 @@ class ProcessingHandler(base.RequestHandler):
             NotificationFilter.model_validate(row) for row in filters.rows)
 
         return notification
+
+    def _verify_github_webhook(self, headers: dict, body: bytes,
+                               verification_token: str, integration_name: str,
+                               notification_name: str) -> bool:
+        """Verify GitHub webhook signature using HMAC SHA256.
+
+        Args:
+            headers: HTTP request headers
+            body: Raw request body
+            verification_token: The verification token from the database
+            integration_name: The name of the integration
+            notification_name: The name of the notification
+
+        Returns:
+            True if verification passes, False otherwise
+        """
+        signature_header = headers.get('X-Hub-Signature-256')
+        if not signature_header:
+            self.logger.warning(
+                'GitHub verification: X-Hub-Signature-256 header'
+                ' is missing for %s/%s', integration_name, notification_name)
+            return False
+
+        is_valid = verify_hmac_signature(body, verification_token,
+                                         signature_header)
+        if not is_valid:
+            self.logger.warning(
+                'GitHub verification: Request signatures did not match'
+                ' for %s/%s', integration_name, notification_name)
+            return False
+
+        return True
+
+    def _verify_webhook(self, integration_name: str, notification_name: str,
+                        headers: dict, body: bytes,
+                        verification_token: str) -> bool:
+        """Route webhook verification to appropriate integration handler.
+
+        Args:
+            integration_name: Name of the integration (e.g., 'github')
+            headers: HTTP request headers
+            body: Raw request body
+            verification_token: The verification token from the database
+
+        Returns:
+            True if verification passes
+
+        Raises:
+            BadRequest: For unsupported integrations with verification tokens
+        """
+        if integration_name.lower() == 'github':
+            return self._verify_github_webhook(headers, body,
+                                               verification_token,
+                                               integration_name,
+                                               notification_name)
+        else:
+            self.logger.warning(
+                'Verification token configured for unsupported integration %r',
+                integration_name)
+            raise errors.BadRequest(
+                'Webhook verification not supported for integration %r',
+                integration_name)
 
     def _coerce_value(
         self,
