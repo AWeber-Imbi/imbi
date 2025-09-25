@@ -134,17 +134,18 @@ class ProcessingHandler(base.RequestHandler):
             headers = dict(self.request.headers)
             body = self.request.body
 
-            if not self._verify_webhook(integration_name, headers, body,
+            if not self._verify_webhook(integration_name, notification_name,
+                                        headers, body,
                                         self._notification.verification_token):
                 self.logger.warning('Webhook verification failed for %s/%s',
                                     integration_name, notification_name)
                 raise errors.Unauthorized(
-                    'Webhook verification failed for %s/%s',
-                    integration_name, notification_name)
+                    'Webhook verification failed for %s/%s', integration_name,
+                    notification_name)
         else:
-            self.logger.debug('No verification token configured for %s/%s, '
-                              'skipping verification',
-                              integration_name, notification_name)
+            self.logger.debug(
+                'No verification token configured for %s/%s, '
+                'skipping verification', integration_name, notification_name)
 
     async def _process_notification(self, integration_name, notification_name,
                                     body) -> None:
@@ -167,7 +168,8 @@ class ProcessingHandler(base.RequestHandler):
         for project in await self._get_projects(self._notification, body):
             self.logger.debug('checking for updates on imbi project id=%s',
                               project.id)
-            updates = await self._gather_updates(project, self._notification, body)
+            updates = await self._gather_updates(project, self._notification,
+                                                 body)
             if updates:
                 self.logger.info('updating %s facts on imbi project id=%s',
                                  len(updates), project.id)
