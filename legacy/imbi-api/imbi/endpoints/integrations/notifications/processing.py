@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import typing
 from collections import abc
 
@@ -61,6 +63,32 @@ class ProjectInfo(pydantic.BaseModel):
 
 T: typing.TypeAlias = typing.TypeVar('T')
 Pair: typing.TypeAlias = tuple[T, T]
+
+
+def verify_hmac_signature(payload: bytes,
+                          secret: str,
+                          signature: str,
+                          hash_prefix: str = 'sha256=') -> bool:
+    """Verify HMAC signature for webhook payloads.
+
+    Args:
+        payload: Raw request body bytes
+        secret: Secret token for HMAC generation
+        signature: Expected signature from request header
+        hash_prefix: Prefix for the hash (default: 'sha256=')
+
+    Returns:
+        True if signature is valid, False otherwise
+    """
+    if not signature:
+        return False
+
+    hash_object = hmac.new(secret.encode('utf-8'),
+                           msg=payload,
+                           digestmod=hashlib.sha256)
+    expected_signature = hash_prefix + hash_object.hexdigest()
+
+    return hmac.compare_digest(expected_signature, signature)
 
 
 class ProcessingHandler(base.RequestHandler):
