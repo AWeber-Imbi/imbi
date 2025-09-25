@@ -313,20 +313,39 @@ class ProcessingHandler(base.RequestHandler):
         return notification
 
     def _verify_github_webhook(self, headers: dict, body: bytes,
-                               verification_token: str) -> bool:
-        """Verify GitHub webhook signature.
+                               verification_token: str, integration_name: str,
+                               notification_name: str) -> bool:
+        """Verify GitHub webhook signature using HMAC SHA256.
 
         Args:
             headers: HTTP request headers
             body: Raw request body
             verification_token: The verification token from the database
+            integration_name: The name of the integration
+            notification_name: The name of the notification
 
         Returns:
             True if verification passes, False otherwise
         """
-        raise NotImplementedError('GitHub webhook verification is not implemented')
+        signature_header = headers.get('X-Hub-Signature-256')
+        if not signature_header:
+            self.logger.warning(
+                'GitHub verification: X-Hub-Signature-256 header'
+                ' is missing for %s/%s', integration_name, notification_name)
+            return False
 
-    def _verify_webhook(self, integration_name: str, headers: dict, body: bytes,
+        is_valid = verify_hmac_signature(body, verification_token,
+                                         signature_header)
+        if not is_valid:
+            self.logger.warning(
+                'GitHub verification: Request signatures did not match'
+                ' for %s/%s', integration_name, notification_name)
+            return False
+
+        return True
+
+    def _verify_webhook(self, integration_name: str, notification_name: str,
+                        headers: dict, body: bytes,
                         verification_token: str) -> bool:
         """Route webhook verification to appropriate integration handler.
 
@@ -343,7 +362,10 @@ class ProcessingHandler(base.RequestHandler):
             BadRequest: For unsupported integrations with verification tokens
         """
         if integration_name.lower() == 'github':
-            return self._verify_github_webhook(headers, body, verification_token)
+            return self._verify_github_webhook(headers, body,
+                                               verification_token,
+                                               integration_name,
+                                               notification_name)
         else:
             self.logger.warning(
                 'Verification token configured for unsupported integration %r',
