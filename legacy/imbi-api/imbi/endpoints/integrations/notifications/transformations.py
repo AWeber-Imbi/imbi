@@ -16,6 +16,7 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                                base.CollectionRequestHandler):
     NAME = 'notification-rule-transformations'
     ITEM_NAME = 'notification-rule-transformation'
+    ID_KEY = ['integration_name', 'notification_name', 'fact_type_id']
 
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
