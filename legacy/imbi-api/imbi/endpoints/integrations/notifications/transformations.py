@@ -42,6 +42,18 @@ class CollectionRequestHandler(_RequestHandlerMixin,
                 output_value, created_at, created_by
     """)
 
+    GET_SQL = re.sub(
+        r'\s+', ' ', """\
+        SELECT id, fact_type_id, integration_name, notification_name,
+               input_value, output_value, created_at, created_by,
+               last_modified_at, last_modified_by
+          FROM v1.notification_rule_transformations
+         WHERE fact_type_id = %(fact_type_id)s
+           AND integration_name = %(integration_name)s
+           AND notification_name = %(notification_name)s
+           AND input_value = %(input_value)s
+        """)
+
     @base.require_permission('admin')
     async def post(self, *args, **kwargs) -> None:
         await super().post(*args, **kwargs)
