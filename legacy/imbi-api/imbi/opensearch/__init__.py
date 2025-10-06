@@ -20,6 +20,7 @@ ModelType = typing.TypeVar('ModelType')
 
 
 class SupportsIndexDocumentById(typing.Protocol):
+
     async def index_document_by_id(self, doc_id: int) -> bool:
         ...
 

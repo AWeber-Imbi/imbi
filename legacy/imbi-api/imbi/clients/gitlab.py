@@ -52,6 +52,7 @@ PROJECT_DEFAULTS = {
 
 
 class GitLabAPIFailure(errors.ApplicationError):
+
     def __init__(self, response: sprockets.mixins.http.HTTPResponse,
                  log_message: str, *log_args, **kwargs) -> None:
         status_code = response.code
@@ -88,6 +89,7 @@ class _GitLabClient(sprockets.mixins.http.HTTPClientMixin):
     This client sends authenticated HTTP requests to the GitLab API.
 
     """
+
     def __init__(self, user: user.User, token: oauth2.IntegrationToken,
                  application: tornado.web.Application):
         super().__init__()

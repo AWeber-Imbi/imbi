@@ -14,8 +14,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_project_type_lifecycle(self):
         record = {
-            field:
-            project_types.CollectionRequestHandler.DEFAULTS.get(field, None)
+            field: project_types.CollectionRequestHandler.DEFAULTS.get(
+                field, None)
             for field in project_types.CollectionRequestHandler.FIELDS
             if field != project_types.CollectionRequestHandler.ID_KEY
         }

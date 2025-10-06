@@ -6,6 +6,7 @@ from imbi import errors
 
 
 class DefaultFunctionalityTests(unittest.TestCase):
+
     def test_that_error_url_can_be_configured(self):
         saved_error_url = errors.ERROR_URL
         try:
@@ -59,6 +60,7 @@ class DefaultFunctionalityTests(unittest.TestCase):
 
 
 class SpecificErrorBehaviorTests(unittest.TestCase):
+
     def test_item_not_found_default_title(self):
         err = errors.ItemNotFound()
         self.assertEqual('Item not found', err.document['title'])

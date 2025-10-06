@@ -46,7 +46,9 @@ def require_permission(permission):
     :raises: problemdetails.Problem
 
     """
+
     def _require_permission(f):
+
         def wrapped(self, *args, **kwargs):
             """Inner-wrapping of the decorator that performs the logic"""
             if not self._current_user or \
@@ -230,6 +232,7 @@ class RequestHandler(cors.CORSMixin, postgres.RequestHandlerMixin,
 
 class AuthenticatedRequestHandler(RequestHandler):
     """RequestHandler base class for authenticated requests"""
+
     async def prepare(self) -> None:
         await super().prepare()
 
@@ -250,6 +253,7 @@ class AuthenticatedRequestHandler(RequestHandler):
 
 class ValidatingRequestHandler(AuthenticatedRequestHandler):
     """Validates the request against the OpenAPI spec"""
+
     async def prepare(self) -> None:
         await super().prepare()
 
@@ -523,6 +527,7 @@ class CollectionRequestHandler(CRUDRequestHandler):
 
 
 class AdminCRUDRequestHandler(CRUDRequestHandler):
+
     @require_permission('admin')
     async def delete(self, *args, **kwargs):
         await super().delete(*args, **kwargs)
@@ -718,6 +723,7 @@ class PaginationToken:
              return MyToken(**kwargs)
 
     """
+
     def __init__(self, *, limit: int = 100, **other_props: object):
         self._data: dict[str, object] = {'limit': limit}
         self._data.update(other_props)
@@ -786,6 +792,7 @@ class PaginatedCollectionHandler(CollectionRequestHandler):
     to the COLLECTION_SQL query.
 
     """
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         if self.ID_KEY is None:
@@ -837,6 +844,7 @@ ModelType = typing.TypeVar('ModelType', bound=pydantic.BaseModel)
 
 
 class PydanticHandlerMixin(RequestHandler):
+
     def parse_request_body_as(
             self,
             model_cls: typing.Type[ModelType],

@@ -466,6 +466,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
 
 class EdgeTests(unittest.TestCase):
+
     def test_json_pointer_validation(self) -> None:
         Adapter = pydantic.TypeAdapter(common.JsonPointer)
         with self.assertRaises(TypeError):

@@ -21,6 +21,7 @@ class AnyInstanceOf:
            AnyInstanceOf(automations.AutomationContext))
 
     """
+
     def __init__(self, cls: type) -> None:
         self.expected_class = cls
 
@@ -31,6 +32,7 @@ class AnyInstanceOf:
 
 
 class FakeAutomation:
+
     def __init__(self) -> None:
         self.integration_name = str(uuid.uuid4())
         self.slug = str(uuid.uuid4())
@@ -45,6 +47,7 @@ class FakeAutomation:
 
 
 class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
+
     def setUp(self) -> None:
         super().setUp()
         self.application = unittest.mock.Mock(spec=app.Application)
@@ -153,7 +156,9 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
         autos[-1].callback.assert_not_awaited()
 
     async def test_using_context_from_within_action(self) -> None:
+
         class Automation(FakeAutomation):
+
             def __init__(self, side_effect: Exception | None = None) -> None:
                 super().__init__()
                 self.action.side_effect = side_effect
@@ -178,6 +183,7 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
         autos[0].callback.assert_called_once_with(self.context, error)
 
     async def test_state_storage(self) -> None:
+
         async def writer(ctx: automations.AutomationContext,
                          _auto: models.Automation) -> None:
             ctx[self.test_state_storage] = 'hello'
@@ -196,6 +202,7 @@ class AutomationContextTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
+
     def setUp(self) -> None:
         super().setUp()
         self.application = unittest.mock.Mock(spec=app.Application)
@@ -295,6 +302,7 @@ class RunAutomationsTests(unittest.IsolatedAsyncioTestCase):
 
 
 class QueryRunnerTests(unittest.IsolatedAsyncioTestCase):
+
     async def test(self) -> None:
         runner = automations.query_runner(
             unittest.mock.sentinel.metric_name,

@@ -11,6 +11,7 @@ from imbi import cors
 
 
 class OriginTests(unittest.TestCase):
+
     def test_defaults(self):
         origins = cors.Origins()
         self.assertTrue(origins.allow_any)
@@ -30,6 +31,7 @@ class OriginTests(unittest.TestCase):
 
 
 class ConfigTests(unittest.TestCase):
+
     def test_default_configuration(self):
         cfg = cors.CORSConfig()
         self.assertTrue(cfg.allow_credentials)
@@ -98,6 +100,7 @@ class ConfigTests(unittest.TestCase):
 
 
 class RequestProcessingTestCase(unittest.TestCase):
+
     def setUp(self) -> None:
         super().setUp()
         self.request = httputil.HTTPServerRequest(
@@ -113,6 +116,7 @@ class RequestProcessingTestCase(unittest.TestCase):
 
 
 class PreflightProcessingTests(RequestProcessingTestCase):
+
     def setUp(self) -> None:
         super().setUp()
         self.cors_processor = cors.CORSProcessor(
@@ -188,6 +192,7 @@ class PreflightProcessingTests(RequestProcessingTestCase):
 
 
 class RequestProcessingTests(RequestProcessingTestCase):
+
     def setUp(self) -> None:
         super().setUp()
         self.request.method = 'DELETE'
@@ -240,7 +245,9 @@ class RequestProcessingTests(RequestProcessingTestCase):
 
 
 class MixinTests(unittest.IsolatedAsyncioTestCase):
+
     class Handler(cors.CORSMixin):
+
         def delete(self) -> None:
             self.set_status(204)
 

@@ -45,6 +45,7 @@ class Client:
     - ``pool_size``: The size to allocate for the ThreadPoolExecutor
 
     """
+
     def __init__(self, settings: dict):
         self._settings = Settings(**settings)
         self._executor = futures.ThreadPoolExecutor(

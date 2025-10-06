@@ -61,6 +61,7 @@ class _SonarQubeClient(sprockets.mixins.http.HTTPClientMixin):
     that this is either `False` if it is disabled or the integration
     key (as a str) if it is enabled.
     """
+
     def __init__(self, api_endpoint: yarl.URL, api_secret: str, *args,
                  **kwargs):
         super().__init__(*args, **kwargs)

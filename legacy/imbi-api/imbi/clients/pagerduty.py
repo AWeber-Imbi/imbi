@@ -52,6 +52,7 @@ class _GetServiceDependenciesResponse(pydantic.BaseModel):
 
 
 class _PagerDutyClient(sprockets.mixins.http.HTTPClientMixin):
+
     def __init__(self, info: models.Integration, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.logger = logging.getLogger(__package__).getChild(

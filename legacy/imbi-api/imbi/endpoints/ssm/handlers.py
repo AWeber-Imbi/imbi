@@ -274,6 +274,7 @@ class SSMRequestHandler(sprockets.mixins.http.HTTPClientMixin,
 
 
 class RecordRequestHandler(SSMRequestHandler, base.PydanticHandlerMixin):
+
     async def patch(self, *args, **kwargs):
         request_body = self.get_request_body()
         try:
@@ -339,6 +340,7 @@ class RecordRequestHandler(SSMRequestHandler, base.PydanticHandlerMixin):
 
 
 class CollectionRequestHandler(SSMRequestHandler):
+
     async def get(self, *args, **kwargs) -> None:
         project_info = await self._get_project_info(kwargs['project_id'])
         if not project_info['environments']:

@@ -33,6 +33,7 @@ class ConfigurationTestCase(unittest.TestCase):
 
 
 class LoadConfigurationTests(ConfigurationTestCase):
+
     def test_missing_configuration_file(self):
         with self.assertRaises(SystemExit):
             server.load_configuration(str(uuid.uuid4()), False)
@@ -67,6 +68,7 @@ class LoadConfigurationTests(ConfigurationTestCase):
 
 
 class SentryConfigurationTests(ConfigurationTestCase):
+
     def test_that_default_is_enabled(self):
         yaml.dump(self.config, self.temp_file)
         config, _ = server.load_configuration(self.temp_file.name, False)
@@ -86,6 +88,7 @@ class SentryConfigurationTests(ConfigurationTestCase):
 
 
 class GitLabConfiguratTests(ConfigurationTestCase):
+
     def test_that_default_is_disabled(self):
         yaml.dump(self.config, self.temp_file)
         config, _ = server.load_configuration(self.temp_file.name, False)

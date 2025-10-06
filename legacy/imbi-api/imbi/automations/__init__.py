@@ -23,6 +23,7 @@ CompensatingAction: typing.TypeAlias = typing.Callable[
 
 
 class QueryFunction(typing.Protocol):
+
     async def __call__(
         self,
         sql: str,
@@ -41,6 +42,7 @@ async def do_nothing(context: AutomationContext,
 
 
 class AutomationFailedError(Exception):
+
     def __init__(self, automation: imbi.models.Automation,
                  error: Exception) -> None:
         super().__init__(f'Automation {automation.slug} failed: {error}')
@@ -87,6 +89,7 @@ class AutomationContext:
       such as gitlab.
 
     """
+
     def __init__(self, application: imbi.app.Application, user: imbi.user.User,
                  query: QueryFunction) -> None:
         self.application = application
@@ -136,8 +139,8 @@ class AutomationContext:
                            message=message_format %
                            args if args else message_format))
 
-    async def run_automation(self, automation: imbi.models.Automation,
-                             *args: object, **kwargs: object) -> None:
+    async def run_automation(self, automation: imbi.models.Automation, *args:
+                             object, **kwargs: object) -> None:
         self.logger.debug('running automation %s = %r', automation.slug,
                           automation.callable)
         try:

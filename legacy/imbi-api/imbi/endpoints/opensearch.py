@@ -5,6 +5,7 @@ from imbi.endpoints import base
 
 
 class RequestHandler(base.AuthenticatedRequestHandler):
+
     async def post(self, index: str):
         self.logger.debug('Request body: %r', self.get_request_body())
         try:

@@ -9,6 +9,7 @@ from imbi import semver
 
 
 class VersionCheckingTests(unittest.TestCase):
+
     def verify_range(self, spec: str, in_range: abc.Iterable[str],
                      out_of_range: abc.Iterable[str]) -> None:
         ver_range = semver.parse_semver_range(spec)
@@ -68,6 +69,7 @@ class VersionCheckingTests(unittest.TestCase):
 
 
 class VersionRangeErrorHandlingTests(unittest.TestCase):
+
     def test_that_empty_spec_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             semver.ExactRange('')
@@ -90,6 +92,7 @@ class VersionRangeErrorHandlingTests(unittest.TestCase):
 
 
 class PydanticModelTests(unittest.TestCase):
+
     def setUp(self) -> None:
         super().setUp()
         self.adapter = pydantic.TypeAdapter(semver.VersionRange)
@@ -107,6 +110,7 @@ class PydanticModelTests(unittest.TestCase):
 
 
 class UtilityFunctionTests(unittest.TestCase):
+
     def test_equality(self) -> None:
         self.assertEqual(semver.VersionRange('1'), semver.VersionRange('1'))
         self.assertNotEqual(semver.VersionRange('1'), '1')

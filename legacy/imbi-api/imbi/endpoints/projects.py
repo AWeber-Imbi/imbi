@@ -45,12 +45,14 @@ class _RequestHandlerMixin:
 
 
 class ProjectAttributeCollectionMixin(project.RequestHandlerMixin):
+
     async def post(self, *_args, **kwargs):
         result = await self._post(kwargs)
         await self.index_document(result['project_id'])
 
 
 class ProjectAttributeCRUDMixin(project.RequestHandlerMixin):
+
     async def delete(self, *args, **kwargs):
         await super().delete(*args, **kwargs)
         await self.index_document(kwargs['project_id'])
@@ -389,8 +391,10 @@ class RecordRequestHandler(project.RequestHandlerMixin, _RequestHandlerMixin,
             output.update({
                 'facts': facts.rows,
                 'links': links.rows,
-                'urls': {row['environment']: row['url']
-                         for row in urls.rows}
+                'urls': {
+                    row['environment']: row['url']
+                    for row in urls.rows
+                }
             })
             self.send_response(output)
         else:

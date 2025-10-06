@@ -4,6 +4,7 @@ from tests import base
 
 
 class EncryptionTestCase(base.TestCase):
+
     def test_lifecycle(self):
         value = str(uuid.uuid4())
         encrypted = self._app.encrypt_value(value)
@@ -11,6 +12,7 @@ class EncryptionTestCase(base.TestCase):
 
 
 class PasswordHashingTestCase(base.TestCase):
+
     def test_that_password_hashes_include_algorithm(self):
         hashed = self._app.hash_password('my password')
         self.assertTrue(

@@ -30,6 +30,7 @@ class Origins:
     valid as an acceptable origin. (:rfc:`6454`).
 
     """
+
     def __init__(self, *, allow_any: bool = True):
         self.allow_any: bool = allow_any
         self._origins: set[yarl.URL] = set()
@@ -81,6 +82,7 @@ class CORSConfig:
         layer may cache the CORS response
 
     """
+
     def __init__(
         self,
         *,
@@ -177,6 +179,7 @@ class CORSProcessor:
     `set_headers` directly.
 
     """
+
     def __init__(self, config: CORSConfig, **overrides) -> None:
         self.config = copy.deepcopy(config)
         self.config.update(**overrides)
@@ -274,6 +277,7 @@ class CORSMixin(web.RequestHandler):
 
     cors_overrides = {}
     """Add specific overrides for CORSProcessor here"""
+
     def __init__(self, application, request, **kwargs):
         super().__init__(application, request, **kwargs)
         cors_config = getattr(application, 'cors_config', CORSConfig())

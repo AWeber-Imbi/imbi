@@ -19,6 +19,7 @@ class Stats:
     collector.
 
     """
+
     def __init__(self, client: aioredis.Redis):
         """Create a new instance of the Stats class"""
         self._client = client

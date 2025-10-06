@@ -11,6 +11,7 @@ class Param(pydantic.BaseModel):
 
 
 class EnvironmentFieldMixin:
+
     @pydantic.computed_field
     @property
     def environment(self) -> str:

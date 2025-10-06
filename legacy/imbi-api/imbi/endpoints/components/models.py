@@ -69,6 +69,7 @@ class Component(pydantic.BaseModel):
 
 class ComponentToken(base.PaginationToken):
     """Pagination token that includes the starting package URL"""
+
     def __init__(self, *, starting_package: str = '', **kwargs) -> None:
         super().__init__(starting_package=starting_package, **kwargs)
 
@@ -79,6 +80,7 @@ class ComponentToken(base.PaginationToken):
 
 class ProjectComponentsToken(base.PaginationToken):
     """Pagination token that includes the starting package URL and project"""
+
     def __init__(self,
                  *,
                  starting_package: str = '',

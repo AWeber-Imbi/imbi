@@ -187,6 +187,7 @@ class PagerDutyProjectCreationTests(PagerDutyClientTestCase):
 
 
 class PagerDutyProjectDeletionTests(PagerDutyClientTestCase):
+
     def test_removing_service(self) -> None:
         self.run_until_complete(self.client.remove_service('some-service-id'))
         self.http_fetch_mock.assert_awaited_once_with(

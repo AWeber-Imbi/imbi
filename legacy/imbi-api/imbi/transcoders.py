@@ -6,6 +6,7 @@ from sprockets.mixins.mediatype import handlers, transcoders
 
 
 def parse_form_body(data) -> dict:
+
     def translate_value(v):
         if not v:
             return None
@@ -36,6 +37,7 @@ def parse_form_body(data) -> dict:
 
 
 class DecimalMixin:
+
     def dump_object(self, obj):
         if isinstance(obj, decimal.Decimal):
             return float(obj)
@@ -43,6 +45,7 @@ class DecimalMixin:
 
 
 class PydanticMixin:
+
     def dump_object(self, obj):
         if isinstance(obj, pydantic.BaseModel):
             return obj.model_dump(mode='json')
@@ -59,6 +62,7 @@ class MsgPackTranscoder(DecimalMixin, PydanticMixin,
 
 
 class HTMLTranscoder(transcoders.JSONTranscoder):
+
     def __init__(self, content_type='text/html', default_encoding='utf-8'):
         super().__init__(content_type, default_encoding)
         self.dump_options = {
@@ -85,6 +89,7 @@ class HTMLTranscoder(transcoders.JSONTranscoder):
 
 
 class FormTranscoder(handlers.TextContentHandler):
+
     def __init__(self):
         super().__init__('application/x-www-form-urlencoded',
                          dumps=self.dumps,

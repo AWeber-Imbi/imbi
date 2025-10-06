@@ -13,6 +13,7 @@ LOGGER = logging.getLogger(__name__)
 
 class TemplateLoader(template.BaseLoader):
     """A template loader that loads from Python package data."""
+
     def __init__(self, debug=False, **kwargs):
         """Create a new instance of the loader, respecting the debug flag
         so that when set, templates are not cached, since changing templates

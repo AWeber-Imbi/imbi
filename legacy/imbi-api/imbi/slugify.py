@@ -18,6 +18,7 @@ Slug = typing.Annotated[str,
 
 
 class InvalidSlugError(errors.BadRequest):
+
     def __init__(self, slug_type: str, invalid_slugs: set[int | str]) -> None:
         super().__init__('Invalid %s slug(s): %r',
                          slug_type,
@@ -51,6 +52,7 @@ def decode_path_slug(slug_or_id: str) -> tuple[int | None] | tuple[None | str]:
 
 class IdSlugMapping:
     """Maps between IDs and slugs"""
+
     def __init__(self, slug_to_id: dict[str, int] | None = None) -> None:
         self._slug_to_id: dict[str, int] = {}
         if slug_to_id:

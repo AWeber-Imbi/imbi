@@ -146,6 +146,7 @@ class SBOMInjectionHandler(base.PydanticHandlerMixin,
 
 
 class ComponentVersionMap:
+
     def __init__(self, connector: sprockets_postgres.PostgresConnector,
                  package_urls: set[models.PackageURL]) -> None:
         self._purls_from_bom = package_urls.copy()

@@ -43,6 +43,7 @@ SIGNED_VALUE_PATTERN = re.compile(r'^(?:[1-9][0-9]*)\|(?:.*)$')
 
 
 class Application(sprockets_postgres.ApplicationMixin, app.Application):
+
     def __init__(self, *, initializing: bool = False, **settings: object):
         LOGGER.info('imbi v%s starting', settings['version'])
         settings['default_handler_class'] = default.RequestHandler
@@ -252,6 +253,7 @@ class Application(sprockets_postgres.ApplicationMixin, app.Application):
         to bother the user to manually configure.
 
         """
+
         def on_timing(metric_name: str, duration: float) -> None:
             self.loop.add_callback(
                 self.stats.add_duration, {
