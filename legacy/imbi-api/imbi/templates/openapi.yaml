@@ -1220,12 +1220,14 @@ paths:
                 records:
                   summary: Multiple environment records
                   value:
-                    - name: testing
+                    - name: Testing
+                      slug: testing
                       description: |
                         The testing environment reflects the state of HEAD state of the
                         master branch in our Git Repositories for all projects
                       icon_class: fab fa-aws
-                    - name: staging
+                    - name: Staging
+                      slug: staging
                       description: |
                         The staging environment reflects tagged project releases that are
                         intended to be to deployed to production
@@ -1239,12 +1241,14 @@ paths:
                 records:
                   summary: Multiple environment records
                   value:
-                    - name: testing
+                    - name: Testing
+                      slug: testing
                       description: |
                         The testing environment reflects the state of HEAD state of the
                         master branch in our Git Repositories for all projects
                       icon_class: fab fa-aws
-                    - name: staging
+                    - name: Staging
+                      slug: staging
                       description: |
                         The staging environment reflects tagged project releases that are
                         intended to be to deployed to production
@@ -1266,6 +1270,9 @@ paths:
                 name:
                   description: The display name for a environment
                   type: string
+                slug:
+                  description: URL-safe environment identifier
+                  type: string
                 description:
                   description: A description of the environment
                   type: string
@@ -1275,13 +1282,15 @@ paths:
                   type: string
               required:
                 - name
+                - slug
                 - icon_class
               additionalProperties: false
             examples:
               record:
                 summary: A full environment record
                 value:
-                  name: testing
+                  name: Testing
+                  slug: testing
                   description: |
                     The testing environment reflects the state of HEAD state of the
                     master branch in our Git Repositories for all projects
@@ -1293,7 +1302,8 @@ paths:
               record:
                 summary: A full environment record
                 value:
-                  name: testing
+                  name: Testing
+                  slug: testing
                   description: |
                     The testing environment reflects the state of HEAD state of the
                     master branch in our Git Repositories for all projects
@@ -1382,6 +1392,119 @@ paths:
         schema:
           type: string
           pattern: '[\w_]+'
+  /github/auth:
+    get:
+      description: |
+        This endpoint is invoked during the GitHub authorization flow for a specific user.
+        It exchanges the code for an access/refresh token pair and stores them in the database
+        for future use.
+      summary: GitHub OAuth 2 callback
+      security: []
+      tags:
+        - Integrations
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect back to profile
+  '/github/projects/{project_id}/tags':
+    get:
+      description: Retrieve GitHub tags for a project's repository
+      summary: Available GitHub tags
+      tags:
+        - Integrations
+        - Projects
+      parameters:
+        - name: project_id
+          in: path
+          description: Unique project identifier
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of available tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+              examples:
+                tags:
+                  summary: Example tags
+                  value:
+                    - v1.0.0
+                    - v1.1.0
+                    - v2.0.0
+        '400':
+          description: Invalid project ID
+        '404':
+          description: Project not found or GitHub not configured
+        '500':
+          description: GitHub integration is not available/configured
+  '/github/projects/{project_id}/deployments':
+    post:
+      description: Create a GitHub deployment for a project
+      summary: Create GitHub deployment
+      tags:
+        - Integrations
+        - Projects
+      parameters:
+        - name: project_id
+          in: path
+          description: Unique project identifier
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        description: Deployment parameters
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ref:
+                  type: string
+                  description: 'Git ref to deploy (tag, branch, or SHA)'
+                environment:
+                  type: string
+                  description: Target environment name
+              required:
+                - ref
+                - environment
+            examples:
+              deployment:
+                summary: Deploy a tag to production
+                value:
+                  ref: v1.2.3
+                  environment: Production
+      responses:
+        '201':
+          description: Deployment created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Invalid request or environment not configured for project
+        '404':
+          description: Project not found or GitHub not configured
+        '500':
+          description: Failed to create GitHub deployment
   /gitlab/auth:
     get:
       description: |
