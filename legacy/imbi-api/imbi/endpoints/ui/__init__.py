@@ -4,7 +4,7 @@ System Reports
 """
 from tornado import web
 
-from . import authentication, index, settings, user
+from . import authentication, index, project_actions, settings, user
 
 IndexRequestHandler = index.IndexRequestHandler
 
@@ -18,5 +18,7 @@ URLS = [
     web.url(r'^/ui/settings$', settings.RequestHandler),
     web.url(r'^/ui/user$', user.UserRequestHandler),
     web.url(r'^/ui/available-automations$', user.AvailableAutomationsHandler),
+    web.url(r'^/ui/projects/(?P<project_id>[0-9]+)/actions$',
+            project_actions.AvailableActionsHandler),
     web.url(r'^/ui/.*$', index.IndexRequestHandler)
 ]
