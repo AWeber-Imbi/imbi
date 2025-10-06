@@ -18,6 +18,10 @@ SLUG = r'[\w_\-%\+]+'
 
 URLS = [
     web.url(r'^/github/auth', github.RedirectHandler, name='github-callback'),
+    web.url(r'^/github/projects/(?P<project_id>[0-9]+)/tags$',
+            github.ProjectTagsHandler),
+    web.url(r'^/github/projects/(?P<project_id>[0-9]+)/deployments$',
+            github.ProjectDeploymentsHandler),
     web.url(r'^/gitlab/auth', gitlab.RedirectHandler, name='gitlab-callback'),
     web.url(r'^/gitlab/namespaces', gitlab.UserNamespacesHandler),
     web.url(r'^/gitlab/projects', gitlab.ProjectsHandler),
