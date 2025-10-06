@@ -334,3 +334,30 @@ class GitHubClient(sprockets.mixins.http.HTTPClientMixin):
                 response,
                 'Failed to create deployment',
             )
+
+    async def get_matching_refs(
+        self,
+        org: str,
+        repo: str,
+        ref: str = 'tags',
+    ) -> list:
+        """
+        Get matching refs for a repository.
+
+        Args:
+            org: The organization that contains the repository
+            repo: The repository name
+            ref: The ref pattern to match (default: 'tags')
+
+        Docs: https://docs.github.com/rest/git/refs#list-matching-references
+        """
+        response = await self.api(
+            f'/repos/{org}/{repo}/git/matching-refs/{ref}',
+            method='GET',
+        )
+        if not response.ok:
+            raise GitHubAPIFailure(
+                response,
+                'Failed to get matching refs',
+            )
+        return response.body
