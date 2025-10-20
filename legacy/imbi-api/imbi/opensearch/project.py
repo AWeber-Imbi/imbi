@@ -194,6 +194,7 @@ class ProjectIndex(imbi.opensearch.SearchIndex[models.Project]):
 
 
 class RequestHandlerMixin:
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.search_index = ProjectIndex(self.application)

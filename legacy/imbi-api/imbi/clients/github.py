@@ -25,6 +25,7 @@ class Repository(pydantic.BaseModel):
 
 
 class GitHubAPIFailure(errors.ApplicationError):
+
     def __init__(self, response: sprockets.mixins.http.HTTPResponse,
                  log_message: str, *log_args, **kwargs) -> None:
         status_code = response.code
@@ -57,6 +58,7 @@ async def create_client(
 
 
 class GitHubClient(sprockets.mixins.http.HTTPClientMixin):
+
     def __init__(
         self,
         user: user.User,
@@ -260,9 +262,8 @@ class GitHubClient(sprockets.mixins.http.HTTPClientMixin):
         Args:
             org: The organization that contains the repository
             repo: The repository name
-            environment: The name of the environment to create
+            environment: The environment slug
         """
-        environment = environment.lower().replace(' ', '-')
         response = await self.api(
             f'/repos/{org}/{repo}/environments/{environment}',
             method='POST',
@@ -286,9 +287,8 @@ class GitHubClient(sprockets.mixins.http.HTTPClientMixin):
         Args:
             org: The organization that contains the repository
             repo: The repository name
-            environment: The name of the environment to delete
+            environment: The environment slug
         """
-        environment = environment.lower().replace(' ', '-')
         response = await self.api(
             f'/repos/{org}/{repo}/environments/{environment}',
             method='DELETE',
@@ -298,3 +298,66 @@ class GitHubClient(sprockets.mixins.http.HTTPClientMixin):
                 response,
                 'Failed to delete environment',
             )
+
+    async def create_deployment(
+        self,
+        org: str,
+        repo: str,
+        ref: str,
+        environment: str,
+    ) -> None:
+        """
+        Create a deployment for a repository.
+
+        Args:
+            org: The organization that contains the repository
+            repo: The repository name
+            ref: The ref to deploy (branch, SHA, or tag)
+            environment: The environment slug to deploy to
+
+        Docs: https://docs.github.com/rest/deployments/deployments#create-a-deployment
+        """  # noqa: E501
+        payload = {
+            'ref': ref,
+            'environment': environment,
+            'auto_merge': False,
+            'required_contexts': [],
+        }
+
+        response = await self.api(
+            f'/repos/{org}/{repo}/deployments',
+            method='POST',
+            body=payload,
+        )
+        if not response.ok:
+            raise GitHubAPIFailure(
+                response,
+                'Failed to create deployment',
+            )
+
+    async def get_matching_refs(
+        self,
+        org: str,
+        repo: str,
+        ref: str = 'tags',
+    ) -> list:
+        """
+        Get matching refs for a repository.
+
+        Args:
+            org: The organization that contains the repository
+            repo: The repository name
+            ref: The ref pattern to match (default: 'tags')
+
+        Docs: https://docs.github.com/rest/git/refs#list-matching-references
+        """
+        response = await self.api(
+            f'/repos/{org}/{repo}/git/matching-refs/{ref}',
+            method='GET',
+        )
+        if not response.ok:
+            raise GitHubAPIFailure(
+                response,
+                'Failed to get matching refs',
+            )
+        return response.body

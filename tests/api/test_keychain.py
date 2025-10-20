@@ -7,12 +7,14 @@ import imbi.keychain
 
 
 class KeychainCreationTests(unittest.TestCase):
+
     def test_that_32_byte_key_is_required(self):
         with self.assertRaises(ValueError):
             imbi.keychain.Keychain(b'not 32 bytes')
 
 
 class PasswordHashingTests(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
         self.key = b'some thirty-two character secret'
@@ -25,6 +27,7 @@ class PasswordHashingTests(unittest.TestCase):
 
 
 class EncryptionTests(unittest.TestCase):
+
     def setUp(self):
         super().setUp()
         self.key = b'some thirty-two character secret'

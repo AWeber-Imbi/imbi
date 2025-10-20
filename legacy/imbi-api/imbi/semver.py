@@ -77,6 +77,7 @@ class VersionRange(abc.Container[semantic_version.Version]):
 
 class ExactRange(VersionRange):
     """Exact matches only"""
+
     def __init__(self, spec: str, /) -> None:
         super().__init__(spec, constraint_cls=semantic_version.SimpleSpec)
         self.version = semantic_version.Version.coerce(spec)

@@ -18,6 +18,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class EMailFormatter:
+
     @staticmethod
     def validate(value) -> bool:
         return validators.email(value)
@@ -28,6 +29,7 @@ class EMailFormatter:
 
 
 class ISO8601Formatter:
+
     @staticmethod
     def validate(value) -> bool:
         try:
@@ -42,6 +44,7 @@ class ISO8601Formatter:
 
 
 class URIFormatter:
+
     @staticmethod
     def validate(value) -> bool:
         return validators.url(value, validate_scheme=lambda _: True)

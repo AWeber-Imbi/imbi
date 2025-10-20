@@ -14,8 +14,8 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
     def test_namespace_lifecycle(self):
         record = {
-            field:
-            namespaces.CollectionRequestHandler.DEFAULTS.get(field, None)
+            field: namespaces.CollectionRequestHandler.DEFAULTS.get(
+                field, None)
             for field in namespaces.CollectionRequestHandler.FIELDS
             if field != namespaces.CollectionRequestHandler.ID_KEY
         }

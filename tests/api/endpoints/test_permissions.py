@@ -15,6 +15,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 
 
 class AsyncHTTPUnauthorizedTestCase(base.TestCaseWithReset):
+
     def test_permission_values(self):
         result = self.fetch('/permissions')
         self.assertEqual(result.code, 403)

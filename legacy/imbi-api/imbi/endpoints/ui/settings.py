@@ -44,7 +44,8 @@ class RequestHandler(base.RequestHandler):
                 metric_name='project-types'),
             project_index.searchable_fields(),
             self.postgres_execute(
-                'SELECT name, authorization_endpoint, client_id, callback_url'
+                'SELECT name, authorization_endpoint, client_id,'
+                '       callback_url, api_endpoint'
                 '  FROM v1.oauth2_integrations',
                 metric_name='integrations'),
         )
@@ -80,6 +81,7 @@ class RequestHandler(base.RequestHandler):
                         'authorization_endpoint'],
                     'clientId': github_auth['client_id'],
                     'redirectURI': github_auth['callback_url'],
+                    'apiEndpoint': github_auth['api_endpoint'],
                 })
             github['enabled'] = (cfg['enabled']
                                  and github.get('clientId') is not None)

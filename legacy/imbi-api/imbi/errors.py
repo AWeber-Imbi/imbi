@@ -71,27 +71,32 @@ class ApplicationError(problemdetails.Problem):
 
 
 class BadRequest(ApplicationError):
+
     def __init__(self, log_message, *log_args, **kwargs):
         super().__init__(400, 'bad-request', log_message, *log_args, **kwargs)
 
 
 class Unauthorized(ApplicationError):
+
     def __init__(self, log_message, *log_args, **kwargs):
         super().__init__(401, 'unauthorized', log_message, *log_args, **kwargs)
 
 
 class Forbidden(ApplicationError):
+
     def __init__(self, log_message, *log_args, **kwargs):
         super().__init__(403, 'forbidden', log_message, *log_args, **kwargs)
 
 
 class ClientUnavailableError(Forbidden):
+
     def __init__(self, client_name: str, log_message: str, *log_args):
         message = log_message % log_args if log_args else log_message
         super().__init__('%s not available: %s', client_name, message)
 
 
 class ItemNotFound(ApplicationError):
+
     def __init__(self, log_message=None, *log_args, **kwargs):
         kwargs.setdefault('title', 'Item not found')
         super().__init__(
@@ -101,6 +106,7 @@ class ItemNotFound(ApplicationError):
 
 
 class MethodNotAllowed(ApplicationError):
+
     def __init__(self, requested_method: str, **kwargs):
         super().__init__(405, 'method-not-allowed',
                          '%s is not a supported HTTP method',
@@ -108,6 +114,7 @@ class MethodNotAllowed(ApplicationError):
 
 
 class UnsupportedMediaType(ApplicationError):
+
     def __init__(self, media_type: str, **kwargs):
         super().__init__(415, 'unsupported-media-type',
                          '%s is not a supported media type', media_type,
@@ -115,12 +122,14 @@ class UnsupportedMediaType(ApplicationError):
 
 
 class UnprocessableEntity(ApplicationError):
+
     def __init__(self, log_message: str, *log_args, **kwargs) -> None:
         fragment = kwargs.pop('fragment', 'unprocessable-entity')
         super().__init__(422, fragment, log_message, *log_args, **kwargs)
 
 
 class BadJsonPatch(UnprocessableEntity):
+
     def __init__(self, error: jsonpatch.JsonPatchException
                  | jsonpointer.JsonPointerException, **kwargs) -> None:
         kwargs.setdefault('title', 'Invalid JSON Patch')
@@ -128,11 +137,13 @@ class BadJsonPatch(UnprocessableEntity):
 
 
 class InternalServerError(ApplicationError):
+
     def __init__(self, log_message, *log_args, **kwargs):
         super().__init__(500, 'server-error', log_message, *log_args, **kwargs)
 
 
 class DatabaseError(InternalServerError):
+
     def __init__(self,
                  log_message=None,
                  *log_args,
@@ -150,6 +161,7 @@ class DatabaseError(InternalServerError):
 
 
 class IntegrationNotFound(InternalServerError):
+
     def __init__(self, integration_name: str):
         super().__init__('integration lookup failed for %s',
                          integration_name,
@@ -157,6 +169,7 @@ class IntegrationNotFound(InternalServerError):
 
 
 class PydanticValidationError(ApplicationError):
+
     def __init__(self,
                  error: pydantic.ValidationError,
                  log_message: str,

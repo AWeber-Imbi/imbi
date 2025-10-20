@@ -110,6 +110,7 @@ class Integration(pydantic.BaseModel):
 
 async def automation(automation_slug: str,
                      application: 'app.Application') -> Automation | None:
+
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
         LOGGER.error('Failed to execute query for automation %s: %s',
                      automation_slug, exc)
@@ -142,6 +143,7 @@ async def automation(automation_slug: str,
 
 async def integration(integration_name: str,
                       application: 'app.Application') -> Integration | None:
+
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
         LOGGER.error('Failed to execute query for integration %s: %s',
                      integration_name, exc)

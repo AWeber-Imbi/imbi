@@ -8,6 +8,7 @@ from tests import base
 
 
 class GroupTestCase(unittest.TestCase):
+
     def test_as_dict(self):
         name = str(uuid.uuid4())
         permissions = [str(uuid.uuid4()), str(uuid.uuid4())]

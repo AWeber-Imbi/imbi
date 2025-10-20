@@ -77,10 +77,12 @@ EOF
 
 cat > build/debug.yaml <<EOF
 ---
+actions:
+  github_deployment:
+    enabled: true
 automations:
-  gitlab:
+  github:
     project_link_type_id: ~
-    restrict_to_user: true
   grafana:
     project_link_type_id: ~
   sentry:

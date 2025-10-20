@@ -114,6 +114,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
 
     log_config = config.get('logging', DEFAULT_LOG_CONFIG)
 
+    actions = config.get('actions', {})
     automations = config.get('automations', {})
     automations_grafana = automations.get('grafana', {})
     if automations_grafana.get('url') \
@@ -173,6 +174,7 @@ def load_configuration(config: str, debug: bool) -> typing.Tuple[dict, dict]:
             encryption_key = encoded_key.encode()
 
     settings = {
+        'actions': actions,
         'automations': {
             'github': automations_github,
             'gitlab': automations_gitlab,

@@ -395,6 +395,7 @@ class OperationsLog:
 
 async def _load(model: dataclasses.dataclass, application: 'app.Application',
                 **params) -> dataclasses.dataclass:
+
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
         LOGGER.error('Failed to execute query for %s with params %r: %s',
                      model.__class__.__name__, params, exc)
@@ -412,6 +413,7 @@ async def _load_collection(model: dataclasses.dataclass,
                            obj_id: int,
                            application: 'app.Application') \
         -> list[dataclasses.dataclass]:
+
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
         LOGGER.error('Failed to execute query for collection %s: %s', obj_id,
                      exc)
@@ -438,6 +440,7 @@ async def operations_log(ops_log_id: int,
 
 
 async def project(project_id: int, application: 'app.Application') -> Project:
+
     def on_postgres_error(_metric_name: str, exc: Exception) -> None:
         LOGGER.error('Failed to execute query for project %s: %s', project_id,
                      exc)
@@ -469,12 +472,18 @@ async def project(project_id: int, application: 'app.Application') -> Project:
             values.update({
                 'namespace': results[0],
                 'project_type': results[1],
-                'facts': {value.name: value.value
-                          for value in results[2]},
-                'links': {value.link_type: value.url
-                          for value in results[3]},
-                'urls': {value.environment: value.url
-                         for value in results[4]},
+                'facts': {
+                    value.name: value.value
+                    for value in results[2]
+                },
+                'links': {
+                    value.link_type: value.url
+                    for value in results[3]
+                },
+                'urls': {
+                    value.environment: value.url
+                    for value in results[4]
+                },
                 'identifiers': {
                     value.integration_name: value.external_id
                     for value in results[5]

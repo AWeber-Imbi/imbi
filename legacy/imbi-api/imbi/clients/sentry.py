@@ -69,6 +69,7 @@ async def create_client(
 
 
 class _SentryClient(sprockets.mixins.http.HTTPClientMixin):
+
     def __init__(self, api_endpoint: yarl.URL, api_secret: str,
                  organization: str) -> None:
         super().__init__()

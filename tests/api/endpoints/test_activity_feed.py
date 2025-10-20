@@ -61,6 +61,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         )
 
     def test_pagination(self):
+
         def now() -> str:
             return datetime.datetime.now(datetime.timezone.utc).isoformat()
 

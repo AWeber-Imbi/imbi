@@ -74,6 +74,7 @@ class LogoutRequestHandler(base.RequestHandler):
 
 
 class ConnectionRequestHandler(base.AuthenticatedRequestHandler):
+
     async def delete(self, integration_name: str) -> None:
         await self.postgres_execute(
             'DELETE FROM v1.user_oauth2_tokens'

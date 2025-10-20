@@ -15,6 +15,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
     def test_environment_lifecycle(self):
         record = {
             'name': str(uuid.uuid4()),
+            'slug': str(uuid.uuid4()),
             'description': str(uuid.uuid4()),
             'icon_class': 'fas fa-blind'
         }
@@ -89,11 +90,16 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(result.code, 404)
 
     def test_create_with_missing_fields(self):
-        record = {'name': str(uuid.uuid4()), 'icon_class': 'fas fa-blind'}
+        record = {
+            'name': str(uuid.uuid4()),
+            'slug': str(uuid.uuid4()),
+            'icon_class': 'fas fa-blind'
+        }
         result = self.fetch('/environments', method='POST', json_body=record)
         self.assertEqual(result.code, 200)
         new_value = json.loads(result.body.decode('utf-8'))
         self.assertEqual(new_value['name'], record['name'])
+        self.assertEqual(new_value['slug'], record['slug'])
         self.assertIsNone(new_value['description'])
         self.assertIsNotNone(new_value['icon_class'])
 

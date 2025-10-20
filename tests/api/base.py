@@ -199,6 +199,7 @@ class TestCaseWithReset(TestCase):
                                 method='POST',
                                 json_body={
                                     'name': str(uuid.uuid4()),
+                                    'slug': str(uuid.uuid4()),
                                     'description': str(uuid.uuid4()),
                                     'icon_class': 'fas fa-blind'
                                 })
