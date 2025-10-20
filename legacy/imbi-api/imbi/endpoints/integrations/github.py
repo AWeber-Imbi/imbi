@@ -262,5 +262,13 @@ class ProjectDeploymentsHandler(GitHubIntegratedHandler):
                 'Failed to create GitHub deployment',
                 instance=self.request.uri) from e
 
+        api_endpoint = self.client.token.integration.api_endpoint
+        if api_endpoint:
+            base_url = str(api_endpoint).replace('api.', '')
+            deployments_url = (f'{base_url}/{org}/{repo}/deployments/'
+                               f'{environment_slug}')
+        else:
+            deployments_url = None
+
         self.set_status(http.HTTPStatus.CREATED)
-        self.send_response({'message': 'Deployment created successfully'})
+        self.send_response({'deployments_url': deployments_url})
