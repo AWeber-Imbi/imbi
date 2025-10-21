@@ -4,6 +4,10 @@ gitlab:
   secret: ~  # The Gitlab application secret
   url: https://gitlab.com   # The URL to the Gitlab instance to integrate with
 
+actions:
+  github_deployment:
+    enabled: false  # Enable GitHub deployment action
+
 http:
   canonical_server_name: imbi.tld
   compress_response: true
