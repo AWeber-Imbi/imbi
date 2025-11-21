@@ -10,7 +10,11 @@ class CollectionRequestHandler(base.CollectionRequestHandler):
     NAME = 'notification-rules'
     ITEM_NAME = 'notification-rule'
     ID_KEY = ['integration_name', 'notification_name', 'fact_type_id']
-    FIELDS = []
+    FIELDS = [
+        'fact_type_id', 'integration_name', 'notification_name', 'pattern',
+        'filter_expression'
+    ]
+    DEFAULTS = {'filter_expression': None}
 
     COLLECTION_SQL = re.sub(
         r'\s+', ' ', """\
