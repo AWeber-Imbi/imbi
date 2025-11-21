@@ -700,6 +700,7 @@ class CELEvaluationTests(base.TestCaseWithReset):
         'v1.projects',
         'v1.notification_rules',
         'v1.integration_notifications',
+        'v1.automations',
         'v1.integrations',
         'v1.project_types',
     ]
