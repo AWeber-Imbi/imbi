@@ -472,11 +472,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             f'/notifications/{self.notification_name}'
             f'/rules/{self.project_fact_type["id"]}',
             method='PATCH',
-            json_body={
-                'fact_type_id': self.project_fact_type['id'],
-                'pattern': '/state',
-                'filter_expression': 'state == "success"',
-            })
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': 'state == "success"',
+            }])
         self.assertEqual(200, rsp.code)
 
         # Send notification that matches CEL expression
@@ -500,11 +500,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             f'/notifications/{self.notification_name}'
             f'/rules/{self.project_fact_type["id"]}',
             method='PATCH',
-            json_body={
-                'fact_type_id': self.project_fact_type['id'],
-                'pattern': '/state',
-                'filter_expression': 'state == "success"',
-            })
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': 'state == "success"',
+            }])
         self.assertEqual(200, rsp.code)
 
         # Send notification that doesn't match CEL expression
@@ -530,11 +530,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             f'/notifications/{self.notification_name}'
             f'/rules/{self.project_fact_type["id"]}',
             method='PATCH',
-            json_body={
-                'fact_type_id': self.project_fact_type['id'],
-                'pattern': '/state',
-                'filter_expression': 'state == "success" && branch == "main"',
-            })
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': 'state == "success" && branch == "main"',
+            }])
         self.assertEqual(200, rsp.code)
 
         # Test case 1: Matches both conditions
@@ -617,11 +617,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             f'/notifications/{self.notification_name}'
             f'/rules/{self.project_fact_type["id"]}',
             method='PATCH',
-            json_body={
-                'fact_type_id': self.project_fact_type['id'],
-                'pattern': '/state',
-                'filter_expression': '== "missing operand"',  # Invalid CEL
-            })
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': '== "missing operand"',  # Invalid CEL
+            }])
         self.assertEqual(400, rsp.code)
         body = json.loads(rsp.body)
         self.assertIn('Invalid CEL expression', body.get('title', ''))
@@ -648,11 +648,11 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             f'/notifications/{self.notification_name}'
             f'/rules/{self.project_fact_type["id"]}',
             method='PATCH',
-            json_body={
-                'fact_type_id': self.project_fact_type['id'],
-                'pattern': '/state',
-                'filter_expression': 'branch == "main"',
-            })
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': 'branch == "main"',
+            }])
         self.assertEqual(200, rsp.code)
 
         # Test case 1: Passes both notification filter and CEL expression
