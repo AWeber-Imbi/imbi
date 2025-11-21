@@ -1,4 +1,5 @@
 import re
+import typing
 
 import celpy
 
@@ -110,14 +111,13 @@ class RecordRequestHandler(base.CRUDRequestHandler):
 
     @base.require_permission('admin')
     async def patch(self, *args, **kwargs) -> None:
-        body = self.get_request_body()
-
-        if body.get('filter_expression'):
-            try:
-                env = celpy.Environment()
-                env.compile(body['filter_expression'])
-            except Exception as error:
-                raise errors.BadRequest('Invalid CEL expression: %s',
-                                        str(error))
-
         await super().patch(*args, **kwargs)
+
+    def _check_validity(self, instance: dict[str, typing.Any]) -> bool:
+        if instance.get('filter_expression'):
+            try:
+                celpy.Environment().compile(instance['filter_expression'])
+            except Exception as error:
+                raise errors.BadRequest('Invalid CEL expression %r: %s',
+                                        instance['filter_expression'], error)
+        return True
