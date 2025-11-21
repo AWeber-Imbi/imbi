@@ -1,7 +1,7 @@
 #!/bin/sh -e
 
 echo "Installing utilities"
-apk --update add curl-dev gcc g++ git libffi-dev make musl-dev tzdata
+apk --update add abseil-cpp-dev curl-dev gcc g++ git libffi-dev make musl-dev re2-dev tzdata
 
 # upgrade pip to make sure that we get the most modern wheel selection alg
 pip install --upgrade pip setuptools wheel
