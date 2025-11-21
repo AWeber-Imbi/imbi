@@ -696,6 +696,13 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
 class CELEvaluationTests(base.TestCaseWithReset):
     """Unit tests for CEL expression evaluation function"""
     ADMIN_ACCESS = True
+    TRUNCATE_TABLES = [
+        'v1.projects',
+        'v1.notification_rules',
+        'v1.integration_notifications',
+        'v1.integrations',
+        'v1.project_types',
+    ]
 
     def setUp(self) -> None:
         super().setUp()
