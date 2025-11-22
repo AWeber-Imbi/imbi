@@ -4,7 +4,10 @@ Piccolo ORM models for Imbi.
 All database tables are defined here using Piccolo ORM.
 """
 from imbi.models.base import AuditedTable, SimpleTable
+from imbi.models.environment import Environment
 from imbi.models.namespace import Namespace
+from imbi.models.project import Project
+from imbi.models.project_type import ProjectType
 from imbi.models.user import (
     AuthenticationToken,
     Group,
@@ -25,4 +28,7 @@ __all__ = [
     "UserOAuth2Token",
     # Organization models
     "Namespace",
+    "ProjectType",
+    "Environment",
+    "Project",
 ]

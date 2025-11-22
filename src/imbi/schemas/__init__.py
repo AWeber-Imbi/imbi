@@ -6,10 +6,33 @@ from imbi.schemas.auth import (
     LogoutResponse,
     WhoAmIResponse,
 )
+from imbi.schemas.environment import (
+    EnvironmentCreate,
+    EnvironmentResponse,
+    EnvironmentUpdate,
+)
+from imbi.schemas.group import (
+    GroupCreate,
+    GroupMemberAdd,
+    GroupMemberResponse,
+    GroupResponse,
+    GroupUpdate,
+)
 from imbi.schemas.namespace import (
     NamespaceCreate,
     NamespaceResponse,
     NamespaceUpdate,
+)
+from imbi.schemas.project import (
+    ProjectCreate,
+    ProjectListResponse,
+    ProjectResponse,
+    ProjectUpdate,
+)
+from imbi.schemas.project_type import (
+    ProjectTypeCreate,
+    ProjectTypeResponse,
+    ProjectTypeUpdate,
 )
 
 __all__ = [
@@ -22,4 +45,23 @@ __all__ = [
     "NamespaceCreate",
     "NamespaceResponse",
     "NamespaceUpdate",
+    # ProjectType schemas
+    "ProjectTypeCreate",
+    "ProjectTypeResponse",
+    "ProjectTypeUpdate",
+    # Environment schemas
+    "EnvironmentCreate",
+    "EnvironmentResponse",
+    "EnvironmentUpdate",
+    # Group schemas
+    "GroupCreate",
+    "GroupResponse",
+    "GroupUpdate",
+    "GroupMemberAdd",
+    "GroupMemberResponse",
+    # Project schemas
+    "ProjectCreate",
+    "ProjectResponse",
+    "ProjectUpdate",
+    "ProjectListResponse",
 ]

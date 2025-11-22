@@ -275,14 +275,24 @@ def _configure_routers(app: FastAPI) -> None:
         }
 
     # Import and register routers
-    from imbi.routers import auth, namespaces
+    from imbi.routers import (
+        auth,
+        environments,
+        groups,
+        namespaces,
+        project_types,
+        projects,
+    )
 
     app.include_router(auth.router, prefix="/api")
     app.include_router(namespaces.router, prefix="/api")
+    app.include_router(project_types.router, prefix="/api")
+    app.include_router(environments.router, prefix="/api")
+    app.include_router(groups.router, prefix="/api")
+    app.include_router(projects.router, prefix="/api")
 
     # TODO: Add other routers
-    # from imbi.routers import projects, operations, integrations, reports, chat
-    # app.include_router(projects.router, prefix="/api")
+    # from imbi.routers import operations, integrations, reports, chat
     # ...
 
     logger.info("API routers configured")
