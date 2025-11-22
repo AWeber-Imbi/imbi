@@ -350,6 +350,125 @@ async def sample_namespace(clean_database, admin_user: dict) -> dict:
     return result
 
 
+@pytest_asyncio.fixture
+async def sample_project_type(clean_database, admin_user: dict) -> dict:
+    """
+    Create a sample project type for testing.
+
+    Returns:
+        Project type data dictionary
+    """
+    from imbi.models import ProjectType
+
+    project_type = ProjectType(
+        name="HTTP API",
+        slug="http-api",
+        plural_name="HTTP APIs",
+        icon_class="fas fa-server",
+        environment_urls=True,
+        created_by=admin_user["username"],
+        last_modified_by=admin_user["username"],
+    )
+    await project_type.save()
+
+    return await ProjectType.select().where(ProjectType.name == "HTTP API").first()
+
+
+@pytest_asyncio.fixture
+async def sample_project(clean_database, admin_user: dict, sample_namespace: dict, sample_project_type: dict) -> dict:
+    """
+    Create a sample project for testing.
+
+    Returns:
+        Project data dictionary
+    """
+    from imbi.models import Project
+
+    project = Project(
+        namespace_id=sample_namespace["id"],
+        project_type_id=sample_project_type["id"],
+        name="Test Project",
+        slug="test-project",
+        description="A test project",
+        created_by=admin_user["username"],
+        last_modified_by=admin_user["username"],
+    )
+    await project.save()
+
+    return await Project.select().where(Project.name == "Test Project").first()
+
+
+@pytest_asyncio.fixture
+async def second_project(clean_database, admin_user: dict, sample_namespace: dict, sample_project_type: dict) -> dict:
+    """
+    Create a second project for dependency testing.
+
+    Returns:
+        Project data dictionary
+    """
+    from imbi.models import Project
+
+    project = Project(
+        namespace_id=sample_namespace["id"],
+        project_type_id=sample_project_type["id"],
+        name="Database API",
+        slug="database-api",
+        description="Database service",
+        created_by=admin_user["username"],
+        last_modified_by=admin_user["username"],
+    )
+    await project.save()
+
+    return await Project.select().where(Project.name == "Database API").first()
+
+
+@pytest_asyncio.fixture
+async def sample_link_type(clean_database, admin_user: dict) -> dict:
+    """
+    Create a sample project link type for testing.
+
+    Returns:
+        Link type data dictionary
+    """
+    from imbi.models import ProjectLinkType
+
+    link_type = ProjectLinkType(
+        link_type="GitHub",
+        icon_class="fab fa-github",
+        created_by=admin_user["username"],
+        last_modified_by=admin_user["username"],
+    )
+    await link_type.save()
+
+    return await ProjectLinkType.select().where(
+        ProjectLinkType.link_type == "GitHub"
+    ).first()
+
+
+@pytest_asyncio.fixture
+async def sample_fact_type(clean_database, admin_user: dict) -> dict:
+    """
+    Create a sample fact type for testing.
+
+    Returns:
+        Fact type data dictionary
+    """
+    from imbi.models import FactType
+
+    fact_type = FactType(
+        name="Language",
+        fact_type="string",
+        data_type="text",
+        description="Programming language",
+        weight=10,
+        created_by=admin_user["username"],
+        last_modified_by=admin_user["username"],
+    )
+    await fact_type.save()
+
+    return await FactType.select().where(FactType.name == "Language").first()
+
+
 # Pytest configuration
 def pytest_configure(config):
     """Configure pytest with custom markers."""
