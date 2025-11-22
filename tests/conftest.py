@@ -100,9 +100,42 @@ async def database(test_config: Config) -> AsyncGenerator[None, None]:
     )
 
     # Create all tables
-    from imbi.models import GroupMember
+    from imbi.models import (
+        Environment,
+        FactType,
+        GroupMember,
+        OperationsLog,
+        Project,
+        ProjectDependency,
+        ProjectFact,
+        ProjectLink,
+        ProjectLinkType,
+        ProjectNote,
+        ProjectType,
+        ProjectURL,
+    )
 
-    tables = [User, Group, GroupMember, Namespace]  # Add more as we create them
+    tables = [
+        # User tables
+        User,
+        Group,
+        GroupMember,
+        # Admin tables
+        Namespace,
+        ProjectType,
+        Environment,
+        # Project tables
+        Project,
+        ProjectDependency,
+        ProjectLinkType,
+        ProjectLink,
+        ProjectURL,
+        FactType,
+        ProjectFact,
+        ProjectNote,
+        # Operations
+        OperationsLog,
+    ]
     await create_db_tables(*tables, if_not_exists=True)
 
     yield
@@ -119,10 +152,43 @@ async def clean_database(database) -> AsyncGenerator[None, None]:
 
     Truncates all tables to ensure test isolation.
     """
-    from imbi.models import GroupMember
+    from imbi.models import (
+        Environment,
+        FactType,
+        GroupMember,
+        OperationsLog,
+        Project,
+        ProjectDependency,
+        ProjectFact,
+        ProjectLink,
+        ProjectLinkType,
+        ProjectNote,
+        ProjectType,
+        ProjectURL,
+    )
 
-    # Truncate all tables (order matters for foreign keys)
-    tables = [GroupMember, Namespace, Group, User]
+    # Truncate all tables (order matters for foreign keys - child tables first)
+    tables = [
+        # Project child tables first
+        OperationsLog,
+        ProjectNote,
+        ProjectFact,
+        ProjectURL,
+        ProjectLink,
+        ProjectDependency,
+        # Then parent tables
+        Project,
+        # Admin child tables
+        GroupMember,
+        # Admin parent tables
+        ProjectLinkType,
+        FactType,
+        ProjectType,
+        Environment,
+        Namespace,
+        Group,
+        User,
+    ]
     for table in tables:
         await table.delete(force=True)
 
