@@ -1,0 +1,79 @@
+# Imbi 2.0 Makefile (FastAPI Migration)
+# Convenience commands for development and testing
+
+.PHONY: help install install-dev test test-cov test-fast lint format clean docker-test-up docker-test-down
+
+help:
+	@echo "Imbi 2.0 Development Commands"
+	@echo ""
+	@echo "Setup:"
+	@echo "  make install          Install package"
+	@echo "  make install-dev      Install with dev dependencies"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test             Run all tests"
+	@echo "  make test-cov         Run tests with coverage report"
+	@echo "  make test-fast        Run tests (skip slow tests)"
+	@echo "  make docker-test-up   Start test infrastructure (Docker)"
+	@echo "  make docker-test-down Stop test infrastructure"
+	@echo ""
+	@echo "Code Quality:"
+	@echo "  make lint             Run linters (ruff)"
+	@echo "  make format           Format code (ruff)"
+	@echo "  make typecheck        Run type checker (mypy)"
+	@echo ""
+	@echo "Development:"
+	@echo "  make run              Run development server"
+	@echo "  make clean            Remove build artifacts"
+
+install:
+	pip install -e .
+
+install-dev:
+	pip install -e ".[dev,test]"
+
+test:
+	pytest
+
+test-cov:
+	pytest --cov=imbi --cov-report=html --cov-report=term-missing
+
+test-fast:
+	pytest -m "not slow"
+
+test-integration:
+	pytest -m integration
+
+lint:
+	ruff check src tests
+
+format:
+	ruff format src tests
+
+typecheck:
+	mypy src
+
+run:
+	imbi-server --config config.toml --reload --debug
+
+docker-test-up:
+	docker-compose -f docker-compose.test.yml up -d
+	@echo "Waiting for services to be ready..."
+	@sleep 3
+	@echo "Test infrastructure ready!"
+	@echo "  PostgreSQL: localhost:5433 (database: imbi_test, user: imbi, password: imbi)"
+	@echo "  Valkey:     localhost:6380"
+
+docker-test-down:
+	docker-compose -f docker-compose.test.yml down
+
+clean:
+	rm -rf build/
+	rm -rf dist/
+	rm -rf *.egg-info
+	rm -rf .pytest_cache/
+	rm -rf .ruff_cache/
+	rm -rf htmlcov/
+	rm -rf .coverage
+	find . -type d -name __pycache__ -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete

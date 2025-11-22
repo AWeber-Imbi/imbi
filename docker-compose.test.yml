@@ -1,0 +1,37 @@
+# Docker Compose configuration for running tests
+# Usage: docker-compose -f docker-compose.test.yml up -d
+
+version: "3.8"
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: imbi-test-postgres
+    environment:
+      POSTGRES_DB: imbi_test
+      POSTGRES_USER: imbi
+      POSTGRES_PASSWORD: imbi
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U imbi -d imbi_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  valkey-test:
+    image: valkey/valkey:7-alpine
+    container_name: imbi-test-valkey
+    ports:
+      - "6380:6379"
+    command: valkey-server --appendonly no --save ""
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres-test-data:
