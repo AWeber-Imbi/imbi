@@ -108,15 +108,42 @@ class User:
 
     async def _authenticate_token(self) -> bool:
         """Authenticate via API token."""
+        from datetime import datetime
+
+        from imbi.models import AuthenticationToken
+
         logger.debug("Authenticating via API token")
 
-        # TODO: Implement token authentication
-        # Query authentication_tokens table
-        # Update last_used_at
-        # Load user data
+        try:
+            # Query authentication_tokens table
+            token_record = await AuthenticationToken.select().where(
+                AuthenticationToken.token == self.token
+            ).first()
 
-        logger.warning("Token authentication not yet implemented")
-        return False
+            if not token_record:
+                logger.debug("Token not found")
+                return False
+
+            # Check if token is expired
+            if token_record["expires_at"] and token_record["expires_at"] < datetime.utcnow():
+                logger.debug("Token expired")
+                return False
+
+            # Update last_used_at
+            await AuthenticationToken.update(
+                {AuthenticationToken.last_used_at: datetime.utcnow()}
+            ).where(AuthenticationToken.token == self.token)
+
+            # Load user data
+            self.username = token_record["username"]
+            await self._load_user_data()
+
+            logger.info(f"User {self.username} authenticated via token")
+            return True
+
+        except Exception as e:
+            logger.error(f"Token authentication error: {e}", exc_info=True)
+            return False
 
     async def _authenticate_ldap(self) -> bool:
         """Authenticate via LDAP."""
@@ -151,14 +178,38 @@ class User:
 
     async def _load_groups_and_permissions(self) -> None:
         """Load user's groups and aggregate permissions."""
-        # TODO: Implement group/permission loading
-        # Query group_members table
-        # Query groups table for permissions
-        # Aggregate all permissions
+        from imbi.models import Group, GroupMember
 
-        logger.warning("Group/permission loading not yet implemented")
-        self.groups = []
-        self.permissions = []
+        # Load user's groups
+        group_members = await GroupMember.select().where(
+            GroupMember.username == self.username
+        )
+
+        if not group_members:
+            logger.debug(f"No group memberships found for {self.username}")
+            self.groups = []
+            self.permissions = []
+            return
+
+        # Get group names
+        group_names = [gm["group"] for gm in group_members]
+
+        # Load group permissions
+        groups = await Group.select().where(Group.name.is_in(group_names))
+
+        self.groups = [g["name"] for g in groups]
+
+        # Aggregate all permissions from all groups
+        all_permissions = set()
+        for group in groups:
+            if group["permissions"]:
+                all_permissions.update(group["permissions"])
+
+        self.permissions = sorted(list(all_permissions))
+        logger.debug(
+            f"Loaded {len(self.groups)} groups and {len(self.permissions)} "
+            f"permissions for {self.username}"
+        )
 
     def has_permission(self, permission: str) -> bool:
         """

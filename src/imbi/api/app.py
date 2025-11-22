@@ -275,8 +275,9 @@ def _configure_routers(app: FastAPI) -> None:
         }
 
     # Import and register routers
-    from imbi.routers import namespaces
+    from imbi.routers import auth, namespaces
 
+    app.include_router(auth.router, prefix="/api")
     app.include_router(namespaces.router, prefix="/api")
 
     # TODO: Add other routers

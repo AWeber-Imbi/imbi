@@ -100,7 +100,9 @@ async def database(test_config: Config) -> AsyncGenerator[None, None]:
     )
 
     # Create all tables
-    tables = [User, Group, Namespace]  # Add more as we create them
+    from imbi.models import GroupMember
+
+    tables = [User, Group, GroupMember, Namespace]  # Add more as we create them
     await create_db_tables(*tables, if_not_exists=True)
 
     yield
@@ -117,8 +119,10 @@ async def clean_database(database) -> AsyncGenerator[None, None]:
 
     Truncates all tables to ensure test isolation.
     """
-    # Truncate all tables
-    tables = [User, Group, Namespace]
+    from imbi.models import GroupMember
+
+    # Truncate all tables (order matters for foreign keys)
+    tables = [GroupMember, Namespace, Group, User]
     for table in tables:
         await table.delete(force=True)
 
@@ -147,19 +151,25 @@ async def client(app) -> AsyncGenerator[AsyncClient, None]:
 
 
 @pytest_asyncio.fixture
-async def test_user(clean_database) -> dict:
+async def test_user(clean_database, test_config: Config) -> dict:
     """
     Create a test user in the database.
 
     Returns:
         User data dictionary
     """
+    from imbi.services.user import User as UserService
+
+    # Hash password properly using the same method as authentication
+    user_service = UserService(config=test_config)
+    hashed_password = user_service.hash_password("password")
+
     user = User(
         username="testuser",
         user_type="internal",
         email_address="test@example.com",
         display_name="Test User",
-        password="5f4dcc3b5aa765d61d8327deb882cf99",  # hashed: "password"
+        password=hashed_password,
     )
     await user.save()
 
@@ -168,13 +178,16 @@ async def test_user(clean_database) -> dict:
 
 
 @pytest_asyncio.fixture
-async def admin_user(clean_database) -> dict:
+async def admin_user(clean_database, test_config: Config) -> dict:
     """
     Create an admin user in the database.
 
     Returns:
         Admin user data dictionary
     """
+    from imbi.models import GroupMember
+    from imbi.services.user import User as UserService
+
     # Create admin group
     admin_group = Group(
         name="admin",
@@ -184,15 +197,27 @@ async def admin_user(clean_database) -> dict:
     )
     await admin_group.save()
 
+    # Hash password properly
+    user_service = UserService(config=test_config)
+    hashed_password = user_service.hash_password("password")
+
     # Create admin user
     admin = User(
         username="admin",
         user_type="internal",
         email_address="admin@example.com",
         display_name="Admin User",
-        password="5f4dcc3b5aa765d61d8327deb882cf99",  # hashed: "password"
+        password=hashed_password,
     )
     await admin.save()
+
+    # Add user to admin group
+    group_member = GroupMember(
+        username="admin",
+        group="admin",
+        added_by="system",
+    )
+    await group_member.save()
 
     result = await User.select().where(User.username == "admin").first()
     return result
@@ -207,13 +232,11 @@ async def authenticated_client(
 
     Logs in as the test user and maintains session.
     """
-    # TODO: Implement login endpoint, then authenticate here
-    # For now, we'll need to manually set session data
-    # response = await client.post("/api/login", json={
-    #     "username": "testuser",
-    #     "password": "password"
-    # })
-    # assert response.status_code == 200
+    response = await client.post(
+        "/api/login",
+        json={"username": "testuser", "password": "password"}
+    )
+    assert response.status_code == 200, f"Login failed: {response.text}"
 
     yield client
 
@@ -227,12 +250,11 @@ async def admin_client(
 
     Logs in as the admin user and maintains session.
     """
-    # TODO: Implement login endpoint, then authenticate here
-    # response = await client.post("/api/login", json={
-    #     "username": "admin",
-    #     "password": "password"
-    # })
-    # assert response.status_code == 200
+    response = await client.post(
+        "/api/login",
+        json={"username": "admin", "password": "password"}
+    )
+    assert response.status_code == 200, f"Admin login failed: {response.text}"
 
     yield client
 
