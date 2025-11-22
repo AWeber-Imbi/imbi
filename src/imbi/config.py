@@ -51,10 +51,10 @@ class PostgresSettings(BaseSettings):
         return v
 
 
-class RedisSettings(BaseSettings):
-    """Redis configuration."""
+class ValkeySettings(BaseSettings):
+    """Valkey configuration (Redis-compatible)."""
 
-    url: str = "redis://localhost:6379/0"
+    url: str = "valkey://localhost:6379/0"
     encoding: str = "utf-8"
     decode_responses: bool = True
 
@@ -62,7 +62,7 @@ class RedisSettings(BaseSettings):
 class SessionSettings(BaseSettings):
     """Session management configuration."""
 
-    redis: RedisSettings = Field(default_factory=RedisSettings)
+    valkey: ValkeySettings = Field(default_factory=ValkeySettings)
     cookie_name: str = "session"
     duration: int = 7  # days
     secret_key: str = Field(..., description="Secret key for session encryption")
@@ -71,7 +71,7 @@ class SessionSettings(BaseSettings):
 class StatsSettings(BaseSettings):
     """Stats collection configuration."""
 
-    redis: RedisSettings = Field(default_factory=lambda: RedisSettings(url="redis://localhost:6379/1"))
+    valkey: ValkeySettings = Field(default_factory=lambda: ValkeySettings(url="valkey://localhost:6379/1"))
     enabled: bool = True
 
 
@@ -218,6 +218,13 @@ def load_config_from_toml(path: Path) -> Config:
         session = data["session"]
         if "secret_key" not in session and "encryption_key" in data:
             session["secret_key"] = data["encryption_key"]
+        # Backward compatibility: rename redis -> valkey
+        if "redis" in session and "valkey" not in session:
+            session["valkey"] = session.pop("redis")
+
+    # Backward compatibility for stats: rename redis -> valkey
+    if "stats" in data and "redis" in data["stats"] and "valkey" not in data["stats"]:
+        data["stats"]["valkey"] = data["stats"].pop("redis")
 
     try:
         config = Config(**data)
@@ -258,6 +265,13 @@ def load_config_from_yaml(path: Path) -> Config:
         session = data["session"]
         if "secret_key" not in session and "encryption_key" in data:
             session["secret_key"] = data["encryption_key"]
+        # Backward compatibility: rename redis -> valkey
+        if "redis" in session and "valkey" not in session:
+            session["valkey"] = session.pop("redis")
+
+    # Backward compatibility for stats: rename redis -> valkey
+    if "stats" in data and "redis" in data["stats"] and "valkey" not in data["stats"]:
+        data["stats"]["valkey"] = data["stats"].pop("redis")
 
     try:
         config = Config(**data)

@@ -34,16 +34,16 @@ cookie_name = "session"
 duration = 7  # days
 secret_key = "your-base64-encoded-encryption-key-here"  # Or use encryption_key
 
-[session.redis]
-url = "redis://localhost:6379/0"
+[session.valkey]
+url = "valkey://localhost:6379/0"
 encoding = "utf-8"
 decode_responses = true
 
 [stats]
 enabled = true
 
-[stats.redis]
-url = "redis://localhost:6379/1"
+[stats.valkey]
+url = "valkey://localhost:6379/1"
 encoding = "utf-8"
 decode_responses = true
 

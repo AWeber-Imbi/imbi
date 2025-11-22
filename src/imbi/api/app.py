@@ -47,26 +47,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     config: Config = app.state.config
     logger.info("Starting Imbi application", version=__version__)
 
-    # Initialize Redis pools
-    logger.info("Initializing Redis connections")
+    # Initialize Valkey (Redis-compatible) pools
+    logger.info("Initializing Valkey connections")
     try:
-        app.state.session_redis = await aioredis.from_url(
-            config.session.redis.url,
-            encoding=config.session.redis.encoding,
-            decode_responses=config.session.redis.decode_responses,
+        # Note: redis-py library is used as Valkey is protocol-compatible
+        app.state.session_valkey = await aioredis.from_url(
+            config.session.valkey.url,
+            encoding=config.session.valkey.encoding,
+            decode_responses=config.session.valkey.decode_responses,
         )
-        await app.state.session_redis.ping()
-        logger.info("Session Redis connected")
+        await app.state.session_valkey.ping()
+        logger.info("Session Valkey connected")
 
-        app.state.stats_redis = await aioredis.from_url(
-            config.stats.redis.url,
-            encoding=config.stats.redis.encoding,
-            decode_responses=config.stats.redis.decode_responses,
+        app.state.stats_valkey = await aioredis.from_url(
+            config.stats.valkey.url,
+            encoding=config.stats.valkey.encoding,
+            decode_responses=config.stats.valkey.decode_responses,
         )
-        await app.state.stats_redis.ping()
-        logger.info("Stats Redis connected")
+        await app.state.stats_valkey.ping()
+        logger.info("Stats Valkey connected")
     except Exception as e:
-        logger.error("Failed to connect to Redis", error=str(e))
+        logger.error("Failed to connect to Valkey", error=str(e))
         raise
 
     # Initialize PostgreSQL
@@ -137,14 +138,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.info("Shutting down application")
 
-    # Close Redis connections
-    if hasattr(app.state, "session_redis"):
-        await app.state.session_redis.close()
-        logger.info("Session Redis closed")
+    # Close Valkey connections
+    if hasattr(app.state, "session_valkey"):
+        await app.state.session_valkey.close()
+        logger.info("Session Valkey closed")
 
-    if hasattr(app.state, "stats_redis"):
-        await app.state.stats_redis.close()
-        logger.info("Stats Redis closed")
+    if hasattr(app.state, "stats_valkey"):
+        await app.state.stats_valkey.close()
+        logger.info("Stats Valkey closed")
 
     # Close PostgreSQL connection pool
     await close_database()
@@ -273,10 +274,14 @@ def _configure_routers(app: FastAPI) -> None:
             "ready": app.state.ready,
         }
 
+    # Import and register routers
+    from imbi.routers import namespaces
+
+    app.include_router(namespaces.router, prefix="/api")
+
     # TODO: Add other routers
-    # from imbi.routers import admin, projects, operations, integrations, reports, chat
-    # app.include_router(admin.router, prefix="/api", tags=["admin"])
-    # app.include_router(projects.router, prefix="/api", tags=["projects"])
+    # from imbi.routers import projects, operations, integrations, reports, chat
+    # app.include_router(projects.router, prefix="/api")
     # ...
 
     logger.info("API routers configured")
