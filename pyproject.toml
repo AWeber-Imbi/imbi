@@ -1,0 +1,256 @@
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "imbi"
+version = "1.0.0"
+description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
+readme = "README.rst"
+license = { text = "BSD-3-Clause" }
+authors = [
+    { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
+]
+maintainers = [
+    { name = "Gavin M. Roy", email = "gavinr@aweber.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: BSD License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: JavaScript",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: SQL",
+    "Topic :: Office/Business",
+    "Topic :: Software Development",
+    "Topic :: System",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+    "Framework :: FastAPI",
+]
+keywords = [
+    "devops",
+    "python3",
+    "datacenter",
+    "operations",
+    "fastapi",
+    "service-management",
+]
+requires-python = ">=3.12"
+dependencies = [
+    # Core FastAPI Stack
+    "fastapi>=0.115.0,<1",
+    "uvicorn[standard]>=0.32.0,<1",
+    "pydantic>=2.11.9,<3",
+    "pydantic-settings>=2.7.0,<3",
+    "python-multipart>=0.0.18",
+
+    # Database - Piccolo ORM
+    "piccolo[postgres]>=1.24.0,<2",
+    "asyncpg>=0.30.0,<1",
+
+    # Redis
+    "redis[hiredis]>=5.2.0,<6",
+
+    # Authentication & Security
+    "python-jose[cryptography]>=3.3.0,<4",
+    "passlib[bcrypt]>=1.7.4,<2",
+    "ldap3>=2.9,<3",
+    "google-auth>=2.36.0",
+    "google-auth-oauthlib>=1.2.0",
+    "cryptography>=44.0.0",
+
+    # FastAPI Extensions
+    "fastapi-pagination>=0.12.0,<1",
+    "fastapi-cache2[redis]>=0.2.0,<1",
+
+    # Cloud & External Services
+    "aioboto3>=13.3.0,<14",
+    "opensearch-py[async]>=2.8.0,<3",
+    "httpx>=0.28.0,<1",
+
+    # Utilities
+    "pyyaml>=6.0",
+    "python-slugify>=8.0.0,<9",
+    "semantic-version>=2.10,<3",
+    "iso8601>=2.1.0",
+    "arrow>=1.3.0",
+    "validators>=0.34.0",
+    "packaging>=24,<25",
+    "python-ulid>=2.8.0,<3",
+    "pycurl>=7.45.3",
+
+    # Templating (for cookiecutter support)
+    "cookiecutter>=2.6.0,<3",
+    "jinja2>=3.1.0",
+
+    # AI Integration
+    "anthropic>=0.42.0,<1",  # Claude SDK
+    "mcp>=1.3.1,<2",  # Model Context Protocol
+
+    # Observability
+    "structlog>=24.4.0",
+]
+
+[project.optional-dependencies]
+sentry = [
+    "sentry-sdk[fastapi]>=2.19.0,<3",
+]
+dev = [
+    "ruff>=0.8.5",
+    "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
+    "types-pyyaml",
+    "types-redis",
+    "types-passlib",
+]
+test = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.14.0",
+    "httpx>=0.28.0",
+    "faker>=33.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/aweber/imbi"
+Documentation = "https://imbi.readthedocs.io"
+Repository = "https://github.com/aweber/imbi"
+"Bug Tracker" = "https://github.com/aweber/imbi/issues"
+
+[project.scripts]
+imbi = "imbi.cli:main"
+imbi-server = "imbi.server:main"
+imbi-migrate = "imbi.migrations:main"
+
+[tool.hatch.version]
+path = "src/imbi/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.rst",
+    "/LICENSE",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imbi"]
+
+# Ruff Configuration (replaces flake8, isort, black)
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "PTH",    # flake8-use-pathlib
+    "ASYNC",  # flake8-async
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults (FastAPI uses this)
+    "UP007",  # Use X | Y for type annotations (compatibility)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Unused imports in __init__
+"tests/**/*.py" = ["ARG", "S"]  # Allow unused args and assert statements
+
+[tool.ruff.lint.isort]
+known-first-party = ["imbi"]
+
+# MyPy Configuration
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_equality = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "ldap3.*",
+    "cookiecutter.*",
+    "opensearch.*",
+    "aioboto3.*",
+    "pycurl.*",
+]
+ignore_missing_imports = true
+
+# Pytest Configuration
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--cov=imbi",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-report=term-missing:skip-covered",
+]
+markers = [
+    "integration: Integration tests (requires database)",
+    "slow: Slow tests",
+    "external: Tests requiring external services",
+]
+
+# Coverage Configuration
+[tool.coverage.run]
+branch = true
+source = ["src/imbi"]
+omit = [
+    "*/tests/*",
+    "*/migrations/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+precision = 2
+show_missing = true
+
+[tool.coverage.html]
+directory = "build/coverage"
+
+[tool.coverage.xml]
+output = "build/coverage.xml"
