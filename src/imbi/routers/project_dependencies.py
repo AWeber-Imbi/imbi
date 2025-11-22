@@ -3,7 +3,7 @@ Project dependency API endpoints.
 
 Manages dependencies between projects.
 """
-from datetime import datetime
+import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response

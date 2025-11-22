@@ -3,7 +3,7 @@ Group API endpoints.
 
 Groups organize users and define permissions.
 """
-from datetime import datetime
+import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
@@ -124,7 +124,7 @@ async def create_group(
         )
 
     # Create group
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     new_group = Group(
         **group.model_dump(),
         created_at=now,
@@ -215,7 +215,7 @@ async def update_group(
 
     # Update group
     if update_data:
-        update_data["last_modified_at"] = datetime.utcnow()
+        update_data["last_modified_at"] = datetime.datetime.utcnow()
         update_data["last_modified_by"] = user.username
 
         await Group.update(update_data).where(

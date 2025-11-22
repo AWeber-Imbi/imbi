@@ -2,6 +2,69 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Import Style Rules
+
+**CRITICAL**: Follow these import rules strictly for all Python code:
+
+### Rule 1: Import modules, not classes/functions
+
+**Correct:**
+```python
+import datetime
+result = datetime.datetime.now()
+```
+
+**Incorrect:**
+```python
+from datetime import datetime
+result = datetime.now()
+```
+
+### Rule 2: Submodules use `from` imports
+
+**Correct:**
+```python
+from unittest import mock
+mock.patch()
+
+from piccolo import columns, table
+columns.Text()
+```
+
+**Incorrect:**
+```python
+import unittest.mock
+unittest.mock.patch()
+
+import piccolo.columns
+piccolo.columns.Text()
+```
+
+### Rule 3: Local module imports (not from imports)
+
+**Correct:**
+```python
+import imbi.models.base
+class MyModel(imbi.models.base.AuditedTable):
+    pass
+```
+
+**Incorrect:**
+```python
+from imbi.models.base import AuditedTable
+class MyModel(AuditedTable):
+    pass
+```
+
+### Import Ordering
+
+1. `__future__` imports
+2. Standard library imports
+3. Third-party imports
+4. Local/project imports
+
+Each group separated by a blank line.
+
 ## Repository Structure
 
 Imbi is a DevOps Service Management Platform with a multi-repository architecture using Git submodules:

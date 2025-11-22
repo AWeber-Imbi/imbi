@@ -4,7 +4,7 @@ Project API endpoints.
 Projects are the central entity in Imbi, representing services, applications,
 libraries, and other software components.
 """
-from datetime import datetime
+import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -259,7 +259,7 @@ async def create_project(
         )
 
     # Create project
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     new_project = Project(
         **project.model_dump(),
         created_at=now,
@@ -395,7 +395,7 @@ async def update_project(
 
     # Update project
     if update_data:
-        update_data["last_modified_at"] = datetime.utcnow()
+        update_data["last_modified_at"] = datetime.datetime.utcnow()
         update_data["last_modified_by"] = user.username
 
         await Project.update(update_data).where(

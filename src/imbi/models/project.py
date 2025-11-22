@@ -5,37 +5,37 @@ Projects represent services, applications, libraries, and other software compone
 """
 from __future__ import annotations
 
-from piccolo.columns import Array, Boolean, ForeignKey, Integer, Serial, Text, Varchar
+from piccolo import columns
 
-from imbi.models.base import AuditedTable
+import imbi.models.base
 
 
-class Project(AuditedTable, tablename="projects", schema="v1"):
+class Project(imbi.models.base.AuditedTable, tablename="projects", schema="v1"):
     """
     Project model.
 
     The central entity in Imbi representing a service, application, or component.
     """
 
-    id = Serial(primary_key=True)
-    namespace_id = ForeignKey("Namespace", null=False, index=True)
-    project_type_id = ForeignKey("ProjectType", null=False, index=True)
-    name = Varchar(length=255, null=False, index=True)
-    slug = Varchar(length=255, null=False, index=True)
-    description = Text(null=True)
-    environments = Array(Text(), null=True)  # List of environment names
-    archived = Boolean(default=False, null=False, index=True)
+    id = columns.Serial(primary_key=True)
+    namespace_id = columns.ForeignKey("Namespace", null=False, index=True)
+    project_type_id = columns.ForeignKey("ProjectType", null=False, index=True)
+    name = columns.Varchar(length=255, null=False, index=True)
+    slug = columns.Varchar(length=255, null=False, index=True)
+    description = columns.Text(null=True)
+    environments = columns.Array(columns.Text(), null=True)  # List of environment names
+    archived = columns.Boolean(default=False, null=False, index=True)
 
     # Integration IDs (GitLab removed)
-    sentry_project_slug = Text(null=True)
-    sonarqube_project_key = Text(null=True)
-    pagerduty_service_id = Text(null=True)
+    sentry_project_slug = columns.Text(null=True)
+    sonarqube_project_key = columns.Text(null=True)
+    pagerduty_service_id = columns.Text(null=True)
 
     # Configuration management
-    configuration_type = Text(null=True)  # e.g., "consul", "etcd", etc.
+    configuration_type = columns.Text(null=True)  # e.g., "consul", "etcd", etc.
 
     @classmethod
-    def ref(cls) -> Varchar:
+    def ref(cls) -> columns.Varchar:
         """Readable reference for this model."""
         return cls.name
 

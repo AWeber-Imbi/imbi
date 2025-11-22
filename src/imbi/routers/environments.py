@@ -3,7 +3,7 @@ Environment API endpoints.
 
 Environments represent deployment targets (production, staging, development, etc.)
 """
-from datetime import datetime
+import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
@@ -122,7 +122,7 @@ async def create_environment(
         )
 
     # Create environment
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     new_environment = Environment(
         **environment.model_dump(),
         created_at=now,
@@ -216,7 +216,7 @@ async def update_environment(
 
     # Update environment
     if update_data:
-        update_data["last_modified_at"] = datetime.utcnow()
+        update_data["last_modified_at"] = datetime.datetime.utcnow()
         update_data["last_modified_by"] = user.username
 
         await Environment.update(update_data).where(

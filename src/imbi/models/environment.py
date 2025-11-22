@@ -3,24 +3,24 @@ Environment model - deployment environments (production, staging, etc.)
 """
 from __future__ import annotations
 
-from piccolo.columns import Serial, Text, Varchar
+from piccolo import columns
 
-from imbi.models.base import AuditedTable
+import imbi.models.base
 
 
-class Environment(AuditedTable, tablename="environments", schema="v1"):
+class Environment(imbi.models.base.AuditedTable, tablename="environments", schema="v1"):
     """
     Environment model.
 
     Represents deployment environments (production, staging, development, etc.)
     """
 
-    id = Serial(primary_key=True)
-    name = Varchar(length=255, unique=True, null=False, index=True)
-    icon_class = Text(null=True)  # CSS icon class
-    description = Text(null=True)
+    id = columns.Serial(primary_key=True)
+    name = columns.Varchar(length=255, unique=True, null=False, index=True)
+    icon_class = columns.Text(null=True)  # CSS icon class
+    description = columns.Text(null=True)
 
     @classmethod
-    def ref(cls) -> Varchar:
+    def ref(cls) -> columns.Varchar:
         """Readable reference for this model."""
         return cls.name

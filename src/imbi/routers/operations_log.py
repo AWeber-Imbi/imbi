@@ -181,7 +181,7 @@ async def create_operations_log_entry(
         )
 
     # Create entry
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.datetime.utcnow()
     new_entry = OperationsLog(
         **entry.model_dump(),
         recorded_at=now,

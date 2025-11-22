@@ -3,7 +3,7 @@ Project note API endpoints.
 
 Manages free-text notes for projects.
 """
-from datetime import datetime
+import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
@@ -73,7 +73,7 @@ async def add_project_note(
         )
 
     # Create note
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     new_note = ProjectNote(
         project_id=project_id,
         **note_data.model_dump(),
@@ -119,7 +119,7 @@ async def update_project_note(
     # Update note
     await ProjectNote.update({
         ProjectNote.note: updates.note,
-        ProjectNote.last_modified_at: datetime.utcnow(),
+        ProjectNote.last_modified_at: datetime.datetime.utcnow(),
         ProjectNote.last_modified_by: user.username,
     }).where(
         ProjectNote.note_id == note_id

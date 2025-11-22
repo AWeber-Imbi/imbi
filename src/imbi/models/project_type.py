@@ -3,27 +3,27 @@ Project Type model - categories/types of projects.
 """
 from __future__ import annotations
 
-from piccolo.columns import Boolean, Serial, Text, Varchar
+from piccolo import columns
 
-from imbi.models.base import AuditedTable
+import imbi.models.base
 
 
-class ProjectType(AuditedTable, tablename="project_types", schema="v1"):
+class ProjectType(imbi.models.base.AuditedTable, tablename="project_types", schema="v1"):
     """
     Project Type model.
 
     Categorizes projects (e.g., HTTP API, Web Application, Library, etc.)
     """
 
-    id = Serial(primary_key=True)
-    name = Varchar(length=255, unique=True, null=False, index=True)
-    slug = Varchar(length=255, unique=True, null=False, index=True)
-    plural_name = Varchar(length=255, null=False)
-    icon_class = Text(null=True)  # CSS icon class
-    environment_urls = Boolean(default=False, null=False)  # Whether this type has environment-specific URLs
-    description = Text(null=True)
+    id = columns.Serial(primary_key=True)
+    name = columns.Varchar(length=255, unique=True, null=False, index=True)
+    slug = columns.Varchar(length=255, unique=True, null=False, index=True)
+    plural_name = columns.Varchar(length=255, null=False)
+    icon_class = columns.Text(null=True)  # CSS icon class
+    environment_urls = columns.Boolean(default=False, null=False)  # Whether this type has environment-specific URLs
+    description = columns.Text(null=True)
 
     @classmethod
-    def ref(cls) -> Varchar:
+    def ref(cls) -> columns.Varchar:
         """Readable reference for this model."""
         return cls.name

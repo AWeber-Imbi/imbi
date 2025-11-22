@@ -3,7 +3,7 @@ Project link API endpoints.
 
 Manages external links for projects (GitHub repos, documentation, etc.)
 """
-from datetime import datetime
+import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
@@ -63,7 +63,7 @@ async def create_project_link_type(
             },
         )
 
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     new_link_type = ProjectLinkType(
         **link_type.model_dump(),
         created_at=now,
@@ -179,7 +179,7 @@ async def add_project_link(
         )
 
     # Create link
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     new_link = ProjectLink(
         project_id=project_id,
         **link.model_dump(),
@@ -229,7 +229,7 @@ async def update_project_link(
     # Update link
     await ProjectLink.update({
         ProjectLink.url: updates.url,
-        ProjectLink.last_modified_at: datetime.utcnow(),
+        ProjectLink.last_modified_at: datetime.datetime.utcnow(),
         ProjectLink.last_modified_by: user.username,
     }).where(
         (ProjectLink.project_id == project_id)

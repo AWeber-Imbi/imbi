@@ -3,7 +3,7 @@ Project fact API endpoints.
 
 Manages typed key-value metadata for projects.
 """
-from datetime import datetime
+import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
@@ -58,7 +58,7 @@ async def create_fact_type(
             detail=f"Fact type '{fact_type.name}' already exists",
         )
 
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     new_fact_type = FactType(
         **fact_type.model_dump(),
         created_at=now,
@@ -158,7 +158,7 @@ async def add_project_fact(
         )
 
     # Create fact
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     new_fact = ProjectFact(
         project_id=project_id,
         **fact.model_dump(),
@@ -206,7 +206,7 @@ async def update_project_fact(
 
     # Update fact
     update_data = updates.model_dump(exclude_unset=True)
-    update_data["last_modified_at"] = datetime.utcnow()
+    update_data["last_modified_at"] = datetime.datetime.utcnow()
     update_data["last_modified_by"] = user.username
 
     await ProjectFact.update(update_data).where(

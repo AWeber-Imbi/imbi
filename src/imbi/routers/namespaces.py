@@ -3,7 +3,7 @@ Namespace API endpoints.
 
 Namespaces are organizational units for grouping projects.
 """
-from datetime import datetime
+import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -121,7 +121,7 @@ async def create_namespace(
         )
 
     # Create namespace
-    now = datetime.utcnow()
+    now = datetime.datetime.datetime.utcnow()
     new_namespace = Namespace(
         **namespace.model_dump(),
         created_at=now,
@@ -223,7 +223,7 @@ async def update_namespace(
 
     # Update namespace
     if update_data:
-        update_data["last_modified_at"] = datetime.utcnow()
+        update_data["last_modified_at"] = datetime.datetime.datetime.utcnow()
         update_data["last_modified_by"] = user.username
 
         await Namespace.update(update_data).where(

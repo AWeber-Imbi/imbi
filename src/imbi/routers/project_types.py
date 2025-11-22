@@ -3,7 +3,7 @@ Project Type API endpoints.
 
 Project types categorize projects (e.g., HTTP API, Web Application, Library).
 """
-from datetime import datetime
+import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
@@ -123,7 +123,7 @@ async def create_project_type(
         )
 
     # Create project type
-    now = datetime.utcnow()
+    now = datetime.datetime.utcnow()
     new_project_type = ProjectType(
         **project_type.model_dump(),
         created_at=now,
@@ -223,7 +223,7 @@ async def update_project_type(
 
     # Update project type
     if update_data:
-        update_data["last_modified_at"] = datetime.utcnow()
+        update_data["last_modified_at"] = datetime.datetime.utcnow()
         update_data["last_modified_by"] = user.username
 
         await ProjectType.update(update_data).where(
