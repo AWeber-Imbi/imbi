@@ -23,6 +23,12 @@ from imbi.schemas.namespace import (
     NamespaceResponse,
     NamespaceUpdate,
 )
+from imbi.schemas.operations_log import (
+    OperationsLogCreate,
+    OperationsLogListResponse,
+    OperationsLogResponse,
+    OperationsLogUpdate,
+)
 from imbi.schemas.project import (
     ProjectCreate,
     ProjectListResponse,
@@ -86,6 +92,11 @@ __all__ = [
     "ProjectResponse",
     "ProjectUpdate",
     "ProjectListResponse",
+    # Operations log schemas
+    "OperationsLogCreate",
+    "OperationsLogResponse",
+    "OperationsLogUpdate",
+    "OperationsLogListResponse",
     # Project relation schemas
     "ProjectDependencyCreate",
     "ProjectDependencyResponse",

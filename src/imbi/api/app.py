@@ -280,6 +280,7 @@ def _configure_routers(app: FastAPI) -> None:
         environments,
         groups,
         namespaces,
+        operations_log,
         project_dependencies,
         project_facts,
         project_links,
@@ -304,9 +305,11 @@ def _configure_routers(app: FastAPI) -> None:
     app.include_router(project_facts.router, prefix="/api")
     app.include_router(project_notes.router, prefix="/api")
 
+    # Operations routers
+    app.include_router(operations_log.router, prefix="/api")
+
     # TODO: Add other routers
-    # from imbi.routers import operations_log, integrations, reports, chat
-    # app.include_router(operations_log.router, prefix="/api")
+    # from imbi.routers import integrations, reports, chat
     # ...
 
     logger.info("API routers configured")
