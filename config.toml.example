@@ -1,0 +1,96 @@
+# Imbi 2.0 Configuration (TOML format)
+# Copy this file to config.toml and customize for your environment
+
+# Application settings
+debug = false
+environment = "production"
+encryption_key = "your-base64-encoded-encryption-key-here"
+version = "2.0.0"
+
+[http]
+host = "0.0.0.0"
+port = 8000
+workers = 4
+reload = false
+
+[postgres]
+# Option 1: Use a connection URL
+url = "postgresql://imbi:password@localhost:5432/imbi"
+
+# Option 2: Use individual parameters (comment out url above)
+# host = "localhost"
+# port = 5432
+# database = "imbi"
+# user = "imbi"
+# password = "password"
+
+min_pool_size = 1
+max_pool_size = 20
+timeout = 30
+log_queries = false  # Set to true for debugging
+
+[session]
+cookie_name = "session"
+duration = 7  # days
+secret_key = "your-base64-encoded-encryption-key-here"  # Or use encryption_key
+
+[session.redis]
+url = "redis://localhost:6379/0"
+encoding = "utf-8"
+decode_responses = true
+
+[stats]
+enabled = true
+
+[stats.redis]
+url = "redis://localhost:6379/1"
+encoding = "utf-8"
+decode_responses = true
+
+[ldap]
+enabled = false
+host = "ldap.example.com"
+port = 389
+ssl = false
+pool_size = 5
+users_dn = "ou=users,dc=example,dc=com"
+groups_dn = "ou=groups,dc=example,dc=com"
+# username = "cn=admin,dc=example,dc=com"
+# password = "ldap_password"
+
+[cors]
+enabled = true
+allowed_origins = ["*"]
+allow_credentials = true
+allowed_methods = ["*"]
+allowed_headers = ["*"]
+
+[opensearch]
+enabled = false
+hosts = ["http://localhost:9200"]
+# username = "admin"
+# password = "admin"
+use_ssl = false
+verify_certs = true
+
+[claude]
+# NEW: Claude AI integration for conversational interface
+enabled = false
+api_key = ""  # Or set ANTHROPIC_API_KEY environment variable
+model = "claude-sonnet-4.5"
+max_tokens = 4096
+temperature = 0.7
+
+[mcp]
+# NEW: Model Context Protocol server for external AI tools
+enabled = false
+host = "0.0.0.0"
+port = 3000
+api_url = "http://localhost:8000"
+# api_token = "your-api-token"  # For MCP authentication
+
+[sentry]
+enabled = false
+# dsn = "https://your-sentry-dsn@sentry.io/project-id"
+environment = "production"
+traces_sample_rate = 0.1
