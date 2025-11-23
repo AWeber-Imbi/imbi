@@ -12,8 +12,8 @@ Version for distribution was based on a variable in `imbi/__init__.py`.
 
 ## Decision
 
-Manage versioning in the `VERSION` file to make versioning cleaner and more explicit, 
-as versions can be released for any combination of API updates, Documentation, 
+Manage versioning in the `VERSION` file to make versioning cleaner and more explicit,
+as versions can be released for any combination of API updates, Documentation,
 and UI updates.
 
 ## Consequences

@@ -1,6 +1,7 @@
 """
 Environment model - deployment environments (production, staging, etc.)
 """
+
 from __future__ import annotations
 
 from piccolo import columns

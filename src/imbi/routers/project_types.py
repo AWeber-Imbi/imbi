@@ -3,6 +3,7 @@ Project Type API endpoints.
 
 Project types categorize projects (e.g., HTTP API, Web Application, Library).
 """
+
 import datetime
 
 from fastapi import APIRouter, HTTPException, status
@@ -57,9 +58,7 @@ async def get_project_type(project_type_id: int) -> dict:
         HTTPException: 404 if project type not found
     """
     project_type = (
-        await ProjectType.select()
-        .where(ProjectType.id == project_type_id)
-        .first()
+        await ProjectType.select().where(ProjectType.id == project_type_id).first()
     )
 
     if not project_type:
@@ -106,10 +105,14 @@ async def create_project_type(
         HTTPException: 409 if project type with same name or slug already exists
     """
     # Check for existing project type with same name or slug
-    existing = await ProjectType.select().where(
-        (ProjectType.name == project_type.name)
-        | (ProjectType.slug == project_type.slug)
-    ).first()
+    existing = (
+        await ProjectType.select()
+        .where(
+            (ProjectType.name == project_type.name)
+            | (ProjectType.slug == project_type.slug)
+        )
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -136,9 +139,7 @@ async def create_project_type(
 
     # Fetch the created project type to return
     result = (
-        await ProjectType.select()
-        .where(ProjectType.id == new_project_type.id)
-        .first()
+        await ProjectType.select().where(ProjectType.id == new_project_type.id).first()
     )
 
     return result
@@ -176,9 +177,7 @@ async def update_project_type(
     """
     # Find existing project type
     project_type = (
-        await ProjectType.select()
-        .where(ProjectType.id == project_type_id)
-        .first()
+        await ProjectType.select().where(ProjectType.id == project_type_id).first()
     )
 
     if not project_type:
@@ -232,9 +231,7 @@ async def update_project_type(
 
     # Fetch updated project type
     result = (
-        await ProjectType.select()
-        .where(ProjectType.id == project_type["id"])
-        .first()
+        await ProjectType.select().where(ProjectType.id == project_type["id"]).first()
     )
 
     return result
@@ -270,9 +267,7 @@ async def delete_project_type(
     """
     # Find existing project type
     project_type = (
-        await ProjectType.select()
-        .where(ProjectType.id == project_type_id)
-        .first()
+        await ProjectType.select().where(ProjectType.id == project_type_id).first()
     )
 
     if not project_type:

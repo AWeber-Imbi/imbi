@@ -3,10 +3,10 @@ Namespace API endpoints.
 
 Namespaces are organizational units for grouping projects.
 """
-import datetime
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import datetime
+
+from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
 
 from imbi.dependencies import AdminUser
@@ -54,9 +54,7 @@ async def get_namespace(namespace_id: int) -> dict:
         HTTPException: 404 if namespace not found
     """
     namespace = (
-        await Namespace.select()
-        .where(Namespace.namespace_id == namespace_id)
-        .first()
+        await Namespace.select().where(Namespace.namespace_id == namespace_id).first()
     )
 
     if not namespace:
@@ -103,11 +101,15 @@ async def create_namespace(
         HTTPException: 409 if namespace with same ID, name, or slug already exists
     """
     # Check for existing namespace with same namespace_id, name, or slug
-    existing = await Namespace.select().where(
-        (Namespace.namespace_id == namespace.namespace_id)
-        | (Namespace.name == namespace.name)
-        | (Namespace.slug == namespace.slug)
-    ).first()
+    existing = (
+        await Namespace.select()
+        .where(
+            (Namespace.namespace_id == namespace.namespace_id)
+            | (Namespace.name == namespace.name)
+            | (Namespace.slug == namespace.slug)
+        )
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -133,11 +135,7 @@ async def create_namespace(
     await new_namespace.save()
 
     # Fetch the created namespace to return
-    result = (
-        await Namespace.select()
-        .where(Namespace.id == new_namespace.id)
-        .first()
-    )
+    result = await Namespace.select().where(Namespace.id == new_namespace.id).first()
 
     return result
 
@@ -174,9 +172,7 @@ async def update_namespace(
     """
     # Find existing namespace
     namespace = (
-        await Namespace.select()
-        .where(Namespace.namespace_id == namespace_id)
-        .first()
+        await Namespace.select().where(Namespace.namespace_id == namespace_id).first()
     )
 
     if not namespace:
@@ -204,7 +200,15 @@ async def update_namespace(
         existing = (
             await Namespace.select()
             .where(
-                (filters[0] if len(filters) == 1 else (filters[0] | filters[1] | filters[2] if len(filters) == 3 else filters[0] | filters[1]))
+                (
+                    filters[0]
+                    if len(filters) == 1
+                    else (
+                        filters[0] | filters[1] | filters[2]
+                        if len(filters) == 3
+                        else filters[0] | filters[1]
+                    )
+                )
                 & (Namespace.id != namespace["id"])
             )
             .first()
@@ -226,16 +230,10 @@ async def update_namespace(
         update_data["last_modified_at"] = datetime.datetime.datetime.utcnow()
         update_data["last_modified_by"] = user.username
 
-        await Namespace.update(update_data).where(
-            Namespace.id == namespace["id"]
-        )
+        await Namespace.update(update_data).where(Namespace.id == namespace["id"])
 
     # Fetch updated namespace
-    result = (
-        await Namespace.select()
-        .where(Namespace.id == namespace["id"])
-        .first()
-    )
+    result = await Namespace.select().where(Namespace.id == namespace["id"]).first()
 
     return result
 
@@ -270,9 +268,7 @@ async def delete_namespace(
     """
     # Find existing namespace
     namespace = (
-        await Namespace.select()
-        .where(Namespace.namespace_id == namespace_id)
-        .first()
+        await Namespace.select().where(Namespace.namespace_id == namespace_id).first()
     )
 
     if not namespace:

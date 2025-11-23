@@ -1,6 +1,7 @@
 """
 Tests for project note endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
 
@@ -203,9 +204,7 @@ class TestRemoveProjectNote:
         assert response.status_code == 204
 
         # Verify it's gone
-        note = await ProjectNote.select().where(
-            ProjectNote.note_id == note_id
-        ).first()
+        note = await ProjectNote.select().where(ProjectNote.note_id == note_id).first()
         assert note is None
 
     async def test_remove_nonexistent(
@@ -222,8 +221,6 @@ class TestRemoveProjectNote:
         self, client: AsyncClient, sample_project: dict
     ):
         """Test removing note requires authentication."""
-        response = await client.delete(
-            f"/api/projects/{sample_project['id']}/notes/1"
-        )
+        response = await client.delete(f"/api/projects/{sample_project['id']}/notes/1")
 
         assert response.status_code == 401

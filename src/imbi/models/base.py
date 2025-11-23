@@ -1,6 +1,7 @@
 """
 Base models and common fields for Piccolo ORM.
 """
+
 from __future__ import annotations
 
 import datetime

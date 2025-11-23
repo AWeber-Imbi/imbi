@@ -3,7 +3,6 @@ Project dependency API endpoints.
 
 Manages dependencies between projects.
 """
-import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import Response
@@ -53,16 +52,15 @@ async def list_project_dependencies(project_id: int) -> list[dict]:
         )
 
     # Get dependencies
-    dependencies = (
-        await ProjectDependency.select()
-        .where(ProjectDependency.project_id == project_id)
+    dependencies = await ProjectDependency.select().where(
+        ProjectDependency.project_id == project_id
     )
 
     # Enrich with dependency project names
     for dep in dependencies:
-        dep_project = await Project.select().where(
-            Project.id == dep["dependency_id"]
-        ).first()
+        dep_project = (
+            await Project.select().where(Project.id == dep["dependency_id"]).first()
+        )
         if dep_project:
             dep["dependency_name"] = dep_project["name"]
 
@@ -115,9 +113,9 @@ async def add_project_dependency(
         )
 
     # Verify dependency project exists
-    dep_project = await Project.select().where(
-        Project.id == dependency.dependency_id
-    ).first()
+    dep_project = (
+        await Project.select().where(Project.id == dependency.dependency_id).first()
+    )
     if not dep_project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -130,10 +128,14 @@ async def add_project_dependency(
         )
 
     # Check if dependency already exists
-    existing = await ProjectDependency.select().where(
-        (ProjectDependency.project_id == project_id)
-        & (ProjectDependency.dependency_id == dependency.dependency_id)
-    ).first()
+    existing = (
+        await ProjectDependency.select()
+        .where(
+            (ProjectDependency.project_id == project_id)
+            & (ProjectDependency.dependency_id == dependency.dependency_id)
+        )
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -155,10 +157,14 @@ async def add_project_dependency(
     await new_dependency.save()
 
     # Fetch and enrich result
-    result = await ProjectDependency.select().where(
-        (ProjectDependency.project_id == project_id)
-        & (ProjectDependency.dependency_id == dependency.dependency_id)
-    ).first()
+    result = (
+        await ProjectDependency.select()
+        .where(
+            (ProjectDependency.project_id == project_id)
+            & (ProjectDependency.dependency_id == dependency.dependency_id)
+        )
+        .first()
+    )
 
     result["dependency_name"] = dep_project["name"]
 
@@ -196,10 +202,14 @@ async def remove_project_dependency(
         HTTPException: 404 if dependency not found
     """
     # Find existing dependency
-    dependency = await ProjectDependency.select().where(
-        (ProjectDependency.project_id == project_id)
-        & (ProjectDependency.dependency_id == dependency_id)
-    ).first()
+    dependency = (
+        await ProjectDependency.select()
+        .where(
+            (ProjectDependency.project_id == project_id)
+            & (ProjectDependency.dependency_id == dependency_id)
+        )
+        .first()
+    )
 
     if not dependency:
         raise HTTPException(

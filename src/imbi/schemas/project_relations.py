@@ -1,11 +1,10 @@
 """
 Pydantic schemas for project relations (dependencies, links, URLs, facts, notes).
 """
+
 from datetime import datetime
-from typing import Optional
 
-from pydantic import BaseModel, Field, HttpUrl
-
+from pydantic import BaseModel, Field
 
 # Project Dependencies
 
@@ -21,7 +20,7 @@ class ProjectDependencyResponse(BaseModel):
 
     project_id: int
     dependency_id: int
-    dependency_name: Optional[str] = Field(None, description="Name of the dependency")
+    dependency_name: str | None = Field(None, description="Name of the dependency")
     created_at: datetime
     added_by: str
 
@@ -34,15 +33,17 @@ class ProjectDependencyResponse(BaseModel):
 class ProjectLinkTypeCreate(BaseModel):
     """Schema for creating a project link type."""
 
-    link_type: str = Field(..., min_length=1, max_length=255, description="Link type name")
-    icon_class: Optional[str] = Field(None, description="CSS icon class")
+    link_type: str = Field(
+        ..., min_length=1, max_length=255, description="Link type name"
+    )
+    icon_class: str | None = Field(None, description="CSS icon class")
 
 
 class ProjectLinkTypeUpdate(BaseModel):
     """Schema for updating a project link type."""
 
-    link_type: Optional[str] = Field(None, min_length=1, max_length=255)
-    icon_class: Optional[str] = None
+    link_type: str | None = Field(None, min_length=1, max_length=255)
+    icon_class: str | None = None
 
 
 class ProjectLinkTypeResponse(BaseModel):
@@ -50,7 +51,7 @@ class ProjectLinkTypeResponse(BaseModel):
 
     id: int
     link_type: str
-    icon_class: Optional[str]
+    icon_class: str | None
     created_at: datetime
     created_by: str
     last_modified_at: datetime
@@ -80,40 +81,9 @@ class ProjectLinkResponse(BaseModel):
 
     project_id: int
     link_type_id: int
-    link_type: Optional[str] = Field(None, description="Link type name")
-    icon_class: Optional[str] = Field(None, description="Icon class for link type")
+    link_type: str | None = Field(None, description="Link type name")
+    icon_class: str | None = Field(None, description="Icon class for link type")
     url: str
-    created_at: datetime
-    created_by: str
-    last_modified_at: datetime
-    last_modified_by: str
-
-    model_config = {"from_attributes": True}
-
-
-# Project Link Types
-
-
-class ProjectLinkTypeCreate(BaseModel):
-    """Schema for creating a project link type."""
-
-    link_type: str = Field(..., min_length=1, max_length=255, description="Link type name")
-    icon_class: Optional[str] = Field(None, description="CSS icon class")
-
-
-class ProjectLinkTypeUpdate(BaseModel):
-    """Schema for updating a project link type."""
-
-    link_type: Optional[str] = Field(None, min_length=1, max_length=255)
-    icon_class: Optional[str] = None
-
-
-class ProjectLinkTypeResponse(BaseModel):
-    """Schema for project link type response."""
-
-    id: int
-    link_type: str
-    icon_class: Optional[str]
     created_at: datetime
     created_by: str
     last_modified_at: datetime
@@ -159,22 +129,24 @@ class FactTypeCreate(BaseModel):
     """Schema for creating a fact type."""
 
     name: str = Field(..., min_length=1, max_length=255, description="Fact type name")
-    fact_type: str = Field(..., description="Data type: string, boolean, integer, decimal, date, timestamp")
-    data_type: Optional[str] = Field(None, description="UI data type hint")
-    description: Optional[str] = Field(None, description="Description of this fact type")
-    ui_options: Optional[str] = Field(None, description="JSON string for UI configuration")
+    fact_type: str = Field(
+        ..., description="Data type: string, boolean, integer, decimal, date, timestamp"
+    )
+    data_type: str | None = Field(None, description="UI data type hint")
+    description: str | None = Field(None, description="Description of this fact type")
+    ui_options: str | None = Field(None, description="JSON string for UI configuration")
     weight: int = Field(default=0, description="Display order weight")
 
 
 class FactTypeUpdate(BaseModel):
     """Schema for updating a fact type."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    fact_type: Optional[str] = None
-    data_type: Optional[str] = None
-    description: Optional[str] = None
-    ui_options: Optional[str] = None
-    weight: Optional[int] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    fact_type: str | None = None
+    data_type: str | None = None
+    description: str | None = None
+    ui_options: str | None = None
+    weight: int | None = None
 
 
 class FactTypeResponse(BaseModel):
@@ -183,9 +155,9 @@ class FactTypeResponse(BaseModel):
     id: int
     name: str
     fact_type: str
-    data_type: Optional[str]
-    description: Optional[str]
-    ui_options: Optional[str]
+    data_type: str | None
+    description: str | None
+    ui_options: str | None
     weight: int
     created_at: datetime
     created_by: str
@@ -200,14 +172,14 @@ class ProjectFactCreate(BaseModel):
 
     fact_type_id: int = Field(..., description="Fact type ID")
     value: str = Field(..., description="Fact value (stored as text)")
-    score: Optional[float] = Field(None, description="Optional score for this fact")
+    score: float | None = Field(None, description="Optional score for this fact")
 
 
 class ProjectFactUpdate(BaseModel):
     """Schema for updating a project fact."""
 
     value: str = Field(..., description="Updated fact value")
-    score: Optional[float] = Field(None, description="Updated score")
+    score: float | None = Field(None, description="Updated score")
 
 
 class ProjectFactResponse(BaseModel):
@@ -215,9 +187,9 @@ class ProjectFactResponse(BaseModel):
 
     project_id: int
     fact_type_id: int
-    fact_type_name: Optional[str] = Field(None, description="Fact type name")
+    fact_type_name: str | None = Field(None, description="Fact type name")
     value: str
-    score: Optional[float]
+    score: float | None
     created_at: datetime
     created_by: str
     last_modified_at: datetime

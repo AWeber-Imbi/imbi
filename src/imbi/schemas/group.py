@@ -1,8 +1,8 @@
 """
 Pydantic schemas for Group endpoints.
 """
+
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -11,19 +11,22 @@ class GroupBase(BaseModel):
     """Base group schema with common fields."""
 
     name: str = Field(..., min_length=1, max_length=255, description="Group name")
-    permissions: list[str] = Field(default_factory=list, description="List of permissions")
+    permissions: list[str] = Field(
+        default_factory=list, description="List of permissions"
+    )
 
 
 class GroupCreate(GroupBase):
     """Schema for creating a new group."""
+
     pass
 
 
 class GroupUpdate(BaseModel):
     """Schema for updating an existing group (all fields optional)."""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    permissions: Optional[list[str]] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    permissions: list[str] | None = None
 
 
 class GroupResponse(GroupBase):

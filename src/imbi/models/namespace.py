@@ -1,6 +1,7 @@
 """
 Namespace model - organizational units for grouping projects.
 """
+
 from __future__ import annotations
 
 from piccolo import columns

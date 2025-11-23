@@ -1,6 +1,7 @@
 """
 Project Type model - categories/types of projects.
 """
+
 from __future__ import annotations
 
 from piccolo import columns
@@ -8,7 +9,9 @@ from piccolo import columns
 import imbi.models.base
 
 
-class ProjectType(imbi.models.base.AuditedTable, tablename="project_types", schema="v1"):
+class ProjectType(
+    imbi.models.base.AuditedTable, tablename="project_types", schema="v1"
+):
     """
     Project Type model.
 
@@ -20,7 +23,9 @@ class ProjectType(imbi.models.base.AuditedTable, tablename="project_types", sche
     slug = columns.Varchar(length=255, unique=True, null=False, index=True)
     plural_name = columns.Varchar(length=255, null=False)
     icon_class = columns.Text(null=True)  # CSS icon class
-    environment_urls = columns.Boolean(default=False, null=False)  # Whether this type has environment-specific URLs
+    environment_urls = columns.Boolean(
+        default=False, null=False
+    )  # Whether this type has environment-specific URLs
     description = columns.Text(null=True)
 
     @classmethod

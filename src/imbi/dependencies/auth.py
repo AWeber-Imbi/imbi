@@ -3,10 +3,11 @@ FastAPI dependencies for authentication and authorization.
 
 Replaces Tornado's prepare() lifecycle with dependency injection.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
@@ -19,8 +20,8 @@ logger = logging.getLogger(__name__)
 async def get_current_user(
     request: Request,
     session: Annotated[Session, Depends(get_session)],
-    private_token: Annotated[Optional[str], Header(alias="Private-Token")] = None,
-) -> Optional[User]:
+    private_token: Annotated[str | None, Header(alias="Private-Token")] = None,
+) -> User | None:
     """
     Get the current authenticated user from session or API token.
 
@@ -63,7 +64,7 @@ async def get_current_user(
 
 
 async def require_authentication(
-    user: Annotated[Optional[User], Depends(get_current_user)],
+    user: Annotated[User | None, Depends(get_current_user)],
 ) -> User:
     """
     Require an authenticated user.
@@ -132,6 +133,6 @@ def require_permission(permission: str):
 
 
 # Convenience type aliases for common dependencies
-CurrentUser = Annotated[Optional[User], Depends(get_current_user)]
+CurrentUser = Annotated[User | None, Depends(get_current_user)]
 AuthenticatedUser = Annotated[User, Depends(require_authentication)]
 AdminUser = Annotated[User, Depends(require_permission("admin"))]

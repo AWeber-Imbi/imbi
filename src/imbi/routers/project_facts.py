@@ -3,6 +3,7 @@ Project fact API endpoints.
 
 Manages typed key-value metadata for projects.
 """
+
 import datetime
 
 from fastapi import APIRouter, HTTPException, status
@@ -13,7 +14,6 @@ from imbi.models import FactType, Project, ProjectFact
 from imbi.schemas.project_relations import (
     FactTypeCreate,
     FactTypeResponse,
-    FactTypeUpdate,
     ProjectFactCreate,
     ProjectFactResponse,
     ProjectFactUpdate,
@@ -48,9 +48,7 @@ async def create_fact_type(
 ) -> dict:
     """Create a new fact type (admin only)."""
     # Check for duplicates
-    existing = await FactType.select().where(
-        FactType.name == fact_type.name
-    ).first()
+    existing = await FactType.select().where(FactType.name == fact_type.name).first()
 
     if existing:
         raise HTTPException(
@@ -68,9 +66,7 @@ async def create_fact_type(
     )
     await new_fact_type.save()
 
-    return await FactType.select().where(
-        FactType.id == new_fact_type.id
-    ).first()
+    return await FactType.select().where(FactType.id == new_fact_type.id).first()
 
 
 # Project Facts (per-project)
@@ -100,15 +96,13 @@ async def list_project_facts(project_id: int) -> list[dict]:
         )
 
     # Get facts
-    facts = await ProjectFact.select().where(
-        ProjectFact.project_id == project_id
-    )
+    facts = await ProjectFact.select().where(ProjectFact.project_id == project_id)
 
     # Enrich with fact type names
     for fact in facts:
-        fact_type = await FactType.select().where(
-            FactType.id == fact["fact_type_id"]
-        ).first()
+        fact_type = (
+            await FactType.select().where(FactType.id == fact["fact_type_id"]).first()
+        )
         if fact_type:
             fact["fact_type_name"] = fact_type["name"]
 
@@ -136,9 +130,7 @@ async def add_project_fact(
         )
 
     # Verify fact type exists
-    fact_type = await FactType.select().where(
-        FactType.id == fact.fact_type_id
-    ).first()
+    fact_type = await FactType.select().where(FactType.id == fact.fact_type_id).first()
     if not fact_type:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -146,10 +138,14 @@ async def add_project_fact(
         )
 
     # Check for existing fact
-    existing = await ProjectFact.select().where(
-        (ProjectFact.project_id == project_id)
-        & (ProjectFact.fact_type_id == fact.fact_type_id)
-    ).first()
+    existing = (
+        await ProjectFact.select()
+        .where(
+            (ProjectFact.project_id == project_id)
+            & (ProjectFact.fact_type_id == fact.fact_type_id)
+        )
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -170,10 +166,14 @@ async def add_project_fact(
     await new_fact.save()
 
     # Fetch and enrich result
-    result = await ProjectFact.select().where(
-        (ProjectFact.project_id == project_id)
-        & (ProjectFact.fact_type_id == fact.fact_type_id)
-    ).first()
+    result = (
+        await ProjectFact.select()
+        .where(
+            (ProjectFact.project_id == project_id)
+            & (ProjectFact.fact_type_id == fact.fact_type_id)
+        )
+        .first()
+    )
 
     result["fact_type_name"] = fact_type["name"]
 
@@ -193,10 +193,14 @@ async def update_project_fact(
 ) -> dict:
     """Update a project fact."""
     # Find existing fact
-    fact = await ProjectFact.select().where(
-        (ProjectFact.project_id == project_id)
-        & (ProjectFact.fact_type_id == fact_type_id)
-    ).first()
+    fact = (
+        await ProjectFact.select()
+        .where(
+            (ProjectFact.project_id == project_id)
+            & (ProjectFact.fact_type_id == fact_type_id)
+        )
+        .first()
+    )
 
     if not fact:
         raise HTTPException(
@@ -215,14 +219,16 @@ async def update_project_fact(
     )
 
     # Fetch and enrich updated fact
-    result = await ProjectFact.select().where(
-        (ProjectFact.project_id == project_id)
-        & (ProjectFact.fact_type_id == fact_type_id)
-    ).first()
+    result = (
+        await ProjectFact.select()
+        .where(
+            (ProjectFact.project_id == project_id)
+            & (ProjectFact.fact_type_id == fact_type_id)
+        )
+        .first()
+    )
 
-    fact_type = await FactType.select().where(
-        FactType.id == fact_type_id
-    ).first()
+    fact_type = await FactType.select().where(FactType.id == fact_type_id).first()
     if fact_type:
         result["fact_type_name"] = fact_type["name"]
 
@@ -241,10 +247,14 @@ async def remove_project_fact(
 ) -> Response:
     """Remove a fact from a project."""
     # Find existing fact
-    fact = await ProjectFact.select().where(
-        (ProjectFact.project_id == project_id)
-        & (ProjectFact.fact_type_id == fact_type_id)
-    ).first()
+    fact = (
+        await ProjectFact.select()
+        .where(
+            (ProjectFact.project_id == project_id)
+            & (ProjectFact.fact_type_id == fact_type_id)
+        )
+        .first()
+    )
 
     if not fact:
         raise HTTPException(

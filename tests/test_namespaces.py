@@ -1,6 +1,7 @@
 """
 Tests for namespace API endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
 
@@ -277,7 +278,9 @@ class TestUpdateNamespace:
 
         assert response.status_code == 404
 
-    async def test_update_conflict(self, admin_client: AsyncClient, clean_database, admin_user):
+    async def test_update_conflict(
+        self, admin_client: AsyncClient, clean_database, admin_user
+    ):
         """Test updating to a conflicting name returns 409."""
         # Create two namespaces
         ns1 = Namespace(

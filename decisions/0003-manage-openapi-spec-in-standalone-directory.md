@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-Previously the OpenAPI spec was managed as a series of files out of the `imbi/schema` 
+Previously the OpenAPI spec was managed as a series of files out of the `imbi/schema`
 directory. Files were independently service by the API's static file handler as
 needed, both inside the API for input validation and externally for documentation
 rendering.

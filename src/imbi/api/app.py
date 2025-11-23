@@ -1,11 +1,12 @@
 """
 FastAPI application factory for Imbi.
 """
+
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING
 
 import redis.asyncio as aioredis
 import structlog
@@ -17,8 +18,12 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from imbi import __version__
-from imbi.config import Config
 from imbi.database import close_database, initialize_database
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from imbi.config import Config
 
 # Configure structured logging
 structlog.configure(
@@ -26,7 +31,9 @@ structlog.configure(
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
-        structlog.dev.ConsoleRenderer() if True else structlog.processors.JSONRenderer(),
+        structlog.dev.ConsoleRenderer()
+        if True
+        else structlog.processors.JSONRenderer(),
     ],
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
     context_class=dict,
@@ -128,7 +135,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
             logger.info("Sentry initialized")
         except ImportError:
-            logger.warning("Sentry SDK not installed. Install with: pip install sentry-sdk")
+            logger.warning(
+                "Sentry SDK not installed. Install with: pip install sentry-sdk"
+            )
 
     logger.info("Application startup complete")
     app.state.ready = True
@@ -230,7 +239,7 @@ def _configure_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
-        request: Request, exc: RequestValidationError
+        _request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         """Handle Pydantic validation errors."""
         return JSONResponse(
@@ -245,7 +254,9 @@ def _configure_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def general_exception_handler(
+        _request: Request, exc: Exception
+    ) -> JSONResponse:
         """Handle unhandled exceptions."""
         logger.error("Unhandled exception", exc_info=exc)
         return JSONResponse(

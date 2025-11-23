@@ -3,6 +3,7 @@ Piccolo ORM models for Imbi.
 
 All database tables are defined here using Piccolo ORM.
 """
+
 from imbi.models.base import AuditedTable, SimpleTable
 from imbi.models.environment import Environment
 from imbi.models.namespace import Namespace

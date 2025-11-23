@@ -1,6 +1,7 @@
 """
 Project fact models - typed key-value metadata for projects.
 """
+
 from __future__ import annotations
 
 from piccolo import columns
@@ -17,7 +18,9 @@ class FactType(imbi.models.base.AuditedTable, tablename="fact_types", schema="v1
 
     id = columns.Serial(primary_key=True)
     name = columns.Varchar(length=255, unique=True, null=False, index=True)
-    fact_type = columns.Text(null=False)  # string, boolean, integer, decimal, date, timestamp
+    fact_type = columns.Text(
+        null=False
+    )  # string, boolean, integer, decimal, date, timestamp
     data_type = columns.Text(null=True)  # UI hint for rendering
     description = columns.Text(null=True)
     ui_options = columns.Text(null=True)  # JSON string for UI configuration
@@ -29,7 +32,9 @@ class FactType(imbi.models.base.AuditedTable, tablename="fact_types", schema="v1
         return cls.name
 
 
-class ProjectFact(imbi.models.base.AuditedTable, tablename="project_facts", schema="v1"):
+class ProjectFact(
+    imbi.models.base.AuditedTable, tablename="project_facts", schema="v1"
+):
     """
     Project fact model.
 
@@ -47,7 +52,9 @@ class ProjectFact(imbi.models.base.AuditedTable, tablename="project_facts", sche
         return [(cls.project_id, cls.fact_type_id)]
 
 
-class ProjectNote(imbi.models.base.AuditedTable, tablename="project_notes", schema="v1"):
+class ProjectNote(
+    imbi.models.base.AuditedTable, tablename="project_notes", schema="v1"
+):
     """
     Project note model.
 

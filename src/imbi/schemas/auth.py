@@ -1,7 +1,6 @@
 """
 Pydantic schemas for authentication endpoints.
 """
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -18,8 +17,8 @@ class LoginResponse(BaseModel):
 
     username: str
     user_type: str
-    display_name: Optional[str] = None
-    email_address: Optional[str] = None
+    display_name: str | None = None
+    email_address: str | None = None
     groups: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
     message: str = "Login successful"
@@ -36,8 +35,8 @@ class WhoAmIResponse(BaseModel):
 
     username: str
     user_type: str
-    display_name: Optional[str] = None
-    email_address: Optional[str] = None
+    display_name: str | None = None
+    email_address: str | None = None
     groups: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
     authenticated: bool = True

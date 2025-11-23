@@ -14,7 +14,7 @@ specific fields.
 
 ## Decision
 
-The project should use ElasticSearch for searching since the syntax is well 
+The project should use ElasticSearch for searching since the syntax is well
 known amd widely adopted.
 
 While we could use the existing tsearch functionality in Postgres, taking this

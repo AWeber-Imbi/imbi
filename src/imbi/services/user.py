@@ -7,17 +7,19 @@ Supports multiple authentication methods:
 - Google OAuth2
 - API tokens
 """
+
 from __future__ import annotations
 
+import datetime
 import hashlib
 import hmac
 import logging
-from datetime import datetime, timedelta
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from imbi.config import Config
-from imbi.database import get_db
 from imbi.models import User as UserModel
+
+if TYPE_CHECKING:
+    from imbi.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +30,9 @@ class User:
     def __init__(
         self,
         config: Config,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        token: Optional[str] = None,
+        username: str | None = None,
+        password: str | None = None,
+        token: str | None = None,
     ):
         self.config = config
         self.username = username
@@ -39,13 +41,13 @@ class User:
 
         # User attributes
         self.user_type: str = "internal"
-        self.external_id: Optional[str] = None
-        self.email_address: Optional[str] = None
-        self.display_name: Optional[str] = None
+        self.external_id: str | None = None
+        self.email_address: str | None = None
+        self.display_name: str | None = None
         self.groups: list[str] = []
         self.permissions: list[str] = []
-        self.last_seen_at: Optional[datetime] = None
-        self.created_at: Optional[datetime] = None
+        self.last_seen_at: datetime | None = None
+        self.created_at: datetime | None = None
 
     def hash_password(self, password: str) -> str:
         """
@@ -85,12 +87,11 @@ class User:
         """Authenticate against database."""
         logger.debug(f"Authenticating {self.username} via database")
 
-        db = get_db()
         password_hash = self.hash_password(self.password)
 
         # Update last_seen_at and verify credentials
         result = await (
-            UserModel.update({UserModel.last_seen_at: datetime.utcnow()})
+            UserModel.update({UserModel.last_seen_at: datetime.datetime.utcnow()})
             .where(
                 (UserModel.username == self.username)
                 & (UserModel.password == password_hash)
@@ -116,22 +117,27 @@ class User:
 
         try:
             # Query authentication_tokens table
-            token_record = await AuthenticationToken.select().where(
-                AuthenticationToken.token == self.token
-            ).first()
+            token_record = (
+                await AuthenticationToken.select()
+                .where(AuthenticationToken.token == self.token)
+                .first()
+            )
 
             if not token_record:
                 logger.debug("Token not found")
                 return False
 
             # Check if token is expired
-            if token_record["expires_at"] and token_record["expires_at"] < datetime.utcnow():
+            if (
+                token_record["expires_at"]
+                and token_record["expires_at"] < datetime.datetime.utcnow()
+            ):
                 logger.debug("Token expired")
                 return False
 
             # Update last_used_at
             await AuthenticationToken.update(
-                {AuthenticationToken.last_used_at: datetime.utcnow()}
+                {AuthenticationToken.last_used_at: datetime.datetime.utcnow()}
             ).where(AuthenticationToken.token == self.token)
 
             # Load user data
@@ -160,7 +166,9 @@ class User:
 
     async def _load_user_data(self) -> None:
         """Load user data from database."""
-        user = await UserModel.select().where(UserModel.username == self.username).first()
+        user = (
+            await UserModel.select().where(UserModel.username == self.username).first()
+        )
 
         if not user:
             logger.error(f"User {self.username} not found after authentication")
@@ -205,7 +213,7 @@ class User:
             if group["permissions"]:
                 all_permissions.update(group["permissions"])
 
-        self.permissions = sorted(list(all_permissions))
+        self.permissions = sorted(all_permissions)
         logger.debug(
             f"Loaded {len(self.groups)} groups and {len(self.permissions)} "
             f"permissions for {self.username}"
@@ -238,7 +246,9 @@ class User:
             "display_name": self.display_name,
             "groups": self.groups,
             "permissions": self.permissions,
-            "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
+            "last_seen_at": self.last_seen_at.isoformat()
+            if self.last_seen_at
+            else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -264,8 +274,8 @@ class User:
         user.permissions = data.get("permissions", [])
 
         if data.get("last_seen_at"):
-            user.last_seen_at = datetime.fromisoformat(data["last_seen_at"])
+            user.last_seen_at = datetime.datetime.fromisoformat(data["last_seen_at"])
         if data.get("created_at"):
-            user.created_at = datetime.fromisoformat(data["created_at"])
+            user.created_at = datetime.datetime.fromisoformat(data["created_at"])
 
         return user

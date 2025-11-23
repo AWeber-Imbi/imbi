@@ -4,14 +4,14 @@ Project API endpoints.
 Projects are the central entity in Imbi, representing services, applications,
 libraries, and other software components.
 """
+
 import datetime
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import Response
 
 from imbi.dependencies import AdminUser, AuthenticatedUser
-from imbi.models import Environment, Namespace, Project, ProjectType
+from imbi.models import Namespace, Project, ProjectType
 from imbi.schemas.project import (
     ProjectCreate,
     ProjectListResponse,
@@ -31,10 +31,13 @@ async def list_projects(
     limit: int = Query(10, ge=1, le=100, description="Number of results per page"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     include_archived: bool = Query(False, description="Include archived projects"),
-    namespace_id: Optional[int] = Query(None, description="Filter by namespace ID"),
-    project_type_id: Optional[int] = Query(None, description="Filter by project type ID"),
-    name: Optional[str] = Query(None, description="Search by project name"),
-    sort: str = Query("name asc", description="Sort field and direction (e.g., 'name asc', 'project_score desc')"),
+    namespace_id: int | None = Query(None, description="Filter by namespace ID"),
+    project_type_id: int | None = Query(None, description="Filter by project type ID"),
+    name: str | None = Query(None, description="Search by project name"),
+    sort: str = Query(
+        "name asc",
+        description="Sort field and direction (e.g., 'name asc', 'project_score desc')",
+    ),
 ) -> ProjectListResponse:
     """
     Retrieve projects with filtering, sorting, and pagination.
@@ -57,7 +60,7 @@ async def list_projects(
     # Apply filters
     filters = []
     if not include_archived:
-        filters.append(Project.archived == False)
+        filters.append(~Project.archived)
     if namespace_id:
         filters.append(Project.namespace_id == namespace_id)
     if project_type_id:
@@ -90,10 +93,14 @@ async def list_projects(
             query = query.order_by(Project.name, ascending=(sort_direction == "asc"))
         elif sort_field == "namespace":
             # TODO: Join with namespace table for sorting
-            query = query.order_by(Project.namespace_id, ascending=(sort_direction == "asc"))
+            query = query.order_by(
+                Project.namespace_id, ascending=(sort_direction == "asc")
+            )
         elif sort_field == "project_type":
             # TODO: Join with project_type table for sorting
-            query = query.order_by(Project.project_type_id, ascending=(sort_direction == "asc"))
+            query = query.order_by(
+                Project.project_type_id, ascending=(sort_direction == "asc")
+            )
         else:
             query = query.order_by(Project.name)
     else:
@@ -138,11 +145,7 @@ async def get_project(project_id: int) -> dict:
     Raises:
         HTTPException: 404 if project not found
     """
-    project = (
-        await Project.select()
-        .where(Project.id == project_id)
-        .first()
-    )
+    project = await Project.select().where(Project.id == project_id).first()
 
     if not project:
         raise HTTPException(
@@ -157,13 +160,15 @@ async def get_project(project_id: int) -> dict:
 
     # Fetch related namespace and project_type
     # TODO: Implement proper joins - for now fetch separately
-    namespace = await Namespace.select().where(
-        Namespace.id == project["namespace_id"]
-    ).first()
+    namespace = (
+        await Namespace.select().where(Namespace.id == project["namespace_id"]).first()
+    )
 
-    project_type = await ProjectType.select().where(
-        ProjectType.id == project["project_type_id"]
-    ).first()
+    project_type = (
+        await ProjectType.select()
+        .where(ProjectType.id == project["project_type_id"])
+        .first()
+    )
 
     # Add computed fields
     if namespace:
@@ -208,15 +213,14 @@ async def create_project(
         HTTPException: 409 if project with same namespace+name or namespace+slug exists
     """
     # Check for existing project with same namespace+name or namespace+slug
-    existing = await Project.select().where(
-        (
+    existing = (
+        await Project.select()
+        .where(
             (Project.namespace_id == project.namespace_id)
-            & (
-                (Project.name == project.name)
-                | (Project.slug == project.slug)
-            )
+            & ((Project.name == project.name) | (Project.slug == project.slug))
         )
-    ).first()
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -230,9 +234,9 @@ async def create_project(
         )
 
     # Verify namespace and project_type exist
-    namespace = await Namespace.select().where(
-        Namespace.id == project.namespace_id
-    ).first()
+    namespace = (
+        await Namespace.select().where(Namespace.id == project.namespace_id).first()
+    )
     if not namespace:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -244,9 +248,11 @@ async def create_project(
             },
         )
 
-    project_type = await ProjectType.select().where(
-        ProjectType.id == project.project_type_id
-    ).first()
+    project_type = (
+        await ProjectType.select()
+        .where(ProjectType.id == project.project_type_id)
+        .first()
+    )
     if not project_type:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -309,11 +315,7 @@ async def update_project(
         HTTPException: 404 if project not found, 409 if name/slug conflicts
     """
     # Find existing project
-    project = (
-        await Project.select()
-        .where(Project.id == project_id)
-        .first()
-    )
+    project = await Project.select().where(Project.id == project_id).first()
 
     if not project:
         raise HTTPException(
@@ -331,9 +333,11 @@ async def update_project(
 
     # Validate foreign keys if being updated
     if "namespace_id" in update_data:
-        namespace = await Namespace.select().where(
-            Namespace.id == update_data["namespace_id"]
-        ).first()
+        namespace = (
+            await Namespace.select()
+            .where(Namespace.id == update_data["namespace_id"])
+            .first()
+        )
         if not namespace:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -346,9 +350,11 @@ async def update_project(
             )
 
     if "project_type_id" in update_data:
-        project_type = await ProjectType.select().where(
-            ProjectType.id == update_data["project_type_id"]
-        ).first()
+        project_type = (
+            await ProjectType.select()
+            .where(ProjectType.id == update_data["project_type_id"])
+            .first()
+        )
         if not project_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -377,7 +383,9 @@ async def update_project(
         # Combine filters
         combined = filters[0] & filters[1]
         if "name" in update_data or "slug" in update_data:
-            name_or_slug = filters[2] if len(filters) == 3 else (filters[2] | filters[3])
+            name_or_slug = (
+                filters[2] if len(filters) == 3 else (filters[2] | filters[3])
+            )
             combined = combined & name_or_slug
 
         existing = await Project.select().where(combined).first()
@@ -398,9 +406,7 @@ async def update_project(
         update_data["last_modified_at"] = datetime.datetime.utcnow()
         update_data["last_modified_by"] = user.username
 
-        await Project.update(update_data).where(
-            Project.id == project_id
-        )
+        await Project.update(update_data).where(Project.id == project_id)
 
     # Fetch updated project with related data
     result = await get_project(project_id)
@@ -437,11 +443,7 @@ async def delete_project(
         HTTPException: 404 if project not found
     """
     # Find existing project
-    project = (
-        await Project.select()
-        .where(Project.id == project_id)
-        .first()
-    )
+    project = await Project.select().where(Project.id == project_id).first()
 
     if not project:
         raise HTTPException(

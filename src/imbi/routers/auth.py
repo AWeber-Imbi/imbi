@@ -3,12 +3,18 @@ Authentication API endpoints.
 
 Handles login, logout, and user session management.
 """
-from typing import Annotated, Optional
+
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from imbi.dependencies import CurrentUser, get_current_user
-from imbi.schemas.auth import LoginRequest, LoginResponse, LogoutResponse, WhoAmIResponse
+from imbi.dependencies import CurrentUser
+from imbi.schemas.auth import (
+    LoginRequest,
+    LoginResponse,
+    LogoutResponse,
+    WhoAmIResponse,
+)
 from imbi.services.user import User
 from imbi.utils.session import Session, get_session
 
@@ -104,7 +110,7 @@ async def logout(
 
 @router.get(
     "/whoami",
-    response_model=Optional[WhoAmIResponse],
+    response_model=WhoAmIResponse | None,
     summary="Get current user",
     responses={
         200: {"description": "Current user information"},
@@ -113,7 +119,7 @@ async def logout(
 )
 async def whoami(
     user: CurrentUser,
-) -> Optional[WhoAmIResponse]:
+) -> WhoAmIResponse | None:
     """
     Get information about the currently authenticated user.
 

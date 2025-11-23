@@ -3,6 +3,7 @@ Environment API endpoints.
 
 Environments represent deployment targets (production, staging, development, etc.)
 """
+
 import datetime
 
 from fastapi import APIRouter, HTTPException, status
@@ -57,9 +58,7 @@ async def get_environment(environment_id: int) -> dict:
         HTTPException: 404 if environment not found
     """
     environment = (
-        await Environment.select()
-        .where(Environment.id == environment_id)
-        .first()
+        await Environment.select().where(Environment.id == environment_id).first()
     )
 
     if not environment:
@@ -106,9 +105,9 @@ async def create_environment(
         HTTPException: 409 if environment with same name already exists
     """
     # Check for existing environment with same name
-    existing = await Environment.select().where(
-        Environment.name == environment.name
-    ).first()
+    existing = (
+        await Environment.select().where(Environment.name == environment.name).first()
+    )
 
     if existing:
         raise HTTPException(
@@ -135,9 +134,7 @@ async def create_environment(
 
     # Fetch the created environment to return
     result = (
-        await Environment.select()
-        .where(Environment.id == new_environment.id)
-        .first()
+        await Environment.select().where(Environment.id == new_environment.id).first()
     )
 
     return result
@@ -175,9 +172,7 @@ async def update_environment(
     """
     # Find existing environment
     environment = (
-        await Environment.select()
-        .where(Environment.id == environment_id)
-        .first()
+        await Environment.select().where(Environment.id == environment_id).first()
     )
 
     if not environment:
@@ -219,15 +214,11 @@ async def update_environment(
         update_data["last_modified_at"] = datetime.datetime.utcnow()
         update_data["last_modified_by"] = user.username
 
-        await Environment.update(update_data).where(
-            Environment.id == environment["id"]
-        )
+        await Environment.update(update_data).where(Environment.id == environment["id"])
 
     # Fetch updated environment
     result = (
-        await Environment.select()
-        .where(Environment.id == environment["id"])
-        .first()
+        await Environment.select().where(Environment.id == environment["id"]).first()
     )
 
     return result
@@ -263,9 +254,7 @@ async def delete_environment(
     """
     # Find existing environment
     environment = (
-        await Environment.select()
-        .where(Environment.id == environment_id)
-        .first()
+        await Environment.select().where(Environment.id == environment_id).first()
     )
 
     if not environment:

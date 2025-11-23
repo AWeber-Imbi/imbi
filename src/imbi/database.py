@@ -1,18 +1,17 @@
 """
 Database configuration and connection management using Piccolo ORM.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from piccolo.conf.apps import AppRegistry
 from piccolo.engine.postgres import PostgresEngine
 
 logger = logging.getLogger(__name__)
 
 # Global database engine instance
-DB: Optional[PostgresEngine] = None
+DB: PostgresEngine | None = None
 
 
 async def initialize_database(
@@ -23,7 +22,7 @@ async def initialize_database(
     password: str,
     min_pool_size: int = 1,
     max_pool_size: int = 20,
-    timeout: int = 30,
+    _query_timeout: int = 30,  # Not yet used - Piccolo doesn't support query timeout in engine
     log_queries: bool = False,
 ) -> None:
     """
@@ -37,7 +36,7 @@ async def initialize_database(
         password: Database password
         min_pool_size: Minimum connection pool size
         max_pool_size: Maximum connection pool size
-        timeout: Query timeout in seconds
+        _query_timeout: Query timeout in seconds (not yet implemented in Piccolo)
         log_queries: Whether to log all queries (useful for debugging)
     """
     global DB

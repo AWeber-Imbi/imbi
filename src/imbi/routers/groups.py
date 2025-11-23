@@ -3,6 +3,7 @@ Group API endpoints.
 
 Groups organize users and define permissions.
 """
+
 import datetime
 
 from fastapi import APIRouter, HTTPException, status
@@ -58,11 +59,7 @@ async def get_group(group_name: str) -> dict:
     Raises:
         HTTPException: 404 if group not found
     """
-    group = (
-        await Group.select()
-        .where(Group.name == group_name)
-        .first()
-    )
+    group = await Group.select().where(Group.name == group_name).first()
 
     if not group:
         raise HTTPException(
@@ -108,9 +105,7 @@ async def create_group(
         HTTPException: 409 if group with same name already exists
     """
     # Check for existing group with same name
-    existing = await Group.select().where(
-        Group.name == group.name
-    ).first()
+    existing = await Group.select().where(Group.name == group.name).first()
 
     if existing:
         raise HTTPException(
@@ -136,11 +131,7 @@ async def create_group(
     await new_group.save()
 
     # Fetch the created group to return
-    result = (
-        await Group.select()
-        .where(Group.name == new_group.name)
-        .first()
-    )
+    result = await Group.select().where(Group.name == new_group.name).first()
 
     return result
 
@@ -176,11 +167,7 @@ async def update_group(
         HTTPException: 404 if group not found, 409 if name conflicts
     """
     # Find existing group
-    group = (
-        await Group.select()
-        .where(Group.name == group_name)
-        .first()
-    )
+    group = await Group.select().where(Group.name == group_name).first()
 
     if not group:
         raise HTTPException(
@@ -196,11 +183,7 @@ async def update_group(
     # Check for conflicts if renaming
     update_data = updates.model_dump(exclude_unset=True)
     if "name" in update_data and update_data["name"] != group_name:
-        existing = (
-            await Group.select()
-            .where(Group.name == update_data["name"])
-            .first()
-        )
+        existing = await Group.select().where(Group.name == update_data["name"]).first()
 
         if existing:
             raise HTTPException(
@@ -218,9 +201,7 @@ async def update_group(
         update_data["last_modified_at"] = datetime.datetime.utcnow()
         update_data["last_modified_by"] = user.username
 
-        await Group.update(update_data).where(
-            Group.name == group_name
-        )
+        await Group.update(update_data).where(Group.name == group_name)
 
         # If name changed, use new name for fetching
         fetch_name = update_data.get("name", group_name)
@@ -228,11 +209,7 @@ async def update_group(
         fetch_name = group_name
 
     # Fetch updated group
-    result = (
-        await Group.select()
-        .where(Group.name == fetch_name)
-        .first()
-    )
+    result = await Group.select().where(Group.name == fetch_name).first()
 
     return result
 
@@ -266,11 +243,7 @@ async def delete_group(
         HTTPException: 404 if group not found
     """
     # Find existing group
-    group = (
-        await Group.select()
-        .where(Group.name == group_name)
-        .first()
-    )
+    group = await Group.select().where(Group.name == group_name).first()
 
     if not group:
         raise HTTPException(
@@ -385,10 +358,14 @@ async def add_group_member(
         )
 
     # Check if already a member
-    existing = await GroupMember.select().where(
-        (GroupMember.username == member.username)
-        & (GroupMember.group == group_name)
-    ).first()
+    existing = (
+        await GroupMember.select()
+        .where(
+            (GroupMember.username == member.username)
+            & (GroupMember.group == group_name)
+        )
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -453,10 +430,11 @@ async def remove_group_member(
         HTTPException: 404 if group or membership not found
     """
     # Find existing membership
-    membership = await GroupMember.select().where(
-        (GroupMember.username == username)
-        & (GroupMember.group == group_name)
-    ).first()
+    membership = (
+        await GroupMember.select()
+        .where((GroupMember.username == username) & (GroupMember.group == group_name))
+        .first()
+    )
 
     if not membership:
         raise HTTPException(
@@ -471,8 +449,7 @@ async def remove_group_member(
 
     # Delete membership
     await GroupMember.delete().where(
-        (GroupMember.username == username)
-        & (GroupMember.group == group_name)
+        (GroupMember.username == username) & (GroupMember.group == group_name)
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

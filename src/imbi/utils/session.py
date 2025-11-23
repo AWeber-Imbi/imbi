@@ -3,16 +3,18 @@ Session management using Valkey (Redis-compatible).
 
 Sessions are stored in Valkey with JSON-serialized user data.
 """
+
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
-from typing import Optional
+from typing import TYPE_CHECKING
 
-import redis.asyncio as aioredis
-from fastapi import Request
+if TYPE_CHECKING:
+    import redis.asyncio as aioredis
+    from fastapi import Request
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ class Session:
         self.valkey = valkey
         self.cookie_name = cookie_name
         self.duration = duration
-        self.session_id: Optional[str] = None
+        self.session_id: str | None = None
         self.data: dict = {}
         self.authenticated = False
 
@@ -73,7 +75,7 @@ class Session:
 
         # Save data to Valkey
         try:
-            self.data["last_save"] = datetime.utcnow().isoformat()
+            self.data["last_save"] = datetime.datetime.utcnow().isoformat()
             await self.valkey.set(
                 self._redis_key,
                 json.dumps(self.data),
@@ -99,14 +101,14 @@ class Session:
         self.data = {}
         self.authenticated = False
 
-    def get_user_data(self) -> Optional[dict]:
+    def get_user_data(self) -> dict | None:
         """Get user data from session."""
         return self.data.get("user")
 
     async def set_user_data(self, user_data: dict) -> None:
         """Set user data in session."""
         self.data["user"] = user_data
-        self.data["start"] = datetime.utcnow().isoformat()
+        self.data["start"] = datetime.datetime.utcnow().isoformat()
         self.authenticated = True
         await self.save()
 

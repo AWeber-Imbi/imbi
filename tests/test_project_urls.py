@@ -1,6 +1,7 @@
 """
 Tests for project URL endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
 
@@ -174,10 +175,14 @@ class TestRemoveProjectURL:
         assert response.status_code == 204
 
         # Verify it's gone
-        url = await ProjectURL.select().where(
-            (ProjectURL.project_id == sample_project["id"])
-            & (ProjectURL.environment == "production")
-        ).first()
+        url = (
+            await ProjectURL.select()
+            .where(
+                (ProjectURL.project_id == sample_project["id"])
+                & (ProjectURL.environment == "production")
+            )
+            .first()
+        )
         assert url is None
 
     async def test_remove_nonexistent(

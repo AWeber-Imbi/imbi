@@ -3,12 +3,12 @@ Configuration management for Imbi using Pydantic Settings.
 
 Supports loading from TOML files (preferred) and YAML files (for backward compatibility).
 """
+
 from __future__ import annotations
 
 import logging
 import tomllib
 from pathlib import Path
-from typing import Optional
 
 import yaml
 from pydantic import Field, field_validator
@@ -29,7 +29,7 @@ class HttpSettings(BaseSettings):
 class PostgresSettings(BaseSettings):
     """PostgreSQL database configuration."""
 
-    url: Optional[str] = None
+    url: str | None = None
     host: str = "localhost"
     port: int = 5432
     database: str = "imbi"
@@ -42,12 +42,10 @@ class PostgresSettings(BaseSettings):
 
     @field_validator("url")
     @classmethod
-    def parse_url(cls, v: Optional[str]) -> Optional[str]:
+    def parse_url(cls, v: str | None) -> str | None:
         """Parse and validate PostgreSQL URL."""
-        if v:
-            # Validate URL format
-            if not v.startswith("postgresql://"):
-                raise ValueError("PostgreSQL URL must start with postgresql://")
+        if v and not v.startswith("postgresql://"):
+            raise ValueError("PostgreSQL URL must start with postgresql://")
         return v
 
 
@@ -71,7 +69,9 @@ class SessionSettings(BaseSettings):
 class StatsSettings(BaseSettings):
     """Stats collection configuration."""
 
-    valkey: ValkeySettings = Field(default_factory=lambda: ValkeySettings(url="valkey://localhost:6379/1"))
+    valkey: ValkeySettings = Field(
+        default_factory=lambda: ValkeySettings(url="valkey://localhost:6379/1")
+    )
     enabled: bool = True
 
 
@@ -85,8 +85,8 @@ class LdapSettings(BaseSettings):
     pool_size: int = 5
     users_dn: str = "ou=users,dc=example,dc=com"
     groups_dn: str = "ou=groups,dc=example,dc=com"
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: str | None = None
+    password: str | None = None
 
 
 class CorsSettings(BaseSettings):
@@ -104,8 +104,8 @@ class OpenSearchSettings(BaseSettings):
 
     enabled: bool = False
     hosts: list[str] = ["http://localhost:9200"]
-    username: Optional[str] = None
-    password: Optional[str] = None
+    username: str | None = None
+    password: str | None = None
     use_ssl: bool = False
     verify_certs: bool = True
 
@@ -135,14 +135,14 @@ class McpSettings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 3000
     api_url: str = "http://localhost:8000"
-    api_token: Optional[str] = None
+    api_token: str | None = None
 
 
 class SentrySettings(BaseSettings):
     """Sentry error tracking configuration."""
 
     enabled: bool = False
-    dsn: Optional[str] = None
+    dsn: str | None = None
     environment: str = "production"
     traces_sample_rate: float = 0.1
 
@@ -207,7 +207,7 @@ def load_config_from_toml(path: Path) -> Config:
 
     logger.info(f"Loading configuration from TOML: {path}")
 
-    with open(path, "rb") as f:
+    with path.open("rb") as f:
         data = tomllib.load(f)
 
     if not isinstance(data, dict):
@@ -254,7 +254,7 @@ def load_config_from_yaml(path: Path) -> Config:
 
     logger.info(f"Loading configuration from YAML: {path}")
 
-    with open(path) as f:
+    with path.open() as f:
         data = yaml.safe_load(f)
 
     if not isinstance(data, dict):
@@ -282,7 +282,7 @@ def load_config_from_yaml(path: Path) -> Config:
         raise ValueError(f"Invalid configuration: {e}") from e
 
 
-def load_config(path: Optional[Path] = None) -> Config:
+def load_config(path: Path | None = None) -> Config:
     """
     Load configuration from file or environment variables.
 

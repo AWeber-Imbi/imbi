@@ -176,6 +176,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Unused imports in __init__
 "tests/**/*.py" = ["ARG", "S"]  # Allow unused args and assert statements
+"src/imbi/routers/*.py" = ["ARG001"]  # FastAPI dependency injection requires unused args
 
 [tool.ruff.lint.isort]
 known-first-party = ["imbi"]

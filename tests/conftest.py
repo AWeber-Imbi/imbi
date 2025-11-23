@@ -1,15 +1,14 @@
 """
 Pytest configuration and shared fixtures for Imbi tests.
 """
+
 import asyncio
 import os
-from pathlib import Path
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from piccolo.conf.apps import Finder
 from piccolo.table import create_db_tables, drop_db_tables
 
 from imbi.api.app import create_app
@@ -54,7 +53,9 @@ def test_config() -> Config:
         },
         session={
             "valkey": {
-                "url": os.getenv("TEST_VALKEY_URL", "valkey://localhost:6379/15"),  # Use DB 15 for tests
+                "url": os.getenv(
+                    "TEST_VALKEY_URL", "valkey://localhost:6379/15"
+                ),  # Use DB 15 for tests
                 "encoding": "utf-8",
                 "decode_responses": True,
             },
@@ -299,8 +300,7 @@ async def authenticated_client(
     Logs in as the test user and maintains session.
     """
     response = await client.post(
-        "/api/login",
-        json={"username": "testuser", "password": "password"}
+        "/api/login", json={"username": "testuser", "password": "password"}
     )
     assert response.status_code == 200, f"Login failed: {response.text}"
 
@@ -317,8 +317,7 @@ async def admin_client(
     Logs in as the admin user and maintains session.
     """
     response = await client.post(
-        "/api/login",
-        json={"username": "admin", "password": "password"}
+        "/api/login", json={"username": "admin", "password": "password"}
     )
     assert response.status_code == 200, f"Admin login failed: {response.text}"
 
@@ -344,9 +343,7 @@ async def sample_namespace(clean_database, admin_user: dict) -> dict:
     )
     await namespace.save()
 
-    result = (
-        await Namespace.select().where(Namespace.namespace_id == 1).first()
-    )
+    result = await Namespace.select().where(Namespace.namespace_id == 1).first()
     return result
 
 
@@ -375,7 +372,9 @@ async def sample_project_type(clean_database, admin_user: dict) -> dict:
 
 
 @pytest_asyncio.fixture
-async def sample_project(clean_database, admin_user: dict, sample_namespace: dict, sample_project_type: dict) -> dict:
+async def sample_project(
+    clean_database, admin_user: dict, sample_namespace: dict, sample_project_type: dict
+) -> dict:
     """
     Create a sample project for testing.
 
@@ -399,7 +398,9 @@ async def sample_project(clean_database, admin_user: dict, sample_namespace: dic
 
 
 @pytest_asyncio.fixture
-async def second_project(clean_database, admin_user: dict, sample_namespace: dict, sample_project_type: dict) -> dict:
+async def second_project(
+    clean_database, admin_user: dict, sample_namespace: dict, sample_project_type: dict
+) -> dict:
     """
     Create a second project for dependency testing.
 
@@ -440,9 +441,11 @@ async def sample_link_type(clean_database, admin_user: dict) -> dict:
     )
     await link_type.save()
 
-    return await ProjectLinkType.select().where(
-        ProjectLinkType.link_type == "GitHub"
-    ).first()
+    return (
+        await ProjectLinkType.select()
+        .where(ProjectLinkType.link_type == "GitHub")
+        .first()
+    )
 
 
 @pytest_asyncio.fixture
@@ -472,6 +475,8 @@ async def sample_fact_type(clean_database, admin_user: dict) -> dict:
 # Pytest configuration
 def pytest_configure(config):
     """Configure pytest with custom markers."""
-    config.addinivalue_line("markers", "integration: Integration tests requiring database")
+    config.addinivalue_line(
+        "markers", "integration: Integration tests requiring database"
+    )
     config.addinivalue_line("markers", "slow: Slow-running tests")
     config.addinivalue_line("markers", "external: Tests requiring external services")

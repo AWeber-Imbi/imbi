@@ -1,6 +1,7 @@
 """
 Project URL model - environment-specific URLs for projects.
 """
+
 from __future__ import annotations
 
 from piccolo import columns

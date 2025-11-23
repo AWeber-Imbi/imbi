@@ -1,6 +1,7 @@
 """
 Operations log model - tracks deployments, changes, and incidents.
 """
+
 from __future__ import annotations
 
 from piccolo import columns
@@ -8,7 +9,9 @@ from piccolo import columns
 import imbi.models.base
 
 
-class OperationsLog(imbi.models.base.SimpleTable, tablename="operations_log", schema="v1"):
+class OperationsLog(
+    imbi.models.base.SimpleTable, tablename="operations_log", schema="v1"
+):
     """
     Operations log entry model.
 
@@ -23,7 +26,9 @@ class OperationsLog(imbi.models.base.SimpleTable, tablename="operations_log", sc
     performed_by = columns.Text(null=True)  # Who performed the operation
     project_id = columns.ForeignKey("Project", null=False, index=True)
     environment = columns.Text(null=True)  # Environment where change occurred
-    change_type = columns.Text(null=False, index=True)  # deployment, incident, change, etc.
+    change_type = columns.Text(
+        null=False, index=True
+    )  # deployment, incident, change, etc.
     description = columns.Text(null=False)  # Description of the change
     link = columns.Text(null=True)  # Link to more info (PR, ticket, etc.)
     notes = columns.Text(null=True)  # Additional notes

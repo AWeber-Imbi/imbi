@@ -3,6 +3,7 @@ Project URL API endpoints.
 
 Manages environment-specific URLs for projects.
 """
+
 import datetime
 
 from fastapi import APIRouter, HTTPException, status
@@ -73,10 +74,14 @@ async def add_project_url(
         )
 
     # Check for existing URL for this environment
-    existing = await ProjectURL.select().where(
-        (ProjectURL.project_id == project_id)
-        & (ProjectURL.environment == url_data.environment)
-    ).first()
+    existing = (
+        await ProjectURL.select()
+        .where(
+            (ProjectURL.project_id == project_id)
+            & (ProjectURL.environment == url_data.environment)
+        )
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -97,10 +102,14 @@ async def add_project_url(
     await new_url.save()
 
     # Fetch result
-    result = await ProjectURL.select().where(
-        (ProjectURL.project_id == project_id)
-        & (ProjectURL.environment == url_data.environment)
-    ).first()
+    result = (
+        await ProjectURL.select()
+        .where(
+            (ProjectURL.project_id == project_id)
+            & (ProjectURL.environment == url_data.environment)
+        )
+        .first()
+    )
 
     return result
 
@@ -118,10 +127,14 @@ async def update_project_url(
 ) -> dict:
     """Update a project URL for a specific environment."""
     # Find existing URL
-    url = await ProjectURL.select().where(
-        (ProjectURL.project_id == project_id)
-        & (ProjectURL.environment == environment)
-    ).first()
+    url = (
+        await ProjectURL.select()
+        .where(
+            (ProjectURL.project_id == project_id)
+            & (ProjectURL.environment == environment)
+        )
+        .first()
+    )
 
     if not url:
         raise HTTPException(
@@ -130,20 +143,25 @@ async def update_project_url(
         )
 
     # Update URL
-    await ProjectURL.update({
-        ProjectURL.url: updates.url,
-        ProjectURL.last_modified_at: datetime.datetime.utcnow(),
-        ProjectURL.last_modified_by: user.username,
-    }).where(
-        (ProjectURL.project_id == project_id)
-        & (ProjectURL.environment == environment)
+    await ProjectURL.update(
+        {
+            ProjectURL.url: updates.url,
+            ProjectURL.last_modified_at: datetime.datetime.utcnow(),
+            ProjectURL.last_modified_by: user.username,
+        }
+    ).where(
+        (ProjectURL.project_id == project_id) & (ProjectURL.environment == environment)
     )
 
     # Fetch updated URL
-    result = await ProjectURL.select().where(
-        (ProjectURL.project_id == project_id)
-        & (ProjectURL.environment == environment)
-    ).first()
+    result = (
+        await ProjectURL.select()
+        .where(
+            (ProjectURL.project_id == project_id)
+            & (ProjectURL.environment == environment)
+        )
+        .first()
+    )
 
     return result
 
@@ -160,10 +178,14 @@ async def remove_project_url(
 ) -> Response:
     """Remove a project URL for a specific environment."""
     # Find existing URL
-    url = await ProjectURL.select().where(
-        (ProjectURL.project_id == project_id)
-        & (ProjectURL.environment == environment)
-    ).first()
+    url = (
+        await ProjectURL.select()
+        .where(
+            (ProjectURL.project_id == project_id)
+            & (ProjectURL.environment == environment)
+        )
+        .first()
+    )
 
     if not url:
         raise HTTPException(
@@ -173,8 +195,7 @@ async def remove_project_url(
 
     # Delete URL
     await ProjectURL.delete().where(
-        (ProjectURL.project_id == project_id)
-        & (ProjectURL.environment == environment)
+        (ProjectURL.project_id == project_id) & (ProjectURL.environment == environment)
     )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

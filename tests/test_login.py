@@ -1,10 +1,9 @@
 """
 Tests for login/logout authentication endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
-
-from imbi.models import User
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 """
 Tests for authentication and authorization.
 """
+
 import pytest
 
 from imbi.config import Config

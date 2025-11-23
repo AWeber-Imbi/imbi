@@ -3,6 +3,7 @@ Project link API endpoints.
 
 Manages external links for projects (GitHub repos, documentation, etc.)
 """
+
 import datetime
 
 from fastapi import APIRouter, HTTPException, status
@@ -15,7 +16,6 @@ from imbi.schemas.project_relations import (
     ProjectLinkResponse,
     ProjectLinkTypeCreate,
     ProjectLinkTypeResponse,
-    ProjectLinkTypeUpdate,
     ProjectLinkUpdate,
 )
 
@@ -48,9 +48,11 @@ async def create_project_link_type(
 ) -> dict:
     """Create a new project link type (admin only)."""
     # Check for duplicates
-    existing = await ProjectLinkType.select().where(
-        ProjectLinkType.link_type == link_type.link_type
-    ).first()
+    existing = (
+        await ProjectLinkType.select()
+        .where(ProjectLinkType.link_type == link_type.link_type)
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -73,9 +75,11 @@ async def create_project_link_type(
     )
     await new_link_type.save()
 
-    return await ProjectLinkType.select().where(
-        ProjectLinkType.id == new_link_type.id
-    ).first()
+    return (
+        await ProjectLinkType.select()
+        .where(ProjectLinkType.id == new_link_type.id)
+        .first()
+    )
 
 
 # Project Links (per-project)
@@ -110,15 +114,15 @@ async def list_project_links(project_id: int) -> list[dict]:
         )
 
     # Get links
-    links = await ProjectLink.select().where(
-        ProjectLink.project_id == project_id
-    )
+    links = await ProjectLink.select().where(ProjectLink.project_id == project_id)
 
     # Enrich with link type details
     for link in links:
-        link_type = await ProjectLinkType.select().where(
-            ProjectLinkType.id == link["link_type_id"]
-        ).first()
+        link_type = (
+            await ProjectLinkType.select()
+            .where(ProjectLinkType.id == link["link_type_id"])
+            .first()
+        )
         if link_type:
             link["link_type"] = link_type["link_type"]
             link["icon_class"] = link_type["icon_class"]
@@ -157,9 +161,11 @@ async def add_project_link(
         )
 
     # Verify link type exists
-    link_type = await ProjectLinkType.select().where(
-        ProjectLinkType.id == link.link_type_id
-    ).first()
+    link_type = (
+        await ProjectLinkType.select()
+        .where(ProjectLinkType.id == link.link_type_id)
+        .first()
+    )
     if not link_type:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -167,10 +173,14 @@ async def add_project_link(
         )
 
     # Check for existing link with same type
-    existing = await ProjectLink.select().where(
-        (ProjectLink.project_id == project_id)
-        & (ProjectLink.link_type_id == link.link_type_id)
-    ).first()
+    existing = (
+        await ProjectLink.select()
+        .where(
+            (ProjectLink.project_id == project_id)
+            & (ProjectLink.link_type_id == link.link_type_id)
+        )
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -191,10 +201,14 @@ async def add_project_link(
     await new_link.save()
 
     # Fetch and enrich result
-    result = await ProjectLink.select().where(
-        (ProjectLink.project_id == project_id)
-        & (ProjectLink.link_type_id == link.link_type_id)
-    ).first()
+    result = (
+        await ProjectLink.select()
+        .where(
+            (ProjectLink.project_id == project_id)
+            & (ProjectLink.link_type_id == link.link_type_id)
+        )
+        .first()
+    )
 
     result["link_type"] = link_type["link_type"]
     result["icon_class"] = link_type["icon_class"]
@@ -215,10 +229,14 @@ async def update_project_link(
 ) -> dict:
     """Update a project link."""
     # Find existing link
-    link = await ProjectLink.select().where(
-        (ProjectLink.project_id == project_id)
-        & (ProjectLink.link_type_id == link_type_id)
-    ).first()
+    link = (
+        await ProjectLink.select()
+        .where(
+            (ProjectLink.project_id == project_id)
+            & (ProjectLink.link_type_id == link_type_id)
+        )
+        .first()
+    )
 
     if not link:
         raise HTTPException(
@@ -227,24 +245,30 @@ async def update_project_link(
         )
 
     # Update link
-    await ProjectLink.update({
-        ProjectLink.url: updates.url,
-        ProjectLink.last_modified_at: datetime.datetime.utcnow(),
-        ProjectLink.last_modified_by: user.username,
-    }).where(
+    await ProjectLink.update(
+        {
+            ProjectLink.url: updates.url,
+            ProjectLink.last_modified_at: datetime.datetime.utcnow(),
+            ProjectLink.last_modified_by: user.username,
+        }
+    ).where(
         (ProjectLink.project_id == project_id)
         & (ProjectLink.link_type_id == link_type_id)
     )
 
     # Fetch and enrich updated link
-    result = await ProjectLink.select().where(
-        (ProjectLink.project_id == project_id)
-        & (ProjectLink.link_type_id == link_type_id)
-    ).first()
+    result = (
+        await ProjectLink.select()
+        .where(
+            (ProjectLink.project_id == project_id)
+            & (ProjectLink.link_type_id == link_type_id)
+        )
+        .first()
+    )
 
-    link_type = await ProjectLinkType.select().where(
-        ProjectLinkType.id == link_type_id
-    ).first()
+    link_type = (
+        await ProjectLinkType.select().where(ProjectLinkType.id == link_type_id).first()
+    )
     if link_type:
         result["link_type"] = link_type["link_type"]
         result["icon_class"] = link_type["icon_class"]
@@ -264,10 +288,14 @@ async def remove_project_link(
 ) -> Response:
     """Remove a link from a project."""
     # Find existing link
-    link = await ProjectLink.select().where(
-        (ProjectLink.project_id == project_id)
-        & (ProjectLink.link_type_id == link_type_id)
-    ).first()
+    link = (
+        await ProjectLink.select()
+        .where(
+            (ProjectLink.project_id == project_id)
+            & (ProjectLink.link_type_id == link_type_id)
+        )
+        .first()
+    )
 
     if not link:
         raise HTTPException(

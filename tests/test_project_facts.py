@@ -1,10 +1,11 @@
 """
 Tests for project fact endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
 
-from imbi.models import FactType, ProjectFact
+from imbi.models import ProjectFact
 
 
 @pytest.mark.asyncio
@@ -261,10 +262,14 @@ class TestRemoveProjectFact:
         assert response.status_code == 204
 
         # Verify it's gone
-        fact = await ProjectFact.select().where(
-            (ProjectFact.project_id == sample_project["id"])
-            & (ProjectFact.fact_type_id == sample_fact_type["id"])
-        ).first()
+        fact = (
+            await ProjectFact.select()
+            .where(
+                (ProjectFact.project_id == sample_project["id"])
+                & (ProjectFact.fact_type_id == sample_fact_type["id"])
+            )
+            .first()
+        )
         assert fact is None
 
     async def test_remove_nonexistent(

@@ -13,9 +13,9 @@ for the same "names" to be used in different namespaces. The randomness of UUIDv
 causes poor performance for certain index types, when there is a large quantity of
 rows in a table.
 
-[ulid](https://github.com/ulid/spec) is a 128-bit, roughly-ordered, 
-URL-safe UUID. Inspired by Twitter's Snowflake,  Instagram's ID and Firebase's 
-PushID. It uses the first 48 bits of the "UUID" to represent milliseconds. The 
+[ulid](https://github.com/ulid/spec) is a 128-bit, roughly-ordered,
+URL-safe UUID. Inspired by Twitter's Snowflake,  Instagram's ID and Firebase's
+PushID. It uses the first 48 bits of the "UUID" to represent milliseconds. The
 subsequent 80bits is a cryptographically generated random number (80 bits).
 
 ## Decision

@@ -1,10 +1,11 @@
 """
 Tests for project link endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
 
-from imbi.models import ProjectLink, ProjectLinkType
+from imbi.models import ProjectLink
 
 
 @pytest.mark.asyncio
@@ -57,9 +58,7 @@ class TestProjectLinkTypes:
 class TestListProjectLinks:
     """Tests for GET /api/projects/{id}/links"""
 
-    async def test_list_empty(
-        self, client: AsyncClient, sample_project: dict
-    ):
+    async def test_list_empty(self, client: AsyncClient, sample_project: dict):
         """Test listing links when project has none."""
         response = await client.get(f"/api/projects/{sample_project['id']}/links")
 
@@ -257,10 +256,14 @@ class TestRemoveProjectLink:
         assert response.status_code == 204
 
         # Verify it's gone
-        link = await ProjectLink.select().where(
-            (ProjectLink.project_id == sample_project["id"])
-            & (ProjectLink.link_type_id == sample_link_type["id"])
-        ).first()
+        link = (
+            await ProjectLink.select()
+            .where(
+                (ProjectLink.project_id == sample_project["id"])
+                & (ProjectLink.link_type_id == sample_link_type["id"])
+            )
+            .first()
+        )
         assert link is None
 
     async def test_remove_nonexistent(

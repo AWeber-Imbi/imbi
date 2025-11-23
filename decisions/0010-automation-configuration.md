@@ -36,7 +36,7 @@ a generic "GitLab SCM" link type if one is desired.  Even if one exists, it
 might make sense to not automatically populate it.  This is only one type of
 "well-known identfier" that an automation may need to know.  Since they are
 not necessarily tied to existing database tables or concepts, it makes sense
-for them to be configured manually.  
+for them to be configured manually.
 
 > In general, if an automation needs to add data to Imbi that is not a core
 > data value, then the automation should be configured with the necessary
@@ -66,5 +66,5 @@ to know whether it should add a project link for the SCM location or not.
 * Separating the SCM path into two components provides flexibility for a
   variety of SCM layouts while maintaining a decent amount of consistency
 * Using explicit configuration in automations for "well-known identifiers"
-  removes some of the magic of discovering them or the headaches around 
+  removes some of the magic of discovering them or the headaches around
   having automations modify the database/data elements.

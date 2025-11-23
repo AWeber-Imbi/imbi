@@ -3,6 +3,7 @@ Project model - the central entity in Imbi.
 
 Projects represent services, applications, libraries, and other software components.
 """
+
 from __future__ import annotations
 
 from piccolo import columns

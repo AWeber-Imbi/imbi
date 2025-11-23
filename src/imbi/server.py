@@ -3,6 +3,7 @@ Server entry point for Imbi.
 
 Runs the FastAPI application using Uvicorn.
 """
+
 import argparse
 import sys
 from pathlib import Path
@@ -72,7 +73,9 @@ def main() -> None:
         if args.config:
             config = load_config(args.config)
         else:
-            logger.warning("No configuration file specified, using environment variables")
+            logger.warning(
+                "No configuration file specified, using environment variables"
+            )
             config = load_config()
 
         # Apply command-line overrides

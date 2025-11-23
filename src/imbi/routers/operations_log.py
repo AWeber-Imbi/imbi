@@ -3,8 +3,8 @@ Operations log API endpoints.
 
 Tracks deployments, incidents, changes, and other operational events.
 """
+
 import datetime
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import Response
@@ -28,10 +28,14 @@ router = APIRouter(tags=["operations-log"])
 )
 async def list_operations_log(
     limit: int = Query(100, ge=1, le=500, description="Number of results"),
-    project_id: Optional[int] = Query(None, description="Filter by project ID"),
-    namespace_id: Optional[int] = Query(None, description="Filter by namespace ID"),
-    from_date: Optional[datetime.datetime] = Query(None, alias="from", description="Start date filter"),
-    to_date: Optional[datetime.datetime] = Query(None, alias="to", description="End date filter"),
+    project_id: int | None = Query(None, description="Filter by project ID"),
+    namespace_id: int | None = Query(None, description="Filter by namespace ID"),
+    from_date: datetime.datetime | None = Query(
+        None, alias="from", description="Start date filter"
+    ),
+    to_date: datetime.datetime | None = Query(
+        None, alias="to", description="End date filter"
+    ),
 ) -> OperationsLogListResponse:
     """
     List operations log entries with filtering.
@@ -85,17 +89,19 @@ async def list_operations_log(
     for entry in entries:
         # Get project name
         if entry["project_id"]:
-            project = await Project.select().where(
-                Project.id == entry["project_id"]
-            ).first()
+            project = (
+                await Project.select().where(Project.id == entry["project_id"]).first()
+            )
             if project:
                 entry["project_name"] = project["name"]
 
         # Get user details
         if entry["performed_by"]:
-            user = await User.select().where(
-                User.username == entry["performed_by"]
-            ).first()
+            user = (
+                await User.select()
+                .where(User.username == entry["performed_by"])
+                .first()
+            )
             if user:
                 entry["email_address"] = user["email_address"]
                 entry["display_name"] = user["display_name"]
@@ -132,17 +138,15 @@ async def get_operations_log_entry(entry_id: int) -> dict:
 
     # Enrich with project name
     if entry["project_id"]:
-        project = await Project.select().where(
-            Project.id == entry["project_id"]
-        ).first()
+        project = (
+            await Project.select().where(Project.id == entry["project_id"]).first()
+        )
         if project:
             entry["project_name"] = project["name"]
 
     # Enrich with user details
     if entry["performed_by"]:
-        user = await User.select().where(
-            User.username == entry["performed_by"]
-        ).first()
+        user = await User.select().where(User.username == entry["performed_by"]).first()
         if user:
             entry["email_address"] = user["email_address"]
             entry["display_name"] = user["display_name"]

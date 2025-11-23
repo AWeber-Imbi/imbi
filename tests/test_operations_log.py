@@ -1,7 +1,6 @@
 """
 Tests for operations log endpoints.
 """
-import datetime
 
 import pytest
 from httpx import AsyncClient
@@ -71,7 +70,7 @@ class TestListOperationsLog:
                     "project_id": sample_project["id"],
                     "change_type": "deployment",
                     "description": f"Deploy {i}",
-                    "occurred_at": f"2025-11-22T{10+i:02d}:00:00Z",
+                    "occurred_at": f"2025-11-22T{10 + i:02d}:00:00Z",
                 },
             )
 
@@ -85,7 +84,10 @@ class TestListOperationsLog:
         assert data["limit"] == 3
 
     async def test_list_filter_by_project(
-        self, authenticated_client: AsyncClient, sample_project: dict, second_project: dict
+        self,
+        authenticated_client: AsyncClient,
+        sample_project: dict,
+        second_project: dict,
     ):
         """Test filtering by project_id."""
         # Add entries for different projects
@@ -243,9 +245,7 @@ class TestCreateOperationsLogEntry:
         assert data["environment"] is None
         assert data["link"] is None
 
-    async def test_create_nonexistent_project(
-        self, authenticated_client: AsyncClient
-    ):
+    async def test_create_nonexistent_project(self, authenticated_client: AsyncClient):
         """Test creating entry for nonexistent project returns 404."""
         response = await authenticated_client.post(
             "/api/operations-log",
@@ -343,16 +343,12 @@ class TestDeleteOperationsLogEntry:
         entry_id = create_response.json()["id"]
 
         # Delete it
-        response = await authenticated_client.delete(
-            f"/api/operations-log/{entry_id}"
-        )
+        response = await authenticated_client.delete(f"/api/operations-log/{entry_id}")
 
         assert response.status_code == 204
 
         # Verify it's gone
-        entry = await OperationsLog.select().where(
-            OperationsLog.id == entry_id
-        ).first()
+        entry = await OperationsLog.select().where(OperationsLog.id == entry_id).first()
         assert entry is None
 
     async def test_delete_nonexistent(self, authenticated_client: AsyncClient):

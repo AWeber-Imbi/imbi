@@ -1,6 +1,7 @@
 """
 Tests for project dependency endpoints.
 """
+
 import pytest
 from httpx import AsyncClient
 
@@ -12,17 +13,20 @@ from imbi.models import ProjectDependency
 class TestListProjectDependencies:
     """Tests for GET /api/projects/{id}/dependencies"""
 
-    async def test_list_empty(
-        self, client: AsyncClient, sample_project: dict
-    ):
+    async def test_list_empty(self, client: AsyncClient, sample_project: dict):
         """Test listing dependencies when project has none."""
-        response = await client.get(f"/api/projects/{sample_project['id']}/dependencies")
+        response = await client.get(
+            f"/api/projects/{sample_project['id']}/dependencies"
+        )
 
         assert response.status_code == 200
         assert response.json() == []
 
     async def test_list_with_dependencies(
-        self, authenticated_client: AsyncClient, sample_project: dict, second_project: dict
+        self,
+        authenticated_client: AsyncClient,
+        sample_project: dict,
+        second_project: dict,
     ):
         """Test listing dependencies when project has some."""
         # Add a dependency
@@ -56,7 +60,10 @@ class TestAddProjectDependency:
     """Tests for POST /api/projects/{id}/dependencies"""
 
     async def test_add_success(
-        self, authenticated_client: AsyncClient, sample_project: dict, second_project: dict
+        self,
+        authenticated_client: AsyncClient,
+        sample_project: dict,
+        second_project: dict,
     ):
         """Test successfully adding a dependency."""
         response = await authenticated_client.post(
@@ -73,14 +80,21 @@ class TestAddProjectDependency:
         assert "added_by" in data
 
         # Verify in database
-        dep = await ProjectDependency.select().where(
-            (ProjectDependency.project_id == sample_project["id"])
-            & (ProjectDependency.dependency_id == second_project["id"])
-        ).first()
+        dep = (
+            await ProjectDependency.select()
+            .where(
+                (ProjectDependency.project_id == sample_project["id"])
+                & (ProjectDependency.dependency_id == second_project["id"])
+            )
+            .first()
+        )
         assert dep is not None
 
     async def test_add_duplicate(
-        self, authenticated_client: AsyncClient, sample_project: dict, second_project: dict
+        self,
+        authenticated_client: AsyncClient,
+        sample_project: dict,
+        second_project: dict,
     ):
         """Test adding duplicate dependency returns 409."""
         # Add first time
@@ -138,7 +152,10 @@ class TestRemoveProjectDependency:
     """Tests for DELETE /api/projects/{id}/dependencies/{dep_id}"""
 
     async def test_remove_success(
-        self, authenticated_client: AsyncClient, sample_project: dict, second_project: dict
+        self,
+        authenticated_client: AsyncClient,
+        sample_project: dict,
+        second_project: dict,
     ):
         """Test successfully removing a dependency."""
         # Add dependency first
@@ -156,10 +173,14 @@ class TestRemoveProjectDependency:
         assert response.status_code == 204
 
         # Verify it's gone
-        dep = await ProjectDependency.select().where(
-            (ProjectDependency.project_id == sample_project["id"])
-            & (ProjectDependency.dependency_id == second_project["id"])
-        ).first()
+        dep = (
+            await ProjectDependency.select()
+            .where(
+                (ProjectDependency.project_id == sample_project["id"])
+                & (ProjectDependency.dependency_id == second_project["id"])
+            )
+            .first()
+        )
         assert dep is None
 
     async def test_remove_nonexistent(

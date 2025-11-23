@@ -1,6 +1,7 @@
 """
 Project dependency model - tracks dependencies between projects.
 """
+
 from __future__ import annotations
 
 from piccolo import columns
@@ -8,7 +9,9 @@ from piccolo import columns
 import imbi.models.base
 
 
-class ProjectDependency(imbi.models.base.SimpleTable, tablename="project_dependencies", schema="v1"):
+class ProjectDependency(
+    imbi.models.base.SimpleTable, tablename="project_dependencies", schema="v1"
+):
     """
     Project dependency relationship.
 
