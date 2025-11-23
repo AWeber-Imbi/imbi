@@ -5,13 +5,12 @@ Operations log model - tracks deployments, changes, and incidents.
 from __future__ import annotations
 
 from piccolo import columns
+from piccolo.columns.reference import LazyTableReference
 
-import imbi.models.base
+from imbi.models import base
 
 
-class OperationsLog(
-    imbi.models.base.SimpleTable, tablename="operations_log", schema="v1"
-):
+class OperationsLog(base.SimpleTable, tablename="operations_log", schema="v1"):
     """
     Operations log entry model.
 
@@ -24,7 +23,11 @@ class OperationsLog(
     occurred_at = columns.Timestamptz(null=False, index=True)  # When the event occurred
     completed_at = columns.Timestamptz(null=True)  # When the event completed
     performed_by = columns.Text(null=True)  # Who performed the operation
-    project_id = columns.ForeignKey("Project", null=False, index=True)
+    project_id = columns.ForeignKey(
+        LazyTableReference("Project", module_path="imbi.models.project"),
+        null=False,
+        index=True,
+    )
     environment = columns.Text(null=True)  # Environment where change occurred
     change_type = columns.Text(
         null=False, index=True

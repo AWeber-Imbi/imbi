@@ -7,11 +7,12 @@ Projects represent services, applications, libraries, and other software compone
 from __future__ import annotations
 
 from piccolo import columns
+from piccolo.columns.reference import LazyTableReference
 
-import imbi.models.base
+from imbi.models import base
 
 
-class Project(imbi.models.base.AuditedTable, tablename="projects", schema="v1"):
+class Project(base.AuditedTable, tablename="projects", schema="v1"):
     """
     Project model.
 
@@ -19,8 +20,16 @@ class Project(imbi.models.base.AuditedTable, tablename="projects", schema="v1"):
     """
 
     id = columns.Serial(primary_key=True)
-    namespace_id = columns.ForeignKey("Namespace", null=False, index=True)
-    project_type_id = columns.ForeignKey("ProjectType", null=False, index=True)
+    namespace_id = columns.ForeignKey(
+        LazyTableReference("Namespace", module_path="imbi.models.namespace"),
+        null=False,
+        index=True,
+    )
+    project_type_id = columns.ForeignKey(
+        LazyTableReference("ProjectType", module_path="imbi.models.project_type"),
+        null=False,
+        index=True,
+    )
     name = columns.Varchar(length=255, null=False, index=True)
     slug = columns.Varchar(length=255, null=False, index=True)
     description = columns.Text(null=True)

@@ -25,8 +25,8 @@ class TestLogin:
         assert data["email_address"] == "test@example.com"
         assert data["message"] == "Login successful"
 
-        # Verify session cookie is set
-        assert "session" in response.cookies or "session" in client.cookies
+        # Verify session cookie is set (cookie name from test config)
+        assert "test_session" in response.cookies or "test_session" in client.cookies
 
     async def test_login_wrong_password(self, client: AsyncClient, test_user: dict):
         """Test login with wrong password returns 401."""

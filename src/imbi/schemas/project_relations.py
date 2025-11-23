@@ -216,7 +216,7 @@ class ProjectNoteUpdate(BaseModel):
 class ProjectNoteResponse(BaseModel):
     """Schema for project note response."""
 
-    note_id: int
+    id: int  # Note ID (Piccolo auto-generated primary key)
     project_id: int
     note: str
     created_at: datetime

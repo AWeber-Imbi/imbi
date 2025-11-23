@@ -8,7 +8,7 @@ import datetime
 
 from piccolo import columns, table
 
-import imbi.models.base
+from imbi.models import base
 
 
 class User(table.Table, tablename="users", schema="v1"):
@@ -50,7 +50,7 @@ class Group(table.Table, tablename="groups", schema="v1"):
         return cls.name
 
 
-class GroupMember(imbi.models.base.SimpleTable, tablename="group_members", schema="v1"):
+class GroupMember(base.SimpleTable, tablename="group_members", schema="v1"):
     """Membership relationship between users and groups."""
 
     username = columns.Text(null=False, index=True)

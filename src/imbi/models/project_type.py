@@ -6,12 +6,10 @@ from __future__ import annotations
 
 from piccolo import columns
 
-import imbi.models.base
+from imbi.models import base
 
 
-class ProjectType(
-    imbi.models.base.AuditedTable, tablename="project_types", schema="v1"
-):
+class ProjectType(base.AuditedTable, tablename="project_types", schema="v1"):
     """
     Project Type model.
 

@@ -42,7 +42,7 @@ def test_config() -> Config:
         http={"host": "127.0.0.1", "port": 8000, "workers": 1, "reload": False},
         postgres={
             "host": os.getenv("TEST_POSTGRES_HOST", "localhost"),
-            "port": int(os.getenv("TEST_POSTGRES_PORT", "5432")),
+            "port": int(os.getenv("TEST_POSTGRES_PORT", "5433")),  # Docker test port
             "database": os.getenv("TEST_POSTGRES_DB", "imbi_test"),
             "user": os.getenv("TEST_POSTGRES_USER", "imbi"),
             "password": os.getenv("TEST_POSTGRES_PASSWORD", "imbi"),
@@ -54,8 +54,8 @@ def test_config() -> Config:
         session={
             "valkey": {
                 "url": os.getenv(
-                    "TEST_VALKEY_URL", "valkey://localhost:6379/15"
-                ),  # Use DB 15 for tests
+                    "TEST_VALKEY_URL", "valkey://localhost:6380/15"
+                ),  # Docker test port, DB 15
                 "encoding": "utf-8",
                 "decode_responses": True,
             },
@@ -66,7 +66,7 @@ def test_config() -> Config:
         stats={
             "enabled": False,  # Disable stats in tests
             "valkey": {
-                "url": os.getenv("TEST_VALKEY_URL", "valkey://localhost:6379/15"),
+                "url": os.getenv("TEST_VALKEY_URL", "valkey://localhost:6380/15"),
                 "encoding": "utf-8",
                 "decode_responses": True,
             },
@@ -96,11 +96,13 @@ async def database(test_config: Config) -> AsyncGenerator[None, None]:
         password=test_config.postgres.password,
         min_pool_size=test_config.postgres.min_pool_size,
         max_pool_size=test_config.postgres.max_pool_size,
-        timeout=test_config.postgres.timeout,
+        _query_timeout=test_config.postgres.timeout,
         log_queries=test_config.postgres.log_queries,
     )
 
     # Create all tables
+    # Get the database engine
+    from imbi.database import get_db
     from imbi.models import (
         Environment,
         FactType,
@@ -115,6 +117,8 @@ async def database(test_config: Config) -> AsyncGenerator[None, None]:
         ProjectType,
         ProjectURL,
     )
+
+    db_engine = get_db()
 
     tables = [
         # User tables
@@ -137,6 +141,11 @@ async def database(test_config: Config) -> AsyncGenerator[None, None]:
         # Operations
         OperationsLog,
     ]
+
+    # Set the DB engine on all tables
+    for table in tables:
+        table._meta.db = db_engine
+
     await create_db_tables(*tables, if_not_exists=True)
 
     yield
@@ -201,8 +210,32 @@ async def clean_database(database) -> AsyncGenerator[None, None]:
 @pytest_asyncio.fixture
 async def app(test_config: Config, database) -> AsyncGenerator:
     """Create FastAPI application for testing."""
+    from redis import asyncio as aioredis
+
     application = create_app(test_config)
+
+    # Manually initialize Valkey connections (lifespan doesn't run in tests)
+    # Note: redis-py requires redis:// scheme, not valkey://
+    session_url = test_config.session.valkey.url.replace("valkey://", "redis://")
+    stats_url = test_config.stats.valkey.url.replace("valkey://", "redis://")
+
+    application.state.session_valkey = await aioredis.from_url(
+        session_url,
+        encoding=test_config.session.valkey.encoding,
+        decode_responses=test_config.session.valkey.decode_responses,
+    )
+    application.state.stats_valkey = await aioredis.from_url(
+        stats_url,
+        encoding=test_config.stats.valkey.encoding,
+        decode_responses=test_config.stats.valkey.decode_responses,
+    )
+    application.state.ready = True
+
     yield application
+
+    # Cleanup
+    await application.state.session_valkey.close()
+    await application.state.stats_valkey.close()
 
 
 @pytest_asyncio.fixture

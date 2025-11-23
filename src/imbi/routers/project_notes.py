@@ -86,11 +86,7 @@ async def add_project_note(
     await new_note.save()
 
     # Fetch result
-    result = (
-        await ProjectNote.select()
-        .where(ProjectNote.note_id == new_note.note_id)
-        .first()
-    )
+    result = await ProjectNote.select().where(ProjectNote.id == new_note.id).first()
 
     return result
 
@@ -110,9 +106,7 @@ async def update_project_note(
     # Find existing note
     note = (
         await ProjectNote.select()
-        .where(
-            (ProjectNote.note_id == note_id) & (ProjectNote.project_id == project_id)
-        )
+        .where((ProjectNote.id == note_id) & (ProjectNote.project_id == project_id))
         .first()
     )
 
@@ -129,10 +123,10 @@ async def update_project_note(
             ProjectNote.last_modified_at: datetime.datetime.utcnow(),
             ProjectNote.last_modified_by: user.username,
         }
-    ).where(ProjectNote.note_id == note_id)
+    ).where(ProjectNote.id == note_id)
 
     # Fetch updated note
-    result = await ProjectNote.select().where(ProjectNote.note_id == note_id).first()
+    result = await ProjectNote.select().where(ProjectNote.id == note_id).first()
 
     return result
 
@@ -151,9 +145,7 @@ async def remove_project_note(
     # Find existing note
     note = (
         await ProjectNote.select()
-        .where(
-            (ProjectNote.note_id == note_id) & (ProjectNote.project_id == project_id)
-        )
+        .where((ProjectNote.id == note_id) & (ProjectNote.project_id == project_id))
         .first()
     )
 
@@ -164,6 +156,6 @@ async def remove_project_note(
         )
 
     # Delete note
-    await ProjectNote.delete().where(ProjectNote.note_id == note_id)
+    await ProjectNote.delete().where(ProjectNote.id == note_id)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)

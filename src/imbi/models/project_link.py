@@ -5,13 +5,12 @@ Project link models - external links for projects (GitHub, docs, etc.)
 from __future__ import annotations
 
 from piccolo import columns
+from piccolo.columns.reference import LazyTableReference
 
-import imbi.models.base
+from imbi.models import base
 
 
-class ProjectLinkType(
-    imbi.models.base.AuditedTable, tablename="project_link_types", schema="v1"
-):
+class ProjectLinkType(base.AuditedTable, tablename="project_link_types", schema="v1"):
     """
     Project link type model.
 
@@ -28,17 +27,23 @@ class ProjectLinkType(
         return cls.link_type
 
 
-class ProjectLink(
-    imbi.models.base.AuditedTable, tablename="project_links", schema="v1"
-):
+class ProjectLink(base.AuditedTable, tablename="project_links", schema="v1"):
     """
     Project link model.
 
     Links to external resources for a project.
     """
 
-    project_id = columns.ForeignKey("Project", null=False, index=True)
-    link_type_id = columns.ForeignKey("ProjectLinkType", null=False, index=True)
+    project_id = columns.ForeignKey(
+        LazyTableReference("Project", module_path="imbi.models.project"),
+        null=False,
+        index=True,
+    )
+    link_type_id = columns.ForeignKey(
+        LazyTableReference("ProjectLinkType", module_path="imbi.models.project_link"),
+        null=False,
+        index=True,
+    )
     url = columns.Text(null=False)
 
     @classmethod

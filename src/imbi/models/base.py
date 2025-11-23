@@ -9,7 +9,7 @@ import datetime
 from piccolo import columns, table
 
 
-class AuditedTable(table.Table, abstract=True):
+class AuditedTable(table.Table):
     """
     Abstract base table with audit fields.
 
@@ -26,7 +26,7 @@ class AuditedTable(table.Table, abstract=True):
     last_modified_by = columns.Text(null=False)
 
 
-class SimpleTable(table.Table, abstract=True):
+class SimpleTable(table.Table):
     """
     Abstract base table for simple entities without full audit trail.
     """

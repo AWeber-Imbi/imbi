@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from piccolo import columns
 
-import imbi.models.base
+from imbi.models import base
 
 
-class Environment(imbi.models.base.AuditedTable, tablename="environments", schema="v1"):
+class Environment(base.AuditedTable, tablename="environments", schema="v1"):
     """
     Environment model.
 

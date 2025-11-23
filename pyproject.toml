@@ -71,7 +71,8 @@ dependencies = [
 
     # FastAPI Extensions
     "fastapi-pagination>=0.12.0,<1",
-    "fastapi-cache2[redis]>=0.2.0,<1",
+    "itsdangerous>=2.1.0",  # Required by starlette.middleware.sessions
+    # "fastapi-cache2[redis]>=0.2.0,<1",  # TODO: Add back when implementing caching (conflicts with redis>=5)
 
     # Cloud & External Services
     "aioboto3>=13.3.0,<14",
@@ -86,7 +87,7 @@ dependencies = [
     "arrow>=1.3.0",
     "validators>=0.34.0",
     "packaging>=24,<25",
-    "python-ulid>=2.8.0,<3",
+    "python-ulid>=2.7.0,<4",
     "pycurl>=7.45.3",
 
     # Templating (for cookiecutter support)
@@ -177,6 +178,7 @@ ignore = [
 "__init__.py" = ["F401"]  # Unused imports in __init__
 "tests/**/*.py" = ["ARG", "S"]  # Allow unused args and assert statements
 "src/imbi/routers/*.py" = ["ARG001"]  # FastAPI dependency injection requires unused args
+"src/imbi/utils/session.py" = ["TC002"]  # Need fastapi.Request and aioredis at runtime for DI
 
 [tool.ruff.lint.isort]
 known-first-party = ["imbi"]

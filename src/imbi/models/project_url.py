@@ -5,18 +5,23 @@ Project URL model - environment-specific URLs for projects.
 from __future__ import annotations
 
 from piccolo import columns
+from piccolo.columns.reference import LazyTableReference
 
-import imbi.models.base
+from imbi.models import base
 
 
-class ProjectURL(imbi.models.base.AuditedTable, tablename="project_urls", schema="v1"):
+class ProjectURL(base.AuditedTable, tablename="project_urls", schema="v1"):
     """
     Project URL model.
 
     Stores environment-specific URLs for projects (e.g., production URL, staging URL).
     """
 
-    project_id = columns.ForeignKey("Project", null=False, index=True)
+    project_id = columns.ForeignKey(
+        LazyTableReference("Project", module_path="imbi.models.project"),
+        null=False,
+        index=True,
+    )
     environment = columns.Text(null=False, index=True)  # Environment name
     url = columns.Text(null=False)
 

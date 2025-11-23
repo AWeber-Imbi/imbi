@@ -5,12 +5,13 @@ Project dependency model - tracks dependencies between projects.
 from __future__ import annotations
 
 from piccolo import columns
+from piccolo.columns.reference import LazyTableReference
 
-import imbi.models.base
+from imbi.models import base
 
 
 class ProjectDependency(
-    imbi.models.base.SimpleTable, tablename="project_dependencies", schema="v1"
+    base.SimpleTable, tablename="project_dependencies", schema="v1"
 ):
     """
     Project dependency relationship.
@@ -18,8 +19,16 @@ class ProjectDependency(
     Tracks which projects depend on which other projects.
     """
 
-    project_id = columns.ForeignKey("Project", null=False, index=True)
-    dependency_id = columns.ForeignKey("Project", null=False, index=True)
+    project_id = columns.ForeignKey(
+        LazyTableReference("Project", module_path="imbi.models.project"),
+        null=False,
+        index=True,
+    )
+    dependency_id = columns.ForeignKey(
+        LazyTableReference("Project", module_path="imbi.models.project"),
+        null=False,
+        index=True,
+    )
     added_by = columns.Text()
 
     @classmethod

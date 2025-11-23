@@ -5,11 +5,12 @@ Project fact models - typed key-value metadata for projects.
 from __future__ import annotations
 
 from piccolo import columns
+from piccolo.columns.reference import LazyTableReference
 
-import imbi.models.base
+from imbi.models import base
 
 
-class FactType(imbi.models.base.AuditedTable, tablename="fact_types", schema="v1"):
+class FactType(base.AuditedTable, tablename="fact_types", schema="v1"):
     """
     Fact type model.
 
@@ -32,17 +33,23 @@ class FactType(imbi.models.base.AuditedTable, tablename="fact_types", schema="v1
         return cls.name
 
 
-class ProjectFact(
-    imbi.models.base.AuditedTable, tablename="project_facts", schema="v1"
-):
+class ProjectFact(base.AuditedTable, tablename="project_facts", schema="v1"):
     """
     Project fact model.
 
     Stores typed metadata values for projects.
     """
 
-    project_id = columns.ForeignKey("Project", null=False, index=True)
-    fact_type_id = columns.ForeignKey("FactType", null=False, index=True)
+    project_id = columns.ForeignKey(
+        LazyTableReference("Project", module_path="imbi.models.project"),
+        null=False,
+        index=True,
+    )
+    fact_type_id = columns.ForeignKey(
+        LazyTableReference("FactType", module_path="imbi.models.project_fact"),
+        null=False,
+        index=True,
+    )
     value = columns.Text(null=False)  # Stored as text, cast based on fact_type
     score = columns.Numeric(null=True)  # Optional scoring value for this fact
 
@@ -52,20 +59,23 @@ class ProjectFact(
         return [(cls.project_id, cls.fact_type_id)]
 
 
-class ProjectNote(
-    imbi.models.base.AuditedTable, tablename="project_notes", schema="v1"
-):
+class ProjectNote(base.AuditedTable, tablename="project_notes", schema="v1"):
     """
     Project note model.
 
     Free-text notes for projects.
     """
 
-    note_id = columns.Serial(primary_key=True)
-    project_id = columns.ForeignKey("Project", null=False, index=True)
+    # Piccolo automatically adds 'id' as primary key from AuditedTable
+    # So we don't need note_id - just use id
+    project_id = columns.ForeignKey(
+        LazyTableReference("Project", module_path="imbi.models.project"),
+        null=False,
+        index=True,
+    )
     note = columns.Text(null=False)
 
     @classmethod
     def ref(cls) -> columns.Serial:
         """Readable reference for this model."""
-        return cls.note_id
+        return cls.id

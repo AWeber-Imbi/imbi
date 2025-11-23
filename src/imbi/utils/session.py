@@ -10,11 +10,9 @@ import datetime
 import json
 import logging
 import uuid
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import redis.asyncio as aioredis
-    from fastapi import Request
+import fastapi
+from redis import asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +22,7 @@ class Session:
 
     def __init__(
         self,
-        request: Request,
+        request: fastapi.Request,
         valkey: aioredis.Redis,
         cookie_name: str = "session",
         duration: int = 7,  # days
@@ -113,7 +111,7 @@ class Session:
         await self.save()
 
 
-async def get_session(request: Request) -> Session:
+async def get_session(request: fastapi.Request) -> Session:
     """
     FastAPI dependency to get the session for a request.
 

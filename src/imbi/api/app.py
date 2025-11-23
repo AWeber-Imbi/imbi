@@ -58,8 +58,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Initializing Valkey connections")
     try:
         # Note: redis-py library is used as Valkey is protocol-compatible
+        # redis-py requires redis:// scheme, not valkey://
+        session_url = config.session.valkey.url.replace("valkey://", "redis://")
+        stats_url = config.stats.valkey.url.replace("valkey://", "redis://")
+
         app.state.session_valkey = await aioredis.from_url(
-            config.session.valkey.url,
+            session_url,
             encoding=config.session.valkey.encoding,
             decode_responses=config.session.valkey.decode_responses,
         )
@@ -67,7 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Session Valkey connected")
 
         app.state.stats_valkey = await aioredis.from_url(
-            config.stats.valkey.url,
+            stats_url,
             encoding=config.stats.valkey.encoding,
             decode_responses=config.stats.valkey.decode_responses,
         )
@@ -97,7 +101,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 password=config.postgres.password,
                 min_pool_size=config.postgres.min_pool_size,
                 max_pool_size=config.postgres.max_pool_size,
-                timeout=config.postgres.timeout,
+                _query_timeout=config.postgres.timeout,
                 log_queries=config.postgres.log_queries,
             )
         logger.info("PostgreSQL connected")

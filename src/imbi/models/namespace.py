@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from piccolo import columns
 
-import imbi.models.base
+from imbi.models import base
 
 
-class Namespace(imbi.models.base.AuditedTable, tablename="namespaces", schema="v1"):
+class Namespace(base.AuditedTable, tablename="namespaces", schema="v1"):
     """
     Namespace model for organizing projects.
 

@@ -46,6 +46,9 @@ async def initialize_database(
         f"(pool: {min_pool_size}-{max_pool_size})"
     )
 
+    # Note: Piccolo handles connection pooling automatically
+    # min_pool_size and max_pool_size are accepted as parameters but not yet used
+    # TODO: Investigate if Piccolo supports custom pool sizing
     DB = PostgresEngine(
         config={
             "host": host,
@@ -60,18 +63,10 @@ async def initialize_database(
             "pg_trgm",  # Trigram matching for search
         ],
         log_queries=log_queries,
-        min_size=min_pool_size,
-        max_size=max_pool_size,
     )
 
-    # Test the connection
-    try:
-        async with DB.transaction():
-            result = await DB.execute("SELECT version()")
-            logger.info(f"Connected to PostgreSQL: {result[0]['version']}")
-    except Exception as e:
-        logger.error(f"Failed to connect to database: {e}")
-        raise
+    # Connection will be tested when first used
+    logger.info("PostgreSQL engine initialized")
 
 
 async def close_database() -> None:
