@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import redis.asyncio as aioredis
 import structlog
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -240,6 +240,34 @@ def _configure_middleware(app: FastAPI, config: Config) -> None:
 
 def _configure_error_handlers(app: FastAPI) -> None:
     """Configure custom error handlers."""
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(
+        _request: Request, exc: HTTPException
+    ) -> JSONResponse:
+        """
+        Handle HTTPException with RFC 7807 Problem Details format.
+
+        If detail is a dict with 'status', 'title', etc., return it at top level.
+        Otherwise, wrap string detail in proper format.
+        """
+        if isinstance(exc.detail, dict):
+            # Return dict detail at top level (RFC 7807 format)
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=exc.detail,
+            )
+        else:
+            # Wrap string detail in RFC 7807 format
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={
+                    "type": f"https://imbi.example.com/errors/http-{exc.status_code}",
+                    "title": "Error",
+                    "status": exc.status_code,
+                    "detail": exc.detail,
+                },
+            )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(

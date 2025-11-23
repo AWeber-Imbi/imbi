@@ -234,8 +234,8 @@ async def app(test_config: Config, database) -> AsyncGenerator:
     yield application
 
     # Cleanup
-    await application.state.session_valkey.close()
-    await application.state.stats_valkey.close()
+    await application.state.session_valkey.aclose()
+    await application.state.stats_valkey.aclose()
 
 
 @pytest_asyncio.fixture
@@ -244,9 +244,17 @@ async def client(app) -> AsyncGenerator[AsyncClient, None]:
     Create async HTTP client for testing.
 
     This client doesn't require a running server.
+    Configures cookie jar to persist cookies across requests.
     """
+    import httpx
+
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    # Create client with explicit cookie jar to maintain cookies
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        cookies=httpx.Cookies(),  # Explicit cookie jar
+    ) as ac:
         yield ac
 
 
