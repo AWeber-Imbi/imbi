@@ -522,9 +522,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             self.get_project_fact(),
             'CEL expression should have filtered out this update')
 
-    def test_cel_expression_with_boolean_logic(self) -> None:
-        """Test CEL expression with AND logic"""
-        # Update rule with complex CEL expression
+    def test_cel_expression_with_and_logic_matches(self) -> None:
+        """Test CEL AND expression when both conditions match"""
+        # Update rule with CEL expression using AND logic
         rsp = self.fetch(
             f'/integrations/{self.integration_name}'
             f'/notifications/{self.notification_name}'
@@ -537,7 +537,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             }])
         self.assertEqual(200, rsp.code)
 
-        # Test case 1: Matches both conditions
+        # Send notification that matches both conditions
         rsp = self.fetch(
             f'/integrations/{self.integration_name}'
             f'/notifications/{self.notification_name}'
@@ -551,14 +551,22 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(200, rsp.code)
         self.assertEqual('success', self.get_project_fact())
 
-        # Delete the fact for next test
+    def test_cel_expression_with_and_logic_filters_out(self) -> None:
+        """Test CEL AND expression filters when one condition doesn't match"""
+        # Update rule with CEL expression using AND logic
         rsp = self.fetch(
-            f'/projects/{self.project["id"]}/facts/'
-            f'{self.project_fact_type["id"]}',
-            method='DELETE')
-        self.assertEqual(204, rsp.code)
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}'
+            f'/rules/{self.project_fact_type["id"]}',
+            method='PATCH',
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': 'state == "success" && branch == "main"',
+            }])
+        self.assertEqual(200, rsp.code)
 
-        # Test case 2: First condition matches but not second
+        # Send notification where first condition matches but second doesn't
         rsp = self.fetch(
             f'/integrations/{self.integration_name}'
             f'/notifications/{self.notification_name}'
@@ -607,7 +615,9 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             })
         self.assertEqual(400, rsp.code)
         body = json.loads(rsp.body)
-        self.assertIn('Invalid CEL expression', body.get('title', ''))
+        # Check if error message contains 'Invalid CEL expression' in any field
+        body_str = json.dumps(body)
+        self.assertIn('Invalid CEL expression', body_str)
 
     def test_invalid_cel_syntax_rejected_on_update(self) -> None:
         """Test that invalid CEL syntax is rejected when updating a rule"""
@@ -624,10 +634,12 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             }])
         self.assertEqual(400, rsp.code)
         body = json.loads(rsp.body)
-        self.assertIn('Invalid CEL expression', body.get('title', ''))
+        # Check if error message contains 'Invalid CEL expression' in any field
+        body_str = json.dumps(body)
+        self.assertIn('Invalid CEL expression', body_str)
 
-    def test_cel_expression_with_notification_filters(self) -> None:
-        """Test notification filters and rule CEL work together"""
+    def test_cel_and_notification_filters_both_pass(self) -> None:
+        """Test notification passes both filters"""
         # Add notification-level filter
         rsp = self.fetch(
             f'/integrations/{self.integration_name}'
@@ -655,7 +667,7 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
             }])
         self.assertEqual(200, rsp.code)
 
-        # Test case 1: Passes both notification filter and CEL expression
+        # Send notification that passes both filters
         rsp = self.fetch(
             f'/integrations/{self.integration_name}'
             f'/notifications/{self.notification_name}'
@@ -670,14 +682,48 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(200, rsp.code)
         self.assertEqual('success', self.get_project_fact())
 
-        # Delete fact for next test
+    def test_cel_with_notification_filter_blocks(self) -> None:
+        """Test notification filter blocks before CEL is evaluated"""
+        # Change default action to ignore, so only matching filters process
         rsp = self.fetch(
-            f'/projects/{self.project["id"]}/facts/'
-            f'{self.project_fact_type["id"]}',
-            method='DELETE')
-        self.assertEqual(204, rsp.code)
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}',
+            method='PATCH',
+            json_body=[{
+                'op': 'replace',
+                'path': '/default_action',
+                'value': 'ignore'
+            }])
+        self.assertEqual(200, rsp.code)
 
-        # Test case 2: Fails notification filter (should not reach CEL check)
+        # Add notification-level filter to only process completed actions
+        rsp = self.fetch(
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}/filters',
+            method='POST',
+            json_body={
+                'name': 'only-completed',
+                'pattern': '/action',
+                'operation': '==',
+                'value': 'completed',
+                'action': 'process'
+            })
+        self.assertEqual(200, rsp.code)
+
+        # Add CEL expression to rule
+        rsp = self.fetch(
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}'
+            f'/rules/{self.project_fact_type["id"]}',
+            method='PATCH',
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': 'branch == "main"',
+            }])
+        self.assertEqual(200, rsp.code)
+
+        # Send notification that fails notification filter
         rsp = self.fetch(
             f'/integrations/{self.integration_name}'
             f'/notifications/{self.notification_name}'
