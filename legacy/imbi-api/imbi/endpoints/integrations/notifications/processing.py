@@ -6,6 +6,7 @@ import hmac
 import typing
 from collections import abc
 
+import celpy
 import psycopg2
 import pydantic
 import sprockets_postgres
@@ -30,6 +31,7 @@ class NotificationRule(pydantic.BaseModel):
     """Extracts selected columns from v1.notification_rules"""
     fact_type_id: int
     pattern: common.JsonPointer
+    filter_expression: typing.Optional[str] = None
     transformations: typing.List[
         NotificationRuleTransformation] = pydantic.Field(default_factory=list)
 
@@ -259,7 +261,7 @@ class ProcessingHandler(base.RequestHandler):
                 parameters=key,
                 metric_name='fetch-notification-filters'),
             self.postgres_execute(
-                'SELECT fact_type_id, pattern'
+                'SELECT fact_type_id, pattern, filter_expression'
                 ' FROM v1.notification_rules'
                 ' WHERE integration_name = %(integration_name)s'
                 '   AND notification_name = %(notification_name)s',
@@ -399,6 +401,33 @@ class ProcessingHandler(base.RequestHandler):
                                 notification_value.__class__.__name__)
         return constraint, notification_value
 
+    def _evaluate_cel_expression(self, expression: str, body: dict) -> bool:
+        """Evaluate a CEL expression against webhook body.
+
+        Args:
+            expression: CEL expression string to evaluate
+            body: Webhook payload dictionary
+
+        Returns:
+            True if expression evaluates to truthy value, False otherwise.
+            Returns False on any error (fail-safe behavior).
+        """
+        try:
+            env = celpy.Environment()
+            ast = env.compile(expression)
+            program = env.program(ast)
+            result = program.evaluate(body)
+            return bool(result)
+        except celpy.CELEvalError as error:
+            self.logger.warning('CEL evaluation error in expression %r: %s',
+                                expression, error)
+            return False
+        except Exception as error:
+            self.logger.warning(
+                'Unexpected error evaluating CEL expression %r: %s',
+                expression, error)
+            return False
+
     def _evaluate_filters(self, notification: Notification, body) -> bool:
         """Evaluate the list of filters.
 
@@ -509,6 +538,15 @@ class ProcessingHandler(base.RequestHandler):
         for rule in notification.rules:
             if rule.fact_type_id not in valid_fact_type_ids:
                 continue
+
+            if rule.filter_expression:
+                if not self._evaluate_cel_expression(rule.filter_expression,
+                                                     body):
+                    self.logger.debug(
+                        'rule for fact_type_id %s filtered by CEL',
+                        rule.fact_type_id)
+                    continue
+
             value = rule.pattern.resolve(body, unspecified)
             if value is unspecified:
                 continue
