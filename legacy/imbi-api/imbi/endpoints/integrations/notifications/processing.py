@@ -416,7 +416,7 @@ class ProcessingHandler(base.RequestHandler):
             env = celpy.Environment()
             ast = env.compile(expression)
             program = env.program(ast)
-            result = program.evaluate(body)
+            result = program.evaluate(celpy.json_to_cel(body))
             return bool(result)
         except celpy.CELEvalError as error:
             self.logger.warning('CEL evaluation error in expression %r: %s',
