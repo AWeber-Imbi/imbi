@@ -738,6 +738,105 @@ class AsyncHTTPTestCase(base.TestCaseWithReset):
         self.assertEqual(200, rsp.code)
         self.assertIsNone(self.get_project_fact())
 
+    def test_cel_nested_object_passes_filter(self) -> None:
+        """Test CEL expression with nested object updates fact"""
+        # Update the rule to include a CEL expression with nested field access
+        rsp = self.fetch(
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}'
+            f'/rules/{self.project_fact_type["id"]}',
+            method='PATCH',
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': 'workflow.run.status == "completed"',
+            }])
+        self.assertEqual(200, rsp.code)
+
+        # Send notification with nested object that matches CEL expression
+        rsp = self.fetch(
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}'
+            f'/post',
+            method='POST',
+            json_body={
+                'id': self.surrogate_id,
+                'state': 'success',
+                'workflow': {
+                    'run': {
+                        'status': 'completed'
+                    }
+                }
+            })
+        self.assertEqual(200, rsp.code)
+        self.assertEqual('success', self.get_project_fact(),
+                         'Nested CEL expression should have passed')
+
+    def test_cel_nested_object_filters_out(self) -> None:
+        """Test CEL expression with nested object filters out update"""
+        # Update the rule to include a CEL expression with nested field access
+        rsp = self.fetch(
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}'
+            f'/rules/{self.project_fact_type["id"]}',
+            method='PATCH',
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': 'workflow.run.status == "completed"',
+            }])
+        self.assertEqual(200, rsp.code)
+
+        # Send notification with nested object that doesn't match
+        rsp = self.fetch(
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}'
+            f'/post',
+            method='POST',
+            json_body={
+                'id': self.surrogate_id,
+                'state': 'failure',
+                'workflow': {
+                    'run': {
+                        'status': 'failed'
+                    }
+                }
+            })
+        self.assertEqual(200, rsp.code)
+        self.assertIsNone(
+            self.get_project_fact(),
+            'Nested CEL expression should have filtered out this update')
+
+    def test_cel_nested_object_missing_field(self) -> None:
+        """Test CEL expression with missing nested field filters out"""
+        # Update the rule to include a CEL expression with nested field access
+        rsp = self.fetch(
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}'
+            f'/rules/{self.project_fact_type["id"]}',
+            method='PATCH',
+            json_body=[{
+                'op': 'add',
+                'path': '/filter_expression',
+                'value': 'workflow.run.status == "completed"',
+            }])
+        self.assertEqual(200, rsp.code)
+
+        # Send notification without the nested field
+        rsp = self.fetch(
+            f'/integrations/{self.integration_name}'
+            f'/notifications/{self.notification_name}'
+            f'/post',
+            method='POST',
+            json_body={
+                'id': self.surrogate_id,
+                'state': 'success',
+            })
+        self.assertEqual(200, rsp.code)
+        self.assertIsNone(
+            self.get_project_fact(),
+            'Missing nested field should have filtered out this update')
+
 
 class CELEvaluationTests(base.TestCaseWithReset):
     """Unit tests for CEL expression evaluation function"""
