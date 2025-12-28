@@ -23,7 +23,11 @@ async def fastapi_lifespan(
 
 def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(
-        title='Imbi', lifespan=fastapi_lifespan, version=version
+        title='Imbi',
+        lifespan=fastapi_lifespan,
+        version=version,
+        docs_url=None,
+        redoc_url='/docs',
     )
     for router in endpoints.routers:
         app.include_router(router)
