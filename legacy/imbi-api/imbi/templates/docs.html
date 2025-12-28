@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Imbi &mdash; API Documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {margin: 0;padding: 0;}
+    </style>
+  </head>
+  <body>
+    <redoc spec-url="/api-docs/openapi.yaml?{{ settings['version'] }}"
+           expand-responses="200,204"
+           path-in-middle-panel="true"
+           required-props-first="true"
+           sort-props-alphabetically="true"></redoc>
+    <script src="{{ static_url('redoc.standalone.js') }}"></script>
+  </body>
+</html>

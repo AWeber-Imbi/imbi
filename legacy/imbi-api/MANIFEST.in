@@ -1,0 +1,7 @@
+include CHANGELOG.md
+include CONTRIBUTING.md
+include README.rst
+include LICENSE
+include VERSION
+graft   imbi/static/
+graft   imbi/templates/

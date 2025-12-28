@@ -1,37 +1,20 @@
-import unittest
+import uuid
 
-import fastapi
-
-from imbi import app, version
+from tests import base
 
 
-class CreateAppTestCase(unittest.TestCase):
-    """Test cases for create_app function."""
+class EncryptionTestCase(base.TestCase):
 
-    def test_create_app_returns_fastapi_instance(self) -> None:
-        """Test that create_app returns a FastAPI instance."""
-        application = app.create_app()
-        self.assertIsInstance(application, fastapi.FastAPI)
+    def test_lifecycle(self):
+        value = str(uuid.uuid4())
+        encrypted = self._app.encrypt_value(value)
+        self.assertEqual(self._app.decrypt_value(encrypted), value)
 
-    def test_create_app_has_correct_title(self) -> None:
-        """Test that the app has the correct title."""
-        application = app.create_app()
-        self.assertEqual(application.title, 'Imbi')
 
-    def test_create_app_has_correct_version(self) -> None:
-        """Test that the app has the correct version."""
-        application = app.create_app()
-        self.assertEqual(application.version, version)
+class PasswordHashingTestCase(base.TestCase):
 
-    def test_create_app_includes_routers(self) -> None:
-        """Test that the app includes all routers."""
-        application = app.create_app()
-        # Check that the app has routes from our routers
-        # At minimum, we should have the /status endpoint
-        routes = [route.path for route in application.routes]
-        self.assertIn('/status', routes)
-
-    def test_create_app_has_lifespan(self) -> None:
-        """Test that the app has a lifespan context manager configured."""
-        application = app.create_app()
-        self.assertIsNotNone(application.router.lifespan_context)
+    def test_that_password_hashes_include_algorithm(self):
+        hashed = self._app.hash_password('my password')
+        self.assertTrue(
+            hashed.startswith(self._app.keychain.algorithm.name + ':'),
+            'Hashed password is not prefixed by algorithm')

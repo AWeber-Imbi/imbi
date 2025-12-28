@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Error &ndash; {{ status_code }}{% end %}
+{% block content %}
+  {% if 'exc_info' in globals() and handler.application.settings['debug'] and exc_info[2] is not None %}
+    {% import traceback %}
+    <h1>
+      ERROR: {{ status_code }} &ndash; {{ reason }}
+    </h1>
+    <h2>Traceback <small>(most recent call last)</small></h2>
+    <pre>{% for line in traceback.format_list(traceback.extract_tb(exc_info[2])) %}{{ line }}{% end %}</pre>
+  {% else %}
+    <h1>
+      ERROR: {{ status_code }} &ndash; {{ reason }}
+    </h1>
+  {% end %}
+  <div class="small">
+    {{ handler.application.settings['service'] }} v{{ handler.application.settings['version'] }}
+  </div>
+{% end %}
+{% block ui_js %}{% end %}

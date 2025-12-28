@@ -1,0 +1,38 @@
+{% set include_js = True %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Imbi &mdash; {% block title %}Tile{% end %}</title>
+    <link rel="icon" href="{{ static_url('images/logo.ico') }}">
+    <link rel="apple-touch-icon" href="{{ static_url('images/icon2x.png') }}">
+    <link rel="stylesheet" href="{{ static_url('css/backend.css') }}">
+  </head>
+  <body>
+    <div id="app"
+         data-logo="{{ static_url('images/logo.png') }}"
+         data-service="Imbi"
+         data-footer-icon="{{ handler.application.settings['footer_link']['icon'] }}"
+         data-footer-text="{{ handler.application.settings['footer_link']['text'] }}"
+         data-footer-url="{{ handler.application.settings['footer_link']['url'] }}"
+         data-ldap="{{ str(handler.application.settings['ldap']['enabled']).lower() }}"
+         data-local-users="{{ str(handler.application.settings['local_users']['enabled']).lower() }}"
+         data-google="{{ str(handler.application.settings['google']['enabled']).lower() }}"
+         data-sentry_dsn="{{ handler.application.settings['sentry_ui_dsn'] }}"
+         data-url="{{ handler.request.protocol }}://{{ handler.request.host }}"
+         data-version="{{ handler.application.settings['version'] }}"
+         style="min-width: 735px">
+      <h1>
+        <img src="{{ static_url('images/logo.svg') }}" alt="Imbi" />
+      </h1>
+      <div>
+        {% block content %}
+        Unextend Base
+        {% end %}
+      </div>
+    </div>
+    {% block ui_js %}<script {% if javascript_url is not None %}crossorigin{% end if %} src="{% if javascript_url is not None %}{{javascript_url}}imbi.js{% else %}{{ static_url('imbi.js') }}{% end if %}"></script>{% end %}
+  </body>
+</html>
