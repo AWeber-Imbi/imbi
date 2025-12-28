@@ -1,0 +1,80 @@
+#!/usr/bin/env sh
+#
+# NAME
+#   bootstrap — bootstrap the project
+#
+# vim: set ts=4 sw=4 sts=4 noet:
+
+# NOTE THAT THIS FILE IS INDENTED WITH 4-SPACE HARD TABS
+# as is required for <<-EOF heredocs to work.  Please keep
+# it this way!
+set -e
+if test -n "$SHELLDEBUG"
+then
+	set -x
+fi
+
+if test "${CI}" = 'true'
+then
+	echo "::group::Build logs"
+fi
+
+unset PYTHONDEBUG
+export COMPOSE_DISABLE_ENV_FILE=1
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+export PYTHON_ROOT_USER_ACTION=ignore
+export PYTHONWARNINGS=ignore
+
+TEST_HOST=${TEST_HOST:-127.0.0.1}
+
+get_exposed_port() {
+	if port=$(docker compose port "$1" "$2")
+	then
+		echo "${port#*:}"
+	else
+		echo "Failed to find port for $1:$2"
+		return 1
+	fi
+}
+
+if test "$CI" != 'true'
+then
+	if test -e ./.venv/bin/activate
+	then
+		. ./.venv/bin/activate
+	else
+		python3 -m venv --upgrade-deps .venv
+		. ./.venv/bin/activate
+	fi
+fi
+
+mkdir -p build
+
+pip install --upgrade pip
+
+printf 'Installing package...'
+pip install -e '.[dev]'
+echo ' done.'
+
+printf 'Installing pre-commit hook...'
+pre-commit install --install-hooks
+echo ' done.'
+
+if test "${CI}" != 'true'
+then
+	printf 'Cleaning environment...'
+	docker compose down --remove-orphans --volumes
+	echo ' done.'
+fi
+
+printf 'Starting environment...'
+docker compose up --wait --wait-timeout 120
+echo ' done.'
+
+printf 'Generating .env...'
+echo ' done.'
+
+if test "${CI}" = 'true'
+then
+	echo '::endgroup::'
+fi
