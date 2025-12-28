@@ -1,0 +1,131 @@
+[build-system]
+requires = ["hatchling", "build", "wheel"]
+build-backend = "hatchling.build"
+
+[project]
+name = "imbi"
+version = "2.0.0-alpha"
+description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "BSD-3-Clause" }
+license-file = "LICENSE"
+authors = [
+  { name = "Alex Campbell", email = "alexc@aweber.com" },
+  { name = "Dave Shawley", email = "daves@aweber.com" },
+  { name = "Gavin M. Roy", email = "gavinr@aweber.com" }
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "asynch",
+  "fastapi",
+  "jsonschema-models",
+  "neo4j",
+  "pydantic>=2.12.5",
+  "pydantic-settings",
+  "typer",
+  "uvicorn",
+  "yarl",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build",
+  "coverage[toml]",
+  "pre-commit",
+  "pytest",
+  "pytest-cov",
+  "ruff",
+  "watchfiles"
+]
+docs = [
+  "griffe-pydantic",
+  "mkdocs>=1.5,<2",
+  "mkdocs-material>9.5,<10",
+  "mkdocstrings[python]",
+  "mkdocstrings-python-xref>=1.6,<2"
+]
+otel = [
+  "opentelemetry-distro",
+  "opentelemetry-instrumentation-asyncio",
+  "opentelemetry-instrumentation-fastapi",
+]
+
+[project.scripts]
+imbi = "imbi.entrypoint:main"
+
+[tool.coverage.html]
+directory = "build/coverage"
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source = ["imbi"]
+command_line = "-m unittest discover tests --buffer --verbose"
+
+[tool.coverage.xml]
+output = "build/reports/coverage.xml"
+
+[tool.hatch.build.targets.wheel]
+src-layout = true
+
+[tool.hatch.envs.default]
+python = "python3.12"
+features = ["dev"]
+
+[tool.mkdocs]
+config-file = "mkdocs.yml"
+
+[tool.ruff]
+line-length = 79
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "BLE", # flake8-blind-except
+  "C4", # flake8-comprehensions
+  "C90", # mccabe
+  "E", "W", # pycodestyle
+  "F", # pyflakes
+  "G", # flake8-logging-format
+  "I", # isort
+  "N", # pep8-naming
+  "Q", # flake8-quotes
+  "S", # flake8-bandit
+  "ASYNC", # flake8-async
+  "B", # flake8-bugbear
+  "DTZ", # flake8-datetimez
+  "FURB", # refurb
+  "RUF", # ruff-specific
+  "T20", # flake8-print
+  "UP", # pyupgrade
+]
+ignore = [
+  "E501", # line too long - many long description strings in Pydantic models
+  "N818", # exception class names are not required to end in Error
+  "RSE", # contradicts Python Style Guide
+  "UP040", # allow non-pep695-type-alias
+  "UP047", # allow non-pep695-generic-functions
+]
+flake8-quotes = { inline-quotes = "single" }
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S"]

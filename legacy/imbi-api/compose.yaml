@@ -1,0 +1,30 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    #volumes:
+    #  - ./schema/clickhouse:/docker-entrypoint-initdb.d
+    ports:
+      - "8123"
+      - "9000"
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=password
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  neo4j:
+    image: neo4j:latest
+    environment:
+      NEO4J_AUTH: none
+    ports:
+      - "7474"
+      - "7687"
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO-  http://localhost:7474" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
