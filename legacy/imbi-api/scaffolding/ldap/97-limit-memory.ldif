@@ -1,4 +1,0 @@
-dn: olcDatabase={1}mdb,cn=config
-changetype: modify
-replace: olcDbMaxSize
-olcDbMaxSize: 5242880

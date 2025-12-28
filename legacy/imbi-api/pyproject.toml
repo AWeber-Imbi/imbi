@@ -72,8 +72,8 @@ show_missing = true
 
 [tool.coverage.run]
 branch = true
-source = ["imbi"]
-command_line = "-m unittest discover tests --buffer --verbose"
+source = ["src/imbi"]
+command_line = "-m pytest tests/"
 
 [tool.coverage.xml]
 output = "build/reports/coverage.xml"
