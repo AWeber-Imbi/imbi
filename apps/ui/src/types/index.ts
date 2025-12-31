@@ -1,0 +1,138 @@
+// API Response Wrappers
+export interface CollectionResponse<T> {
+  data: T[]
+}
+
+// API Response Types
+export interface ApiStatus {
+  started_at: string
+  status: 'ok' | 'maintenance'
+  version: string
+  system?: {
+    language: {
+      name: string
+      implementation: string
+      version: string
+    }
+    os: {
+      name: string
+      version: string
+    }
+  }
+}
+
+export interface User {
+  username: string
+  display_name: string
+  email_address: string
+  user_type: string
+  external_id?: string
+  groups?: string[]
+}
+
+export interface Project {
+  id: number
+  namespace_id: number
+  namespace: string
+  project_type_id: number
+  project_type: string
+  name: string
+  slug: string
+  description?: string
+  environments?: string[]
+  archived?: boolean
+  created_at: string
+  last_modified_at?: string
+}
+
+export interface Namespace {
+  id: number
+  name: string
+  slug: string
+  icon_class?: string
+  maintained_by?: string[]
+}
+
+export interface Environment {
+  name: string
+  description?: string
+  icon_class?: string
+}
+
+export interface ProjectType {
+  id: number
+  name: string
+  plural_name: string
+  slug: string
+  description?: string
+  icon_class?: string
+  environment_urls?: boolean
+}
+
+export interface ProjectFeedEntry {
+  type: 'ProjectFeedEntry'
+  display_name: string
+  email_address: string
+  namespace: string
+  namespace_id: number
+  project_id: number
+  project_name: string
+  project_type: string
+  what: 'created' | 'updated' | 'updated facts'
+  occurred_at?: string
+  when?: string
+  who: string
+}
+
+export interface OperationsLogEntry {
+  type: 'OperationsLogEntry'
+  id: number
+  occurred_at: string
+  recorded_at: string
+  recorded_by: string
+  email_address: string
+  display_name: string
+  completed_at?: string | null
+  performed_by?: string | null
+  project_id?: number | null
+  project_name?: string | null
+  environment: string
+  change_type: 'Configured' | 'Decommissioned' | 'Deployed' | 'Migrated' | 'Provisioned' | 'Restarted' | 'Rolled Back' | 'Scaled' | 'Upgraded'
+  description: string
+  link?: string | null
+  notes?: string | null
+  ticket_slug?: string | null
+  version?: string | null
+}
+
+export type ActivityFeedEntry = ProjectFeedEntry | OperationsLogEntry
+
+export interface DashboardStats {
+  total_projects: number
+  projects_by_namespace: Record<string, number>
+  projects_by_type: Record<string, number>
+  recent_activity: ActivityFeedEntry[]
+}
+
+// Auth Types
+export interface AuthState {
+  user: User | null
+  isAuthenticated: boolean
+  isLoading: boolean
+}
+
+// View Types
+export type View =
+  | 'dashboard'
+  | 'projects'
+  | 'operations'
+  | 'project-detail'
+  | 'deployment-dashboard'
+  | 'reports'
+  | 'user-profile'
+  | 'settings'
+
+export interface ViewChangeConfig {
+  view: string
+  filter?: Record<string, unknown>
+}
