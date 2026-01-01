@@ -54,7 +54,12 @@ export function useAuth(): UseAuthReturn {
     onSuccess: async (data) => {
       setAccessToken(data.access_token)
 
-      await refetch()
+      try {
+        await refetch()
+      } catch (error) {
+        console.error('[Auth] Failed to fetch user after login:', error)
+        // Still navigate since token is valid; user query will retry on next render
+      }
 
       const returnTo = sessionStorage.getItem('returnTo') || '/dashboard'
       sessionStorage.removeItem('returnTo')
