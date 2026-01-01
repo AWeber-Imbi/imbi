@@ -32,9 +32,16 @@ export function useAuth(): UseAuthReturn {
     queryKey: ['authInit'],
     queryFn: async () => {
       if (!accessToken || isTokenExpired()) {
-        const response = await refreshTokenApi()
-        setAccessToken(response.access_token)
-        refetch()
+        try {
+          const response = await refreshTokenApi()
+          setAccessToken(response.access_token)
+          await refetch()
+        } catch (error) {
+          console.error('[Auth] Token refresh failed during initialization:', error)
+          clearTokens()
+          navigate('/login', { replace: true })
+          throw error
+        }
       }
       return true
     },
@@ -97,7 +104,7 @@ export function useAuth(): UseAuthReturn {
     user: user ?? null,
     isAuthenticated: !!user && !!accessToken && !error,
     isLoading: isLoading || loginMutation.isPending,
-    error: error ?? null,
+    error: loginMutation.error ?? error ?? null,
     login: async (credentials: LoginRequest) => {
       await loginMutation.mutateAsync(credentials)
     },
