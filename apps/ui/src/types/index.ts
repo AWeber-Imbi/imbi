@@ -121,6 +121,51 @@ export interface AuthState {
   isLoading: boolean
 }
 
+export interface AuthProvider {
+  id: string
+  type: 'oauth' | 'password'
+  name: string
+  enabled: boolean
+  auth_url?: string
+  icon: string
+}
+
+export interface LoginRequest {
+  email: string
+  password: string
+}
+
+export interface TokenResponse {
+  access_token: string
+  refresh_token: string
+  token_type: 'bearer'
+  expires_in: number
+}
+
+export interface UserResponse extends User {
+  groups?: string[]
+  roles?: string[]
+  permissions?: string[]
+  created_at?: string
+  last_modified_at?: string
+  is_active?: boolean
+  is_admin?: boolean
+  is_service_account?: boolean
+  last_login?: string | null
+  avatar_url?: string | null
+}
+
+export interface UseAuthReturn {
+  user: User | null
+  isAuthenticated: boolean
+  isLoading: boolean
+  error: Error | null
+  login: (credentials: LoginRequest) => Promise<void>
+  loginWithOAuth: (providerId: string) => void
+  logout: () => Promise<void>
+  refreshToken: () => Promise<void>
+}
+
 // View Types
 export type View =
   | 'dashboard'

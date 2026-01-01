@@ -1,12 +1,36 @@
-import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { getAuthProviders } from '@/api/endpoints'
+import { OAuthButton } from '@/components/auth/OAuthButton'
+import { LocalLoginForm } from '@/components/auth/LocalLoginForm'
+import { AuthDivider } from '@/components/auth/AuthDivider'
+import imbiLogo from '@/assets/logo.svg'
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { isAuthenticated, isLoading } = useAuth()
+  const [searchParams] = useSearchParams()
+  const { isAuthenticated, isLoading: authLoading, login, loginWithOAuth } = useAuth()
+  const [loginError, setLoginError] = useState<string>('')
+
+  const { data: providersData, isLoading: providersLoading } = useQuery({
+    queryKey: ['authProviders'],
+    queryFn: getAuthProviders,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  })
+
+  useEffect(() => {
+    const error = searchParams.get('error')
+    if (error) {
+      setLoginError(
+        error === 'no_token'
+          ? 'Authentication failed: No token received'
+          : `Authentication failed: ${error}`
+      )
+    }
+  }, [searchParams])
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -14,38 +38,79 @@ export function LoginPage() {
     }
   }, [isAuthenticated, navigate])
 
-  const handleLogin = () => {
-    // Redirect to backend OAuth login endpoint
-    // The backend will handle OAuth flow and redirect back with session cookie
-    window.location.href = 'https://imbi.aweber.io/ui/login'
+  const handlePasswordLogin = async (credentials: { email: string; password: string }) => {
+    try {
+      setLoginError('')
+      await login(credentials)
+    } catch (error: any) {
+      console.error('[Login] Password login failed:', error)
+      setLoginError(
+        error.response?.data?.message ||
+        error.message ||
+        'Login failed. Please check your credentials.'
+      )
+    }
   }
 
-  if (isLoading) {
+  const handleOAuthLogin = (providerId: string) => {
+    setLoginError('')
+    loginWithOAuth(providerId)
+  }
+
+  if (authLoading || providersLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg">Checking authentication...</div>
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="text-lg">Loading...</div>
       </div>
     )
   }
 
+  const providers = providersData?.providers || []
+  const oauthProviders = providers.filter(p => p.type === 'oauth' && p.enabled)
+  const localLoginEnabled = providers.some(p => p.type === 'password' && p.enabled)
+
+  const showLocalLogin = localLoginEnabled || (oauthProviders.length === 0 && providers.length === 0)
+
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50">
-      <Card className="w-[400px]">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Imbi V2</CardTitle>
-          <CardDescription>
-            Operational management platform for medium to large environments
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={handleLogin} className="w-full" size="lg">
-            Sign in with OAuth
-          </Button>
-          <p className="text-sm text-muted-foreground mt-4 text-center">
-            Click above to authenticate using your organization's OAuth provider
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="w-full max-w-md p-8 rounded-xl border bg-white border-gray-200">
+        <div className="flex flex-col items-center mb-8">
+          <img src={imbiLogo} alt="Imbi" className="w-16 h-16 mb-4" />
+          <h1 className="text-2xl mb-2 text-gray-900">
+            Welcome to Imbi
+          </h1>
+          <p className="text-gray-600 text-center">
+            Sign in to access your operational dashboard
           </p>
-        </CardContent>
-      </Card>
+        </div>
+
+        {oauthProviders.length > 0 && (
+          <div className="space-y-3 mb-6">
+            {oauthProviders.map((provider) => (
+              <OAuthButton
+                key={provider.id}
+                provider={provider}
+                onClick={() => handleOAuthLogin(provider.id)}
+                disabled={authLoading}
+              />
+            ))}
+          </div>
+        )}
+
+        {oauthProviders.length > 0 && showLocalLogin && <AuthDivider />}
+
+        {showLocalLogin && (
+          <LocalLoginForm
+            onSubmit={handlePasswordLogin}
+            isLoading={authLoading}
+            error={loginError}
+          />
+        )}
+
+        <div className="mt-6 text-center text-sm text-gray-600">
+          Need help? Contact your system administrator
+        </div>
+      </div>
     </div>
   )
 }

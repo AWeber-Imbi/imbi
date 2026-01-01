@@ -1,9 +1,40 @@
 import axios, { AxiosError, AxiosInstance } from 'axios'
+import { useAuthStore } from '@/stores/authStore'
+import type { TokenResponse } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
 
 console.log('API Base URL:', API_BASE_URL)
 console.log('Using proxy with token:', !!import.meta.env.VITE_API_TOKEN)
+
+let refreshPromise: Promise<string> | null = null
+
+async function refreshAccessToken(client: AxiosInstance): Promise<string> {
+  if (refreshPromise) {
+    return refreshPromise
+  }
+
+  refreshPromise = (async () => {
+    try {
+      console.log('[API] Refreshing access token...')
+      const response = await client.post<TokenResponse>('/auth/token/refresh', {})
+      const { access_token } = response.data
+
+      useAuthStore.getState().setAccessToken(access_token)
+      console.log('[API] Access token refreshed successfully')
+
+      return access_token
+    } catch (error) {
+      console.error('[API] Token refresh failed:', error)
+      useAuthStore.getState().clearTokens()
+      throw error
+    } finally {
+      refreshPromise = null
+    }
+  })()
+
+  return refreshPromise
+}
 
 class ApiClient {
   private client: AxiosInstance
@@ -11,40 +42,75 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE_URL,
-      withCredentials: true, // For session cookie auth when available
+      withCredentials: true,
       headers: {
         'Content-Type': 'application/json',
       },
     })
 
-    // Request interceptor - no need to add token here, proxy handles it
     this.client.interceptors.request.use(
-      (config) => {
+      async (config) => {
         console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`)
+
+        if (config.url?.includes('/auth/login') ||
+            config.url?.includes('/auth/providers') ||
+            config.url?.includes('/auth/token/refresh') ||
+            config.url?.includes('/status')) {
+          return config
+        }
+
+        const authStore = useAuthStore.getState()
+        let token = authStore.accessToken
+
+        if (authStore.isTokenExpired()) {
+          console.log('[API] Token expired, refreshing...')
+          try {
+            token = await refreshAccessToken(this.client)
+          } catch (error) {
+            console.error('[API] Token refresh failed, proceeding without token')
+          }
+        }
+
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
+        }
+
         return config
       },
       (error) => Promise.reject(error)
     )
 
-    // Response interceptor for handling errors
     this.client.interceptors.response.use(
       (response) => {
         console.log(`[API] Response ${response.status} for ${response.config.url}`)
         return response
       },
-      (error: AxiosError) => {
+      async (error: AxiosError) => {
         console.error(`[API] Error ${error.response?.status || 'network'} for ${error.config?.url}:`, error.message)
-        if (error.response?.status === 401) {
-          // For development with API token, this shouldn't happen
-          // For production, redirect to login
-          console.error('Authentication failed - check your API token in .env')
+
+        const originalRequest = error.config as any
+
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          originalRequest._retry = true
+
+          try {
+            const newToken = await refreshAccessToken(this.client)
+
+            originalRequest.headers.Authorization = `Bearer ${newToken}`
+            return this.client(originalRequest)
+          } catch (refreshError) {
+            console.error('[API] Token refresh failed, redirecting to login')
+            useAuthStore.getState().clearTokens()
+            window.location.href = '/login'
+            return Promise.reject(refreshError)
+          }
         }
+
         return Promise.reject(error)
       }
     )
   }
 
-  // Generic methods
   async get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
     const response = await this.client.get<T>(url, { params })
     return response.data
