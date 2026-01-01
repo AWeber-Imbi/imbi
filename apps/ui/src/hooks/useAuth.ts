@@ -1,29 +1,111 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { getCurrentUser } from '@/api/endpoints'
-import type { User } from '@/types'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/stores/authStore'
+import {
+  loginWithPassword,
+  logoutAuth,
+  refreshToken as refreshTokenApi,
+  getUserByUsername
+} from '@/api/endpoints'
+import type { User, LoginRequest, UseAuthReturn } from '@/types'
 
-export function useAuth() {
+export function useAuth(): UseAuthReturn {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { accessToken, setAccessToken, clearTokens, getUsername, isTokenExpired } = useAuthStore()
 
-  const { data: user, isLoading, error } = useQuery<User>({
-    queryKey: ['currentUser'],
-    queryFn: getCurrentUser,
+  const { data: user, isLoading, error, refetch } = useQuery<User>({
+    queryKey: ['currentUser', getUsername()],
+    queryFn: async () => {
+      const username = getUsername()
+      if (!username) {
+        throw new Error('No username found in token')
+      }
+      return getUserByUsername(username)
+    },
+    enabled: !!accessToken && !isTokenExpired(),
     retry: false,
-    // Don't refetch automatically - user session is managed server-side
     staleTime: Infinity,
   })
 
-  const logout = async () => {
-    // Clear the query cache
-    queryClient.clear()
-    // Redirect to logout endpoint (backend will clear session and redirect)
-    window.location.href = '/ui/logout'
+  useQuery({
+    queryKey: ['authInit'],
+    queryFn: async () => {
+      if (!accessToken || isTokenExpired()) {
+        const response = await refreshTokenApi()
+        setAccessToken(response.access_token)
+        refetch()
+      }
+      return true
+    },
+    retry: false,
+    staleTime: Infinity,
+  })
+
+  const loginMutation = useMutation({
+    mutationFn: loginWithPassword,
+    onSuccess: async (data) => {
+      setAccessToken(data.access_token)
+
+      await refetch()
+
+      const returnTo = sessionStorage.getItem('returnTo') || '/dashboard'
+      sessionStorage.removeItem('returnTo')
+      navigate(returnTo, { replace: true })
+    },
+    onError: (error) => {
+      console.error('[Auth] Login failed:', error)
+    }
+  })
+
+  const logoutMutation = useMutation({
+    mutationFn: logoutAuth,
+    onSuccess: () => {
+      clearTokens()
+      queryClient.clear()
+      navigate('/login', { replace: true })
+    },
+    onError: (error) => {
+      console.error('[Auth] Logout failed:', error)
+      clearTokens()
+      queryClient.clear()
+      navigate('/login', { replace: true })
+    }
+  })
+
+  const refreshTokenMutation = useMutation({
+    mutationFn: refreshTokenApi,
+    onSuccess: (data) => {
+      setAccessToken(data.access_token)
+      refetch()
+    },
+    onError: () => {
+      clearTokens()
+      navigate('/login', { replace: true })
+    }
+  })
+
+  const loginWithOAuth = (providerId: string) => {
+    const currentPath = window.location.pathname
+    if (currentPath !== '/login') {
+      sessionStorage.setItem('returnTo', currentPath)
+    }
+    window.location.href = `/auth/oauth/${providerId}`
   }
 
   return {
-    user,
-    isAuthenticated: !!user && !error,
-    isLoading,
-    logout,
+    user: user ?? null,
+    isAuthenticated: !!user && !!accessToken && !error,
+    isLoading: isLoading || loginMutation.isPending,
+    login: async (credentials: LoginRequest) => {
+      await loginMutation.mutateAsync(credentials)
+    },
+    loginWithOAuth,
+    logout: async () => {
+      await logoutMutation.mutateAsync()
+    },
+    refreshToken: async () => {
+      await refreshTokenMutation.mutateAsync()
+    },
   }
 }

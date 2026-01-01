@@ -1,10 +1,22 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { LoginPage } from './pages/LoginPage'
+import { OAuthCallbackPage } from './pages/OAuthCallbackPage'
 import { useAuth } from './hooks/useAuth'
+import { useEffect } from 'react'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
+
+  useEffect(() => {
+    if (!isAuthenticated && !isLoading) {
+      const currentPath = window.location.pathname
+      if (currentPath !== '/login' && currentPath !== '/auth/callback') {
+        sessionStorage.setItem('returnTo', currentPath)
+      }
+    }
+  }, [isAuthenticated, isLoading])
 
   if (isLoading) {
     return (
@@ -15,16 +27,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="text-lg mb-4">Not authenticated</div>
-          <div className="text-sm text-muted-foreground">
-            Check your VITE_API_TOKEN in .env
-          </div>
-        </div>
-      </div>
-    )
+    return <Navigate to="/login" replace />
   }
 
   return <>{children}</>
@@ -33,6 +36,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+
       <Route
         path="/dashboard"
         element={

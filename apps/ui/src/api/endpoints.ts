@@ -7,13 +7,33 @@ import type {
   Namespace,
   Environment,
   ProjectType,
-  CollectionResponse
+  CollectionResponse,
+  AuthProvider,
+  TokenResponse,
+  LoginRequest,
+  UserResponse
 } from '@/types'
 
 // Status/Health
 export const getStatus = () => apiClient.get<ApiStatus>('/status')
 
 // User/Auth
+export const getAuthProviders = () =>
+  apiClient.get<{ providers: AuthProvider[], default_redirect: string }>('/auth/providers')
+
+export const loginWithPassword = (credentials: LoginRequest) =>
+  apiClient.post<TokenResponse>('/auth/login', credentials)
+
+export const refreshToken = () =>
+  apiClient.post<TokenResponse>('/auth/token/refresh', {})
+
+export const logoutAuth = () =>
+  apiClient.post<void>('/auth/logout', {})
+
+export const getUserByUsername = (username: string) =>
+  apiClient.get<UserResponse>(`/users/${username}`)
+
+// Legacy endpoints (kept for backward compatibility)
 export const getCurrentUser = () => apiClient.get<User>('/ui/user')
 export const logout = () => apiClient.get<void>('/ui/logout')
 
