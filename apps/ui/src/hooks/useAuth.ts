@@ -82,9 +82,9 @@ export function useAuth(): UseAuthReturn {
 
   const refreshTokenMutation = useMutation({
     mutationFn: refreshTokenApi,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setAccessToken(data.access_token)
-      refetch()
+      await refetch()
     },
     onError: () => {
       clearTokens()
