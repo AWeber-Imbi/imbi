@@ -5,8 +5,8 @@ import { useAuth } from '@/hooks/useAuth'
 
 export function OAuthCallbackPage() {
   const navigate = useNavigate()
-  const { setAccessToken } = useAuthStore()
-  const { user } = useAuth()
+  const { accessToken, setAccessToken } = useAuthStore()
+  const { user, error } = useAuth()
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -37,6 +37,13 @@ export function OAuthCallbackPage() {
       navigate(returnTo, { replace: true })
     }
   }, [user, navigate])
+
+  useEffect(() => {
+    if (error && accessToken) {
+      console.error('[OAuth] Failed to fetch user after token set:', error)
+      navigate('/login?error=user_fetch_failed', { replace: true })
+    }
+  }, [error, accessToken, navigate])
 
   return (
     <div className="flex items-center justify-center min-h-screen">

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@/test/utils'
 import userEvent from '@testing-library/user-event'
 import { LocalLoginForm } from './LocalLoginForm'
@@ -117,20 +117,19 @@ describe('LocalLoginForm', () => {
     })
   })
 
-  it('should show validation error if email is empty on submit', async () => {
+  it('should keep submit button disabled if email is empty', async () => {
     const user = userEvent.setup()
     render(<LocalLoginForm {...defaultProps} />)
 
     const passwordInput = screen.getByLabelText(/password/i)
+    const submitButton = screen.getByRole('button', { name: /sign in/i })
+
     await user.type(passwordInput, 'password123')
 
-    const emailInput = screen.getByLabelText(/email address/i)
-    await user.click(emailInput)
-    await user.tab()
+    // Submit button should remain disabled when email is empty
+    expect(submitButton).toBeDisabled()
 
-    const form = emailInput.closest('form')!
-    await user.click(form)
-
+    // Verify onSubmit is not called
     expect(mockOnSubmit).not.toHaveBeenCalled()
   })
 

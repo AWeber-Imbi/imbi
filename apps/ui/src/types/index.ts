@@ -159,6 +159,7 @@ export interface UseAuthReturn {
   user: User | null
   isAuthenticated: boolean
   isLoading: boolean
+  error: Error | null
   login: (credentials: LoginRequest) => Promise<void>
   loginWithOAuth: (providerId: string) => void
   logout: () => Promise<void>
