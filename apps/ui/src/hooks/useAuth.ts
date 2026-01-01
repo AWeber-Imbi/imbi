@@ -102,7 +102,7 @@ export function useAuth(): UseAuthReturn {
 
   return {
     user: user ?? null,
-    isAuthenticated: !!user && !!accessToken && !error,
+    isAuthenticated: !!user && !!accessToken,
     isLoading: isLoading || loginMutation.isPending,
     error: loginMutation.error ?? error ?? null,
     login: async (credentials: LoginRequest) => {
