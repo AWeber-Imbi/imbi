@@ -79,9 +79,6 @@ export function LoginPage() {
           <h1 className="text-2xl mb-2 text-gray-900">
             Welcome to Imbi
           </h1>
-          <p className="text-gray-600 text-center">
-            Sign in to access your operational dashboard
-          </p>
         </div>
 
         {oauthProviders.length > 0 && (
