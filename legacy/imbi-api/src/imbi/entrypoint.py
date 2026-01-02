@@ -187,7 +187,8 @@ async def _setup_async() -> None:
 async def _check_admin_exists() -> bool:
     """Check if any admin users exist in the system."""
     query = """
-    MATCH (u:User {is_admin: true})
+    OPTIONAL MATCH (u:User)
+    WHERE u.is_admin = true
     RETURN count(u) AS count
     """
 
