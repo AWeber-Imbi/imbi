@@ -1,115 +1,60 @@
 import { useState } from 'react'
-import { Plus, Search, Filter, Edit2, Trash2, Eye, Power, Crown, Bot } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, Search, Filter, Edit2, Trash2, Eye, Power, Crown, Bot, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
+import { listAdminUsers, deleteAdminUser, updateAdminUser } from '@/api/endpoints'
+import type { AdminUser, AdminUserCreate } from '@/types'
 
 interface UserManagementProps {
   isDarkMode: boolean
 }
 
-interface User {
-  id: string
-  username: string
-  email: string
-  display_name: string
-  avatar_url?: string
-  is_active: boolean
-  is_admin: boolean
-  is_service_account: boolean
-  created_at: string
-  last_login?: string
-  groups: string[]
-  roles: string[]
-}
-
 type UserFilter = 'all' | 'users' | 'service' | 'admins'
 type StatusFilter = 'all' | 'active' | 'inactive'
 
-// Mock data
-const mockUsers: User[] = [
-  {
-    id: '1',
-    username: 'admin',
-    email: 'admin@imbi.local',
-    display_name: 'Administrator',
-    is_active: true,
-    is_admin: true,
-    is_service_account: false,
-    created_at: '2024-01-01T00:00:00Z',
-    last_login: '2024-12-30T14:30:00Z',
-    groups: [],
-    roles: []
-  },
-  {
-    id: '2',
-    username: 'alice.johnson',
-    email: 'alice.johnson@aweber.com',
-    display_name: 'Alice Johnson',
-    avatar_url: 'https://i.pravatar.cc/150?u=alice',
-    is_active: true,
-    is_admin: false,
-    is_service_account: false,
-    created_at: '2024-02-15T10:00:00Z',
-    last_login: '2024-12-31T09:15:00Z',
-    groups: ['backend-team', 'engineering'],
-    roles: ['developer', 'team-lead']
-  },
-  {
-    id: '3',
-    username: 'bob.smith',
-    email: 'bob.smith@aweber.com',
-    display_name: 'Bob Smith',
-    avatar_url: 'https://i.pravatar.cc/150?u=bob',
-    is_active: true,
-    is_admin: false,
-    is_service_account: false,
-    created_at: '2024-03-10T08:00:00Z',
-    last_login: '2024-12-29T16:45:00Z',
-    groups: ['frontend-team', 'engineering'],
-    roles: ['developer']
-  },
-  {
-    id: '4',
-    username: 'imbi-automations',
-    email: 'automations@imbi.local',
-    display_name: 'Imbi Automation Service',
-    is_active: true,
-    is_admin: false,
-    is_service_account: true,
-    created_at: '2024-01-05T00:00:00Z',
-    last_login: '2024-12-31T10:00:00Z',
-    groups: [],
-    roles: ['service-account']
-  },
-  {
-    id: '5',
-    username: 'contractor.jane',
-    email: 'jane@contractor.com',
-    display_name: 'Jane Contractor',
-    is_active: false,
-    is_admin: false,
-    is_service_account: false,
-    created_at: '2024-06-01T00:00:00Z',
-    last_login: '2024-09-30T17:00:00Z',
-    groups: ['contractors'],
-    roles: ['read-only']
-  }
-]
-
 export function UserManagement({ isDarkMode }: UserManagementProps) {
-  const [users, setUsers] = useState<User[]>(mockUsers)
+  const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [userFilter, setUserFilter] = useState<UserFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set())
 
-  // Filter users
+  // Fetch users from API
+  const { data: users = [], isLoading, error } = useQuery({
+    queryKey: ['adminUsers'],
+    queryFn: () => listAdminUsers(),
+  })
+
+  // Delete user mutation
+  const deleteMutation = useMutation({
+    mutationFn: deleteAdminUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
+    },
+    onError: (error: any) => {
+      alert(`Failed to delete user: ${error.response?.data?.detail || error.message}`)
+    }
+  })
+
+  // Toggle active mutation
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ email, user }: { email: string, user: AdminUserCreate }) =>
+      updateAdminUser(email, user),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
+    },
+    onError: (error: any) => {
+      alert(`Failed to update user: ${error.response?.data?.detail || error.message}`)
+    }
+  })
+
+  // Filter users locally (since API only supports is_active and is_admin filters)
   const filteredUsers = users.filter(user => {
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       const matches =
-        user.username.toLowerCase().includes(query) ||
         user.email.toLowerCase().includes(query) ||
         user.display_name.toLowerCase().includes(query)
       if (!matches) return false
@@ -127,51 +72,56 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     return true
   })
 
-  const handleToggleActive = (id: string) => {
-    setUsers(users.map(user =>
-      user.id === id ? { ...user, is_active: !user.is_active } : user
-    ))
+  const handleToggleActive = (user: AdminUser) => {
+    toggleActiveMutation.mutate({
+      email: user.email,
+      user: {
+        email: user.email,
+        display_name: user.display_name,
+        is_active: !user.is_active,
+        is_admin: user.is_admin,
+        is_service_account: user.is_service_account,
+      }
+    })
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (email: string) => {
     if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-      setUsers(users.filter(user => user.id !== id))
+      deleteMutation.mutate(email)
     }
   }
 
   const handleBulkActivate = (activate: boolean) => {
-    setUsers(users.map(user =>
-      selectedIds.has(user.id) ? { ...user, is_active: activate } : user
-    ))
-    setSelectedIds(new Set())
+    // TODO: Implement when bulk API endpoints are available
+    alert('Bulk operations will be available once the API endpoints are implemented')
+    setSelectedEmails(new Set())
   }
 
   const handleBulkDelete = () => {
-    if (confirm(`Are you sure you want to delete ${selectedIds.size} user(s)? This action cannot be undone.`)) {
-      setUsers(users.filter(user => !selectedIds.has(user.id)))
-      setSelectedIds(new Set())
-    }
+    // TODO: Implement when bulk API endpoints are available
+    alert('Bulk operations will be available once the API endpoints are implemented')
+    setSelectedEmails(new Set())
   }
 
-  const toggleSelection = (id: string) => {
-    const newSelection = new Set(selectedIds)
-    if (newSelection.has(id)) {
-      newSelection.delete(id)
+  const toggleSelection = (email: string) => {
+    const newSelection = new Set(selectedEmails)
+    if (newSelection.has(email)) {
+      newSelection.delete(email)
     } else {
-      newSelection.add(id)
+      newSelection.add(email)
     }
-    setSelectedIds(newSelection)
+    setSelectedEmails(newSelection)
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredUsers.length) {
-      setSelectedIds(new Set())
+    if (selectedEmails.size === filteredUsers.length) {
+      setSelectedEmails(new Set())
     } else {
-      setSelectedIds(new Set(filteredUsers.map(u => u.id)))
+      setSelectedEmails(new Set(filteredUsers.map(u => u.email)))
     }
   }
 
-  const formatDate = (dateString?: string) => {
+  const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'Never'
     return new Date(dateString).toLocaleString('en-US', {
       month: 'short',
@@ -180,6 +130,42 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const getGroupNames = (user: AdminUser): string => {
+    if (!user.groups || user.groups.length === 0) return '-'
+    return user.groups.map(g => g.name).join(', ')
+  }
+
+  const getRoleNames = (user: AdminUser): string => {
+    if (!user.roles || user.roles.length === 0) return '-'
+    return user.roles.map(r => r.name).join(', ')
+  }
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          Loading users...
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className={`flex items-center gap-3 p-4 rounded-lg border ${
+        isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
+      }`}>
+        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        <div>
+          <div className="font-medium">Failed to load users</div>
+          <div className="text-sm mt-1">{error instanceof Error ? error.message : 'An error occurred'}</div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -213,7 +199,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
               isDarkMode ? 'text-gray-400' : 'text-gray-500'
             }`} />
             <Input
-              placeholder="Search by username, email, or name..."
+              placeholder="Search by email or name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className={`pl-9 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
@@ -255,12 +241,12 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       </div>
 
       {/* Bulk Actions */}
-      {selectedIds.size > 0 && (
+      {selectedEmails.size > 0 && (
         <div className={`flex items-center justify-between p-4 rounded-lg border ${
           isDarkMode ? 'bg-blue-900/20 border-blue-700' : 'bg-blue-50 border-blue-200'
         }`}>
           <span className={`text-sm ${isDarkMode ? 'text-blue-300' : 'text-blue-900'}`}>
-            {selectedIds.size} user(s) selected
+            {selectedEmails.size} user(s) selected
           </span>
           <div className="flex items-center gap-2">
             <Button
@@ -304,7 +290,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
               <th className="w-12 px-4 py-3">
                 <input
                   type="checkbox"
-                  checked={selectedIds.size === filteredUsers.length && filteredUsers.length > 0}
+                  checked={selectedEmails.size === filteredUsers.length && filteredUsers.length > 0}
                   onChange={toggleSelectAll}
                   className="rounded"
                 />
@@ -343,7 +329,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
             ) : (
               filteredUsers.map((user) => (
                 <tr
-                  key={user.id}
+                  key={user.email}
                   className={`${isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'} ${
                     !user.is_active ? 'opacity-60' : ''
                   }`}
@@ -351,8 +337,8 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
-                      checked={selectedIds.has(user.id)}
-                      onChange={() => toggleSelection(user.id)}
+                      checked={selectedEmails.has(user.email)}
+                      onChange={() => toggleSelection(user.email)}
                       className="rounded"
                     />
                   </td>
@@ -376,7 +362,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                           {user.display_name}
                         </div>
                         <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                          @{user.username}
+                          {getGroupNames(user)}
                         </div>
                       </div>
                     </div>
@@ -413,7 +399,8 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button
-                      onClick={() => handleToggleActive(user.id)}
+                      onClick={() => handleToggleActive(user)}
+                      disabled={toggleActiveMutation.isPending}
                       className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${
                         user.is_active
                           ? isDarkMode
@@ -452,7 +439,8 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(user.id)}
+                        onClick={() => handleDelete(user.email)}
+                        disabled={deleteMutation.isPending}
                         className={`p-1.5 rounded ${
                           isDarkMode ? 'text-red-400 hover:text-red-300 hover:bg-gray-700' : 'text-red-600 hover:text-red-700 hover:bg-gray-100'
                         }`}
