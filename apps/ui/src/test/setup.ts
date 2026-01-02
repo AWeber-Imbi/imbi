@@ -6,6 +6,21 @@ afterEach(() => {
   cleanup()
 })
 
+// Mock localStorage for Zustand persist middleware
+const localStorageMock = {
+  getItem: vi.fn((key: string) => null),
+  setItem: vi.fn((key: string, value: string) => undefined),
+  removeItem: vi.fn((key: string) => undefined),
+  clear: vi.fn(() => undefined),
+  length: 0,
+  key: vi.fn((index: number) => null),
+}
+
+Object.defineProperty(global, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+})
+
 // @ts-ignore - global is available in vitest
 globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),

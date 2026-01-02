@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { jwtDecode } from 'jwt-decode'
 
 interface JwtPayload {
@@ -19,10 +20,12 @@ interface AuthStore {
   getUsername: () => string | null
 }
 
-export const useAuthStore = create<AuthStore>((set, get) => ({
-  accessToken: null,
-  refreshToken: null,
-  tokenExpiry: null,
+export const useAuthStore = create<AuthStore>()(
+  persist(
+    (set, get) => ({
+      accessToken: null,
+      refreshToken: null,
+      tokenExpiry: null,
 
   setTokens: (accessToken: string, refreshToken: string) => {
     try {
@@ -73,11 +76,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (!accessToken) return null
     try {
       const decoded = jwtDecode<JwtPayload>(accessToken)
-      console.log('[AuthStore] Decoded JWT payload:', decoded)
-      console.log('[AuthStore] JWT sub field:', decoded.sub)
       return decoded.sub
     } catch {
       return null
     }
   }
-}))
+    }),
+    {
+      name: 'imbi-auth-storage',
+    }
+  )
+)
