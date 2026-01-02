@@ -4,6 +4,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useAuth } from '@/hooks/useAuth'
+import imbiLogo from '@/assets/logo.svg'
 
 interface NavigationProps {
   currentView?: string
@@ -44,17 +45,21 @@ export function Navigation({
     <nav className={`fixed top-0 left-0 right-0 z-50 border-b transition-colors ${
       isDarkMode
         ? 'bg-gray-800 border-gray-700'
-        : 'border-[#2A4DD0]'
-    }`} style={isDarkMode ? undefined : { backgroundColor: '#2A4DD0' }}>
+        : 'bg-white border-gray-200'
+    }`}>
       <div className="flex items-center justify-between px-6 h-16">
         {/* Logo and Brand */}
         <div className="flex items-center gap-8">
           <button
             onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all ${
+              isDarkMode
+                ? 'hover:bg-gray-700'
+                : 'hover:bg-gray-100'
+            }`}
           >
-            <img src="/logo.svg" alt="Imbi" className="w-8 h-8" />
-            <span className="font-semibold text-white">
+            <img src={imbiLogo} alt="Imbi" className="w-8 h-8" />
+            <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
               Imbi
             </span>
           </button>
@@ -72,14 +77,14 @@ export function Navigation({
                     isActive
                       ? isDarkMode
                         ? 'bg-blue-900 text-blue-300'
-                        : 'bg-white/20 text-white'
+                        : 'bg-blue-50 text-[#2A4DD0]'
                       : isDarkMode
                         ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                        : 'text-white/80 hover:bg-white/10 hover:text-white'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
-                  <span className="text-sm font-medium">{item.label}</span>
+                  <span>{item.label}</span>
                 </button>
               )
             })}
@@ -91,7 +96,7 @@ export function Navigation({
           {/* Search */}
           <div className="hidden sm:block relative">
             <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-              isDarkMode ? 'text-gray-400' : 'text-white/60'
+              isDarkMode ? 'text-gray-400' : 'text-gray-400'
             }`} />
             <Input
               type="text"
@@ -99,7 +104,7 @@ export function Navigation({
               className={`pl-9 w-64 h-9 ${
                 isDarkMode
                   ? 'bg-gray-700 border-gray-600 text-white placeholder:text-gray-400'
-                  : 'bg-white/10 border-white/20 text-white placeholder:text-white/60'
+                  : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-500'
               }`}
             />
           </div>
@@ -120,11 +125,11 @@ export function Navigation({
               <Button
                 variant="outline"
                 size="sm"
-                className={
+                className={`gap-2 ${
                   isDarkMode
-                    ? 'gap-2 border-blue-500 text-blue-400 hover:bg-gray-700 bg-gray-800'
-                    : 'gap-2 border-white/30 text-white hover:bg-white/10 bg-transparent'
-                }
+                    ? 'border-blue-500 text-blue-400 hover:bg-gray-700 bg-gray-800'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50 bg-white'
+                }`}
               >
                 <Plus className="w-4 h-4" />
                 <ChevronDown className="w-3 h-3" />
@@ -152,7 +157,7 @@ export function Navigation({
               <Button
                 variant="ghost"
                 size="icon"
-                className={`rounded-full ${isDarkMode ? '' : 'text-white hover:bg-white/10'}`}
+                className={`rounded-full ${isDarkMode ? 'text-white hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'}`}
               >
                 <User className="w-4 h-4" />
               </Button>
@@ -184,7 +189,7 @@ export function Navigation({
           <Button
             variant="ghost"
             size="icon"
-            className={`rounded-full ${isDarkMode ? '' : 'text-white hover:bg-white/10'}`}
+            className={`rounded-full ${isDarkMode ? 'text-white hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'}`}
             onClick={onThemeToggle}
           >
             {isDarkMode ? (

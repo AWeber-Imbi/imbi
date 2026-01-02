@@ -23,7 +23,7 @@ export function DashboardPage() {
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className={`min-h-screen flex flex-col ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}>
         <Navigation
           isDarkMode={isDarkMode}
           onThemeToggle={handleThemeToggle}
@@ -31,7 +31,7 @@ export function DashboardPage() {
         <main className="pt-16 flex-1">
           <Dashboard isDarkMode={isDarkMode} />
         </main>
-        <Footer />
+        <Footer isDarkMode={isDarkMode} />
       </div>
     </div>
   )
