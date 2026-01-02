@@ -181,3 +181,41 @@ export interface ViewChangeConfig {
   view: string
   filter?: Record<string, unknown>
 }
+
+// Admin User Management Types (matching API schema)
+export interface Role {
+  name: string
+  slug: string
+  description?: string | null
+}
+
+export interface Group {
+  name: string
+  slug: string
+  description?: string | null
+  icon_url?: string | null
+  parent?: Group | null
+  roles: Role[]
+}
+
+export interface AdminUser {
+  email: string
+  display_name: string
+  is_active: boolean
+  is_admin: boolean
+  is_service_account: boolean
+  created_at: string
+  last_login?: string | null
+  avatar_url?: string | null
+  groups: Group[]
+  roles: Role[]
+}
+
+export interface AdminUserCreate {
+  email: string
+  display_name: string
+  password?: string | null
+  is_active?: boolean
+  is_admin?: boolean
+  is_service_account?: boolean
+}

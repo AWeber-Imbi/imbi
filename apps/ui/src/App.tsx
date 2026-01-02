@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { AdminPage } from './pages/AdminPage'
 import { LoginPage } from './pages/LoginPage'
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage'
 import { useAuth } from './hooks/useAuth'
@@ -33,6 +34,39 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, user } = useAuth()
+
+  useEffect(() => {
+    if (!isAuthenticated && !isLoading) {
+      const currentPath = window.location.pathname
+      if (currentPath !== '/login' && currentPath !== '/auth/callback') {
+        sessionStorage.setItem('returnTo', currentPath)
+      }
+    }
+  }, [isAuthenticated, isLoading])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-lg">Loading...</div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  // Check if user has admin privileges
+  const isAdmin = (user as any)?.is_admin === true
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return <>{children}</>
+}
+
 function App() {
   return (
     <Routes>
@@ -53,6 +87,14 @@ function App() {
           <ProtectedRoute>
             <ProjectsPage />
           </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <AdminProtectedRoute>
+            <AdminPage />
+          </AdminProtectedRoute>
         }
       />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -63,7 +63,7 @@ export function useAuth(): UseAuthReturn {
       }
       return true
     },
-    enabled: location.pathname !== '/login',
+    enabled: true,
     retry: false,
     staleTime: Infinity,
   })
@@ -96,13 +96,17 @@ export function useAuth(): UseAuthReturn {
       queryClient.clear()
       // Note: We intentionally keep the remembered email in localStorage
       // so users don't have to re-type it on next login
-      navigate('/login', { replace: true })
+
+      // Use window.location to ensure navigation happens even if React state is clearing
+      window.location.href = '/login'
     },
     onError: (error) => {
       console.error('[Auth] Logout failed:', error)
       clearTokens()
       queryClient.clear()
-      navigate('/login', { replace: true })
+
+      // Use window.location to ensure navigation happens even if React state is clearing
+      window.location.href = '/login'
     }
   })
 

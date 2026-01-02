@@ -11,7 +11,9 @@ import type {
   AuthProvider,
   TokenResponse,
   LoginRequest,
-  UserResponse
+  UserResponse,
+  AdminUser,
+  AdminUserCreate
 } from '@/types'
 
 // Status/Health
@@ -82,3 +84,31 @@ export const getProjectTypes = async (): Promise<ProjectType[]> => {
   const response = await apiClient.get<CollectionResponse<ProjectType>>('/project-types')
   return response.data
 }
+
+// Admin - User Management
+export const listAdminUsers = async (params?: {
+  is_active?: boolean
+  is_admin?: boolean
+}): Promise<AdminUser[]> => {
+  try {
+    const response = await apiClient.get<AdminUser[]>('/users/', params)
+    console.log('[API] listAdminUsers response:', response)
+    // Users endpoint returns array directly, not wrapped in { data: [] }
+    return Array.isArray(response) ? response : []
+  } catch (error) {
+    console.error('[API] listAdminUsers error:', error)
+    return []
+  }
+}
+
+export const getAdminUser = (email: string) =>
+  apiClient.get<AdminUser>(`/users/${encodeURIComponent(email)}`)
+
+export const createAdminUser = (user: AdminUserCreate) =>
+  apiClient.post<AdminUser>('/users/', user)
+
+export const updateAdminUser = (email: string, user: AdminUserCreate) =>
+  apiClient.put<AdminUser>(`/users/${encodeURIComponent(email)}`, user)
+
+export const deleteAdminUser = (email: string) =>
+  apiClient.delete<void>(`/users/${encodeURIComponent(email)}`)
