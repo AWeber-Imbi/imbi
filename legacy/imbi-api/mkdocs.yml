@@ -1,0 +1,80 @@
+site_name: Imbi Documentation
+site_description: DevOps Service Management Platform
+site_author: AWeber Communications
+site_url: https://imbi.readthedocs.io
+
+repo_name: AWeber-Imbi/imbi-api
+repo_url: https://github.com/AWeber-Imbi/imbi-api
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Configuration: configuration.md
+  - Architecture Decision Records:
+      - Overview: adr.md
+      - Record Architecture Decisions: doc/adr/0001-record-architecture-decisions.md
+      - Authentication and Authorization: doc/adr/0002-authentication-and-authorization-architecture.md
+      - Email Sending: doc/adr/0003-email-sending-architecture.md
+      - Phase 5 Authentication Enhancements: adr/0001-phase-5-authentication-enhancements.md
+
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/aweber/imbi-api
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/imbi/
