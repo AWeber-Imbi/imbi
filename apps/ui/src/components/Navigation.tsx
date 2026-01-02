@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Search, Settings, User, Rocket, FolderKanban, Activity, BarChart3, Sparkles, Plus, ChevronDown, UserCircle, LogOut, Moon, Sun, Shield } from 'lucide-react'
+import { Search, Settings, User, Rocket, FolderKanban, Activity, BarChart3, Sparkles, Plus, ChevronDown, UserCircle, LogOut, Moon, Sun } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -43,7 +43,7 @@ export function Navigation({
 
   // Add Admin nav item if user is admin
   if (isAdmin) {
-    navItems.push({ id: 'admin', label: 'Admin', icon: Shield, path: '/admin' })
+    navItems.push({ id: 'admin', label: 'Admin', icon: Settings, path: '/admin' })
   }
 
   // Determine active view from route if not explicitly provided
