@@ -75,30 +75,6 @@ def run_server(
 
 
 @main.command()
-def bootstrap_auth() -> None:
-    """
-    Bootstrap authentication system with default permissions and roles.
-
-    Seeds standard permissions, creates default roles (admin, developer,
-    readonly), and establishes their permission relationships. This
-    operation is idempotent and can be run multiple times safely.
-    """
-    typer.echo('Bootstrapping authentication system...')
-
-    result = asyncio.run(seed.bootstrap_auth_system())
-
-    typer.echo(
-        f'✓ Created {result["permissions"]} permissions '
-        f'and {result["roles"]} roles'
-    )
-
-    if result['permissions'] == 0 and result['roles'] == 0:
-        typer.echo('  (System already seeded, no new entities created)')
-    else:
-        typer.echo('  Authentication system bootstrap complete!')
-
-
-@main.command()
 def setup() -> None:
     """
     Initialize Imbi instance with authentication system and admin user.
