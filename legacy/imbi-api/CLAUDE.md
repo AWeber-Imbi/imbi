@@ -403,14 +403,13 @@ mock_session.__aexit__.return_value = None
 ## Git Workflow
 
 **Branching strategy**:
-- Main development branch: `v2` (for v2 alpha development)
-- Feature branches: `feature/v2-<feature-name>` (branch off from `v2`)
-- Production branch: `main` (for stable releases)
+- Main development branch: `main`
+- Feature branches: `feature/<feature-name>` (branch off from `main`)
 
 **Creating pull requests**:
-- **IMPORTANT**: All PRs for v2 development must target the `v2` branch, not `main`
-- Create feature branches from `v2`
-- Use descriptive branch names: `feature/v2-blueprints`, `feature/v2-api-endpoints`, etc.
+- All PRs should target the `main` branch
+- Create feature branches from `main`
+- Use descriptive branch names: `feature/blueprints`, `feature/api-endpoints`, etc.
 - PR titles should be clear and concise
 - Include comprehensive PR descriptions with:
   - Summary of changes
@@ -420,18 +419,18 @@ mock_session.__aexit__.return_value = None
 
 **Example workflow**:
 ```bash
-# Create feature branch from v2
-git checkout v2
-git pull origin v2
-git checkout -b feature/v2-new-feature
+# Create feature branch from main
+git checkout main
+git pull origin main
+git checkout -b feature/new-feature
 
 # Make changes, commit, and push
 git add .
 git commit -m "Add new feature"
-git push -u origin feature/v2-new-feature
+git push -u origin feature/new-feature
 
-# Create PR targeting v2
-gh pr create --base v2 --title "Add new feature" --body "..."
+# Create PR targeting main
+gh pr create --base main --title "Add new feature" --body "..."
 ```
 
 ## Important Notes
