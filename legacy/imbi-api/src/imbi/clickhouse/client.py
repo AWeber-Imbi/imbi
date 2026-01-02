@@ -66,19 +66,26 @@ class Clickhouse:
         return cls._instance
 
     async def initialize(self) -> bool:
-        """Create a new async client and test the connection.
-
-        Also loads and executes enabled queries from schemata.toml.
-        """
+        """Create a new async client and test the connection."""
         LOGGER.debug('Starting Clickhouse')
         async with self._lock:
             if self._clickhouse is None:
                 self._clickhouse = await self._connect()
 
-        if self._clickhouse is not None:
-            await self._execute_schemata_queries()
-
         return self._clickhouse is not None
+
+    async def setup_schema(self) -> None:
+        """Execute DDL queries from schemata.toml to set up database schema.
+
+        This should be called explicitly during initial setup, not on every
+        startup. Loads and executes enabled queries from schemata.toml.
+        """
+        if not self._clickhouse:
+            await self.initialize()
+        if not self._clickhouse:
+            raise RuntimeError('Failed to initialize ClickHouse client')
+
+        await self._execute_schemata_queries()
 
     async def aclose(self) -> None:
         """Close any open connections to Clickhouse."""

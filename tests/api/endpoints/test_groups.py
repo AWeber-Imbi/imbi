@@ -21,7 +21,6 @@ class GroupEndpointsTestCase(unittest.TestCase):
 
         # Create an admin user for authentication
         self.admin_user = models.User(
-            username='admin',
             email='admin@example.com',
             display_name='Admin User',
             password_hash='$argon2id$hashed',
@@ -154,7 +153,6 @@ class GroupEndpointsTestCase(unittest.TestCase):
                 'g': {'name': 'Engineering', 'slug': 'engineering'},
                 'members': [
                     {
-                        'username': 'user1',
                         'email': 'user1@example.com',
                         'display_name': 'User 1',
                         'is_active': True,
@@ -163,7 +161,6 @@ class GroupEndpointsTestCase(unittest.TestCase):
                         'created_at': datetime.datetime.now(datetime.UTC),
                     },
                     {
-                        'username': 'user2',
                         'email': 'user2@example.com',
                         'display_name': 'User 2',
                         'is_active': True,

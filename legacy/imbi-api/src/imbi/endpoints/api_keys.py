@@ -156,7 +156,7 @@ async def create_api_key(
     LOGGER.info(
         'API key %s created for user %s (expires: %s)',
         key_id,
-        auth.user.username,
+        auth.user.email,
         expires_at or 'never',
     )
 
@@ -189,10 +189,10 @@ async def list_api_keys(
 
     """
     query = """
-    MATCH (u:User {username: $username})<-[:OWNED_BY]-(k:APIKey)
+    MATCH (u:User {email: $email})<-[:OWNED_BY]-(k:APIKey)
     RETURN k ORDER BY k.created_at DESC
     """
-    async with neo4j.run(query, username=auth.user.username) as result:
+    async with neo4j.run(query, email=auth.user.email) as result:
         records = await result.data()
 
     api_keys = [
@@ -211,7 +211,7 @@ async def list_api_keys(
     ]
 
     LOGGER.debug(
-        'Listed %d API keys for user %s', len(api_keys), auth.user.username
+        'Listed %d API keys for user %s', len(api_keys), auth.user.email
     )
 
     return api_keys
@@ -244,7 +244,7 @@ async def revoke_api_key(
     RETURN k
     """
     async with neo4j.run(
-        query, username=auth.user.username, key_id=key_id
+        query, username=auth.user.email, key_id=key_id
     ) as result:
         records = await result.data()
 
@@ -261,7 +261,7 @@ async def revoke_api_key(
     async with neo4j.run(query, key_id=key_id) as result:
         await result.consume()
 
-    LOGGER.info('API key %s revoked by user %s', key_id, auth.user.username)
+    LOGGER.info('API key %s revoked by user %s', key_id, auth.user.email)
 
 
 @api_keys_router.post('/{key_id}/rotate', response_model=APIKeyCreateResponse)
@@ -296,7 +296,7 @@ async def rotate_api_key(
     RETURN k
     """
     async with neo4j.run(
-        query, username=auth.user.username, key_id=key_id
+        query, username=auth.user.email, key_id=key_id
     ) as result:
         records = await result.data()
 
@@ -327,7 +327,7 @@ async def rotate_api_key(
     ) as result:
         await result.consume()
 
-    LOGGER.info('API key %s rotated by user %s', key_id, auth.user.username)
+    LOGGER.info('API key %s rotated by user %s', key_id, auth.user.email)
 
     return APIKeyCreateResponse(
         key_id=key_id,

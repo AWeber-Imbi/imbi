@@ -65,8 +65,8 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_create_client.assert_called_once()
         self.assertIsNotNone(ch._clickhouse)
 
-    async def test_initialize_with_schemata_queries(self) -> None:
-        """Test initialization executes enabled schemata queries."""
+    async def test_setup_schema_executes_enabled_queries(self) -> None:
+        """Test setup_schema executes enabled schemata queries."""
         ch = client.Clickhouse.get_instance()
 
         mock_queries = [
@@ -85,7 +85,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
             ch, '_load_schemata_queries', return_value=mock_queries
         ):
             with mock.patch.object(ch, 'query', return_value=[]) as mock_query:
-                await ch.initialize()
+                await ch.setup_schema()
 
                 # Only enabled queries should be executed
                 self.assertEqual(mock_query.call_count, 2)

@@ -145,7 +145,6 @@ class User(pydantic.BaseModel):
 
     model_config = pydantic.ConfigDict(extra='ignore')
 
-    username: str
     email: pydantic.EmailStr
     display_name: str
     password_hash: str | None = None
@@ -410,7 +409,6 @@ class APIKey(pydantic.BaseModel):
 class UserCreate(pydantic.BaseModel):
     """Request model for creating users."""
 
-    username: str
     email: pydantic.EmailStr
     display_name: str
     password: str | None = None
@@ -418,34 +416,20 @@ class UserCreate(pydantic.BaseModel):
     is_admin: bool = False
     is_service_account: bool = False
 
-    @pydantic.field_validator('username')
-    @classmethod
-    def validate_username(cls, value: str) -> str:
-        """Validate username contains only alphanumeric, dash, underscore."""
-        if not value:
-            raise ValueError('Username cannot be empty')
-        if not all(c.isalnum() or c in '-_' for c in value):
-            raise ValueError(
-                'Username must contain only alphanumeric '
-                'characters, dashes, and underscores'
-            )
-        return value.lower()
-
 
 class UserResponse(pydantic.BaseModel):
     """Response model for users (excludes password_hash)."""
 
     model_config = pydantic.ConfigDict(extra='ignore')
 
-    username: str
     email: pydantic.EmailStr
     display_name: str
     is_active: bool
     is_admin: bool
     is_service_account: bool
     created_at: datetime.datetime
-    last_login: datetime.datetime | None
-    avatar_url: pydantic.HttpUrl | None
+    last_login: datetime.datetime | None = None
+    avatar_url: pydantic.HttpUrl | None = None
 
     groups: list[Group] = []
     roles: list[Role] = []

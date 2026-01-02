@@ -21,7 +21,6 @@ class UserEndpointsTestCase(unittest.TestCase):
 
         # Create an admin user for authentication
         self.admin_user = models.User(
-            username='admin',
             email='admin@example.com',
             display_name='Admin User',
             password_hash='$argon2id$hashed',
@@ -54,7 +53,6 @@ class UserEndpointsTestCase(unittest.TestCase):
         self.client = testclient.TestClient(self.test_app)
 
         self.test_user = models.User(
-            username='testuser',
             email='test@example.com',
             display_name='Test User',
             password_hash='$argon2id$hashed',
@@ -76,7 +74,6 @@ class UserEndpointsTestCase(unittest.TestCase):
             response = self.client.post(
                 '/users/',
                 json={
-                    'username': 'newuser',
                     'email': 'new@example.com',
                     'display_name': 'New User',
                     'password': 'SecurePass123!@#',
@@ -88,7 +85,6 @@ class UserEndpointsTestCase(unittest.TestCase):
 
             self.assertEqual(response.status_code, 201)
             data = response.json()
-            self.assertEqual(data['username'], 'newuser')
             self.assertEqual(data['email'], 'new@example.com')
             self.assertNotIn('password_hash', data)
             mock_hash.assert_called_once_with('SecurePass123!@#')
@@ -101,7 +97,6 @@ class UserEndpointsTestCase(unittest.TestCase):
             response = self.client.post(
                 '/users/',
                 json={
-                    'username': 'oauthuser',
                     'email': 'oauth@example.com',
                     'display_name': 'OAuth User',
                     'password': None,
@@ -109,8 +104,6 @@ class UserEndpointsTestCase(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 201)
-            data = response.json()
-            self.assertEqual(data['username'], 'oauthuser')
 
     def test_create_user_duplicate_username(self) -> None:
         """Test creating user with duplicate username."""
@@ -120,7 +113,6 @@ class UserEndpointsTestCase(unittest.TestCase):
             response = self.client.post(
                 '/users/',
                 json={
-                    'username': 'duplicate',
                     'email': 'dup@example.com',
                     'display_name': 'Duplicate User',
                 },
@@ -133,7 +125,6 @@ class UserEndpointsTestCase(unittest.TestCase):
         """Test listing all users."""
         mock_users = [
             models.User(
-                username=f'user{i}',
                 email=f'user{i}@example.com',
                 display_name=f'User {i}',
                 is_active=True,
@@ -160,7 +151,6 @@ class UserEndpointsTestCase(unittest.TestCase):
         """Test listing users filtered by active status."""
         mock_users = [
             models.User(
-                username='activeuser',
                 email='active@example.com',
                 display_name='Active User',
                 is_active=True,
@@ -186,7 +176,6 @@ class UserEndpointsTestCase(unittest.TestCase):
         """Test listing users filtered by admin status."""
         mock_users = [
             models.User(
-                username='adminuser',
                 email='admin2@example.com',
                 display_name='Admin User 2',
                 is_active=True,
@@ -211,7 +200,6 @@ class UserEndpointsTestCase(unittest.TestCase):
     def test_get_user_success(self) -> None:
         """Test retrieving a single user with relationships."""
         mock_user = models.User(
-            username='testuser',
             email='test@example.com',
             display_name='Test User',
             is_active=True,
@@ -228,11 +216,10 @@ class UserEndpointsTestCase(unittest.TestCase):
             ) as mock_fetch,
             mock.patch('imbi.neo4j.refresh_relationship') as mock_refresh,
         ):
-            response = self.client.get('/users/testuser')
+            response = self.client.get('/users/test@example.com')
 
             self.assertEqual(response.status_code, 200)
             data = response.json()
-            self.assertEqual(data['username'], 'testuser')
             self.assertNotIn('password_hash', data)
             mock_fetch.assert_called_once()
             self.assertEqual(mock_refresh.call_count, 2)
@@ -240,7 +227,7 @@ class UserEndpointsTestCase(unittest.TestCase):
     def test_get_user_not_found(self) -> None:
         """Test retrieving non-existent user."""
         with mock.patch('imbi.neo4j.fetch_node', return_value=None):
-            response = self.client.get('/users/nonexistent')
+            response = self.client.get('/users/nonexistent@example.com')
 
             self.assertEqual(response.status_code, 404)
             self.assertIn('not found', response.json()['detail'])
@@ -248,8 +235,7 @@ class UserEndpointsTestCase(unittest.TestCase):
     def test_update_user_success(self) -> None:
         """Test updating an existing user."""
         existing_user = models.User(
-            username='testuser',
-            email='old@example.com',
+            email='test@example.com',
             display_name='Old Name',
             password_hash='$argon2id$oldhash',
             is_active=True,
@@ -263,10 +249,9 @@ class UserEndpointsTestCase(unittest.TestCase):
             mock.patch('imbi.neo4j.upsert') as mock_upsert,
         ):
             response = self.client.put(
-                '/users/testuser',
+                '/users/test@example.com',
                 json={
-                    'username': 'testuser',
-                    'email': 'new@example.com',
+                    'email': 'test@example.com',
                     'display_name': 'New Name',
                     'is_active': True,
                     'is_admin': False,
@@ -276,17 +261,16 @@ class UserEndpointsTestCase(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             data = response.json()
-            self.assertEqual(data['email'], 'new@example.com')
+            self.assertEqual(data['email'], 'test@example.com')
             self.assertEqual(data['display_name'], 'New Name')
             mock_upsert.assert_called_once()
 
-    def test_update_user_username_mismatch(self) -> None:
-        """Test updating user with mismatched usernames."""
+    def test_update_user_email_mismatch(self) -> None:
+        """Test updating user with mismatched email addresses."""
         response = self.client.put(
-            '/users/testuser',
+            '/users/test@example.com',
             json={
-                'username': 'different',
-                'email': 'test@example.com',
+                'email': 'different@example.com',
                 'display_name': 'Test',
             },
         )
@@ -300,7 +284,6 @@ class UserEndpointsTestCase(unittest.TestCase):
         self.auth_context.user.is_admin = False
 
         existing_user = models.User(
-            username='testuser',
             email='test@example.com',
             display_name='Test',
             is_active=True,
@@ -311,9 +294,8 @@ class UserEndpointsTestCase(unittest.TestCase):
 
         with mock.patch('imbi.neo4j.fetch_node', return_value=existing_user):
             response = self.client.put(
-                '/users/testuser',
+                '/users/test@example.com',
                 json={
-                    'username': 'testuser',
                     'email': 'test@example.com',
                     'display_name': 'Test',
                     'is_admin': True,  # Trying to elevate
@@ -329,10 +311,9 @@ class UserEndpointsTestCase(unittest.TestCase):
     def test_update_user_cannot_deactivate_self(self) -> None:
         """Test user cannot deactivate their own account."""
         # Set auth user to be the same as the user being updated
-        self.auth_context.user.username = 'testuser'
+        self.auth_context.user.email = 'test@example.com'
 
         existing_user = models.User(
-            username='testuser',
             email='test@example.com',
             display_name='Test',
             is_active=True,
@@ -343,9 +324,8 @@ class UserEndpointsTestCase(unittest.TestCase):
 
         with mock.patch('imbi.neo4j.fetch_node', return_value=existing_user):
             response = self.client.put(
-                '/users/testuser',
+                '/users/test@example.com',
                 json={
-                    'username': 'testuser',
                     'email': 'test@example.com',
                     'display_name': 'Test',
                     'is_active': False,  # Trying to deactivate
@@ -356,16 +336,15 @@ class UserEndpointsTestCase(unittest.TestCase):
             self.assertIn('deactivate', response.json()['detail'])
 
         # Restore admin username
-        self.auth_context.user.username = 'admin'
+        self.auth_context.user.email = 'admin@example.com'
 
     def test_update_user_not_found(self) -> None:
         """Test updating non-existent user."""
         with mock.patch('imbi.neo4j.fetch_node', return_value=None):
             response = self.client.put(
-                '/users/nonexistent',
+                '/users/nonexistent@example.com',
                 json={
-                    'username': 'nonexistent',
-                    'email': 'test@example.com',
+                    'email': 'nonexistent@example.com',
                     'display_name': 'Test',
                 },
             )
@@ -375,38 +354,37 @@ class UserEndpointsTestCase(unittest.TestCase):
     def test_delete_user_success(self) -> None:
         """Test deleting a user."""
         with mock.patch('imbi.neo4j.delete_node', return_value=True):
-            response = self.client.delete('/users/testuser')
+            response = self.client.delete('/users/test@example.com')
 
             self.assertEqual(response.status_code, 204)
 
     def test_delete_user_cannot_delete_self(self) -> None:
         """Test user cannot delete their own account."""
         # Set auth user to be the same as the user being deleted
-        self.auth_context.user.username = 'testuser'
+        self.auth_context.user.email = 'test@example.com'
 
-        response = self.client.delete('/users/testuser')
+        response = self.client.delete('/users/test@example.com')
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('delete', response.json()['detail'])
 
         # Restore admin username
-        self.auth_context.user.username = 'admin'
+        self.auth_context.user.email = 'admin@example.com'
 
     def test_delete_user_not_found(self) -> None:
         """Test deleting non-existent user."""
         with mock.patch('imbi.neo4j.delete_node', return_value=False):
-            response = self.client.delete('/users/nonexistent')
+            response = self.client.delete('/users/nonexistent@example.com')
 
             self.assertEqual(response.status_code, 404)
 
     def test_change_password_self_success(self) -> None:
         """Test user changing their own password."""
         # Set auth user to be the same as target user
-        self.auth_context.user.username = 'testuser'
+        self.auth_context.user.email = 'test@example.com'
         self.auth_context.user.is_admin = False
 
         mock_user = models.User(
-            username='testuser',
             email='test@example.com',
             display_name='Test',
             password_hash='$argon2id$hashed',
@@ -425,7 +403,7 @@ class UserEndpointsTestCase(unittest.TestCase):
             mock_hash.return_value = '$argon2id$newhash'
 
             response = self.client.post(
-                '/users/testuser/password',
+                '/users/test@example.com/password',
                 json={
                     'current_password': 'OldPass123!@#',
                     'new_password': 'NewSecure123!@#',
@@ -437,13 +415,12 @@ class UserEndpointsTestCase(unittest.TestCase):
             mock_upsert.assert_called_once()
 
         # Restore admin
-        self.auth_context.user.username = 'admin'
+        self.auth_context.user.email = 'admin@example.com'
         self.auth_context.user.is_admin = True
 
     def test_change_password_admin_force_change(self) -> None:
         """Test admin changing another user's password without current."""
         mock_user = models.User(
-            username='otheruser',
             email='other@example.com',
             display_name='Other',
             password_hash='$argon2id$hashed',
@@ -473,11 +450,10 @@ class UserEndpointsTestCase(unittest.TestCase):
     def test_change_password_wrong_current(self) -> None:
         """Test password change with incorrect current password."""
         # Set auth user to be target user
-        self.auth_context.user.username = 'testuser'
+        self.auth_context.user.email = 'test@example.com'
         self.auth_context.user.is_admin = False
 
         mock_user = models.User(
-            username='testuser',
             email='test@example.com',
             display_name='Test',
             password_hash='$argon2id$hashed',
@@ -492,7 +468,7 @@ class UserEndpointsTestCase(unittest.TestCase):
             mock.patch('imbi.auth.core.verify_password', return_value=False),
         ):
             response = self.client.post(
-                '/users/testuser/password',
+                '/users/test@example.com/password',
                 json={
                     'current_password': 'WrongPass123!@#',
                     'new_password': 'NewSecure123!@#',
@@ -503,7 +479,7 @@ class UserEndpointsTestCase(unittest.TestCase):
             self.assertIn('incorrect', response.json()['detail'].lower())
 
         # Restore admin
-        self.auth_context.user.username = 'admin'
+        self.auth_context.user.email = 'admin@example.com'
         self.auth_context.user.is_admin = True
 
     def test_change_password_not_self_or_admin(self) -> None:

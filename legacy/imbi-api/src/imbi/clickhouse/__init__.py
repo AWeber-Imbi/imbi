@@ -7,7 +7,14 @@ from clickhouse_connect.driver import summary
 from . import client
 from .client import SchemataQuery
 
-__all__ = ['SchemataQuery', 'aclose', 'initialize', 'insert', 'query']
+__all__ = [
+    'SchemataQuery',
+    'aclose',
+    'initialize',
+    'insert',
+    'query',
+    'setup_schema',
+]
 
 
 def _dump(model: pydantic.BaseModel) -> dict[str, typing.Any]:
@@ -90,6 +97,11 @@ def _process_nested_dicts(
 async def initialize() -> bool:
     """Create a new async client and test the connection."""
     return await client.Clickhouse.get_instance().initialize()
+
+
+async def setup_schema() -> None:
+    """Execute DDL queries from schemata.toml to set up database schema."""
+    await client.Clickhouse.get_instance().setup_schema()
 
 
 async def aclose() -> None:

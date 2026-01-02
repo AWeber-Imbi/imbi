@@ -22,7 +22,6 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
         # Create test user
         self.test_user = models.User(
-            username='testuser',
             email='test@example.com',
             display_name='Test User',
             is_active=True,
@@ -104,7 +103,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
     def test_get_mfa_status_not_setup(self) -> None:
         """Test MFA status when not setup."""
         access_token, _ = core.create_access_token(
-            self.test_user.username, self.auth_settings
+            self.test_user.email, self.auth_settings
         )
 
         with (
@@ -128,7 +127,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
     def test_get_mfa_status_enabled(self) -> None:
         """Test MFA status when enabled."""
         access_token, _ = core.create_access_token(
-            self.test_user.username, self.auth_settings
+            self.test_user.email, self.auth_settings
         )
 
         totp_data = {
@@ -160,7 +159,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
     def test_get_mfa_status_not_enabled(self) -> None:
         """Test MFA status when setup but not enabled."""
         access_token, _ = core.create_access_token(
-            self.test_user.username, self.auth_settings
+            self.test_user.email, self.auth_settings
         )
 
         totp_data = {
@@ -192,7 +191,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
     def test_setup_mfa_success(self) -> None:
         """Test successful MFA setup."""
         access_token, _ = core.create_access_token(
-            self.test_user.username, self.auth_settings
+            self.test_user.email, self.auth_settings
         )
 
         # Mock QR code generation
@@ -256,7 +255,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
     def test_verify_mfa_valid_code(self) -> None:
         """Test MFA verification with valid code."""
         access_token, _ = core.create_access_token(
-            self.test_user.username, self.auth_settings
+            self.test_user.email, self.auth_settings
         )
 
         # Generate valid TOTP code
@@ -293,7 +292,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
     def test_verify_mfa_invalid_code(self) -> None:
         """Test MFA verification with invalid code."""
         access_token, _ = core.create_access_token(
-            self.test_user.username, self.auth_settings
+            self.test_user.email, self.auth_settings
         )
 
         totp_data = {
@@ -324,7 +323,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
     def test_verify_mfa_not_setup(self) -> None:
         """Test MFA verification when not setup."""
         access_token, _ = core.create_access_token(
-            self.test_user.username, self.auth_settings
+            self.test_user.email, self.auth_settings
         )
 
         with (
@@ -349,7 +348,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
     def test_disable_mfa_success(self) -> None:
         """Test MFA disable with valid password."""
         access_token, _ = core.create_access_token(
-            self.test_user.username, self.auth_settings
+            self.test_user.email, self.auth_settings
         )
 
         with (
@@ -373,7 +372,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
     def test_disable_mfa_invalid_password(self) -> None:
         """Test MFA disable with invalid password."""
         access_token, _ = core.create_access_token(
-            self.test_user.username, self.auth_settings
+            self.test_user.email, self.auth_settings
         )
 
         with (
@@ -398,7 +397,6 @@ class MFAEndpointsTestCase(unittest.TestCase):
         """Test MFA disable when user has no password."""
         # User without password (OAuth-only)
         oauth_user = models.User(
-            username='oauthuser',
             email='oauth@example.com',
             display_name='OAuth User',
             is_active=True,
@@ -407,7 +405,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         )
 
         access_token, _ = core.create_access_token(
-            oauth_user.username, self.auth_settings
+            oauth_user.email, self.auth_settings
         )
 
         def mock_run_oauth(query: str, **params):
@@ -450,4 +448,488 @@ class MFAEndpointsTestCase(unittest.TestCase):
             self.assertEqual(
                 response.json()['detail'],
                 'MFA code required to disable MFA (OAuth-only account)',
+            )
+
+    def test_verify_mfa_decryption_failure(self) -> None:
+        """Test MFA verification when decryption fails."""
+        access_token, _ = core.create_access_token(
+            self.test_user.email, self.auth_settings
+        )
+
+        totp_data = {
+            'secret': 'encrypted-secret-here',
+            'enabled': False,
+            'backup_codes': [],
+            'created_at': datetime.datetime.now(datetime.UTC),
+        }
+
+        # Mock encryptor that fails to decrypt
+        mock_encryptor = mock.Mock()
+        mock_encryptor.decrypt = mock.Mock(
+            side_effect=ValueError('Decryption failed')
+        )
+
+        with (
+            mock.patch('imbi.settings.get_auth_settings') as mock_settings,
+            mock.patch(
+                'imbi.neo4j.run', side_effect=self._create_mock_run(totp_data)
+            ),
+            mock.patch(
+                'imbi.auth.encryption.TokenEncryption.get_instance',
+                return_value=mock_encryptor,
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.post(
+                '/mfa/verify',
+                headers={'Authorization': f'Bearer {access_token}'},
+                json={'code': '123456'},
+            )
+
+            self.assertEqual(response.status_code, 500)
+            self.assertIn(
+                'Failed to decrypt MFA secret', response.json()['detail']
+            )
+
+    def test_verify_mfa_decryption_returns_none(self) -> None:
+        """Test MFA verification when decryption returns None."""
+        access_token, _ = core.create_access_token(
+            self.test_user.email, self.auth_settings
+        )
+
+        totp_data = {
+            'secret': 'encrypted-secret-here',
+            'enabled': False,
+            'backup_codes': [],
+            'created_at': datetime.datetime.now(datetime.UTC),
+        }
+
+        # Mock encryptor that returns None
+        mock_encryptor = mock.Mock()
+        mock_encryptor.decrypt = mock.Mock(return_value=None)
+
+        with (
+            mock.patch('imbi.settings.get_auth_settings') as mock_settings,
+            mock.patch(
+                'imbi.neo4j.run', side_effect=self._create_mock_run(totp_data)
+            ),
+            mock.patch(
+                'imbi.auth.encryption.TokenEncryption.get_instance',
+                return_value=mock_encryptor,
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.post(
+                '/mfa/verify',
+                headers={'Authorization': f'Bearer {access_token}'},
+                json={'code': '123456'},
+            )
+
+            self.assertEqual(response.status_code, 500)
+            self.assertIn(
+                'Failed to decrypt MFA secret', response.json()['detail']
+            )
+
+    def test_verify_mfa_with_backup_code(self) -> None:
+        """Test MFA verification with backup code."""
+        access_token, _ = core.create_access_token(
+            self.test_user.email, self.auth_settings
+        )
+
+        secret = 'JBSWY3DPEHPK3PXP'
+        backup_code_plain = 'backup12'
+        backup_code_hash = core.hash_password(backup_code_plain)
+
+        totp_data = {
+            'secret': secret,
+            'enabled': False,
+            'backup_codes': [backup_code_hash, 'other_hash'],
+            'created_at': datetime.datetime.now(datetime.UTC),
+        }
+
+        with (
+            mock.patch('imbi.settings.get_auth_settings') as mock_settings,
+            mock.patch(
+                'imbi.neo4j.run',
+                side_effect=self._create_mock_run(
+                    totp_data, include_consume=True
+                ),
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.post(
+                '/mfa/verify',
+                headers={'Authorization': f'Bearer {access_token}'},
+                json={'code': backup_code_plain},
+            )
+
+            self.assertEqual(response.status_code, 204)
+
+    def test_disable_mfa_password_required(self) -> None:
+        """Test MFA disable requires password for password-based users."""
+        access_token, _ = core.create_access_token(
+            self.test_user.email, self.auth_settings
+        )
+
+        with (
+            mock.patch('imbi.settings.get_auth_settings') as mock_settings,
+            mock.patch(
+                'imbi.neo4j.run', side_effect=self._create_mock_run(None)
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            # No password provided
+            response = self.client.request(
+                'DELETE',
+                '/mfa/disable',
+                headers={'Authorization': f'Bearer {access_token}'},
+                json={},
+            )
+
+            self.assertEqual(response.status_code, 401)
+            self.assertEqual(
+                response.json()['detail'], 'Password required to disable MFA'
+            )
+
+    def test_disable_mfa_oauth_user_with_valid_mfa_code(self) -> None:
+        """Test OAuth-only user can disable MFA with valid MFA code."""
+        # User without password (OAuth-only)
+        oauth_user = models.User(
+            email='oauth@example.com',
+            display_name='OAuth User',
+            is_active=True,
+            password_hash=None,  # No password
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        access_token, _ = core.create_access_token(
+            oauth_user.email, self.auth_settings
+        )
+
+        # Generate valid TOTP code
+        secret = 'JBSWY3DPEHPK3PXP'
+        totp = pyotp.TOTP(secret)
+        valid_code = totp.now()
+
+        totp_data = {
+            'secret': secret,
+            'enabled': True,
+            'backup_codes': [],
+            'created_at': datetime.datetime.now(datetime.UTC),
+        }
+
+        def mock_run_oauth_with_mfa(query: str, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+            mock_result.consume = mock.AsyncMock()
+
+            if 'TOTPSecret' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'t': totp_data}]
+                )
+            elif 'TokenMetadata' in query and 'revoked' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'revoked': False}]
+                )
+            elif 'User' in query and 'username' in query:
+                user_dict = oauth_user.model_dump(mode='json')
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'u': user_dict}]
+                )
+            elif 'Permission' in query or 'GRANTS' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'permissions': []}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch('imbi.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.neo4j.run', side_effect=mock_run_oauth_with_mfa),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.request(
+                'DELETE',
+                '/mfa/disable',
+                headers={'Authorization': f'Bearer {access_token}'},
+                json={'mfa_code': valid_code},
+            )
+
+            self.assertEqual(response.status_code, 204)
+
+    def test_disable_mfa_oauth_user_with_backup_code(self) -> None:
+        """Test OAuth-only user can disable MFA with backup code."""
+        # User without password (OAuth-only)
+        oauth_user = models.User(
+            email='oauth@example.com',
+            display_name='OAuth User',
+            is_active=True,
+            password_hash=None,  # No password
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        access_token, _ = core.create_access_token(
+            oauth_user.email, self.auth_settings
+        )
+
+        secret = 'JBSWY3DPEHPK3PXP'
+        backup_code_plain = 'backup99'
+        backup_code_hash = core.hash_password(backup_code_plain)
+
+        totp_data = {
+            'secret': secret,
+            'enabled': True,
+            'backup_codes': [backup_code_hash],
+            'created_at': datetime.datetime.now(datetime.UTC),
+        }
+
+        def mock_run_oauth_with_mfa(query: str, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+            mock_result.consume = mock.AsyncMock()
+
+            if 'TOTPSecret' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'t': totp_data}]
+                )
+            elif 'TokenMetadata' in query and 'revoked' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'revoked': False}]
+                )
+            elif 'User' in query and 'username' in query:
+                user_dict = oauth_user.model_dump(mode='json')
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'u': user_dict}]
+                )
+            elif 'Permission' in query or 'GRANTS' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'permissions': []}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch('imbi.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.neo4j.run', side_effect=mock_run_oauth_with_mfa),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.request(
+                'DELETE',
+                '/mfa/disable',
+                headers={'Authorization': f'Bearer {access_token}'},
+                json={'mfa_code': backup_code_plain},
+            )
+
+            self.assertEqual(response.status_code, 204)
+
+    def test_disable_mfa_oauth_user_with_invalid_mfa_code(self) -> None:
+        """Test OAuth-only user cannot disable MFA with invalid code."""
+        # User without password (OAuth-only)
+        oauth_user = models.User(
+            email='oauth@example.com',
+            display_name='OAuth User',
+            is_active=True,
+            password_hash=None,  # No password
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        access_token, _ = core.create_access_token(
+            oauth_user.email, self.auth_settings
+        )
+
+        secret = 'JBSWY3DPEHPK3PXP'
+
+        totp_data = {
+            'secret': secret,
+            'enabled': True,
+            'backup_codes': [],
+            'created_at': datetime.datetime.now(datetime.UTC),
+        }
+
+        def mock_run_oauth_with_mfa(query: str, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+
+            if 'TOTPSecret' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'t': totp_data}]
+                )
+            elif 'TokenMetadata' in query and 'revoked' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'revoked': False}]
+                )
+            elif 'User' in query and 'username' in query:
+                user_dict = oauth_user.model_dump(mode='json')
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'u': user_dict}]
+                )
+            elif 'Permission' in query or 'GRANTS' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'permissions': []}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch('imbi.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.neo4j.run', side_effect=mock_run_oauth_with_mfa),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.request(
+                'DELETE',
+                '/mfa/disable',
+                headers={'Authorization': f'Bearer {access_token}'},
+                json={'mfa_code': '000000'},  # Invalid code
+            )
+
+            self.assertEqual(response.status_code, 401)
+            self.assertEqual(response.json()['detail'], 'Invalid MFA code')
+
+    def test_disable_mfa_oauth_user_mfa_not_enabled(self) -> None:
+        """Test OAuth-only user cannot disable MFA when not enabled."""
+        # User without password (OAuth-only)
+        oauth_user = models.User(
+            email='oauth@example.com',
+            display_name='OAuth User',
+            is_active=True,
+            password_hash=None,  # No password
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        access_token, _ = core.create_access_token(
+            oauth_user.email, self.auth_settings
+        )
+
+        def mock_run_oauth_no_mfa(query: str, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+
+            if 'TOTPSecret' in query:
+                mock_result.data = mock.AsyncMock(return_value=[])
+            elif 'TokenMetadata' in query and 'revoked' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'revoked': False}]
+                )
+            elif 'User' in query and 'username' in query:
+                user_dict = oauth_user.model_dump(mode='json')
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'u': user_dict}]
+                )
+            elif 'Permission' in query or 'GRANTS' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'permissions': []}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch('imbi.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.neo4j.run', side_effect=mock_run_oauth_no_mfa),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.request(
+                'DELETE',
+                '/mfa/disable',
+                headers={'Authorization': f'Bearer {access_token}'},
+                json={'mfa_code': '123456'},
+            )
+
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(response.json()['detail'], 'MFA not enabled')
+
+    def test_disable_mfa_oauth_user_decryption_failure(self) -> None:
+        """Test OAuth-only user MFA disable when decryption fails."""
+        # User without password (OAuth-only)
+        oauth_user = models.User(
+            email='oauth@example.com',
+            display_name='OAuth User',
+            is_active=True,
+            password_hash=None,  # No password
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        access_token, _ = core.create_access_token(
+            oauth_user.email, self.auth_settings
+        )
+
+        totp_data = {
+            'secret': 'encrypted-secret',
+            'enabled': True,
+            'backup_codes': [],
+            'created_at': datetime.datetime.now(datetime.UTC),
+        }
+
+        # Mock encryptor that fails to decrypt
+        mock_encryptor = mock.Mock()
+        mock_encryptor.decrypt = mock.Mock(
+            side_effect=TypeError('Decryption type error')
+        )
+
+        def mock_run_oauth_with_mfa(query: str, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+
+            if 'TOTPSecret' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'t': totp_data}]
+                )
+            elif 'TokenMetadata' in query and 'revoked' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'revoked': False}]
+                )
+            elif 'User' in query and 'username' in query:
+                user_dict = oauth_user.model_dump(mode='json')
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'u': user_dict}]
+                )
+            elif 'Permission' in query or 'GRANTS' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'permissions': []}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch('imbi.settings.get_auth_settings') as mock_settings,
+            mock.patch('imbi.neo4j.run', side_effect=mock_run_oauth_with_mfa),
+            mock.patch(
+                'imbi.auth.encryption.TokenEncryption.get_instance',
+                return_value=mock_encryptor,
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.request(
+                'DELETE',
+                '/mfa/disable',
+                headers={'Authorization': f'Bearer {access_token}'},
+                json={'mfa_code': '123456'},
+            )
+
+            self.assertEqual(response.status_code, 500)
+            self.assertIn(
+                'Failed to decrypt MFA secret', response.json()['detail']
             )

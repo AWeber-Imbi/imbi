@@ -15,8 +15,6 @@ Imbi is your centralized platform for managing services, projects, namespaces, a
   * Track service metadata and ownership
   * Collaborate with your team
 
-YOUR USERNAME: {{ username }}
-
 Log in to get started: {{ login_url }}
 
 If you have any questions or need assistance getting started, please don't hesitate to reach out to your administrator.

@@ -246,7 +246,7 @@ async def authenticate_api_key(
         await result.consume()
 
     # Load user permissions
-    all_permissions = await load_user_permissions(user.username)
+    all_permissions = await load_user_permissions(user.email)
 
     # Filter by API key scopes (empty scopes = all permissions)
     scopes = api_key_data.get('scopes', [])
@@ -342,7 +342,7 @@ def require_permission(
         if permission not in auth.permissions:
             LOGGER.warning(
                 'Permission denied: user=%s permission=%s',
-                auth.user.username,
+                auth.user.email,
                 permission,
             )
             raise fastapi.HTTPException(
@@ -463,14 +463,14 @@ def require_resource_access(
         # Convert snake_case to PascalCase for Neo4j labels
         label = ''.join(word.capitalize() for word in resource_type.split('_'))
         has_access = await check_resource_permission(
-            auth.user.username, label, slug, action
+            auth.user.email, label, slug, action
         )
         if has_access:
             return auth
 
         LOGGER.warning(
             'Resource access denied: user=%s resource=%s:%s action=%s',
-            auth.user.username,
+            auth.user.email,
             resource_type,
             slug,
             action,

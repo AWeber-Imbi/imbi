@@ -22,7 +22,6 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Create test user
         self.test_user = models.User(
-            username='testuser',
             email='test@example.com',
             display_name='Test User',
             is_active=True,
@@ -77,7 +76,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 self.full_key, self.auth_settings
             )
 
-            self.assertEqual(auth_context.user.username, 'testuser')
+            self.assertEqual(auth_context.user.email, 'test@example.com')
             self.assertEqual(auth_context.session_id, self.key_id)
             self.assertEqual(auth_context.auth_method, 'api_key')
             self.assertIn('read:projects', auth_context.permissions)
@@ -239,7 +238,6 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_authenticate_api_key_user_inactive(self) -> None:
         """Test authentication with inactive user."""
         inactive_user = models.User(
-            username='inactive',
             email='inactive@example.com',
             display_name='Inactive User',
             is_active=False,  # Inactive user
@@ -395,7 +393,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
             # Should succeed - key not expired
-            self.assertEqual(auth_context.user.username, 'testuser')
+            self.assertEqual(auth_context.user.email, 'test@example.com')
             self.assertEqual(auth_context.session_id, self.key_id)
 
 
@@ -409,7 +407,6 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
         )
 
         self.test_user = models.User(
-            username='testuser',
             email='test@example.com',
             display_name='Test User',
             is_active=True,
@@ -465,6 +462,6 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
 
             auth_context = await permissions.get_current_user(credentials)
 
-            self.assertEqual(auth_context.user.username, 'testuser')
+            self.assertEqual(auth_context.user.email, 'test@example.com')
             self.assertEqual(auth_context.session_id, self.key_id)
             self.assertEqual(auth_context.auth_method, 'api_key')

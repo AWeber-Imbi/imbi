@@ -128,6 +128,104 @@ class Neo4jSettingsTestCase(unittest.TestCase):
         self.assertEqual(str(neo4j.url), 'bolt://localhost:7687')
 
 
+class EmailSettingsTestCase(unittest.TestCase):
+    """Test cases for Email settings."""
+
+    def test_mailpit_detection_in_development(self) -> None:
+        """Test Mailpit port detection in development environment."""
+        import os
+
+        # Set environment variables for Mailpit detection
+        os.environ['IMBI_ENVIRONMENT'] = 'development'
+        os.environ['MAILPIT_SMTP_PORT'] = '1025'
+
+        try:
+            email = settings.Email(smtp_host='localhost', smtp_port=587)
+
+            # Should have detected Mailpit port
+            self.assertEqual(email.smtp_port, 1025)
+            self.assertFalse(email.smtp_use_tls)
+        finally:
+            # Clean up environment variables
+            os.environ.pop('IMBI_ENVIRONMENT', None)
+            os.environ.pop('MAILPIT_SMTP_PORT', None)
+
+    def test_mailpit_detection_with_explicit_tls(self) -> None:
+        """Test that explicit TLS setting is not overridden."""
+        import os
+
+        os.environ['IMBI_ENVIRONMENT'] = 'development'
+        os.environ['MAILPIT_SMTP_PORT'] = '1025'
+        os.environ['IMBI_EMAIL_SMTP_USE_TLS'] = 'true'
+
+        try:
+            email = settings.Email(
+                smtp_host='localhost', smtp_port=587, smtp_use_tls=True
+            )
+
+            # Port should be updated but TLS should remain
+            self.assertEqual(email.smtp_port, 1025)
+            self.assertTrue(email.smtp_use_tls)
+        finally:
+            os.environ.pop('IMBI_ENVIRONMENT', None)
+            os.environ.pop('MAILPIT_SMTP_PORT', None)
+            os.environ.pop('IMBI_EMAIL_SMTP_USE_TLS', None)
+
+    def test_no_mailpit_detection_in_production(self) -> None:
+        """Test that Mailpit detection is skipped in production."""
+        import os
+
+        os.environ['IMBI_ENVIRONMENT'] = 'production'
+        os.environ['MAILPIT_SMTP_PORT'] = '1025'
+
+        try:
+            email = settings.Email(
+                smtp_host='localhost', smtp_port=587, smtp_use_tls=True
+            )
+
+            # Should not have detected Mailpit in production
+            self.assertEqual(email.smtp_port, 587)
+            self.assertTrue(email.smtp_use_tls)
+        finally:
+            os.environ.pop('IMBI_ENVIRONMENT', None)
+            os.environ.pop('MAILPIT_SMTP_PORT', None)
+
+    def test_no_mailpit_detection_non_localhost(self) -> None:
+        """Test that Mailpit detection only applies to localhost."""
+        import os
+
+        os.environ['IMBI_ENVIRONMENT'] = 'development'
+        os.environ['MAILPIT_SMTP_PORT'] = '1025'
+
+        try:
+            email = settings.Email(
+                smtp_host='smtp.example.com', smtp_port=587, smtp_use_tls=True
+            )
+
+            # Should not detect Mailpit for non-localhost
+            self.assertEqual(email.smtp_port, 587)
+            self.assertTrue(email.smtp_use_tls)
+        finally:
+            os.environ.pop('IMBI_ENVIRONMENT', None)
+            os.environ.pop('MAILPIT_SMTP_PORT', None)
+
+    def test_no_mailpit_detection_different_port(self) -> None:
+        """Test that Mailpit detection only applies to default port 587."""
+        import os
+
+        os.environ['IMBI_ENVIRONMENT'] = 'development'
+        os.environ['MAILPIT_SMTP_PORT'] = '1025'
+
+        try:
+            email = settings.Email(smtp_host='localhost', smtp_port=2525)
+
+            # Should not detect Mailpit for non-default port
+            self.assertEqual(email.smtp_port, 2525)
+        finally:
+            os.environ.pop('IMBI_ENVIRONMENT', None)
+            os.environ.pop('MAILPIT_SMTP_PORT', None)
+
+
 class ServerConfigSettingsTestCase(unittest.TestCase):
     """Test cases for ServerConfig settings."""
 

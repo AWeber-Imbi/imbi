@@ -2,7 +2,6 @@
 
 import datetime
 import logging
-import secrets
 import typing
 from urllib import parse as urlparse
 
@@ -157,15 +156,15 @@ async def login(
     # Check if password needs rehashing
     if core.password_needs_rehash(user.password_hash):
         user.password_hash = core.hash_password(password)
-        await neo4j.upsert(user, {'username': user.username})
-        LOGGER.info('Rehashed password for user %s', user.username)
+        await neo4j.upsert(user, {'email': user.email})
+        LOGGER.info('Rehashed password for user %s', user.email)
 
     # Phase 5: Check if MFA is enabled
     totp_query = """
-    MATCH (u:User {username: $username})<-[:MFA_FOR]-(t:TOTPSecret)
+    MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
     RETURN t
     """
-    async with neo4j.run(totp_query, username=user.username) as result:
+    async with neo4j.run(totp_query, email=user.email) as result:
         totp_records = await result.data()
 
     if totp_records:
@@ -204,15 +203,13 @@ async def login(
             if totp.verify(mfa_code, valid_window=1):
                 # Update last used timestamp
                 update_query = """
-                MATCH (u:User {username: $username})<-[:MFA_FOR]-(t:TOTPSecret)
+                MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
                 SET t.last_used = datetime()
                 """
-                async with neo4j.run(
-                    update_query, username=user.username
-                ) as result:
+                async with neo4j.run(update_query, email=user.email) as result:
                     await result.consume()
 
-                LOGGER.info('MFA verified via TOTP for user %s', user.username)
+                LOGGER.info('MFA verified via TOTP for user %s', user.email)
             else:
                 # Try backup codes
                 backup_codes = totp_data.get('backup_codes', [])
@@ -223,13 +220,13 @@ async def login(
                         # Remove used backup code
                         backup_codes.pop(i)
                         update_query = """
-                        MATCH (u:User {username: $username})
+                        MATCH (u:User {email: $email})
                               <-[:MFA_FOR]-(t:TOTPSecret)
                         SET t.backup_codes = $backup_codes
                         """
                         async with neo4j.run(
                             update_query,
-                            username=user.username,
+                            email=user.email,
                             backup_codes=backup_codes,
                         ) as result:
                             await result.consume()
@@ -237,7 +234,7 @@ async def login(
                         valid_backup = True
                         LOGGER.info(
                             'MFA verified via backup code for user %s',
-                            user.username,
+                            user.email,
                         )
                         break
 
@@ -249,10 +246,10 @@ async def login(
     # Create tokens
     auth_settings = settings.get_auth_settings()
     access_token, access_jti = core.create_access_token(
-        user.username, auth_settings
+        user.email, auth_settings
     )
     refresh_token, refresh_jti = core.create_refresh_token(
-        user.username, auth_settings
+        user.email, auth_settings
     )
 
     # Store token metadata for access token
@@ -284,9 +281,9 @@ async def login(
 
     # Update last login timestamp
     user.last_login = now
-    await neo4j.upsert(user, {'username': user.username})
+    await neo4j.upsert(user, {'email': user.email})
 
-    LOGGER.info('User %s logged in successfully', user.username)
+    LOGGER.info('User %s logged in successfully', user.email)
 
     return auth_models.TokenResponse(
         access_token=access_token,
@@ -374,12 +371,12 @@ async def refresh_token(
 
     # Create new access token
     access_token, access_jti = core.create_access_token(
-        user.username, auth_settings
+        user.email, auth_settings
     )
 
     # Phase 5: Create NEW refresh token (token rotation)
     new_refresh_token, new_refresh_jti = core.create_refresh_token(
-        user.username, auth_settings
+        user.email, auth_settings
     )
 
     # Store new access token metadata
@@ -410,7 +407,7 @@ async def refresh_token(
     await neo4j.create_node(new_refresh_token_meta)
 
     LOGGER.info(
-        'Token refreshed for user %s (rotated refresh token)', user.username
+        'Token refreshed for user %s (rotated refresh token)', user.email
     )
 
     return auth_models.TokenResponse(
@@ -447,19 +444,19 @@ async def logout(
     if revoke_all_sessions:
         # Revoke all user tokens
         query = """
-        MATCH (u:User {username: $username})<-[:ISSUED_TO]-(t:TokenMetadata)
+        MATCH (u:User {email: $email})<-[:ISSUED_TO]-(t:TokenMetadata)
         WHERE t.revoked = false
         SET t.revoked = true, t.revoked_at = datetime()
         """
-        async with neo4j.run(query, username=auth.user.username) as result:
+        async with neo4j.run(query, email=auth.user.email) as result:
             await result.consume()
 
         # Delete all sessions
         query = """
-        MATCH (u:User {username: $username})<-[:SESSION_FOR]-(s:Session)
+        MATCH (u:User {email: $email})<-[:SESSION_FOR]-(s:Session)
         DETACH DELETE s
         """
-        async with neo4j.run(query, username=auth.user.username) as result:
+        async with neo4j.run(query, email=auth.user.email) as result:
             await result.consume()
     else:
         # Revoke only associated refresh token (issued within 5 seconds)
@@ -473,7 +470,7 @@ async def logout(
         if records:
             issued_at = records[0]['issued_at']
             query = """
-            MATCH (u:User {username: $username})
+            MATCH (u:User {email: $email})
                   <-[:ISSUED_TO]-(t:TokenMetadata)
             WHERE t.token_type = 'refresh'
               AND t.revoked = false
@@ -481,13 +478,13 @@ async def logout(
             SET t.revoked = true, t.revoked_at = datetime()
             """
             async with neo4j.run(
-                query, username=auth.user.username, issued_at=issued_at
+                query, email=auth.user.email, issued_at=issued_at
             ) as result:
                 await result.consume()
 
     LOGGER.info(
         'User %s logged out (revoke_all=%s)',
-        auth.user.username,
+        auth.user.email,
         revoke_all_sessions,
     )
 
@@ -653,10 +650,10 @@ async def oauth_callback(
 
         # Create JWT tokens (reusing existing token creation logic)
         access_token, access_jti = core.create_access_token(
-            user.username, auth_settings
+            user.email, auth_settings
         )
         refresh_token, refresh_jti = core.create_refresh_token(
-            user.username, auth_settings
+            user.email, auth_settings
         )
 
         # Store token metadata
@@ -687,7 +684,7 @@ async def oauth_callback(
 
         # Update user last_login
         user.last_login = now
-        await neo4j.upsert(user, {'username': user.username})
+        await neo4j.upsert(user, {'email': user.email})
 
         # Update OAuth identity last_used
         oauth_identity.last_used = now
@@ -698,7 +695,7 @@ async def oauth_callback(
 
         LOGGER.info(
             'OAuth login successful for user %s via %s',
-            user.username,
+            user.email,
             provider,
         )
 
@@ -804,16 +801,8 @@ async def find_or_create_oauth_identity(
         if not auth_settings.oauth_auto_create_users:
             raise ValueError('User auto-creation disabled')
 
-        # Generate username from email
-        username = profile['email'].split('@')[0].lower()
-
-        # Ensure username is unique
-        existing = await neo4j.fetch_node(models.User, {'username': username})
-        if existing:
-            username = f'{username}_{secrets.token_hex(4)}'
-
+        # Create user from OAuth profile
         user = models.User(
-            username=username,
             email=profile['email'],
             display_name=profile['name'],
             password_hash=None,  # OAuth-only user
@@ -825,9 +814,7 @@ async def find_or_create_oauth_identity(
         )
 
         await neo4j.create_node(user)
-        LOGGER.info(
-            'Created new user %s via OAuth %s', user.username, provider
-        )
+        LOGGER.info('Created new user %s via OAuth %s', user.email, provider)
 
     # Create OAuth identity (Phase 5: with encrypted tokens)
     now = datetime.datetime.now(datetime.UTC)
@@ -861,7 +848,7 @@ async def find_or_create_oauth_identity(
     await neo4j.create_relationship(identity, user, rel_type='OAUTH_IDENTITY')
 
     LOGGER.info(
-        'Created OAuth identity for user %s via %s', user.username, provider
+        'Created OAuth identity for user %s via %s', user.email, provider
     )
 
     return identity

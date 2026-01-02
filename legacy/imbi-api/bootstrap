@@ -86,3 +86,10 @@ if test "${CI}" = 'true'; then
 	cat .env
 	echo '::endgroup::'
 fi
+
+if test "${CI}" != 'true'; then
+	echo ''
+	echo 'Bootstrap complete! To initialize Imbi, run:'
+	echo '  uv run imbi setup'
+	echo ''
+fi

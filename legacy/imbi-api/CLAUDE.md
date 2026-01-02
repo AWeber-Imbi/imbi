@@ -16,14 +16,24 @@ This project uses [uv](https://docs.astral.sh/uv/) for fast, reliable Python pac
 
 ### Initial Setup
 ```bash
+# Step 1: Bootstrap development environment
 ./bootstrap
+
+# Step 2: Initialize Imbi (first time only)
+uv run imbi setup
 ```
-This script:
+
+The `bootstrap` script:
 - Syncs dependencies using `uv sync --all-extras --all-groups --locked`
 - Installs pre-commit hooks via `uv run pre-commit install`
 - Starts Docker Compose services (Neo4j, ClickHouse, Jaeger)
 - Waits for services to be healthy (120s timeout)
 - Generates `.env` file with service URLs and OpenTelemetry configuration
+
+The `imbi setup` command (run once per instance):
+- Seeds permissions and default roles (admin, developer, readonly)
+- Interactively creates the initial admin user
+- Idempotent: safe to run multiple times (prompts before creating duplicates)
 
 ### Environment Configuration
 
@@ -258,10 +268,12 @@ has_permission = await permissions.user_has_permission(
 4. `require_permission()` dependency validates token and checks permissions
 5. Endpoint receives `AuthContext` with user and token metadata
 
-**Auto-seeding** (`auth/seed.py`):
-- On first startup, creates default roles (admin, user, service) with permissions
-- Controlled via `IMBI_AUTO_SEED_AUTH` environment variable (default: true)
+**Setup and seeding** (`auth/seed.py`, `entrypoint.py:setup`):
+- Run `imbi setup` once to initialize a new instance
+- Creates default roles (admin, developer, readonly) with permissions
+- Interactively prompts for initial admin user creation
 - Idempotent: checks if system is seeded before running
+- No auto-seeding on startup (explicit setup required for security)
 
 **OAuth providers** (`auth/oauth.py`):
 - Google, GitHub, Keycloak support

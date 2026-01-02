@@ -36,9 +36,9 @@ def get_rate_limit_key(request: typing.Any) -> str:
         auth = request.state.auth_context
         if hasattr(auth, 'auth_method'):
             if auth.auth_method == 'api_key':
-                return f'api_key:{auth.user.username}'
+                return f'api_key:{auth.user.email}'
             elif auth.auth_method == 'jwt':
-                return f'user:{auth.user.username}'
+                return f'user:{auth.user.email}'
 
     # Fallback to IP address
     return f'ip:{slowapi_util.get_remote_address(request)}'

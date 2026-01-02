@@ -18,7 +18,6 @@ class PasswordResetTokenTestCase(unittest.TestCase):
 
         self.assertIsInstance(token.token, str)
         self.assertEqual(len(token.token), 43)  # URL-safe base64 32 bytes
-        self.assertEqual(token.username, 'testuser')
         self.assertEqual(token.email, 'test@example.com')
         self.assertFalse(token.used)
         self.assertIsNone(token.used_at)

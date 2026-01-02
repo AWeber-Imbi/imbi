@@ -11,6 +11,29 @@ from . import client
 
 LOGGER = logging.getLogger(__name__)
 
+
+def _convert_neo4j_types(data: typing.Any) -> typing.Any:
+    """Convert Neo4j-specific types to Python native types.
+
+    Args:
+        data: Data to convert (can be dict, list, or primitive type)
+
+    Returns:
+        Data with Neo4j types converted to Python native types
+    """
+    if isinstance(data, dict):
+        return {
+            key: _convert_neo4j_types(value) for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [_convert_neo4j_types(item) for item in data]
+    if isinstance(data, neo4j.time.DateTime):
+        return data.to_native()
+    if isinstance(data, (neo4j.time.Date, neo4j.time.Time)):
+        return data.to_native()
+    return data
+
+
 # TypeVars matching cypherantic's type system
 ModelType = typing.TypeVar('ModelType', bound=pydantic.BaseModel)
 SourceNode = typing.TypeVar('SourceNode', bound=pydantic.BaseModel)
@@ -258,7 +281,10 @@ async def fetch_node(
     LOGGER.debug('Running Query: %s', query)
     async with run(query, **parameters) as result:
         record = await result.single()
-    return model.model_validate(record.data()['node']) if record else None
+    if record:
+        node_data = _convert_neo4j_types(record.data()['node'])
+        return model.model_validate(node_data)
+    return None
 
 
 async def fetch_nodes(
@@ -271,7 +297,8 @@ async def fetch_nodes(
     LOGGER.debug('Running Query: %s', query)
     async with run(query, **parameters or {}) as result:
         async for record in result:
-            yield model.model_validate(record.data()['node'])
+            node_data = _convert_neo4j_types(record.data()['node'])
+            yield model.model_validate(node_data)
 
 
 async def upsert(
