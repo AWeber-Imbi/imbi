@@ -359,7 +359,7 @@ async def refresh_token(
     await neo4j.upsert(token_meta, {'jti': payload['jti']})
 
     # Fetch user
-    user = await neo4j.fetch_node(models.User, {'username': payload['sub']})
+    user = await neo4j.fetch_node(models.User, {'email': payload['sub']})
     if not user or not user.is_active:
         LOGGER.warning(
             'Token refresh failed: user not found or inactive (%s)',

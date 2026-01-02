@@ -20,7 +20,7 @@ This project uses [uv](https://docs.astral.sh/uv/) for fast, reliable Python pac
 ./bootstrap
 
 # Step 2: Initialize Imbi (first time only)
-uv run imbi setup
+uv run imbi-api setup
 ```
 
 The `bootstrap` script:
@@ -30,7 +30,7 @@ The `bootstrap` script:
 - Waits for services to be healthy (120s timeout)
 - Generates `.env` file with service URLs and OpenTelemetry configuration
 
-The `imbi setup` command (run once per instance):
+The `imbi-api setup` command (run once per instance):
 - Seeds permissions and default roles (admin, developer, readonly)
 - Interactively creates the initial admin user
 - Idempotent: safe to run multiple times (prompts before creating duplicates)
@@ -110,10 +110,10 @@ print(config.auth.jwt_secret)
 ### Running the Application
 ```bash
 # Run development server with auto-reload
-uv run imbi serve --dev
+uv run imbi-api serve --dev
 
 # Run production server (uses IMBI_ENVIRONMENT setting)
-uv run imbi serve
+uv run imbi-api serve
 
 # Access the API
 curl http://localhost:8000/status
@@ -322,7 +322,7 @@ has_permission = await permissions.user_has_permission(
 5. Endpoint receives `AuthContext` with user and token metadata
 
 **Setup and seeding** (`auth/seed.py`, `entrypoint.py:setup`):
-- Run `imbi setup` once to initialize a new instance
+- Run `imbi-api setup` once to initialize a new instance
 - Creates default roles (admin, developer, readonly) with permissions
 - Interactively prompts for initial admin user creation
 - Idempotent: checks if system is seeded before running
@@ -357,7 +357,9 @@ app = create_app()  # Returns configured FastAPI instance
 
 **CLI interface** (`src/imbi/entrypoint.py`):
 - Built with Typer for command-line operations
+- Entry point: `imbi-api` command (defined in `pyproject.toml`)
 - `serve`: Start uvicorn with development/production modes
+- `setup`: Initialize Imbi with authentication system and admin user
 - Configures logging, auto-reload, proxy headers, and custom Server header
 
 ### Data Modeling Conventions

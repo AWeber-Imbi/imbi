@@ -164,6 +164,10 @@ async def get_user(
     await neo4j.refresh_relationship(user, 'groups')
     await neo4j.refresh_relationship(user, 'roles')
 
+    # Extract nodes from edges
+    groups = [edge.node for edge in user.groups]
+    roles = [edge.node for edge in user.roles]
+
     return models.UserResponse(
         email=user.email,
         display_name=user.display_name,
@@ -173,8 +177,8 @@ async def get_user(
         created_at=user.created_at,
         last_login=user.last_login,
         avatar_url=user.avatar_url,
-        groups=user.groups,
-        roles=user.roles,
+        groups=groups,
+        roles=roles,
     )
 
 

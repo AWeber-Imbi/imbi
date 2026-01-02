@@ -27,7 +27,7 @@ class AuthContext(pydantic.BaseModel):
     permissions: set[str] = pydantic.Field(default_factory=set)
 
 
-async def load_user_permissions(username: str) -> set[str]:
+async def load_user_permissions(email: str) -> set[str]:
     """
     Get permission names granted to a user.
 
@@ -35,14 +35,14 @@ async def load_user_permissions(username: str) -> set[str]:
     roles, and any inherited roles.
 
     Parameters:
-        username (str): Username whose permissions will be resolved.
+        email (str): Email of user whose permissions will be resolved.
 
     Returns:
         set[str]: Set of permission names (for example,
             'blueprint:read', 'project:write').
     """
     query = """
-    MATCH (u:User {username: $username})
+    MATCH (u:User {email: $email})
     OPTIONAL MATCH (u)-[:HAS_ROLE]->(role:Role)
     OPTIONAL MATCH (u)-[:MEMBER_OF*]->(group:Group)
     OPTIONAL MATCH (group)-[:ASSIGNED_ROLE]->(group_role:Role)
@@ -53,7 +53,7 @@ async def load_user_permissions(username: str) -> set[str]:
     OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission)
     RETURN collect(DISTINCT perm.name) AS permissions
     """
-    async with neo4j.run(query, username=username) as result:
+    async with neo4j.run(query, email=email) as result:
         records = await result.data()
         if not records:
             return set()
@@ -115,23 +115,23 @@ async def authenticate_jwt(
             )
 
     # Load user
-    username = claims.get('sub')
-    if not username:
+    email = claims.get('sub')
+    if not email:
         raise fastapi.HTTPException(
             status_code=401, detail='Token missing subject'
         )
 
     user_query = """
-    MATCH (u:User {username: $username})
+    MATCH (u:User {email: $email})
     RETURN u
     """
-    async with neo4j.run(user_query, username=username) as result:
+    async with neo4j.run(user_query, email=email) as result:
         records = await result.data()
         if not records:
             raise fastapi.HTTPException(
                 status_code=401, detail='User not found'
             )
-        user_data = records[0]['u']
+        user_data = neo4j.convert_neo4j_types(records[0]['u'])
         user = models.User(**user_data)
 
     # Check if user is active
@@ -141,7 +141,7 @@ async def authenticate_jwt(
         )
 
     # Load permissions
-    permissions = await load_user_permissions(username)
+    permissions = await load_user_permissions(email)
 
     return AuthContext(
         user=user,
@@ -197,8 +197,8 @@ async def authenticate_api_key(
             status_code=401, detail='Invalid or revoked API key'
         )
 
-    api_key_data = records[0]['k']
-    user_data = records[0]['u']
+    api_key_data = neo4j.convert_neo4j_types(records[0]['k'])
+    user_data = neo4j.convert_neo4j_types(records[0]['u'])
 
     if not user_data:
         raise fastapi.HTTPException(
@@ -213,14 +213,8 @@ async def authenticate_api_key(
 
     # Check if key is expired
     expires_at = api_key_data.get('expires_at')
-    if expires_at:
-        # Convert Neo4j DateTime to Python datetime if needed
-        if hasattr(expires_at, 'to_native'):
-            expires_at = expires_at.to_native()
-        if expires_at < datetime.datetime.now(datetime.UTC):
-            raise fastapi.HTTPException(
-                status_code=401, detail='API key expired'
-            )
+    if expires_at and expires_at < datetime.datetime.now(datetime.UTC):
+        raise fastapi.HTTPException(status_code=401, detail='API key expired')
 
     # Verify key secret (hashed)
     if not core.verify_password(key_secret, api_key_data['key_hash']):
@@ -355,14 +349,14 @@ def require_permission(
 
 
 async def check_resource_permission(
-    username: str, resource_type: str, resource_slug: str, action: str
+    email: str, resource_type: str, resource_slug: str, action: str
 ) -> bool:
     """
     Determine whether the given user is allowed to perform the
     specified action on the named resource.
 
     Parameters:
-        username (str): Username of the user to check.
+        email (str): Email of the user to check.
         resource_type (str): Resource label to match (e.g.,
             'Blueprint', 'Project').
         resource_slug (str): Slug identifier of the target resource.
@@ -374,7 +368,7 @@ async def check_resource_permission(
             resource, `False` otherwise.
     """
     query = """
-    MATCH (u:User {username: $username})
+    MATCH (u:User {email: $email})
     OPTIONAL MATCH (u)-[:MEMBER_OF*]->(group:Group)
     WITH u, collect(DISTINCT group) AS groups
     MATCH (resource {slug: $resource_slug})
@@ -392,7 +386,7 @@ async def check_resource_permission(
     """
     async with neo4j.run(
         query,
-        username=username,
+        email=email,
         resource_type=resource_type,
         resource_slug=resource_slug,
     ) as result:

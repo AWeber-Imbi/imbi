@@ -56,7 +56,7 @@ Imbi helps organizations answer critical questions about their service landscape
 ./bootstrap
 
 # Run development server with auto-reload
-uv run imbi serve --dev
+uv run imbi-api serve --dev
 
 # Access the API
 curl http://localhost:8000/status

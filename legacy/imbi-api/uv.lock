@@ -579,7 +579,7 @@ wheels = [
 [[package]]
 name = "cypherantic"
 version = "0.0.0"
-source = { git = "https://github.com/dave-shawley/cypherantic.git#a1a1f02440b566242bf1fb0f10430cc12873e7d2" }
+source = { git = "https://github.com/gmr/cypherantic.git#d025eacb9f03efc4a48a973b4b23b329daea7902" }
 dependencies = [
     { name = "neo4j" },
     { name = "pydantic" },
@@ -903,7 +903,7 @@ requires-dist = [
     { name = "authlib", specifier = ">=1.6.6" },
     { name = "clickhouse-connect" },
     { name = "cryptography", specifier = ">=42.0.4" },
-    { name = "cypherantic", git = "https://github.com/dave-shawley/cypherantic.git" },
+    { name = "cypherantic", git = "https://github.com/gmr/cypherantic.git" },
     { name = "email-validator" },
     { name = "fastapi" },
     { name = "httpx", specifier = ">=0.28.1" },

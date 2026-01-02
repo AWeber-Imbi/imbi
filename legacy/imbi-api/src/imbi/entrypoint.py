@@ -185,7 +185,11 @@ async def _setup_async() -> None:
 
 
 async def _check_admin_exists() -> bool:
-    """Check if any admin users exist in the system."""
+    """Check if any admin users exist in the system.
+
+    Note: On a fresh database, Neo4j may emit a warning that the is_admin
+    property doesn't exist. This is expected and harmless.
+    """
     query = """
     OPTIONAL MATCH (u:User)
     WHERE u.is_admin = true

@@ -319,17 +319,17 @@ Use different configuration files per environment:
 ```bash
 # Development - use .env file
 ./bootstrap
-uv run imbi serve --dev
+uv run imbi-api serve --dev
 
 # Staging - use staging config file
 cp /path/to/staging/config.toml ./config.toml
-uv run imbi serve
+uv run imbi-api serve
 
 # Production - use system config + environment variables
 # Config at /etc/imbi/config.toml
 export IMBI_AUTH_JWT_SECRET="$(load-from-secrets-manager)"
 export NEO4J_PASSWORD="$(load-from-secrets-manager)"
-uv run imbi serve
+uv run imbi-api serve
 ```
 
 ### Configuration Best Practices
@@ -369,7 +369,7 @@ docker compose logs clickhouse
 echo $IMBI_AUTH_JWT_SECRET
 
 # Check authentication logs
-uv run imbi serve --dev
+uv run imbi-api serve --dev
 # Look for JWT-related errors in output
 ```
 

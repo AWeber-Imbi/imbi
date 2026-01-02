@@ -84,7 +84,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'revoked': False}]
                 )
-            elif 'User' in query and 'username' in query:
+            elif 'User' in query and 'email' in query:
                 user_dict = self.test_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'u': user_dict}]
@@ -417,7 +417,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'revoked': False}]
                 )
-            elif 'User' in query and 'username' in query:
+            elif 'User' in query and 'email' in query:
                 user_dict = oauth_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'u': user_dict}]
@@ -636,7 +636,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'revoked': False}]
                 )
-            elif 'User' in query and 'username' in query:
+            elif 'User' in query and 'email' in query:
                 user_dict = oauth_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'u': user_dict}]
@@ -705,7 +705,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'revoked': False}]
                 )
-            elif 'User' in query and 'username' in query:
+            elif 'User' in query and 'email' in query:
                 user_dict = oauth_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'u': user_dict}]
@@ -771,7 +771,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'revoked': False}]
                 )
-            elif 'User' in query and 'username' in query:
+            elif 'User' in query and 'email' in query:
                 user_dict = oauth_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'u': user_dict}]
@@ -827,7 +827,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'revoked': False}]
                 )
-            elif 'User' in query and 'username' in query:
+            elif 'User' in query and 'email' in query:
                 user_dict = oauth_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'u': user_dict}]
@@ -898,7 +898,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'revoked': False}]
                 )
-            elif 'User' in query and 'username' in query:
+            elif 'User' in query and 'email' in query:
                 user_dict = oauth_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
                     return_value=[{'u': user_dict}]

@@ -6,13 +6,14 @@ import typing
 import cypherantic
 import neo4j
 import pydantic
+import pydantic_core
 
 from . import client
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _convert_neo4j_types(data: typing.Any) -> typing.Any:
+def convert_neo4j_types(data: typing.Any) -> typing.Any:
     """Convert Neo4j-specific types to Python native types.
 
     Args:
@@ -22,16 +23,57 @@ def _convert_neo4j_types(data: typing.Any) -> typing.Any:
         Data with Neo4j types converted to Python native types
     """
     if isinstance(data, dict):
-        return {
-            key: _convert_neo4j_types(value) for key, value in data.items()
-        }
+        return {key: convert_neo4j_types(value) for key, value in data.items()}
     if isinstance(data, list):
-        return [_convert_neo4j_types(item) for item in data]
-    if isinstance(data, neo4j.time.DateTime):
-        return data.to_native()
-    if isinstance(data, (neo4j.time.Date, neo4j.time.Time)):
+        return [convert_neo4j_types(item) for item in data]
+    # Duck-typing: check for to_native() (Neo4j types and mocks)
+    if hasattr(data, 'to_native') and callable(data.to_native):
         return data.to_native()
     return data
+
+
+def _prepare_node_data(
+    model_cls: type[pydantic.BaseModel], node_data: dict[str, typing.Any]
+) -> dict[str, typing.Any]:
+    """Prepare node data for model validation by handling relationship fields.
+
+    Relationship fields are not stored as node properties in Neo4j, so we need
+    to provide default values for them to avoid validation errors.
+
+    Args:
+        model_cls: The Pydantic model class
+        node_data: Dictionary of node properties from Neo4j
+
+    Returns:
+        Dictionary with relationship fields set to defaults
+    """
+    prepared_data = node_data.copy()
+
+    # Check each field in the model
+    for field_name, field_info in model_cls.model_fields.items():
+        # Skip fields that already have data
+        if field_name in prepared_data:
+            continue
+
+        # Check if this is a relationship field
+        is_relationship = any(
+            isinstance(md, cypherantic.Relationship)
+            for md in field_info.metadata
+        )
+
+        if is_relationship:
+            # Use the field's default if available, otherwise None
+            if field_info.default is not pydantic_core.PydanticUndefined:
+                prepared_data[field_name] = field_info.default
+            elif field_info.default_factory is not None and callable(
+                field_info.default_factory
+            ):
+                prepared_data[field_name] = field_info.default_factory()  # type: ignore[call-arg]
+            else:
+                # No default, set to None (will fail if field is required)
+                prepared_data[field_name] = None
+
+    return prepared_data
 
 
 # TypeVars matching cypherantic's type system
@@ -77,7 +119,11 @@ async def create_node(model: ModelType) -> ModelType:
     """
     async with session() as sess:
         node = await cypherantic.create_node(sess, model)
-        return type(model).model_validate(dict(node))
+        # Convert Neo4j types (DateTime, etc.) to Python native types
+        node_props = convert_neo4j_types(dict(node))
+        # Use model_copy to preserve relationship fields from original model
+        # while updating scalar properties with values from Neo4j
+        return model.model_copy(update=node_props)
 
 
 @typing.overload
@@ -282,8 +328,9 @@ async def fetch_node(
     async with run(query, **parameters) as result:
         record = await result.single()
     if record:
-        node_data = _convert_neo4j_types(record.data()['node'])
-        return model.model_validate(node_data)
+        node_data = convert_neo4j_types(record.data()['node'])
+        prepared_data = _prepare_node_data(model, node_data)
+        return model.model_validate(prepared_data)
     return None
 
 
@@ -297,8 +344,9 @@ async def fetch_nodes(
     LOGGER.debug('Running Query: %s', query)
     async with run(query, **parameters or {}) as result:
         async for record in result:
-            node_data = _convert_neo4j_types(record.data()['node'])
-            yield model.model_validate(node_data)
+            node_data = convert_neo4j_types(record.data()['node'])
+            prepared_data = _prepare_node_data(model, node_data)
+            yield model.model_validate(prepared_data)
 
 
 async def upsert(

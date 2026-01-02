@@ -131,7 +131,11 @@ async def list_group_members(
             )
 
         member_data = records[0].get('members', [])
-        return [models.User(**m) for m in member_data if m]
+        return [
+            models.User(**neo4j.convert_neo4j_types(m))
+            for m in member_data
+            if m
+        ]
 
 
 @groups_router.put('/{slug}', response_model=models.Group)

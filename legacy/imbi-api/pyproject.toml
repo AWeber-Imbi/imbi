@@ -31,7 +31,10 @@ dependencies = [
   "authlib>=1.6.6",
   "clickhouse-connect",
   "cryptography>=42.0.4",
-  "cypherantic@git+https://github.com/dave-shawley/cypherantic.git#egg=main",
+  # Temporary fork with Neo4j datetime conversion and relationship field fixes
+  # See: https://github.com/gmr/cypherantic/tree/fix/neo4j-datetime-and-relationship-fields
+  # TODO: Replace with upstream once PR is merged or released
+  "cypherantic@git+https://github.com/gmr/cypherantic.git#egg=main",
   "email-validator",
   "fastapi",
   "httpx>=0.28.1",
