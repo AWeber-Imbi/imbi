@@ -33,11 +33,11 @@ class UvicornParameters(typing.TypedDict):
 
 
 @main.command()
-def run_server(
+def serve(
     *,
     dev: bool = False,
 ) -> None:
-    """Main entrypoint for Imbi, starts HTTP server"""
+    """Start the Imbi HTTP server"""
     config = settings.ServerConfig()
 
     log_config_file = resources.files('imbi') / 'log-config.toml'

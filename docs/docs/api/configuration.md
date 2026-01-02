@@ -273,7 +273,7 @@ docker compose logs clickhouse
 echo $IMBI_AUTH_JWT_SECRET
 
 # Check authentication logs
-uv run imbi run-server --dev
+uv run imbi serve --dev
 # Look for JWT-related errors in output
 ```
 

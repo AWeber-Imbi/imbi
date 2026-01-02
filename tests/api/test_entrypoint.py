@@ -4,15 +4,15 @@ from unittest import mock
 from imbi import entrypoint, version
 
 
-class RunServerTestCase(unittest.TestCase):
-    """Test cases for run_server function."""
+class ServeTestCase(unittest.TestCase):
+    """Test cases for serve function."""
 
     @mock.patch('imbi.entrypoint.uvicorn.run')
     @mock.patch('imbi.entrypoint.settings.ServerConfig')
-    def test_run_server_production_mode(
+    def test_serve_production_mode(
         self, mock_config: mock.Mock, mock_uvicorn_run: mock.Mock
     ) -> None:
-        """Test run_server in production mode."""
+        """Test serve in production mode."""
         # Configure mock
         mock_instance = mock.Mock()
         mock_instance.environment = 'production'
@@ -21,7 +21,7 @@ class RunServerTestCase(unittest.TestCase):
         mock_config.return_value = mock_instance
 
         # Call the function
-        entrypoint.run_server(dev=False)
+        entrypoint.serve(dev=False)
 
         # Verify uvicorn.run was called
         mock_uvicorn_run.assert_called_once()
@@ -47,10 +47,10 @@ class RunServerTestCase(unittest.TestCase):
 
     @mock.patch('imbi.entrypoint.uvicorn.run')
     @mock.patch('imbi.entrypoint.settings.ServerConfig')
-    def test_run_server_development_mode(
+    def test_serve_development_mode(
         self, mock_config: mock.Mock, mock_uvicorn_run: mock.Mock
     ) -> None:
-        """Test run_server in development mode."""
+        """Test serve in development mode."""
         # Configure mock
         mock_instance = mock.Mock()
         mock_instance.environment = 'development'
@@ -59,7 +59,7 @@ class RunServerTestCase(unittest.TestCase):
         mock_config.return_value = mock_instance
 
         # Call the function
-        entrypoint.run_server(dev=False)
+        entrypoint.serve(dev=False)
 
         # Verify uvicorn.run was called with reload parameters
         call_args = mock_uvicorn_run.call_args
@@ -73,10 +73,10 @@ class RunServerTestCase(unittest.TestCase):
 
     @mock.patch('imbi.entrypoint.uvicorn.run')
     @mock.patch('imbi.entrypoint.settings.ServerConfig')
-    def test_run_server_with_dev_flag(
+    def test_serve_with_dev_flag(
         self, mock_config: mock.Mock, mock_uvicorn_run: mock.Mock
     ) -> None:
-        """Test run_server with dev=True flag."""
+        """Test serve with dev=True flag."""
         # Configure mock for production environment
         mock_instance = mock.Mock()
         mock_instance.environment = 'production'
@@ -85,7 +85,7 @@ class RunServerTestCase(unittest.TestCase):
         mock_config.return_value = mock_instance
 
         # Call the function with dev=True
-        entrypoint.run_server(dev=True)
+        entrypoint.serve(dev=True)
 
         # Verify uvicorn.run was called with reload even in production
         call_args = mock_uvicorn_run.call_args
@@ -97,10 +97,10 @@ class RunServerTestCase(unittest.TestCase):
 
     @mock.patch('imbi.entrypoint.uvicorn.run')
     @mock.patch('imbi.entrypoint.settings.ServerConfig')
-    def test_run_server_custom_host_port(
+    def test_serve_custom_host_port(
         self, mock_config: mock.Mock, mock_uvicorn_run: mock.Mock
     ) -> None:
-        """Test run_server with custom host and port."""
+        """Test serve with custom host and port."""
         # Configure mock with custom values
         mock_instance = mock.Mock()
         mock_instance.environment = 'production'
@@ -109,7 +109,7 @@ class RunServerTestCase(unittest.TestCase):
         mock_config.return_value = mock_instance
 
         # Call the function
-        entrypoint.run_server(dev=False)
+        entrypoint.serve(dev=False)
 
         # Verify custom host and port are used
         call_args = mock_uvicorn_run.call_args

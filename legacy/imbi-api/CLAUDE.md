@@ -57,10 +57,10 @@ NEO4J_PASSWORD=password
 ### Running the Application
 ```bash
 # Run development server with auto-reload
-uv run imbi run-server --dev
+uv run imbi serve --dev
 
 # Run production server (uses IMBI_ENVIRONMENT setting)
-uv run imbi run-server
+uv run imbi serve
 
 # Access the API
 curl http://localhost:8000/status
@@ -304,7 +304,7 @@ app = create_app()  # Returns configured FastAPI instance
 
 **CLI interface** (`src/imbi/entrypoint.py`):
 - Built with Typer for command-line operations
-- `run-server`: Start uvicorn with development/production modes
+- `serve`: Start uvicorn with development/production modes
 - Configures logging, auto-reload, proxy headers, and custom Server header
 
 ### Data Modeling Conventions
@@ -452,7 +452,7 @@ gh pr create --base main --title "Add new feature" --body "..."
 ✅ **Implemented**:
 - FastAPI application with lifespan management (Neo4j, ClickHouse init/cleanup, auto-seeding)
 - Status endpoint with health check (`GET /status`)
-- CLI with `run-server` command (development and production modes)
+- CLI with `serve` command (development and production modes)
 - Neo4j integration with singleton pattern, cypherantic wrappers, indexes, upsert operations
 - ClickHouse integration with async client, schema management, insert/query operations
 - Settings management via Pydantic with URL credential extraction

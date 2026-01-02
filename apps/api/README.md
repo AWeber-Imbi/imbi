@@ -58,7 +58,7 @@ For developers, see [CLAUDE.md](CLAUDE.md) for development guide and architectur
 ./bootstrap
 
 # Run development server with auto-reload
-uv run imbi run-server --dev
+uv run imbi serve --dev
 
 # Access the API
 curl http://localhost:8000/status
