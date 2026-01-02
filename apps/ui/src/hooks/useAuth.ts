@@ -63,7 +63,7 @@ export function useAuth(): UseAuthReturn {
       }
       return true
     },
-    enabled: location.pathname !== '/login',
+    enabled: true,
     retry: false,
     staleTime: Infinity,
   })
