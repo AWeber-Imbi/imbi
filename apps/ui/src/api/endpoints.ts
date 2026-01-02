@@ -90,7 +90,7 @@ export const listAdminUsers = async (params?: {
   is_active?: boolean
   is_admin?: boolean
 }): Promise<AdminUser[]> => {
-  const response = await apiClient.get<CollectionResponse<AdminUser>>('/users', params)
+  const response = await apiClient.get<CollectionResponse<AdminUser>>('/users/', params)
   return response.data
 }
 
@@ -98,7 +98,7 @@ export const getAdminUser = (email: string) =>
   apiClient.get<AdminUser>(`/users/${encodeURIComponent(email)}`)
 
 export const createAdminUser = (user: AdminUserCreate) =>
-  apiClient.post<AdminUser>('/users', user)
+  apiClient.post<AdminUser>('/users/', user)
 
 export const updateAdminUser = (email: string, user: AdminUserCreate) =>
   apiClient.put<AdminUser>(`/users/${encodeURIComponent(email)}`, user)
