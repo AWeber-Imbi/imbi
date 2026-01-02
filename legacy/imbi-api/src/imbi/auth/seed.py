@@ -1,0 +1,250 @@
+"""Permission and role seeding for authentication system."""
+
+import logging
+
+from imbi import models, neo4j
+
+LOGGER = logging.getLogger(__name__)
+
+# Standard permissions for all resource types
+STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
+    # User management
+    ('user:create', 'user', 'create', 'Create new users'),
+    ('user:read', 'user', 'read', 'View user information'),
+    ('user:update', 'user', 'update', 'Update user information'),
+    ('user:delete', 'user', 'delete', 'Delete users'),
+    # Group management
+    ('group:create', 'group', 'create', 'Create new groups'),
+    ('group:read', 'group', 'read', 'View group information'),
+    ('group:update', 'group', 'update', 'Update group information'),
+    ('group:delete', 'group', 'delete', 'Delete groups'),
+    # Role management
+    ('role:create', 'role', 'create', 'Create new roles'),
+    ('role:read', 'role', 'read', 'View role information'),
+    ('role:update', 'role', 'update', 'Update role information'),
+    ('role:delete', 'role', 'delete', 'Delete roles'),
+    # Blueprint management
+    ('blueprint:read', 'blueprint', 'read', 'View blueprints'),
+    ('blueprint:write', 'blueprint', 'write', 'Create/update blueprints'),
+    ('blueprint:delete', 'blueprint', 'delete', 'Delete blueprints'),
+    # Project management
+    ('project:read', 'project', 'read', 'View projects'),
+    ('project:write', 'project', 'write', 'Create/update projects'),
+    ('project:delete', 'project', 'delete', 'Delete projects'),
+    # Namespace management
+    ('namespace:read', 'namespace', 'read', 'View namespaces'),
+    ('namespace:write', 'namespace', 'write', 'Create/update namespaces'),
+    ('namespace:delete', 'namespace', 'delete', 'Delete namespaces'),
+]
+
+# Default role definitions
+DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
+    (
+        'admin',
+        'Administrator',
+        'Full system access with all permissions',
+        1000,
+        [perm[0] for perm in STANDARD_PERMISSIONS],  # All permissions
+    ),
+    (
+        'developer',
+        'Developer',
+        'Standard developer access to projects and blueprints',
+        500,
+        [
+            'blueprint:read',
+            'blueprint:write',
+            'project:read',
+            'project:write',
+            'namespace:read',
+            'namespace:write',
+            'group:read',
+            'user:read',
+        ],
+    ),
+    (
+        'readonly',
+        'Read Only',
+        'Read-only access to all resources',
+        100,
+        [
+            'blueprint:read',
+            'project:read',
+            'namespace:read',
+            'group:read',
+            'user:read',
+            'role:read',
+        ],
+    ),
+]
+
+
+async def seed_permissions() -> int:
+    """
+    Seed standard permissions into the database.
+
+    Uses MERGE to make the operation idempotent - running multiple times
+    will not create duplicates.
+
+    Returns:
+        int: Number of permissions created (not updated).
+    """
+    created_count = 0
+
+    for name, resource_type, action, description in STANDARD_PERMISSIONS:
+        # Create Permission model
+        permission = models.Permission(
+            name=name,
+            resource_type=resource_type,
+            action=action,
+            description=description,
+        )
+
+        # Use MERGE to avoid duplicates
+        query = """
+        OPTIONAL MATCH (existing:Permission {name: $name})
+        WITH existing IS NULL AS is_new
+        MERGE (p:Permission {name: $name})
+        ON CREATE SET
+            p.resource_type = $resource_type,
+            p.action = $action,
+            p.description = $description
+        ON MATCH SET
+            p.resource_type = $resource_type,
+            p.action = $action,
+            p.description = $description
+        RETURN p, is_new
+        """
+
+        async with neo4j.run(
+            query,
+            name=permission.name,
+            resource_type=permission.resource_type,
+            action=permission.action,
+            description=permission.description,
+        ) as result:
+            records = await result.data()
+            if records and records[0].get('is_new'):
+                created_count += 1
+
+    LOGGER.info('Seeded %d permissions', created_count)
+    return created_count
+
+
+async def seed_default_roles() -> int:
+    """
+    Seed default roles (admin, developer, readonly) into the database.
+
+    Uses MERGE to make the operation idempotent.
+
+    Returns:
+        int: Number of roles created (not updated).
+    """
+    created_count = 0
+
+    for slug, name, description, priority, permission_names in DEFAULT_ROLES:
+        # Create Role model
+        role = models.Role(
+            name=name,
+            slug=slug,
+            description=description,
+            priority=priority,
+            is_system=True,  # Mark as system role
+        )
+
+        # Use MERGE to avoid duplicates
+        role_query = """
+        OPTIONAL MATCH (existing:Role {slug: $slug})
+        WITH existing IS NULL AS is_new
+        MERGE (r:Role {slug: $slug})
+        ON CREATE SET
+            r.name = $name,
+            r.description = $description,
+            r.priority = $priority,
+            r.is_system = $is_system
+        ON MATCH SET
+            r.name = $name,
+            r.description = $description,
+            r.priority = $priority,
+            r.is_system = $is_system
+        RETURN r, is_new
+        """
+
+        async with neo4j.run(
+            query=role_query,
+            slug=role.slug,
+            name=role.name,
+            description=role.description,
+            priority=role.priority,
+            is_system=role.is_system,
+        ) as result:
+            records = await result.data()
+            if records and records[0].get('is_new'):
+                created_count += 1
+
+        # Grant permissions to role
+        for perm_name in permission_names:
+            perm_query = """
+            MATCH (r:Role {slug: $slug})
+            MATCH (p:Permission {name: $perm_name})
+            MERGE (r)-[:GRANTS]->(p)
+            """
+            async with neo4j.run(
+                query=perm_query, slug=slug, perm_name=perm_name
+            ) as result:
+                await result.consume()
+
+    LOGGER.info('Seeded %d default roles', created_count)
+    return created_count
+
+
+async def bootstrap_auth_system() -> dict[str, int]:
+    """
+    Complete bootstrap of the authentication system.
+
+    Seeds permissions, creates default roles, and establishes their
+    relationships. This operation is idempotent and can be run multiple
+    times safely.
+
+    Returns:
+        dict[str, int]: Summary of created entities with keys:
+            - 'permissions': Number of permissions created
+            - 'roles': Number of roles created
+    """
+    LOGGER.info('Starting authentication system bootstrap')
+
+    # Seed permissions first
+    permissions_created = await seed_permissions()
+
+    # Seed default roles and their permission relationships
+    roles_created = await seed_default_roles()
+
+    result = {'permissions': permissions_created, 'roles': roles_created}
+
+    LOGGER.info(
+        'Bootstrap complete: %d permissions, %d roles',
+        permissions_created,
+        roles_created,
+    )
+
+    return result
+
+
+async def check_if_seeded() -> bool:
+    """
+    Check if the authentication system has already been seeded.
+
+    Returns:
+        bool: True if permissions exist in the database, False otherwise.
+    """
+    query = """
+    MATCH (p:Permission)
+    RETURN count(p) AS count
+    """
+
+    async with neo4j.run(query) as result:
+        records = await result.data()
+        if records and records[0].get('count', 0) > 0:
+            return True
+
+    return False

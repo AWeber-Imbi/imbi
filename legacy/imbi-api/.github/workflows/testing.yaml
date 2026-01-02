@@ -1,0 +1,46 @@
+name: Testing
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+    tags-ignore: [ "*" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [ "3.12", "3.13", "3.14" ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "${{ matrix.python }}"
+          enable-cache: true
+
+      - name: Install pre-commit
+        uses: pre-commit/action@v3.0.1
+
+      - name: Lint Check
+        run: pre-commit run --all-files
+
+      - name: Bootstrap environment
+        run: ./bootstrap
+        env:
+          TEST_HOST: 127.0.0.1
+
+      - name: Test with python ${{ matrix.python-version }}
+        run: uv run pytest
+
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./build/coverage.xml
+          flags: unittests

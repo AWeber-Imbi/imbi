@@ -1,0 +1,121 @@
+[example]
+query = """
+CREATE TABLE IF NOT EXISTS foo (
+  bar String
+)
+Engine = ReplicatedReplacingMergeTree;
+"""
+enabled = false
+
+# Phase 5: API Key Usage Tracking
+# GDPR Compliance Notes:
+# - ip_address: Store hashed IP (SHA256) or truncated subnet only
+# - user_agent: Aggregate to browser family/version, not full UA string
+# - TTL: 90 days for compliance with data minimization
+[api_key_usage]
+query = """
+CREATE TABLE IF NOT EXISTS api_key_usage (
+    timestamp DateTime64(3),
+    key_id String,
+    user_id String,
+    endpoint String,
+    method String,
+    status_code UInt16,
+    response_time_ms UInt32,
+    ip_subnet String COMMENT 'Truncated to /24 (IPv4) or /48 (IPv6)',
+    user_agent_family String COMMENT 'Browser family only, not full UA',
+    user_agent_version String COMMENT 'Major.minor version only'
+) ENGINE = MergeTree()
+ORDER BY (timestamp, key_id)
+PARTITION BY toYYYYMM(timestamp)
+TTL timestamp + INTERVAL 90 DAY;
+"""
+enabled = true
+
+# Phase 5: Rate Limiting Events
+[rate_limit_events]
+query = """
+CREATE TABLE IF NOT EXISTS rate_limit_events (
+    window_start DateTime,
+    identifier String,
+    endpoint String,
+    request_count UInt32,
+    blocked_count UInt32
+) ENGINE = MergeTree()
+ORDER BY (window_start, identifier, endpoint)
+PARTITION BY toYYYYMM(window_start)
+TTL window_start + INTERVAL 7 DAY;
+"""
+enabled = true
+
+# Phase 5: Session Activity Tracking
+# GDPR Compliance Notes:
+# - ip_address: Store hashed IP (SHA256) or truncated subnet only
+# - user_agent: Aggregate to browser family/version, not full UA string
+# - metadata: MUST NOT contain PII (emails, names, passwords, tokens)
+#   Allowed: non-sensitive context like endpoint paths, error codes
+# - TTL: 30 days for compliance with data minimization
+[session_activity]
+query = """
+CREATE TABLE IF NOT EXISTS session_activity (
+    timestamp DateTime64(3),
+    session_id String,
+    user_id String,
+    activity_type Enum('login' = 1, 'logout' = 2, 'token_refresh' = 3, 'api_call' = 4),
+    ip_subnet String COMMENT 'Truncated to /24 (IPv4) or /48 (IPv6)',
+    user_agent_family String COMMENT 'Browser family only, not full UA',
+    user_agent_version String COMMENT 'Major.minor version only',
+    metadata String COMMENT 'Non-PII context only: endpoints, codes'
+) ENGINE = MergeTree()
+ORDER BY (timestamp, session_id)
+PARTITION BY toYYYYMM(timestamp)
+TTL timestamp + INTERVAL 30 DAY;
+"""
+enabled = true
+
+# Phase 5: MFA Events
+# GDPR Compliance Notes:
+# - ip_address: Store hashed IP (SHA256) or truncated subnet only
+# - TTL: 90 days for security audit and compliance
+[mfa_events]
+query = """
+CREATE TABLE IF NOT EXISTS mfa_events (
+    timestamp DateTime64(3),
+    user_id String,
+    event_type Enum('enabled' = 1, 'disabled' = 2, 'verified' = 3, 'failed' = 4, 'backup_used' = 5),
+    ip_subnet String COMMENT 'Truncated to /24 (IPv4) or /48 (IPv6)',
+    success Bool
+) ENGINE = MergeTree()
+ORDER BY (timestamp, user_id)
+PARTITION BY toYYYYMM(timestamp)
+TTL timestamp + INTERVAL 90 DAY;
+"""
+enabled = true
+
+# Email Sending Audit (from email PR #151)
+# GDPR Compliance Notes:
+# - to_email: PII - consider hashing or using user_id reference only
+# - subject: May contain PII if dynamically generated with user data
+# - error_message: Ensure no tokens, passwords, or sensitive data logged
+# - TTL: 1 year retention for compliance audit trail
+# - Right to erasure: Implement data deletion on user request
+[email_audit]
+enabled = true
+query = """
+CREATE TABLE IF NOT EXISTS email_audit (
+    to_email_hash String COMMENT 'SHA256 hash of email for privacy',
+    to_email_domain String COMMENT 'Domain only for analytics',
+    template_name String,
+    subject String COMMENT 'Audit if contains dynamic PII',
+    status Enum8('sent' = 1, 'failed' = 2, 'skipped' = 3, 'dry_run' = 4),
+    error_message Nullable(String) COMMENT 'No tokens/credentials',
+    sent_at DateTime64(3),
+    user_id Nullable(String),
+    related_entity_type Nullable(String),
+    related_entity_id Nullable(String)
+)
+ENGINE = MergeTree()
+ORDER BY (sent_at, to_email_hash)
+PARTITION BY toYYYYMM(sent_at)
+TTL sent_at + INTERVAL 1 YEAR
+"""

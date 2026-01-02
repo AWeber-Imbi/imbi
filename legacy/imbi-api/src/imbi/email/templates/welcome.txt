@@ -1,0 +1,26 @@
+{# subject: Welcome to Imbi, {{ display_name }}! #}
+{% extends "base.txt" %}
+
+{% block header %}WELCOME TO IMBI{% endblock %}
+
+{% block body %}
+Hello {{ display_name }},
+
+Welcome to Imbi! Your account has been successfully created and you're ready to start managing your DevOps services.
+
+Imbi is your centralized platform for managing services, projects, namespaces, and their relationships. You can now:
+
+  * Create and manage projects
+  * Define service dependencies
+  * Track service metadata and ownership
+  * Collaborate with your team
+
+YOUR USERNAME: {{ username }}
+
+Log in to get started: {{ login_url }}
+
+If you have any questions or need assistance getting started, please don't hesitate to reach out to your administrator.
+
+Happy organizing!
+The Imbi Team
+{% endblock %}

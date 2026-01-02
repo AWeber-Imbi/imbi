@@ -1,0 +1,48 @@
+{# subject: Welcome to Imbi, {{ display_name }}! #}
+{% extends "base.html" %}
+
+{% block title %}Welcome to Imbi{% endblock %}
+
+{% block header %}Welcome to Imbi{% endblock %}
+
+{% block body %}
+<h2 style="color: #1e3a8a; font-size: 20px; font-weight: 600; margin-top: 0; margin-bottom: 16px;">
+    Hello {{ display_name }},
+</h2>
+
+<p style="margin: 0 0 16px 0; font-size: 16px;">
+    Welcome to <strong>Imbi</strong>! Your account has been successfully created and you're ready to start managing your DevOps services.
+</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px;">
+    Imbi is your centralized platform for managing services, projects, namespaces, and their relationships. You can now:
+</p>
+
+<ul style="margin: 0 0 20px 0; padding-left: 20px;">
+    <li style="margin-bottom: 8px;">Create and manage projects</li>
+    <li style="margin-bottom: 8px;">Define service dependencies</li>
+    <li style="margin-bottom: 8px;">Track service metadata and ownership</li>
+    <li style="margin-bottom: 8px;">Collaborate with your team</li>
+</ul>
+
+<div style="text-align: center; margin: 30px 0;">
+    <a href="{{ login_url }}" class="button" style="display: inline-block; padding: 14px 28px; background-color: #3b82f6; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+        Log In to Imbi
+    </a>
+</div>
+
+<div class="info-box" style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; margin: 20px 0; border-radius: 4px;">
+    <p style="margin: 0; color: #1e40af; font-size: 14px;">
+        <strong>Your username:</strong> {{ username }}
+    </p>
+</div>
+
+<p style="margin: 0 0 16px 0; font-size: 16px;">
+    If you have any questions or need assistance getting started, please don't hesitate to reach out to your administrator.
+</p>
+
+<p style="margin: 0; font-size: 16px;">
+    Happy organizing!<br>
+    <strong>The Imbi Team</strong>
+</p>
+{% endblock %}

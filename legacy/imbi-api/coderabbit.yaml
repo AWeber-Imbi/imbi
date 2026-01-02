@@ -1,0 +1,32 @@
+# CodeRabbit Configuration
+# https://docs.coderabbit.ai/reference/configuration
+
+# Enable reviews for PRs targeting the v2 branch
+reviews:
+  auto_review:
+    enabled: true
+    base_branches:
+      - main
+      - v2
+  review_status: true
+
+# Language-specific settings
+language: python
+
+# Review preferences
+review:
+  profile: chill
+  request_changes_workflow: false
+
+# Path-specific ignores
+path_filters:
+  excluded:
+    - "**/*.lock"
+    - "**/*.pyc"
+    - "**/__pycache__/**"
+    - "**/build/**"
+    - "**/.pytest_cache/**"
+
+# Comment style preferences
+chat:
+  auto_reply: true
