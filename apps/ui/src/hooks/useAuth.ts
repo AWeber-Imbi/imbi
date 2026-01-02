@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import {
   loginWithPassword,
@@ -11,8 +11,9 @@ import type { User, LoginRequest, UseAuthReturn } from '@/types'
 
 export function useAuth(): UseAuthReturn {
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
-  const { accessToken, setAccessToken, clearTokens, getUsername, isTokenExpired } = useAuthStore()
+  const { accessToken, refreshToken, setTokens, clearTokens, getUsername, isTokenExpired } = useAuthStore()
 
   const { data: user, isLoading, error, refetch } = useQuery<User>({
     queryKey: ['currentUser', getUsername()],
@@ -21,7 +22,15 @@ export function useAuth(): UseAuthReturn {
       if (!username) {
         throw new Error('No username found in token')
       }
-      return getUserByUsername(username)
+      try {
+        return await getUserByUsername(username)
+      } catch (error: any) {
+        if (error.response?.status === 401 && error.response?.data?.detail?.includes('not found or inactive')) {
+          clearTokens()
+          throw new Error('Your account is not active. Please contact your administrator.')
+        }
+        throw error
+      }
     },
     enabled: !!accessToken && !isTokenExpired(),
     retry: false,
@@ -32,19 +41,29 @@ export function useAuth(): UseAuthReturn {
     queryKey: ['authInit'],
     queryFn: async () => {
       if (!accessToken || isTokenExpired()) {
+        if (!refreshToken) {
+          clearTokens()
+          if (location.pathname !== '/login') {
+            navigate('/login', { replace: true })
+          }
+          throw new Error('No refresh token available')
+        }
         try {
-          const response = await refreshTokenApi()
-          setAccessToken(response.access_token)
+          const response = await refreshTokenApi(refreshToken)
+          setTokens(response.access_token, response.refresh_token)
           await refetch()
         } catch (error) {
           console.error('[Auth] Token refresh failed during initialization:', error)
           clearTokens()
-          navigate('/login', { replace: true })
+          if (location.pathname !== '/login') {
+            navigate('/login', { replace: true })
+          }
           throw error
         }
       }
       return true
     },
+    enabled: location.pathname !== '/login',
     retry: false,
     staleTime: Infinity,
   })
@@ -52,18 +71,18 @@ export function useAuth(): UseAuthReturn {
   const loginMutation = useMutation({
     mutationFn: loginWithPassword,
     onSuccess: async (data) => {
-      setAccessToken(data.access_token)
+      setTokens(data.access_token, data.refresh_token)
 
       try {
         await refetch()
-      } catch (error) {
+        const returnTo = sessionStorage.getItem('returnTo') || '/dashboard'
+        sessionStorage.removeItem('returnTo')
+        navigate(returnTo, { replace: true })
+      } catch (error: any) {
         console.error('[Auth] Failed to fetch user after login:', error)
-        // Still navigate since token is valid; user query will retry on next render
+        // Re-throw to show error on login page
+        throw error
       }
-
-      const returnTo = sessionStorage.getItem('returnTo') || '/dashboard'
-      sessionStorage.removeItem('returnTo')
-      navigate(returnTo, { replace: true })
     },
     onError: (error) => {
       console.error('[Auth] Login failed:', error)
@@ -75,6 +94,8 @@ export function useAuth(): UseAuthReturn {
     onSuccess: () => {
       clearTokens()
       queryClient.clear()
+      // Note: We intentionally keep the remembered email in localStorage
+      // so users don't have to re-type it on next login
       navigate('/login', { replace: true })
     },
     onError: (error) => {
@@ -86,14 +107,21 @@ export function useAuth(): UseAuthReturn {
   })
 
   const refreshTokenMutation = useMutation({
-    mutationFn: refreshTokenApi,
+    mutationFn: async () => {
+      if (!refreshToken) {
+        throw new Error('No refresh token available')
+      }
+      return refreshTokenApi(refreshToken)
+    },
     onSuccess: async (data) => {
-      setAccessToken(data.access_token)
+      setTokens(data.access_token, data.refresh_token)
       await refetch()
     },
     onError: () => {
       clearTokens()
-      navigate('/login', { replace: true })
+      if (location.pathname !== '/login') {
+        navigate('/login', { replace: true })
+      }
     }
   })
 

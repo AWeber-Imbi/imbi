@@ -8,11 +8,14 @@ import { LocalLoginForm } from '@/components/auth/LocalLoginForm'
 import { AuthDivider } from '@/components/auth/AuthDivider'
 import imbiLogo from '@/assets/logo.svg'
 
+const REMEMBERED_EMAIL_KEY = 'imbi_remembered_email'
+
 export function LoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { isAuthenticated, isLoading: authLoading, login, loginWithOAuth } = useAuth()
   const [loginError, setLoginError] = useState<string>('')
+  const [rememberedEmail, setRememberedEmail] = useState<string>('')
 
   const { data: providersData, isLoading: providersLoading } = useQuery({
     queryKey: ['authProviders'],
@@ -20,6 +23,14 @@ export function LoginPage() {
     staleTime: 10 * 60 * 1000,
     retry: false,
   })
+
+  // Load remembered email on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(REMEMBERED_EMAIL_KEY)
+    if (saved) {
+      setRememberedEmail(saved)
+    }
+  }, [])
 
   useEffect(() => {
     const error = searchParams.get('error')
@@ -42,6 +53,8 @@ export function LoginPage() {
     try {
       setLoginError('')
       await login(credentials)
+      // Remember email on successful login
+      localStorage.setItem(REMEMBERED_EMAIL_KEY, credentials.email)
     } catch (error: any) {
       console.error('[Login] Password login failed:', error)
       setLoginError(
@@ -77,7 +90,7 @@ export function LoginPage() {
         <div className="flex flex-col items-center mb-8">
           <img src={imbiLogo} alt="Imbi" className="w-16 h-16 mb-4" />
           <h1 className="text-2xl mb-2 text-gray-900">
-            Welcome to Imbi
+            Imbi
           </h1>
         </div>
 
@@ -101,6 +114,7 @@ export function LoginPage() {
             onSubmit={handlePasswordLogin}
             isLoading={authLoading}
             error={loginError}
+            initialEmail={rememberedEmail}
           />
         )}
 

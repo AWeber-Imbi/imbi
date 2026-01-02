@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -6,13 +6,21 @@ interface LocalLoginFormProps {
   onSubmit: (credentials: { email: string; password: string }) => Promise<void>
   isLoading: boolean
   error?: string
+  initialEmail?: string
 }
 
-export function LocalLoginForm({ onSubmit, isLoading, error }: LocalLoginFormProps) {
-  const [email, setEmail] = useState('')
+export function LocalLoginForm({ onSubmit, isLoading, error, initialEmail = '' }: LocalLoginFormProps) {
+  const [email, setEmail] = useState(initialEmail)
   const [password, setPassword] = useState('')
   const [validationError, setValidationError] = useState('')
   const [emailTouched, setEmailTouched] = useState(false)
+
+  // Clear password on login error, but keep email
+  useEffect(() => {
+    if (error) {
+      setPassword('')
+    }
+  }, [error])
 
   const isValidEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)

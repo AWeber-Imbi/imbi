@@ -17,10 +17,19 @@ async function refreshAccessToken(client: AxiosInstance): Promise<string> {
   refreshPromise = (async () => {
     try {
       console.log('[API] Refreshing access token...')
-      const response = await client.post<TokenResponse>('/auth/token/refresh', {})
-      const { access_token } = response.data
+      const authStore = useAuthStore.getState()
+      const currentRefreshToken = authStore.refreshToken
 
-      useAuthStore.getState().setAccessToken(access_token)
+      if (!currentRefreshToken) {
+        throw new Error('No refresh token available')
+      }
+
+      const response = await client.post<TokenResponse>('/auth/token/refresh', {
+        refresh_token: currentRefreshToken
+      })
+      const { access_token, refresh_token } = response.data
+
+      authStore.setTokens(access_token, refresh_token)
       console.log('[API] Access token refreshed successfully')
 
       return access_token
@@ -62,6 +71,12 @@ class ApiClient {
         const authStore = useAuthStore.getState()
         let token = authStore.accessToken
 
+        console.log('[API] Request interceptor state:', {
+          hasToken: !!token,
+          hasRefreshToken: !!authStore.refreshToken,
+          isExpired: authStore.isTokenExpired()
+        })
+
         if (authStore.isTokenExpired()) {
           console.log('[API] Token expired, refreshing...')
           try {
@@ -73,6 +88,9 @@ class ApiClient {
 
         if (token) {
           config.headers.Authorization = `Bearer ${token}`
+          console.log('[API] Added Authorization header')
+        } else {
+          console.warn('[API] No token available for request')
         }
 
         return config
@@ -101,7 +119,9 @@ class ApiClient {
           } catch (refreshError) {
             console.error('[API] Token refresh failed, redirecting to login')
             useAuthStore.getState().clearTokens()
-            window.location.href = '/login'
+            if (window.location.pathname !== '/login') {
+              window.location.href = '/login'
+            }
             return Promise.reject(refreshError)
           }
         }

@@ -24,8 +24,8 @@ export const getAuthProviders = () =>
 export const loginWithPassword = (credentials: LoginRequest) =>
   apiClient.post<TokenResponse>('/auth/login', credentials)
 
-export const refreshToken = () =>
-  apiClient.post<TokenResponse>('/auth/token/refresh', {})
+export const refreshToken = (refreshToken: string) =>
+  apiClient.post<TokenResponse>('/auth/token/refresh', { refresh_token: refreshToken })
 
 export const logoutAuth = () =>
   apiClient.post<void>('/auth/logout', {})
