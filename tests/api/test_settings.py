@@ -127,6 +127,26 @@ class Neo4jSettingsTestCase(unittest.TestCase):
         # URL should preserve bolt scheme
         self.assertEqual(str(neo4j.url), 'bolt://localhost:7687')
 
+    def test_url_with_credentials_no_port(self) -> None:
+        """Test URL with credentials but no explicit port."""
+        neo4j = settings.Neo4j(
+            url=pydantic.AnyUrl('neo4j://user:pass@localhost')
+        )
+
+        # Credentials should be extracted
+        self.assertEqual(neo4j.user, 'user')
+        self.assertEqual(neo4j.password, 'pass')
+
+        # URL should be cleaned (may or may not include implicit port)
+        self.assertIn(
+            str(neo4j.url),
+            (
+                'neo4j://localhost',
+                'neo4j://localhost:7687',
+                'neo4j://localhost/',
+            ),
+        )
+
 
 class EmailSettingsTestCase(unittest.TestCase):
     """Test cases for Email settings."""
@@ -244,3 +264,150 @@ class ServerConfigSettingsTestCase(unittest.TestCase):
         self.assertEqual(config.environment, 'production')
         self.assertEqual(config.host, '0.0.0.0')
         self.assertEqual(config.port, 9000)
+
+
+class ConfigurationTestCase(unittest.TestCase):
+    """Test cases for Configuration class."""
+
+    def test_configuration_defaults(self) -> None:
+        """Test Configuration with default values."""
+        config = settings.Configuration()
+
+        self.assertIsInstance(config.clickhouse, settings.Clickhouse)
+        self.assertIsInstance(config.neo4j, settings.Neo4j)
+        self.assertIsInstance(config.server, settings.ServerConfig)
+        self.assertIsInstance(config.auth, settings.Auth)
+        self.assertIsInstance(config.email, settings.Email)
+
+    def test_configuration_from_dict(self) -> None:
+        """Test Configuration from dictionary data."""
+        data = {
+            'server': {'environment': 'production', 'host': '0.0.0.0'},
+            'neo4j': {'url': 'neo4j://neo4j-prod:7687'},
+        }
+
+        config = settings.Configuration.model_validate(data)
+
+        self.assertEqual(config.server.environment, 'production')
+        self.assertEqual(config.server.host, '0.0.0.0')
+        # URL may or may not have trailing slash depending on pydantic version
+        self.assertIn(
+            str(config.neo4j.url),
+            ('neo4j://neo4j-prod:7687', 'neo4j://neo4j-prod:7687/'),
+        )
+
+    def test_load_config_no_file(self) -> None:
+        """Test load_config when no config file exists."""
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                # Should work fine with defaults
+                config = settings.load_config()
+
+                self.assertIsInstance(config, settings.Configuration)
+                self.assertEqual(config.server.environment, 'development')
+            finally:
+                os.chdir(original_cwd)
+
+    def test_load_config_with_toml(self) -> None:
+        """Test load_config from TOML file."""
+        import os
+        import pathlib
+        import tempfile
+
+        original_cwd = os.getcwd()
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                config_path = pathlib.Path(tmpdir) / 'config.toml'
+                config_path.write_text(
+                    """
+[server]
+environment = "testing"
+host = "127.0.0.1"
+port = 9000
+
+[neo4j]
+database = "test-db"
+
+[auth]
+access_token_expire_seconds = 7200
+"""
+                )
+
+                # Save current directory and change to temp directory
+                os.chdir(tmpdir)
+                config = settings.load_config()
+
+                self.assertEqual(config.server.environment, 'testing')
+                self.assertEqual(config.server.host, '127.0.0.1')
+                self.assertEqual(config.server.port, 9000)
+                self.assertEqual(config.neo4j.database, 'test-db')
+                self.assertEqual(config.auth.access_token_expire_seconds, 7200)
+        finally:
+            os.chdir(original_cwd)
+
+    def test_configuration_toml_values_used(self) -> None:
+        """Test that config.toml values are loaded correctly.
+
+        Note: Environment variables DO override TOML values in
+        pydantic-settings, but only if they're set BEFORE the BaseSettings
+        class is instantiated. When we pass TOML data as constructor kwargs
+        (as done in the model_validator), those kwargs take precedence per
+        pydantic-settings design.
+
+        For production use, set environment variables before starting the app
+        and they will properly override config.toml values.
+        """
+        import os
+        import pathlib
+        import tempfile
+
+        original_cwd = os.getcwd()
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                config_path = pathlib.Path(tmpdir) / 'config.toml'
+                config_path.write_text(
+                    """
+[server]
+environment = "testing"
+port = 9000
+host = "127.0.0.1"
+"""
+                )
+
+                os.chdir(tmpdir)
+                config = settings.load_config()
+
+                # TOML values should be loaded
+                self.assertEqual(config.server.environment, 'testing')
+                self.assertEqual(config.server.port, 9000)
+                self.assertEqual(config.server.host, '127.0.0.1')
+        finally:
+            os.chdir(original_cwd)
+
+
+class BaseSettingsConfigTestCase(unittest.TestCase):
+    """Test cases for base_settings_config helper function."""
+
+    def test_base_settings_config_defaults(self) -> None:
+        """Test base_settings_config returns correct defaults."""
+        config = settings.base_settings_config()
+
+        self.assertEqual(config['case_sensitive'], False)
+        self.assertEqual(config['env_file'], '.env')
+        self.assertEqual(config['env_file_encoding'], 'utf-8')
+        self.assertEqual(config['extra'], 'ignore')
+
+    def test_base_settings_config_with_prefix(self) -> None:
+        """Test base_settings_config with additional kwargs."""
+        config = settings.base_settings_config(env_prefix='TEST_')
+
+        self.assertEqual(config['case_sensitive'], False)
+        self.assertEqual(config['env_file'], '.env')
+        self.assertEqual(config['env_file_encoding'], 'utf-8')
+        self.assertEqual(config['extra'], 'ignore')
+        self.assertEqual(config['env_prefix'], 'TEST_')

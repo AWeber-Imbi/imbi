@@ -116,7 +116,7 @@ For detailed architecture decisions, see the [Architecture Decision Records](adr
 
 ## Documentation
 
-- **[Configuration Guide](configuration.md)**: Environment variables and settings
+- **[Configuration Guide](configuration.md)**: Configuration via config.toml files, environment variables, and settings
 - **[Architecture Decision Records](adr.md)**: Key architectural decisions and rationale
 
 ## Contributing

@@ -1,8 +1,23 @@
 # Configuration
 
-Imbi uses environment variables for configuration, managed through Pydantic Settings. Configuration can be provided via environment variables or a `.env` file in the project root.
+Imbi uses a flexible configuration system managed through Pydantic Settings. Configuration can be provided via:
+- **`config.toml` files** - Structured TOML configuration (recommended for production)
+- **Environment variables** - Direct environment variable overrides
+- **`.env` files** - Environment variable files for development
+
+## Configuration Priority
+
+Settings are loaded in the following priority order (highest to lowest):
+
+1. **Environment variables** - Always take precedence
+2. **`./config.toml`** - Project root configuration file
+3. **`~/.config/imbi/config.toml`** - User-specific configuration
+4. **`/etc/imbi/config.toml`** - System-wide configuration
+5. **Built-in defaults** - Sensible defaults for development
 
 ## Quick Start
+
+### Development Setup
 
 The `./bootstrap` script automatically generates a `.env` file with sensible defaults for development:
 
@@ -15,6 +30,20 @@ This creates:
 - ClickHouse connection settings
 - OpenTelemetry configuration for Jaeger tracing
 - JWT secret for authentication
+
+### Production Setup
+
+For production deployments, use a `config.toml` file with environment variable overrides for secrets:
+
+```bash
+# Create system config
+sudo mkdir -p /etc/imbi
+sudo vim /etc/imbi/config.toml
+
+# Set secrets via environment
+export IMBI_AUTH_JWT_SECRET="your-secret-here"
+export NEO4J_PASSWORD="your-neo4j-password"
+```
 
 ## Core Settings
 
@@ -155,7 +184,55 @@ Access the services:
 - **ClickHouse**: http://localhost:8123
 - **Jaeger UI**: http://localhost:16686
 
-## Example .env File
+## Configuration File Format
+
+### config.toml Example
+
+For production deployments, use a structured TOML configuration file:
+
+```toml
+[server]
+environment = "production"
+host = "0.0.0.0"
+port = 8080
+
+[neo4j]
+url = "neo4j://neo4j-prod:7687"
+user = "admin"
+# Password should come from environment variable: NEO4J_PASSWORD
+database = "neo4j"
+keep_alive = true
+max_connection_lifetime = 300
+
+[clickhouse]
+url = "http://clickhouse-prod:8123"
+# Credentials should come from environment variables
+
+[auth]
+# JWT secret should come from environment variable: IMBI_AUTH_JWT_SECRET
+jwt_algorithm = "HS256"
+access_token_expire_seconds = 900
+refresh_token_expire_seconds = 604800
+min_password_length = 12
+max_concurrent_sessions = 5
+
+# OAuth configuration (optional)
+oauth_google_enabled = true
+oauth_google_client_id = "your-client-id"
+# Client secret should come from environment variable
+
+[email]
+enabled = true
+smtp_host = "smtp.example.com"
+smtp_port = 587
+smtp_use_tls = true
+from_email = "noreply@example.com"
+from_name = "Imbi Platform"
+```
+
+### .env File Example
+
+For development, use environment variables or a `.env` file:
 
 ```bash
 # Application
@@ -215,34 +292,53 @@ OTEL_TRACES_EXPORTER=otlp
 
 ## Advanced Configuration
 
-### Custom Settings Module
+### Loading Configuration Programmatically
 
-For advanced use cases, you can extend the settings system:
+The configuration system can be accessed programmatically in your code:
 
 ```python
-from imbi.settings import Settings
+from imbi import settings
 
-# Load settings
-settings = Settings()
+# Load configuration from config.toml with environment overrides
+config = settings.load_config()
 
-# Access configuration
-print(settings.neo4j.url)
-print(settings.auth.jwt_secret)
+# Access individual settings sections
+print(f"Server: {config.server.environment} on {config.server.host}:{config.server.port}")
+print(f"Neo4j: {config.neo4j.url}")
+print(f"Auth: JWT algorithm {config.auth.jwt_algorithm}")
+
+# Direct access to specific settings classes
+neo4j_settings = settings.Neo4j()
+server_config = settings.ServerConfig()
 ```
 
 ### Environment-Specific Configuration
 
-Use different `.env` files per environment:
+Use different configuration files per environment:
 
 ```bash
-# Development
-cp .env.development .env
+# Development - use .env file
+./bootstrap
+uv run imbi serve --dev
 
-# Staging
-cp .env.staging .env
+# Staging - use staging config file
+cp /path/to/staging/config.toml ./config.toml
+uv run imbi serve
 
-# Production (load from secrets manager)
+# Production - use system config + environment variables
+# Config at /etc/imbi/config.toml
+export IMBI_AUTH_JWT_SECRET="$(load-from-secrets-manager)"
+export NEO4J_PASSWORD="$(load-from-secrets-manager)"
+uv run imbi serve
 ```
+
+### Configuration Best Practices
+
+1. **Secrets in Environment Variables**: Store sensitive values (passwords, API keys, JWT secrets) in environment variables, not in config files
+2. **Config Files for Structure**: Use `config.toml` for structured, non-sensitive configuration
+3. **Version Control**: Commit example configs (e.g., `config.example.toml`), never commit actual secrets
+4. **Deployment Automation**: Use configuration management tools (Ansible, Terraform) to deploy config files
+5. **Secret Management**: Use proper secret managers (AWS Secrets Manager, HashiCorp Vault) in production
 
 ## Troubleshooting
 

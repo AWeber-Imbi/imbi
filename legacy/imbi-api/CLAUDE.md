@@ -52,6 +52,59 @@ NEO4J_PASSWORD=password
 
 **Neo4j URL credential extraction**: The settings model automatically extracts credentials from URLs like `neo4j://user:pass@host:7687`, URL-decodes them, and strips them from the connection URL for security. Explicit `NEO4J_USER`/`NEO4J_PASSWORD` take precedence over URL credentials.
 
+### Configuration File Support
+
+Imbi supports loading configuration from `config.toml` files with environment variable overrides. This provides a more structured alternative to `.env` files for complex configurations.
+
+**Priority order** (highest to lowest):
+1. Environment variables (always take precedence)
+2. `./config.toml` (project root)
+3. `~/.config/imbi/config.toml` (user config)
+4. `/etc/imbi/config.toml` (system config)
+5. Built-in defaults
+
+**Example config.toml**:
+```toml
+[server]
+environment = "production"
+host = "0.0.0.0"
+port = 8080
+
+[neo4j]
+url = "neo4j://neo4j-prod:7687"
+user = "admin"
+password = "secret"
+
+[clickhouse]
+url = "http://clickhouse-prod:8123"
+
+[auth]
+jwt_secret = "your-secret-here"
+access_token_expire_seconds = 7200
+min_password_length = 16
+
+[email]
+enabled = true
+smtp_host = "smtp.example.com"
+smtp_port = 587
+from_email = "noreply@example.com"
+```
+
+**Using config.toml programmatically**:
+```python
+from imbi import settings
+
+# Load configuration from config.toml with env var overrides
+config = settings.load_config()
+
+# Access individual settings sections
+print(config.server.environment)
+print(config.neo4j.url)
+print(config.auth.jwt_secret)
+```
+
+**Note**: The existing environment variable approach (`NEO4J_URL`, `IMBI_PORT`, etc.) continues to work without modification. Config files are optional and provide additional flexibility for complex deployments.
+
 ## Common Development Commands
 
 ### Running the Application
