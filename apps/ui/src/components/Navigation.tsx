@@ -4,7 +4,9 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { useAuth } from '@/hooks/useAuth'
+import { UserResponse } from '@/types'
 import imbiLogo from '@/assets/logo.svg'
+import { useMemo } from 'react'
 
 interface NavigationProps {
   currentView?: string
@@ -31,20 +33,25 @@ export function Navigation({
   const navigate = useNavigate()
   const location = useLocation()
 
-  // Check if user is admin (cast to UserResponse to access is_admin)
-  const isAdmin = (user as any)?.is_admin === true
+  // Check if user is admin (safely cast to UserResponse to access is_admin)
+  const isAdmin = (user as UserResponse | null)?.is_admin === true
 
-  const navItems = [
-    { id: 'deployments', label: 'Deployments', icon: Rocket, path: '/deployments' },
-    { id: 'projects', label: 'Projects', icon: FolderKanban, path: '/projects' },
-    { id: 'operations', label: 'Operations Log', icon: Activity, path: '/operations' },
-    { id: 'reports', label: 'Reports', icon: BarChart3, path: '/reports' },
-  ]
+  // Memoize navItems to avoid array mutation on every render
+  const navItems = useMemo(() => {
+    const items = [
+      { id: 'deployments', label: 'Deployments', icon: Rocket, path: '/deployments' },
+      { id: 'projects', label: 'Projects', icon: FolderKanban, path: '/projects' },
+      { id: 'operations', label: 'Operations Log', icon: Activity, path: '/operations' },
+      { id: 'reports', label: 'Reports', icon: BarChart3, path: '/reports' },
+    ]
 
-  // Add Admin nav item if user is admin
-  if (isAdmin) {
-    navItems.push({ id: 'admin', label: 'Admin', icon: Settings, path: '/admin' })
-  }
+    // Add Admin nav item if user is admin
+    if (isAdmin) {
+      items.push({ id: 'admin', label: 'Admin', icon: Settings, path: '/admin' })
+    }
+
+    return items
+  }, [isAdmin])
 
   // Determine active view from route if not explicitly provided
   const activeView = currentView || navItems.find(item => location.pathname === item.path)?.id || 'dashboard'

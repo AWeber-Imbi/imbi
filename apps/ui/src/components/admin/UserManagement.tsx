@@ -93,7 +93,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
 
   const handleBulkActivate = (activate: boolean) => {
     // TODO: Implement when bulk API endpoints are available
-    alert('Bulk operations will be available once the API endpoints are implemented')
+    alert(`Bulk ${activate ? 'activation' : 'deactivation'} will be available once the API endpoints are implemented`)
     setSelectedEmails(new Set())
   }
 
@@ -135,11 +135,6 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
   const getGroupNames = (user: AdminUser): string => {
     if (!user.groups || user.groups.length === 0) return '-'
     return user.groups.map(g => g.name).join(', ')
-  }
-
-  const getRoleNames = (user: AdminUser): string => {
-    if (!user.roles || user.roles.length === 0) return '-'
-    return user.roles.map(r => r.name).join(', ')
   }
 
   // Loading state
