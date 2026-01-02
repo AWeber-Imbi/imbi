@@ -8,15 +8,15 @@ afterEach(() => {
 
 // Mock localStorage for Zustand persist middleware
 const localStorageMock = {
-  getItem: vi.fn((key: string) => null),
-  setItem: vi.fn((key: string, value: string) => undefined),
-  removeItem: vi.fn((key: string) => undefined),
+  getItem: vi.fn(() => null),
+  setItem: vi.fn(() => undefined),
+  removeItem: vi.fn(() => undefined),
   clear: vi.fn(() => undefined),
   length: 0,
-  key: vi.fn((index: number) => null),
+  key: vi.fn(() => null),
 }
 
-Object.defineProperty(global, 'localStorage', {
+Object.defineProperty(globalThis, 'localStorage', {
   value: localStorageMock,
   writable: true,
 })
