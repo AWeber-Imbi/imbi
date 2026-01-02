@@ -90,8 +90,15 @@ export const listAdminUsers = async (params?: {
   is_active?: boolean
   is_admin?: boolean
 }): Promise<AdminUser[]> => {
-  const response = await apiClient.get<CollectionResponse<AdminUser>>('/users/', params)
-  return response.data
+  try {
+    const response = await apiClient.get<AdminUser[]>('/users/', params)
+    console.log('[API] listAdminUsers response:', response)
+    // Users endpoint returns array directly, not wrapped in { data: [] }
+    return Array.isArray(response) ? response : []
+  } catch (error) {
+    console.error('[API] listAdminUsers error:', error)
+    return []
+  }
 }
 
 export const getAdminUser = (email: string) =>
