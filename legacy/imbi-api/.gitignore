@@ -2,6 +2,7 @@
 /build
 /dist
 /public
+/site
 VERSION
 !/.github
 !/.gitignore

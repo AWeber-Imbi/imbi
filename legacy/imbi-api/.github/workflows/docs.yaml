@@ -7,7 +7,6 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
-      - 'src/elphantic/**'
       - '.github/workflows/docs.yaml'
   workflow_dispatch:
 
@@ -32,14 +31,18 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: 3.14
+          enable-cache: true
+
       - name: Install dependencies
         run: |
-          ci/calculate-version
-          python -m pip install --upgrade pip
-          pip install -e '.[docs]'
+          uv sync --all-extras --all-groups --locked
 
       - name: Build documentation
-        run: mkdocs build --strict
+        run: uv run mkdocs build --strict
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
