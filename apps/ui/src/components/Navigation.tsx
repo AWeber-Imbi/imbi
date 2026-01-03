@@ -3,6 +3,7 @@ import { Search, Settings, User, Rocket, FolderKanban, Activity, BarChart3, Spar
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { Gravatar } from './ui/gravatar'
 import { useAuth } from '@/hooks/useAuth'
 import { UserResponse } from '@/types'
 import imbiLogo from '@/assets/logo.svg'
@@ -172,9 +173,18 @@ export function Navigation({
               <Button
                 variant="ghost"
                 size="icon"
-                className={`rounded-full ${isDarkMode ? 'text-white hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'}`}
+                className={`rounded-full p-0 ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
               >
-                <User className="w-4 h-4" />
+                {(user?.email_address || (user as any)?.email) ? (
+                  <Gravatar
+                    email={(user?.email_address || (user as any)?.email) as string}
+                    size={32}
+                    alt={user?.display_name || user?.username || 'User'}
+                    className="w-8 h-8 rounded-full"
+                  />
+                ) : (
+                  <User className="w-4 h-4" />
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">

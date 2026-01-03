@@ -3,18 +3,24 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Filter, Edit2, Trash2, Eye, Power, Crown, Bot, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
-import { listAdminUsers, deleteAdminUser, updateAdminUser } from '@/api/endpoints'
+import { Gravatar } from '../ui/gravatar'
+import { UserForm } from './users/UserForm'
+import { UserDetail } from './users/UserDetail'
+import { listAdminUsers, deleteAdminUser, updateAdminUser, createAdminUser } from '@/api/endpoints'
 import type { AdminUser, AdminUserCreate } from '@/types'
 
 interface UserManagementProps {
   isDarkMode: boolean
 }
 
+type ViewMode = 'list' | 'create' | 'edit' | 'detail'
 type UserFilter = 'all' | 'users' | 'service' | 'admins'
 type StatusFilter = 'all' | 'active' | 'inactive'
 
 export function UserManagement({ isDarkMode }: UserManagementProps) {
   const queryClient = useQueryClient()
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [userFilter, setUserFilter] = useState<UserFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -46,6 +52,35 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     },
     onError: (error: any) => {
       alert(`Failed to update user: ${error.response?.data?.detail || error.message}`)
+    }
+  })
+
+  // Create user mutation
+  const createMutation = useMutation({
+    mutationFn: createAdminUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
+      setViewMode('list')
+      setSelectedUser(null)
+    },
+    onError: (error: any) => {
+      // Error will be displayed in the UserForm component
+      console.error('Failed to create user:', error)
+    }
+  })
+
+  // Update user mutation
+  const updateMutation = useMutation({
+    mutationFn: ({ email, user }: { email: string, user: AdminUserCreate }) =>
+      updateAdminUser(email, user),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
+      setViewMode('list')
+      setSelectedUser(null)
+    },
+    onError: (error: any) => {
+      // Error will be displayed in the UserForm component
+      console.error('Failed to update user:', error)
     }
   })
 
@@ -137,6 +172,35 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     return user.groups.map(g => g.name).join(', ')
   }
 
+  // View handlers
+  const handleCreateClick = () => {
+    setSelectedUser(null)
+    setViewMode('create')
+  }
+
+  const handleEditClick = (user: AdminUser) => {
+    setSelectedUser(user)
+    setViewMode('edit')
+  }
+
+  const handleViewClick = (user: AdminUser) => {
+    setSelectedUser(user)
+    setViewMode('detail')
+  }
+
+  const handleSave = (userData: AdminUserCreate) => {
+    if (viewMode === 'create') {
+      createMutation.mutate(userData)
+    } else if (selectedUser) {
+      updateMutation.mutate({ email: selectedUser.email, user: userData })
+    }
+  }
+
+  const handleCancel = () => {
+    setViewMode('list')
+    setSelectedUser(null)
+  }
+
   // Loading state
   if (isLoading) {
     return (
@@ -163,6 +227,33 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     )
   }
 
+  // View mode: Create or Edit
+  if (viewMode === 'create' || viewMode === 'edit') {
+    return (
+      <UserForm
+        user={selectedUser}
+        onSave={handleSave}
+        onCancel={handleCancel}
+        isDarkMode={isDarkMode}
+        isLoading={createMutation.isPending || updateMutation.isPending}
+        error={createMutation.error || updateMutation.error}
+      />
+    )
+  }
+
+  // View mode: Detail
+  if (viewMode === 'detail' && selectedUser) {
+    return (
+      <UserDetail
+        user={selectedUser}
+        onEdit={() => handleEditClick(selectedUser)}
+        onBack={handleCancel}
+        isDarkMode={isDarkMode}
+      />
+    )
+  }
+
+  // View mode: List (default)
   return (
     <div className="space-y-6">
       {/* Header with Actions */}
@@ -176,7 +267,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
           </p>
         </div>
         <Button
-          onClick={() => alert('Create user functionality coming soon!')}
+          onClick={handleCreateClick}
           className="bg-[#2A4DD0] hover:bg-blue-700 text-white gap-2"
         >
           <Plus className="w-4 h-4" />
@@ -339,19 +430,12 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      {user.avatar_url ? (
-                        <img
-                          src={user.avatar_url}
-                          alt={user.display_name}
-                          className="w-8 h-8 rounded-full"
-                        />
-                      ) : (
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                          isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-600'
-                        }`}>
-                          {user.display_name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
+                      <Gravatar
+                        email={user.email}
+                        size={32}
+                        alt={user.display_name}
+                        className="w-8 h-8 rounded-full"
+                      />
                       <div>
                         <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                           {user.display_name}
@@ -416,7 +500,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => alert('View user functionality coming soon!')}
+                        onClick={() => handleViewClick(user)}
                         className={`p-1.5 rounded ${
                           isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                         }`}
@@ -425,7 +509,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => alert('Edit user functionality coming soon!')}
+                        onClick={() => handleEditClick(user)}
                         className={`p-1.5 rounded ${
                           isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                         }`}

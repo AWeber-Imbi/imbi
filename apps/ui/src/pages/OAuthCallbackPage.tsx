@@ -32,8 +32,10 @@ export function OAuthCallbackPage() {
 
   useEffect(() => {
     if (user) {
-      const returnTo = sessionStorage.getItem('returnTo') || '/dashboard'
-      sessionStorage.removeItem('returnTo')
+      // Check for redirect path from 401 or OAuth flow
+      const returnTo = sessionStorage.getItem('imbi_redirect_after_login') || '/dashboard'
+      sessionStorage.removeItem('imbi_redirect_after_login')
+      console.log('[OAuth] Redirecting to:', returnTo)
       navigate(returnTo, { replace: true })
     }
   }, [user, navigate])

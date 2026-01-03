@@ -109,17 +109,40 @@ class ApiClient {
         const originalRequest = error.config as any
 
         if (error.response?.status === 401 && !originalRequest._retry) {
+          console.log('[API] Got 401, attempting token refresh...')
           originalRequest._retry = true
+
+          // Don't try to refresh if this IS the refresh request
+          if (originalRequest.url?.includes('/auth/token/refresh')) {
+            console.error('[API] Refresh token request failed, clearing tokens and redirecting')
+            useAuthStore.getState().clearTokens()
+
+            const currentPath = window.location.pathname + window.location.search
+            if (currentPath !== '/login') {
+              console.log('[API] Saving redirect path:', currentPath)
+              sessionStorage.setItem('imbi_redirect_after_login', currentPath)
+              console.log('[API] Redirecting to /login')
+              window.location.href = '/login'
+            }
+            return Promise.reject(error)
+          }
 
           try {
             const newToken = await refreshAccessToken(this.client)
+            console.log('[API] Token refresh successful, retrying original request')
 
             originalRequest.headers.Authorization = `Bearer ${newToken}`
             return this.client(originalRequest)
           } catch (refreshError) {
-            console.error('[API] Token refresh failed, redirecting to login')
+            console.error('[API] Token refresh failed, redirecting to login', refreshError)
             useAuthStore.getState().clearTokens()
-            if (window.location.pathname !== '/login') {
+
+            // Save current path to redirect back after login
+            const currentPath = window.location.pathname + window.location.search
+            if (currentPath !== '/login') {
+              console.log('[API] Saving redirect path:', currentPath)
+              sessionStorage.setItem('imbi_redirect_after_login', currentPath)
+              console.log('[API] Redirecting to /login')
               window.location.href = '/login'
             }
             return Promise.reject(refreshError)
