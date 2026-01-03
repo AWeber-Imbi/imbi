@@ -1,66 +1,46 @@
-name: Tests
-
+name: Testing
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
+  push:
+    branches: [ "main" ]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+    tags-ignore: [ "*" ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-
-    services:
-      neo4j:
-        image: neo4j:5-community
-        env:
-          NEO4J_AUTH: neo4j/testpassword
-        ports:
-          - 7687:7687
-        options: >-
-          --health-cmd "cypher-shell -u neo4j -p testpassword 'RETURN 1'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      clickhouse:
-        image: clickhouse/clickhouse-server:latest
-        ports:
-          - 8123:8123
-          - 9000:9000
-
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [ "3.12", "3.13", "3.14" ]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
+          python-version: "${{ matrix.python }}"
           enable-cache: true
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+      - name: Install pre-commit
+        uses: pre-commit/action@v3.0.1
 
-      - name: Install dependencies
-        run: |
-          uv pip install --system -e ".[dev]"
+      - name: Lint Check
+        run: pre-commit run --all-files
 
-      - name: Run unit tests
-        run: |
-          SKIP_INTEGRATION_TESTS=1 python -m unittest discover tests -v
-
-      - name: Run integration tests
+      - name: Bootstrap environment
+        run: ./bootstrap
         env:
-          NEO4J_URL: neo4j://neo4j:testpassword@localhost:7687
-          CLICKHOUSE_URL: http://localhost:8123
-        run: |
-          python -m unittest discover tests -v
+          TEST_HOST: 127.0.0.1
 
-      - name: Type checking with mypy
-        run: |
-          mypy src/imbi_common
+      - name: Test with python ${{ matrix.python }}
+        run: uv run pytest
 
-      - name: Lint with ruff
-        run: |
-          ruff check src/imbi_common tests
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./build/coverage.xml
+          flags: unittests

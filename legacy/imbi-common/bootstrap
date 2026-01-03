@@ -1,0 +1,73 @@
+#!/usr/bin/env sh
+#
+# NAME
+#   bootstrap — bootstrap the project
+#
+# vim: set ts=4 sw=4 sts=4 noet:
+
+# NOTE THAT THIS FILE IS INDENTED WITH 4-SPACE HARD TABS
+# as is required for <<-EOF heredocs to work.  Please keep
+# it this way!
+set -e
+if test -n "$SHELLDEBUG"; then
+	set -x
+fi
+
+if test "${CI}" = 'true'; then
+	echo "::group::Build logs"
+fi
+
+unset PYTHONDEBUG
+export COMPOSE_DISABLE_ENV_FILE=1
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+export PYTHON_ROOT_USER_ACTION=ignore
+export PYTHONWARNINGS=ignore
+
+TEST_HOST=${TEST_HOST:-127.0.0.1}
+
+get_exposed_port() {
+	if port=$(docker compose port "$1" "$2"); then
+		echo "${port#*:}"
+	else
+		echo "Failed to find port for $1:$2"
+		return 1
+	fi
+}
+
+mkdir -p build
+
+uv sync --all-extras --all-groups --locked
+
+echo 'Installing pre-commit hook...'
+uv run pre-commit install --install-hooks
+
+if test "${CI}" != 'true'; then
+	printf 'Cleaning environment...'
+	docker compose down --remove-orphans --volumes
+	echo ' done.'
+fi
+
+echo 'Starting environment...'
+docker compose up --wait --wait-timeout 120
+
+echo 'Creating Clickhouse Database...'
+docker compose exec clickhouse clickhouse client -q "CREATE DATABASE imbi"
+
+printf 'Generating .env...'
+cat >.env <<EOF
+TEST_HOST=${TEST_HOST}
+CLICKHOUSE_URL=http://default:password@${TEST_HOST}:$(get_exposed_port clickhouse 8123)/imbi
+FILE_CACHE_ENABLED=no
+NEO4J_URL=bolt://neo4j:neo4j@${TEST_HOST}:$(get_exposed_port neo4j 7687)
+EOF
+echo ' done.'
+
+if test "${CI}" = 'true'; then
+	echo '::endgroup::'
+fi
+
+if test "${CI}" = 'true'; then
+	echo "::group::.env"
+	cat .env
+	echo '::endgroup::'
+fi

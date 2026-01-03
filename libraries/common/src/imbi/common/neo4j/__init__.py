@@ -119,7 +119,6 @@ async def create_node(model: ModelType) -> ModelType:
     """
     async with session() as sess:
         node = await cypherantic.create_node(sess, model)
-        # Convert Neo4j types (DateTime, etc.) to Python native types
         node_props = convert_neo4j_types(dict(node))
         # Use model_copy to preserve relationship fields from original model
         # while updating scalar properties with values from Neo4j

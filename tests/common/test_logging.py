@@ -44,32 +44,22 @@ class TestConfigureLogging(unittest.TestCase):
 
     def test_configure_logging_no_errors(self):
         """Test that configure_logging runs without errors."""
-        try:
-            logging.configure_logging()
-        except Exception as e:
-            self.fail(f'configure_logging raised exception: {e}')
+        logging.configure_logging()
 
     def test_configure_logging_with_dev_mode(self):
         """Test configure_logging with dev mode enabled."""
-        try:
-            logging.configure_logging(dev=True)
+        logging.configure_logging(dev=True)
 
-            # Verify imbi logger is at DEBUG level
-            logger = stdlib_logging.getLogger('imbi')
-            self.assertEqual(logger.level, stdlib_logging.DEBUG)
-        except Exception as e:
-            self.fail(
-                f'configure_logging with dev=True raised exception: {e}'
-            )
+        # Verify imbi logger is at DEBUG level
+        logger = stdlib_logging.getLogger('imbi')
+        self.assertEqual(logger.level, stdlib_logging.DEBUG)
 
     def test_configure_logging_with_custom_config(self):
         """Test configure_logging with custom config dict."""
         custom_config = {
             'version': 1,
             'disable_existing_loggers': False,
-            'formatters': {
-                'simple': {'format': '%(levelname)s: %(message)s'}
-            },
+            'formatters': {'simple': {'format': '%(levelname)s: %(message)s'}},
             'handlers': {
                 'console': {
                     'class': 'logging.StreamHandler',
@@ -81,16 +71,11 @@ class TestConfigureLogging(unittest.TestCase):
             },
         }
 
-        try:
-            logging.configure_logging(log_config=custom_config)
+        logging.configure_logging(log_config=custom_config)
 
-            # Verify custom logger is configured
-            logger = stdlib_logging.getLogger('test_logger')
-            self.assertEqual(logger.level, stdlib_logging.INFO)
-        except Exception as e:
-            self.fail(
-                f'configure_logging with custom config raised exception: {e}'
-            )
+        # Verify custom logger is configured
+        logger = stdlib_logging.getLogger('test_logger')
+        self.assertEqual(logger.level, stdlib_logging.INFO)
 
 
 if __name__ == '__main__':

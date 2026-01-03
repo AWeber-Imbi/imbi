@@ -56,7 +56,9 @@ class TestTokenEncryption(unittest.TestCase):
 
     def test_decrypt_invalid_token_raises_exception(self):
         """Test that decrypting invalid token raises exception."""
-        with self.assertRaises(Exception):
+        from cryptography.fernet import InvalidToken
+
+        with self.assertRaises(InvalidToken):
             encryption.decrypt_token('invalid_encrypted_token')
 
     def test_get_fernet_returns_fernet_instance(self):

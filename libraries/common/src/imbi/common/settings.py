@@ -107,11 +107,11 @@ class Auth(pydantic_settings.BaseSettings):
     refresh_token_expire_seconds: int = 2592000  # 30 days
 
     # Password Policy
-    min_password_length: int = 12
-    require_password_uppercase: bool = True
-    require_password_lowercase: bool = True
-    require_password_digit: bool = True
-    require_password_special: bool = True
+    password_min_length: int = 12
+    password_require_uppercase: bool = True
+    password_require_lowercase: bool = True
+    password_require_digit: bool = True
+    password_require_special: bool = True
 
     # Session Configuration
     session_timeout_seconds: int = 86400  # 24 hours

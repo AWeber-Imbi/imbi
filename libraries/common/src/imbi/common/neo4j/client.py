@@ -8,7 +8,6 @@ import neo4j
 import pydantic
 from neo4j import exceptions
 
-from imbi_common import __version__ as version
 from imbi_common import settings
 
 from . import constants
@@ -72,6 +71,8 @@ class Neo4j:
             yield session
 
     def _create_client(self) -> neo4j.AsyncDriver:
+        from imbi_common import version
+
         auth: tuple[str, str] | None = None
         if self._settings.user and self._settings.password:
             auth = (self._settings.user, self._settings.password)

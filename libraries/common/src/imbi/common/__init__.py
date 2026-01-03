@@ -1,5 +1,7 @@
 """Imbi common library - shared functionality for Imbi ecosystem."""
 
+from importlib import metadata
+
 from imbi_common import (
     auth,
     blueprints,
@@ -10,9 +12,12 @@ from imbi_common import (
     settings,
 )
 
-__version__ = '0.1.0'
+try:
+    version = metadata.version('imbi-common')
+except metadata.PackageNotFoundError:
+    version = '0.0.0'
+
 __all__ = [
-    '__version__',
     'auth',
     'blueprints',
     'clickhouse',
@@ -20,4 +25,5 @@ __all__ = [
     'models',
     'neo4j',
     'settings',
+    'version',
 ]

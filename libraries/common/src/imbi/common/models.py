@@ -7,6 +7,7 @@ import slugify
 from jsonschema_models.models import Schema
 
 __all__ = [
+    'MODEL_TYPES',
     'APIKey',
     'Blueprint',
     'BlueprintAssignment',
@@ -98,12 +99,18 @@ class BlueprintEdge(typing.NamedTuple):
 
 
 class Node(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(extra='ignore')
+    """Base model for Cypherantic nodes.
+
+    The `icon` attribute can either be a URL or a CSS class name
+
+    """
+
+    model_config = pydantic.ConfigDict(extra='allow')
 
     name: str
     slug: str
     description: str | None = None
-    icon_url: pydantic.HttpUrl | None = None
+    icon: pydantic.HttpUrl | str | None = None
 
 
 class Organization(Node): ...
@@ -138,6 +145,16 @@ class Project(Node):
     links: dict[str, pydantic.HttpUrl]
     urls: dict[str, pydantic.HttpUrl]
     identifiers: dict[str, int | str]
+
+
+# Model type mapping for schema generation
+MODEL_TYPES: dict[str, type[pydantic.BaseModel]] = {
+    'Organization': Organization,
+    'Team': Team,
+    'Environment': Environment,
+    'ProjectType': ProjectType,
+    'Project': Project,
+}
 
 
 # Authentication and Authorization Models
@@ -202,7 +219,7 @@ class OAuthIdentity(pydantic.BaseModel):
         self,
         access: str | None,
         refresh: str | None,
-        encryptor: typing.Any,  # TokenEncryption from auth.encryption
+        encryptor: typing.Any,  # TokenEncryption
     ) -> None:
         """Set OAuth tokens with encryption (Phase 5).
 
@@ -216,7 +233,7 @@ class OAuthIdentity(pydantic.BaseModel):
 
     def get_decrypted_tokens(
         self,
-        encryptor: typing.Any,  # TokenEncryption from auth.encryption
+        encryptor: typing.Any,  # TokenEncryption
     ) -> tuple[str | None, str | None]:
         """Get decrypted OAuth tokens (Phase 5).
 
@@ -351,7 +368,7 @@ class TOTPSecret(pydantic.BaseModel):
     def set_encrypted_secret(
         self,
         plaintext_secret: str,
-        encryptor: typing.Any,  # TokenEncryption from auth.encryption
+        encryptor: typing.Any,  # TokenEncryption
     ) -> None:
         """Encrypt and set the TOTP secret (Phase 5).
 
@@ -364,7 +381,7 @@ class TOTPSecret(pydantic.BaseModel):
 
     def get_decrypted_secret(
         self,
-        encryptor: typing.Any,  # TokenEncryption from auth.encryption
+        encryptor: typing.Any,  # TokenEncryption
     ) -> str:
         """Get decrypted TOTP secret (Phase 5).
 

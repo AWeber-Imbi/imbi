@@ -152,3 +152,65 @@ class TokenEncryption:
                 'Failed to decrypt token - invalid or corrupted ciphertext'
             )
             return None
+
+
+# Module-level convenience functions
+def get_fernet(auth_settings: settings.Auth | None = None) -> fernet.Fernet:
+    """Get Fernet instance for encryption/decryption.
+
+    Args:
+        auth_settings: Optional auth settings (uses singleton if not provided)
+
+    Returns:
+        Fernet instance configured with encryption key
+
+    """
+    if auth_settings is None:
+        auth_settings = settings.get_auth_settings()
+
+    if not auth_settings.encryption_key:
+        # This should not happen since Auth now auto-generates encryption_key
+        auth_settings.encryption_key = fernet.Fernet.generate_key().decode(
+            'ascii'
+        )
+
+    return fernet.Fernet(auth_settings.encryption_key.encode('ascii'))
+
+
+def encrypt_token(
+    plaintext: str, auth_settings: settings.Auth | None = None
+) -> str:
+    """Encrypt a token string.
+
+    Args:
+        plaintext: Token string to encrypt
+        auth_settings: Optional auth settings (creates default if not provided)
+
+    Returns:
+        Base64-encoded encrypted token
+
+    """
+    f = get_fernet(auth_settings)
+    encrypted_bytes: bytes = f.encrypt(plaintext.encode('utf-8'))
+    return encrypted_bytes.decode('ascii')
+
+
+def decrypt_token(
+    ciphertext: str, auth_settings: settings.Auth | None = None
+) -> str:
+    """Decrypt a token string.
+
+    Args:
+        ciphertext: Base64-encoded encrypted token
+        auth_settings: Optional auth settings (creates default if not provided)
+
+    Returns:
+        Decrypted plaintext token
+
+    Raises:
+        Exception: If decryption fails
+
+    """
+    f = get_fernet(auth_settings)
+    plaintext_bytes: bytes = f.decrypt(ciphertext.encode('ascii'))
+    return plaintext_bytes.decode('utf-8')

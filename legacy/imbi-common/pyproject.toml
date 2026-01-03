@@ -33,14 +33,12 @@ dependencies = [
   "cypherantic@git+https://github.com/gmr/cypherantic.git#egg=main",
   "jsonschema-models",
   "neo4j",
-  "pydantic>=2.0",
+  "orjson",
+  "pydantic[email]>=2.0",
   "pydantic-settings",
   "pyjwt>=2.10.1", # CVE-2025-45768 disputed, monitor for 2.11.0+ when available
   "python-slugify",
 ]
-
-[tool.coverage.html]
-directory = "build/coverage"
 
 [tool.coverage.report]
 exclude_also = ["typing.TYPE_CHECKING"]
@@ -50,9 +48,6 @@ show_missing = true
 [tool.coverage.run]
 branch = true
 source = ["src/imbi_common"]
-
-[tool.coverage.xml]
-output = "build/coverage.xml"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/imbi_common"]
@@ -69,6 +64,14 @@ include = ["src", "tests"]
 deprecateTypingAliases = true
 reportMissingSuperCall = "hint"
 typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+  "--cov=src/imbi_common",
+  "--cov-report=xml:build/coverage.xml",
+  "--cov-report=term",
+]
 
 [tool.ruff]
 line-length = 79
@@ -100,12 +103,10 @@ select = [
 ignore = [
   "N818", # exception class names are not required to end in Error
   "RSE", # contradicts Python Style Guide
-  "S105", # false positive: hardcoded password (for literal strings like 'bearer', 'access', 'refresh')
-  "S106", # false positive: hardcoded password in function argument
+  "S105", # false positives on non-password strings
   "TRY003", # message text in exception initializers is okay
   "TRY400", # logging.exception is not always preferable
-  "UP040", # allow non-pep695-type-alias
-  "UP047", # allow non-pep695-generic-functions
+  "UP047", # type parameter syntax not yet adopted
 ]
 flake8-quotes = { inline-quotes = "single" }
 
@@ -123,8 +124,14 @@ dev = [
   "mypy",
   "pre-commit",
   "pyright",
+  "pytest",
+  "pytest-cov",
   "ruff",
-  "watchfiles"
+]
+dist = [
+  "build",
+  "twine",
+  "wheel"
 ]
 docs = [
   "griffe-pydantic",

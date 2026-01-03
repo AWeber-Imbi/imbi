@@ -1,4 +1,5 @@
 """Logging configuration for Imbi services."""
+
 import tomllib
 from importlib import resources
 from logging import config

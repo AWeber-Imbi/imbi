@@ -3,6 +3,8 @@
 import datetime
 import unittest
 
+import jwt
+
 from imbi_common.auth import core
 
 
@@ -103,14 +105,14 @@ class TestJWTTokens(unittest.TestCase):
 
     def test_invalid_token_raises_exception(self):
         """Test that invalid token raises exception."""
-        with self.assertRaises(Exception):
+        with self.assertRaises(jwt.InvalidTokenError):
             core.verify_token('invalid.token.here')
 
     def test_tampered_token_raises_exception(self):
         """Test that tampered token raises exception."""
         token = core.create_access_token(subject='user@example.com')
         tampered = token[:-10] + 'tampered12'
-        with self.assertRaises(Exception):
+        with self.assertRaises(jwt.InvalidTokenError):
             core.verify_token(tampered)
 
 
@@ -122,10 +124,8 @@ class TestTokenExpiration(unittest.TestCase):
         token = core.create_access_token(subject='user@example.com')
         payload = core.verify_token(token)
 
-        exp = datetime.datetime.fromtimestamp(
-            payload['exp'], tz=datetime.timezone.utc
-        )
-        now = datetime.datetime.now(datetime.timezone.utc)
+        exp = datetime.datetime.fromtimestamp(payload['exp'], tz=datetime.UTC)
+        now = datetime.datetime.now(datetime.UTC)
 
         self.assertGreater(exp, now)
 
@@ -134,10 +134,8 @@ class TestTokenExpiration(unittest.TestCase):
         token = core.create_access_token(subject='user@example.com')
         payload = core.verify_token(token)
 
-        exp = datetime.datetime.fromtimestamp(
-            payload['exp'], tz=datetime.timezone.utc
-        )
-        now = datetime.datetime.now(datetime.timezone.utc)
+        exp = datetime.datetime.fromtimestamp(payload['exp'], tz=datetime.UTC)
+        now = datetime.datetime.now(datetime.UTC)
         expected_exp = now + datetime.timedelta(hours=1)
 
         # Allow 5 second variance

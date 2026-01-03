@@ -1,1 +1,1 @@
-"""ClickHouse module tests."""
+# Tests for ClickHouse client

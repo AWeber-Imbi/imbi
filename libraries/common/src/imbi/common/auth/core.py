@@ -45,7 +45,7 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def password_needs_rehash(password_hash: str) -> bool:
+def needs_rehash(password_hash: str) -> bool:
     """Check if a password hash needs to be rehashed with updated parameters.
 
     Args:
@@ -55,26 +55,29 @@ def password_needs_rehash(password_hash: str) -> bool:
         True if password should be rehashed, False otherwise
 
     """
-    needs_rehash: bool = password_hasher.check_needs_rehash(password_hash)
-    return needs_rehash
+    return password_hasher.check_needs_rehash(password_hash)
 
 
 def create_access_token(
-    user_id: str,
-    auth_settings: settings.Auth,
+    subject: str,
     extra_claims: dict[str, typing.Any] | None = None,
-) -> tuple[str, str]:
+    auth_settings: settings.Auth | None = None,
+) -> str:
     """Create JWT access token.
 
     Args:
-        user_id: Username to encode in token
-        auth_settings: Auth settings for JWT configuration
+        subject: Subject (user identifier) to encode in token
         extra_claims: Optional additional claims to include
+        auth_settings: Optional auth settings for JWT configuration
+            (uses singleton if not provided)
 
     Returns:
-        Tuple of (token string, jti)
+        JWT token string
 
     """
+    if auth_settings is None:
+        auth_settings = settings.get_auth_settings()
+
     jti = secrets.token_urlsafe(16)
     now = datetime.datetime.now(datetime.UTC)
     expires = now + datetime.timedelta(
@@ -82,7 +85,7 @@ def create_access_token(
     )
 
     claims = {
-        'sub': user_id,
+        'sub': subject,
         'jti': jti,
         'type': 'access',
         'iat': now,
@@ -90,26 +93,30 @@ def create_access_token(
         **(extra_claims or {}),
     }
 
-    token = jwt.encode(
+    token: str = jwt.encode(
         claims, auth_settings.jwt_secret, algorithm=auth_settings.jwt_algorithm
     )
-    return token, jti
+    return token
 
 
 def create_refresh_token(
-    user_id: str,
-    auth_settings: settings.Auth,
-) -> tuple[str, str]:
+    subject: str,
+    auth_settings: settings.Auth | None = None,
+) -> str:
     """Create JWT refresh token.
 
     Args:
-        user_id: Username to encode in token
-        auth_settings: Auth settings for JWT configuration
+        subject: Subject (user identifier) to encode in token
+        auth_settings: Optional auth settings for JWT configuration
+            (uses singleton if not provided)
 
     Returns:
-        Tuple of (token string, jti)
+        JWT token string
 
     """
+    if auth_settings is None:
+        auth_settings = settings.get_auth_settings()
+
     jti = secrets.token_urlsafe(16)
     now = datetime.datetime.now(datetime.UTC)
     expires = now + datetime.timedelta(
@@ -117,27 +124,28 @@ def create_refresh_token(
     )
 
     claims = {
-        'sub': user_id,
+        'sub': subject,
         'jti': jti,
         'type': 'refresh',
         'iat': now,
         'exp': expires,
     }
 
-    token = jwt.encode(
+    token: str = jwt.encode(
         claims, auth_settings.jwt_secret, algorithm=auth_settings.jwt_algorithm
     )
-    return token, jti
+    return token
 
 
-def decode_token(
-    token: str, auth_settings: settings.Auth
+def verify_token(
+    token: str, auth_settings: settings.Auth | None = None
 ) -> dict[str, typing.Any]:
     """Decode and validate JWT token.
 
     Args:
         token: JWT token string to decode
-        auth_settings: Auth settings for JWT configuration
+        auth_settings: Optional auth settings for JWT configuration
+            (uses singleton if not provided)
 
     Returns:
         Decoded token claims
@@ -147,6 +155,9 @@ def decode_token(
         jwt.InvalidTokenError: If token is invalid
 
     """
+    if auth_settings is None:
+        auth_settings = settings.get_auth_settings()
+
     decoded: dict[str, typing.Any] = jwt.decode(
         token,
         auth_settings.jwt_secret,

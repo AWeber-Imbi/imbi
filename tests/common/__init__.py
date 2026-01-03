@@ -3,8 +3,6 @@
 import os
 import unittest
 
-from imbi_common import clickhouse, neo4j
-
 
 class Neo4jTestCase(unittest.IsolatedAsyncioTestCase):
     """Base class for tests requiring Neo4j connection.
@@ -24,10 +22,14 @@ class Neo4jTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         """Initialize Neo4j connection before each test."""
+        from imbi_common import neo4j
+
         await neo4j.initialize()
 
     async def asyncTearDown(self):
         """Clean up test data and close connection after each test."""
+        from imbi_common import neo4j
+
         await neo4j.execute_write('MATCH (n) DETACH DELETE n')
         await neo4j.aclose()
 
@@ -49,5 +51,7 @@ class ClickHouseTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self):
         """Initialize ClickHouse connection and schema before each test."""
+        from imbi_common import clickhouse
+
         await clickhouse.initialize()
         await clickhouse.setup_schema()
