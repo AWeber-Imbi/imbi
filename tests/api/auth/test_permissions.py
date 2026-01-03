@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from imbi.auth import permissions
+from imbi_api.auth import permissions
 
 
 class RoleHierarchyTestCase(unittest.IsolatedAsyncioTestCase):
@@ -25,7 +25,7 @@ class RoleHierarchyTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             perms = await permissions.load_user_permissions('testuser')
 
         self.assertEqual(
@@ -48,7 +48,7 @@ class RoleHierarchyTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             perms = await permissions.load_user_permissions('testuser')
 
         self.assertIn('blueprint:read', perms)
@@ -73,7 +73,7 @@ class GroupMembershipTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             perms = await permissions.load_user_permissions('testuser')
 
         self.assertIn('blueprint:read', perms)
@@ -94,7 +94,7 @@ class GroupMembershipTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             perms = await permissions.load_user_permissions('testuser')
 
         self.assertIn('blueprint:read', perms)
@@ -111,7 +111,7 @@ class ResourceLevelPermissionTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             has_read = await permissions.check_resource_permission(
                 'testuser', 'Blueprint', 'test-blueprint', 'read'
             )
@@ -133,7 +133,7 @@ class ResourceLevelPermissionTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             has_access = await permissions.check_resource_permission(
                 'testuser', 'Project', 'test-project', 'read'
             )
@@ -148,7 +148,7 @@ class ResourceLevelPermissionTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             has_read = await permissions.check_resource_permission(
                 'testuser', 'Blueprint', 'test-blueprint', 'read'
             )
@@ -181,7 +181,7 @@ class PermissionDeduplicationTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             perms = await permissions.load_user_permissions('testuser')
 
         # Should be deduplicated to a set

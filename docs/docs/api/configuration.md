@@ -297,7 +297,7 @@ OTEL_TRACES_EXPORTER=otlp
 The configuration system can be accessed programmatically in your code:
 
 ```python
-from imbi import settings
+from imbi_api import settings
 
 # Load configuration from config.toml with environment overrides
 config = settings.load_config()

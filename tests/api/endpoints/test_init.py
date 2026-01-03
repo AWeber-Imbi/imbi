@@ -2,8 +2,8 @@ import unittest
 
 import fastapi
 
-from imbi import endpoints
-from imbi.endpoints import status
+from imbi_api import endpoints
+from imbi_api.endpoints import status
 
 
 class EndpointsModuleTestCase(unittest.TestCase):

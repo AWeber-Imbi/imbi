@@ -92,7 +92,7 @@ from_email = "noreply@example.com"
 
 **Using config.toml programmatically**:
 ```python
-from imbi import settings
+from imbi_api import settings
 
 # Load configuration from config.toml with env var overrides
 config = settings.load_config()
@@ -180,7 +180,7 @@ docker compose logs -f clickhouse
 ## Code Architecture
 
 ### High-Level Structure
-- **`src/imbi/`**: Main application code
+- **`src/imbi_api/`**: Main application code
   - `app.py`: FastAPI application factory with lifespan management and auto-seeding
   - `entrypoint.py`: CLI commands (Typer-based)
   - `models.py`: Core domain models (Blueprint, User, Group, Role, Permission, Project, etc.)
@@ -213,13 +213,13 @@ docker compose logs -f clickhouse
 The ClickHouse module provides async operations for analytics and time-series data:
 
 ```python
-from imbi import clickhouse
+from imbi_api import clickhouse
 
 # Initialize connection (called during app startup)
 await clickhouse.initialize()
 
 # Insert Pydantic models
-from imbi.models import SomeModel
+from imbi_api.models import SomeModel
 data = [SomeModel(...), SomeModel(...)]
 result = await clickhouse.insert('table_name', data)
 
@@ -233,7 +233,7 @@ results = await clickhouse.query(
 await clickhouse.aclose()
 ```
 
-**Implementation details** (`src/imbi/clickhouse/client.py`):
+**Implementation details** (`src/imbi_api/clickhouse/client.py`):
 - Singleton pattern with async connection management
 - Automatic Pydantic model serialization for inserts
 - Support for nested/complex types via flattening
@@ -244,7 +244,7 @@ await clickhouse.aclose()
 The Neo4j module uses a **singleton pattern with event loop awareness**:
 
 ```python
-from imbi import neo4j
+from imbi_api import neo4j
 
 # Module-level APIs (preferred):
 async with neo4j.session() as sess:
@@ -268,7 +268,7 @@ await neo4j.refresh_relationship(model, 'dependencies')  # Lazy-load relationshi
 edges = await neo4j.retrieve_relationship_edges(model, 'dependencies')
 ```
 
-**Implementation details** (`src/imbi/neo4j/client.py`):
+**Implementation details** (`src/imbi_api/neo4j/client.py`):
 - `Neo4j.get_instance()`: Returns singleton driver instance
 - Automatically reinitializes if event loop changes (important for FastAPI)
 - Manages connection pool with keep-alive and max connection settings
@@ -292,7 +292,7 @@ edges = await neo4j.retrieve_relationship_edges(model, 'dependencies')
 The auth system provides OAuth2/OIDC and local password authentication with fine-grained permissions:
 
 ```python
-from imbi.auth import permissions
+from imbi_api.auth import permissions
 import fastapi
 import typing
 
@@ -336,9 +336,9 @@ has_permission = await permissions.user_has_permission(
 
 ### FastAPI Application Structure
 
-**Application factory** (`src/imbi/app.py`):
+**Application factory** (`src/imbi_api/app.py`):
 ```python
-from imbi.app import create_app
+from imbi_api.app import create_app
 
 app = create_app()  # Returns configured FastAPI instance
 ```
@@ -350,12 +350,12 @@ app = create_app()  # Returns configured FastAPI instance
 - Clean up Neo4j and ClickHouse connections on shutdown
 - Ensures proper resource management across application lifecycle
 
-**Endpoint registration** (`src/imbi/endpoints/`):
+**Endpoint registration** (`src/imbi_api/endpoints/`):
 - Each endpoint module exports an `APIRouter`
 - Routers collected in `endpoints/__init__.py:routers` list
 - Automatically registered in `create_app()` via `app.include_router()`
 
-**CLI interface** (`src/imbi/entrypoint.py`):
+**CLI interface** (`src/imbi_api/entrypoint.py`):
 - Built with Typer for command-line operations
 - Entry point: `imbi-api` command (defined in `pyproject.toml`)
 - `serve`: Start uvicorn with development/production modes
@@ -364,19 +364,19 @@ app = create_app()  # Returns configured FastAPI instance
 
 ### Data Modeling Conventions
 
-1. **Pydantic models** (`src/imbi/models.py`):
+1. **Pydantic models** (`src/imbi_api/models.py`):
    - Domain entities use `pydantic.BaseModel`
    - Keep models simple, focused on data structure
    - Model class names become Neo4j labels (lowercase)
    - Includes: Blueprint, User, Group, Role, Permission, Project, Organization, Team, etc.
 
-2. **Settings** (`src/imbi/settings.py`):
+2. **Settings** (`src/imbi_api/settings.py`):
    - Use `pydantic_settings.BaseSettings` for configuration
    - Prefix environment variables (e.g., `NEO4J_URL`, `CLICKHOUSE_URL`)
    - Support `.env` files with `BASE_SETTINGS` config dict
    - Separate settings classes for auth, Neo4j, ClickHouse
 
-3. **Auth models** (`src/imbi/auth/models.py`):
+3. **Auth models** (`src/imbi_api/auth/models.py`):
    - JWT token payloads and metadata
    - OAuth provider configurations
    - Authentication request/response models
@@ -430,7 +430,7 @@ mock_session.__aexit__.return_value = None
 - `UP047`: Allow non-PEP 695 generic functions (TypeVars for cypherantic compatibility)
 
 **Type checking**:
-- **mypy**: Configured for strict type checking of `src/imbi` (run with `uv run mypy`)
+- **mypy**: Configured for strict type checking of `src/imbi_api` (run with `uv run mypy`)
 - **pyright**: Configured to check `src/` and `tests/` with strict mode
 
 ## CI/CD

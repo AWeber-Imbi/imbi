@@ -6,7 +6,7 @@ from unittest import mock
 
 from fastapi import testclient
 
-from imbi import app, models
+from imbi_api import app, models
 
 
 class SchemaEndpointsTestCase(unittest.TestCase):
@@ -26,7 +26,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
         Overrides the get_current_user dependency to return the auth
         context so tests run with authentication.
         """
-        from imbi.auth import permissions
+        from imbi_api.auth import permissions
 
         self.test_app = app.create_app()
 
@@ -66,7 +66,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
 
     def test_get_model_schema_organization(self) -> None:
         """Test getting schema for Organization model type."""
-        with mock.patch('imbi.blueprints.get_model') as mock_get_model:
+        with mock.patch('imbi_api.blueprints.get_model') as mock_get_model:
             # Mock returns the base Organization model
             mock_get_model.return_value = models.Organization
 
@@ -90,7 +90,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
 
     def test_get_model_schema_project(self) -> None:
         """Test getting schema for Project model type."""
-        with mock.patch('imbi.blueprints.get_model') as mock_get_model:
+        with mock.patch('imbi_api.blueprints.get_model') as mock_get_model:
             # Mock returns the base Project model
             mock_get_model.return_value = models.Project
 
@@ -125,7 +125,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
         for model_type in model_types:
             with (
                 self.subTest(model_type=model_type),
-                mock.patch('imbi.blueprints.get_model') as mock_get_model,
+                mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
             ):
                 # Mock returns the appropriate model class
                 mock_get_model.return_value = models.MODEL_TYPES[model_type]
@@ -146,7 +146,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
 
     def test_get_all_schemas(self) -> None:
         """Test getting schemas for all model types."""
-        with mock.patch('imbi.blueprints.get_model') as mock_get_model:
+        with mock.patch('imbi_api.blueprints.get_model') as mock_get_model:
             # Mock returns the appropriate model class for each call
             def mock_get_model_side_effect(model_class):
                 return model_class
@@ -177,7 +177,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
 
     def test_get_all_schemas_returns_dict(self) -> None:
         """Test that /schemata returns a dict mapping types to schemas."""
-        with mock.patch('imbi.blueprints.get_model') as mock_get_model:
+        with mock.patch('imbi_api.blueprints.get_model') as mock_get_model:
             # Mock returns the appropriate model class for each call
             def mock_get_model_side_effect(model_class):
                 return model_class

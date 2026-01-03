@@ -1,14 +1,14 @@
 import unittest
 from unittest import mock
 
-from imbi import entrypoint, version
+from imbi_api import entrypoint, version
 
 
 class ServeTestCase(unittest.TestCase):
     """Test cases for serve function."""
 
-    @mock.patch('imbi.entrypoint.uvicorn.run')
-    @mock.patch('imbi.entrypoint.settings.ServerConfig')
+    @mock.patch('imbi_api.entrypoint.uvicorn.run')
+    @mock.patch('imbi_api.entrypoint.settings.ServerConfig')
     def test_serve_production_mode(
         self, mock_config: mock.Mock, mock_uvicorn_run: mock.Mock
     ) -> None:
@@ -28,7 +28,7 @@ class ServeTestCase(unittest.TestCase):
         call_args = mock_uvicorn_run.call_args
 
         # Check the first argument is the app factory string
-        self.assertEqual(call_args[0][0], 'imbi.app:create_app')
+        self.assertEqual(call_args[0][0], 'imbi_api.app:create_app')
 
         # Check keyword arguments
         kwargs = call_args[1]
@@ -45,8 +45,8 @@ class ServeTestCase(unittest.TestCase):
         # Production mode should not have reload
         self.assertNotIn('reload', kwargs)
 
-    @mock.patch('imbi.entrypoint.uvicorn.run')
-    @mock.patch('imbi.entrypoint.settings.ServerConfig')
+    @mock.patch('imbi_api.entrypoint.uvicorn.run')
+    @mock.patch('imbi_api.entrypoint.settings.ServerConfig')
     def test_serve_development_mode(
         self, mock_config: mock.Mock, mock_uvicorn_run: mock.Mock
     ) -> None:
@@ -71,8 +71,8 @@ class ServeTestCase(unittest.TestCase):
         self.assertIn('reload_excludes', kwargs)
         self.assertIn('**/*.pyc', kwargs['reload_excludes'])
 
-    @mock.patch('imbi.entrypoint.uvicorn.run')
-    @mock.patch('imbi.entrypoint.settings.ServerConfig')
+    @mock.patch('imbi_api.entrypoint.uvicorn.run')
+    @mock.patch('imbi_api.entrypoint.settings.ServerConfig')
     def test_serve_with_dev_flag(
         self, mock_config: mock.Mock, mock_uvicorn_run: mock.Mock
     ) -> None:
@@ -95,8 +95,8 @@ class ServeTestCase(unittest.TestCase):
         self.assertTrue(kwargs['reload'])
         self.assertIn('reload_dirs', kwargs)
 
-    @mock.patch('imbi.entrypoint.uvicorn.run')
-    @mock.patch('imbi.entrypoint.settings.ServerConfig')
+    @mock.patch('imbi_api.entrypoint.uvicorn.run')
+    @mock.patch('imbi_api.entrypoint.settings.ServerConfig')
     def test_serve_custom_host_port(
         self, mock_config: mock.Mock, mock_uvicorn_run: mock.Mock
     ) -> None:

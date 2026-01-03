@@ -2,7 +2,7 @@ import unittest
 
 import fastapi
 
-from imbi import app, version
+from imbi_api import app, version
 
 
 class CreateAppTestCase(unittest.TestCase):

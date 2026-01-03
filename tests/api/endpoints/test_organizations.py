@@ -8,7 +8,7 @@ import pydantic
 from fastapi import testclient
 from neo4j import exceptions
 
-from imbi import app, models
+from imbi_api import app, models
 
 
 class OrganizationEndpointsTestCase(unittest.TestCase):
@@ -16,7 +16,7 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication context."""
-        from imbi.auth import permissions
+        from imbi_api.auth import permissions
 
         self.test_app = app.create_app()
 
@@ -62,8 +62,8 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
     def test_create_organization_success(self) -> None:
         """Test successful organization creation."""
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.create_node') as mock_create,
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.create_node') as mock_create,
         ):
             # Mock blueprint application
             mock_get_model.return_value = models.Organization
@@ -87,8 +87,8 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
     def test_create_organization_with_blueprint_fields(self) -> None:
         """Test creating organization with custom blueprint fields."""
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.create_node') as mock_create,
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.create_node') as mock_create,
         ):
             # Mock dynamic model with extra field
             dynamic_model = pydantic.create_model(
@@ -116,7 +116,7 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
 
     def test_create_organization_validation_error(self) -> None:
         """Test creating organization with invalid data."""
-        with mock.patch('imbi.blueprints.get_model') as mock_get_model:
+        with mock.patch('imbi_api.blueprints.get_model') as mock_get_model:
             mock_get_model.return_value = models.Organization
 
             response = self.client.post(
@@ -133,8 +133,8 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
     def test_create_organization_duplicate_slug(self) -> None:
         """Test creating organization with duplicate slug."""
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.create_node') as mock_create,
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.create_node') as mock_create,
         ):
             mock_get_model.return_value = models.Organization
             mock_create.side_effect = exceptions.ConstraintError('Duplicate')
@@ -158,8 +158,8 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
             yield self.test_org
 
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.fetch_nodes', new=mock_fetch_nodes),
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.fetch_nodes', new=mock_fetch_nodes),
         ):
             mock_get_model.return_value = models.Organization
 
@@ -192,8 +192,8 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
             yield org_with_custom
 
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.fetch_nodes', new=mock_fetch_nodes),
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.fetch_nodes', new=mock_fetch_nodes),
         ):
             mock_get_model.return_value = dynamic_model
 
@@ -209,8 +209,8 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
     def test_get_organization(self) -> None:
         """Test retrieving single organization."""
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.fetch_node') as mock_fetch,
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.fetch_node') as mock_fetch,
         ):
             mock_get_model.return_value = models.Organization
             mock_fetch.return_value = self.test_org
@@ -225,8 +225,8 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
     def test_get_organization_not_found(self) -> None:
         """Test retrieving non-existent organization."""
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.fetch_node') as mock_fetch,
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.fetch_node') as mock_fetch,
         ):
             mock_get_model.return_value = models.Organization
             mock_fetch.return_value = None
@@ -239,9 +239,9 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
     def test_update_organization(self) -> None:
         """Test updating organization."""
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.fetch_node') as mock_fetch,
-            mock.patch('imbi.neo4j.upsert') as mock_upsert,
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.fetch_node') as mock_fetch,
+            mock.patch('imbi_api.neo4j.upsert') as mock_upsert,
         ):
             mock_get_model.return_value = models.Organization
             mock_fetch.return_value = self.test_org
@@ -265,9 +265,9 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
     def test_update_organization_with_blueprint_fields(self) -> None:
         """Test updating organization with blueprint fields."""
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.fetch_node') as mock_fetch,
-            mock.patch('imbi.neo4j.upsert') as mock_upsert,
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.fetch_node') as mock_fetch,
+            mock.patch('imbi_api.neo4j.upsert') as mock_upsert,
         ):
             # Mock dynamic model with extra field
             dynamic_model = pydantic.create_model(
@@ -311,8 +311,8 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
     def test_update_organization_not_found(self) -> None:
         """Test updating non-existent organization."""
         with (
-            mock.patch('imbi.blueprints.get_model') as mock_get_model,
-            mock.patch('imbi.neo4j.fetch_node') as mock_fetch,
+            mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+            mock.patch('imbi_api.neo4j.fetch_node') as mock_fetch,
         ):
             mock_get_model.return_value = models.Organization
             mock_fetch.return_value = None
@@ -330,7 +330,7 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
 
     def test_delete_organization(self) -> None:
         """Test deleting organization."""
-        with mock.patch('imbi.neo4j.delete_node') as mock_delete:
+        with mock.patch('imbi_api.neo4j.delete_node') as mock_delete:
             mock_delete.return_value = True
 
             response = self.client.delete('/organizations/engineering')
@@ -342,7 +342,7 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
 
     def test_delete_organization_not_found(self) -> None:
         """Test deleting non-existent organization."""
-        with mock.patch('imbi.neo4j.delete_node') as mock_delete:
+        with mock.patch('imbi_api.neo4j.delete_node') as mock_delete:
             mock_delete.return_value = False
 
             response = self.client.delete('/organizations/nonexistent')

@@ -5,8 +5,8 @@ from unittest import mock
 import httpx
 import jwt
 
-from imbi import settings
-from imbi.auth import models, oauth
+from imbi_api import settings
+from imbi_api.auth import models, oauth
 
 
 class OAuthStateTestCase(unittest.TestCase):
@@ -246,7 +246,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
         """Clear OIDC discovery cache before each test."""
         oauth._oidc_discovery_cache.clear()
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_success(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -285,7 +285,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
         # Verify cache was populated
         self.assertIn('https://auth.example.com', oauth._oidc_discovery_cache)
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_cached(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -311,7 +311,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
         # Verify no HTTP call was made
         mock_client_class.assert_not_called()
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_cache_expired(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -357,7 +357,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
             'https://expired.example.com/.well-known/openid-configuration'
         )
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_network_error(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -379,7 +379,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
             'discovery request failed', str(context.exception).lower()
         )
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_http_error(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -402,7 +402,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn('discovery failed', str(context.exception).lower())
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_missing_token_endpoint(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -428,7 +428,7 @@ class OIDCDiscoveryTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn('token_endpoint', str(context.exception).lower())
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_discover_oidc_endpoints_missing_userinfo_endpoint(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -496,7 +496,7 @@ class OAuthProviderConfigTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client_id, 'github-client-id')
         self.assertEqual(client_secret, 'github-client-secret')
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_get_provider_config_oidc(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -579,7 +579,7 @@ class OAuthUserinfoUrlTestCase(unittest.IsolatedAsyncioTestCase):
         url = await oauth._get_userinfo_url('github', auth_settings)
         self.assertEqual(url, 'https://api.github.com/user')
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_get_userinfo_url_oidc(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -638,7 +638,7 @@ class OAuthTokenExchangeTestCase(unittest.IsolatedAsyncioTestCase):
             oauth_google_client_secret='test-client-secret',
         )
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_exchange_oauth_code_success(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -690,7 +690,7 @@ class OAuthProfileFetchTestCase(unittest.IsolatedAsyncioTestCase):
         """Set up test auth settings."""
         self.auth_settings = settings.Auth(oauth_google_enabled=True)
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_fetch_oauth_profile_success(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -725,7 +725,7 @@ class OAuthProfileFetchTestCase(unittest.IsolatedAsyncioTestCase):
     # NOTE: Error handling test removed - will be covered by integration tests
     # The httpx AsyncClient mock is complex to set up for failure scenarios
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_exchange_oauth_code_failure(
         self, mock_client_class: mock.Mock
     ) -> None:
@@ -764,7 +764,7 @@ class OAuthProfileFetchTestCase(unittest.IsolatedAsyncioTestCase):
                 'token exchange failed', str(context.exception).lower()
             )
 
-    @mock.patch('imbi.auth.oauth.httpx.AsyncClient')
+    @mock.patch('imbi_api.auth.oauth.httpx.AsyncClient')
     async def test_fetch_oauth_profile_failure(
         self, mock_client_class: mock.Mock
     ) -> None:

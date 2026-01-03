@@ -834,27 +834,18 @@ wheels = [
 ]
 
 [[package]]
-name = "imbi"
+name = "imbi-api"
 version = "2.0.0a0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
-    { name = "argon2-cffi" },
     { name = "authlib" },
-    { name = "clickhouse-connect" },
-    { name = "cryptography" },
-    { name = "cypherantic" },
-    { name = "email-validator" },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "jsonschema-models" },
-    { name = "neo4j" },
+    { name = "imbi-common" },
     { name = "orjson" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pyjwt" },
+    { name = "pydantic", extra = ["email"] },
     { name = "pyotp" },
-    { name = "python-slugify" },
     { name = "qrcode" },
     { name = "slowapi" },
     { name = "typer" },
@@ -899,16 +890,10 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
-    { name = "argon2-cffi", specifier = ">=25.1.0" },
     { name = "authlib", specifier = ">=1.6.6" },
-    { name = "clickhouse-connect" },
-    { name = "cryptography", specifier = ">=42.0.4" },
-    { name = "cypherantic", git = "https://github.com/gmr/cypherantic.git" },
-    { name = "email-validator" },
     { name = "fastapi" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "jsonschema-models" },
-    { name = "neo4j" },
+    { name = "imbi-common", git = "https://github.com/aweber-imbi/imbi-common.git" },
     { name = "opentelemetry-distro", marker = "extra == 'otel'" },
     { name = "opentelemetry-instrumentation-anthropic", marker = "extra == 'otel'" },
     { name = "opentelemetry-instrumentation-asyncio", marker = "extra == 'otel'" },
@@ -916,11 +901,8 @@ requires-dist = [
     { name = "opentelemetry-instrumentation-httpx", marker = "extra == 'otel'" },
     { name = "opentelemetry-instrumentation-jinja2", marker = "extra == 'otel'" },
     { name = "orjson" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "pyjwt", specifier = ">=2.10.1" },
+    { name = "pydantic", extras = ["email"] },
     { name = "pyotp", specifier = ">=2.9.0" },
-    { name = "python-slugify" },
     { name = "qrcode", specifier = ">=8.0" },
     { name = "sentry-sdk", marker = "extra == 'sentry'" },
     { name = "slowapi", specifier = "==0.1.9" },
@@ -949,6 +931,23 @@ docs = [
     { name = "mkdocs-material", specifier = ">9.5,<10" },
     { name = "mkdocstrings", extras = ["python"] },
     { name = "mkdocstrings-python-xref", specifier = ">=1.6,<2" },
+]
+
+[[package]]
+name = "imbi-common"
+version = "0.1.0"
+source = { git = "https://github.com/aweber-imbi/imbi-common.git#6a4688827733a2f99ca36b07f4427f92e4f736a6" }
+dependencies = [
+    { name = "argon2-cffi" },
+    { name = "clickhouse-connect" },
+    { name = "cryptography" },
+    { name = "cypherantic" },
+    { name = "jsonschema-models" },
+    { name = "neo4j" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyjwt" },
+    { name = "python-slugify" },
 ]
 
 [[package]]
@@ -1897,6 +1896,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/69/44/36f1a6e523abc58ae5f928898e4aca2e0ea509b5aa6f6f392a5d882be928/pydantic-2.12.5.tar.gz", hash = "sha256:4d351024c75c0f085a9febbb665ce8c0c6ec5d30e903bdb6394b7ede26aebb49", size = 821591, upload-time = "2025-11-26T15:11:46.471Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5a/87/b70ad306ebb6f9b585f114d0ac2137d792b48be34d732d60e597c2f8465a/pydantic-2.12.5-py3-none-any.whl", hash = "sha256:e561593fccf61e8a20fc46dfc2dfe075b8be7d0188df33f221ad1f0139180f9d", size = 463580, upload-time = "2025-11-26T15:11:44.605Z" },
+]
+
+[package.optional-dependencies]
+email = [
+    { name = "email-validator" },
 ]
 
 [[package]]

@@ -2,7 +2,7 @@ import unittest
 
 import pydantic
 
-from imbi import models
+from imbi_api import models
 
 
 class BlueprintModelTestCase(unittest.TestCase):

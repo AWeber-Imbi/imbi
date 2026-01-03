@@ -3,7 +3,7 @@ requires = ["hatchling", "build", "wheel"]
 build-backend = "hatchling.build"
 
 [project]
-name = "imbi"
+name = "imbi-api"
 version = "2.0.0-alpha"
 description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
 readme = "README.md"
@@ -26,26 +26,14 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "argon2-cffi>=25.1.0",
   "aiohttp",
   "authlib>=1.6.6",
-  "clickhouse-connect",
-  "cryptography>=42.0.4",
-  # Temporary fork with Neo4j datetime conversion and relationship field fixes
-  # See: https://github.com/gmr/cypherantic/tree/fix/neo4j-datetime-and-relationship-fields
-  # TODO: Replace with upstream once PR is merged or released
-  "cypherantic@git+https://github.com/gmr/cypherantic.git#egg=main",
-  "email-validator",
+  "imbi-common@git+https://github.com/aweber-imbi/imbi-common.git#egg=main",
   "fastapi",
   "httpx>=0.28.1",
-  "jsonschema-models",
-  "neo4j",
   "orjson",
-  "pydantic",
-  "pydantic-settings",
-  "pyjwt>=2.10.1", # CVE-2025-45768 disputed, monitor for 2.11.0+ when available
+  "pydantic[email]",
   "pyotp>=2.9.0",
-  "python-slugify",
   "qrcode>=8.0",
   "slowapi==0.1.9", # Pin: alpha quality, API may change
   "typer",
@@ -67,7 +55,7 @@ sentry = [
 ]
 
 [project.scripts]
-imbi-api = "imbi.entrypoint:main"
+imbi-api = "imbi_api.entrypoint:main"
 
 [tool.coverage.html]
 directory = "build/coverage"
@@ -79,7 +67,7 @@ show_missing = true
 
 [tool.coverage.run]
 branch = true
-source = ["src/imbi"]
+source = ["src/imbi_api"]
 
 [tool.coverage.xml]
 output = "build/coverage.xml"
@@ -106,7 +94,7 @@ typeCheckingMode = "strict"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = [
-  "--cov=src/imbi",
+  "--cov=src/imbi_api",
   "--cov-report=xml:build/coverage.xml",
   "--cov-report=term",
 ]

@@ -70,7 +70,7 @@ We will send emails directly via SMTP using Python's standard library `smtplib`.
 
 **Inline Templates in Source Code**
 
-We will store Jinja2 templates in `src/imbi/email/templates/` packaged with the application code.
+We will store Jinja2 templates in `src/imbi_api/email/templates/` packaged with the application code.
 
 **Rationale**:
 - **Version control**: Templates versioned alongside code

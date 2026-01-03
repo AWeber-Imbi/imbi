@@ -2,8 +2,8 @@ import unittest
 
 from fastapi import testclient
 
-from imbi import app, version
-from imbi.endpoints import status
+from imbi_api import app, version
+from imbi_api.endpoints import status
 
 
 class StatusResponseModelTestCase(unittest.TestCase):

@@ -1,8 +1,9 @@
 import unittest
 from unittest import mock
 
-from imbi import neo4j
-from imbi.neo4j import client
+from imbi_api.neo4j import client
+
+from imbi_api import neo4j
 
 
 class Neo4jAbstrationsTestCase(unittest.IsolatedAsyncioTestCase):

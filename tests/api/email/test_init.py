@@ -3,8 +3,8 @@
 import unittest
 from unittest import mock
 
-from imbi import email
-from imbi.email import client, templates
+from imbi_api import email
+from imbi_api.email import client, templates
 
 
 class EmailModuleTestCase(unittest.IsolatedAsyncioTestCase):
@@ -18,7 +18,9 @@ class EmailModuleTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_initialize_success(self) -> None:
         """Test successful email module initialization."""
-        with mock.patch('imbi.email.client.settings.Email') as mock_settings:
+        with mock.patch(
+            'imbi_api.email.client.settings.Email'
+        ) as mock_settings:
             email_settings = mock_settings.return_value
             email_settings.enabled = False
 
@@ -31,7 +33,9 @@ class EmailModuleTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_initialize_with_smtp_connection(self) -> None:
         """Test email module initialization with SMTP connection."""
-        with mock.patch('imbi.email.client.settings.Email') as mock_settings:
+        with mock.patch(
+            'imbi_api.email.client.settings.Email'
+        ) as mock_settings:
             email_settings = mock_settings.return_value
             email_settings.enabled = True
             email_settings.smtp_host = 'localhost'
@@ -56,7 +60,9 @@ class EmailModuleTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_aclose_with_initialized_instance(self) -> None:
         """Test email module cleanup with initialized instance."""
-        with mock.patch('imbi.email.client.settings.Email') as mock_settings:
+        with mock.patch(
+            'imbi_api.email.client.settings.Email'
+        ) as mock_settings:
             email_settings = mock_settings.return_value
             email_settings.enabled = False
 

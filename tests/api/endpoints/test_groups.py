@@ -7,7 +7,7 @@ from unittest import mock
 from fastapi import testclient
 from neo4j import exceptions
 
-from imbi import app, models
+from imbi_api import app, models
 
 
 class GroupEndpointsTestCase(unittest.TestCase):
@@ -15,7 +15,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test app with admin authentication context."""
-        from imbi.auth import permissions
+        from imbi_api.auth import permissions
 
         self.test_app = app.create_app()
 
@@ -60,7 +60,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
 
     def test_create_group_success(self) -> None:
         """Test successful group creation."""
-        with mock.patch('imbi.neo4j.create_node') as mock_create:
+        with mock.patch('imbi_api.neo4j.create_node') as mock_create:
             mock_create.return_value = self.test_group
 
             response = self.client.post(
@@ -79,7 +79,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
 
     def test_create_group_duplicate_slug(self) -> None:
         """Test creating group with duplicate slug."""
-        with mock.patch('imbi.neo4j.create_node') as mock_create:
+        with mock.patch('imbi_api.neo4j.create_node') as mock_create:
             mock_create.side_effect = exceptions.ConstraintError('Duplicate')
 
             response = self.client.post(
@@ -109,7 +109,9 @@ class GroupEndpointsTestCase(unittest.TestCase):
             for group in mock_groups:
                 yield group
 
-        with mock.patch('imbi.neo4j.fetch_nodes', return_value=mock_fetch()):
+        with mock.patch(
+            'imbi_api.neo4j.fetch_nodes', return_value=mock_fetch()
+        ):
             response = self.client.get('/groups/')
 
             self.assertEqual(response.status_code, 200)
@@ -127,8 +129,8 @@ class GroupEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi.neo4j.fetch_node', return_value=mock_group),
-            mock.patch('imbi.neo4j.refresh_relationship') as mock_refresh,
+            mock.patch('imbi_api.neo4j.fetch_node', return_value=mock_group),
+            mock.patch('imbi_api.neo4j.refresh_relationship') as mock_refresh,
         ):
             response = self.client.get('/groups/engineering')
 
@@ -139,7 +141,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
 
     def test_get_group_not_found(self) -> None:
         """Test retrieving non-existent group."""
-        with mock.patch('imbi.neo4j.fetch_node', return_value=None):
+        with mock.patch('imbi_api.neo4j.fetch_node', return_value=None):
             response = self.client.get('/groups/nonexistent')
 
             self.assertEqual(response.status_code, 404)
@@ -174,7 +176,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             response = self.client.get('/groups/engineering/members')
 
             self.assertEqual(response.status_code, 200)
@@ -188,7 +190,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             response = self.client.get('/groups/nonexistent/members')
 
             self.assertEqual(response.status_code, 404)
@@ -202,8 +204,10 @@ class GroupEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi.neo4j.fetch_node', return_value=existing_group),
-            mock.patch('imbi.neo4j.upsert') as mock_upsert,
+            mock.patch(
+                'imbi_api.neo4j.fetch_node', return_value=existing_group
+            ),
+            mock.patch('imbi_api.neo4j.upsert') as mock_upsert,
         ):
             response = self.client.put(
                 '/groups/engineering',
@@ -235,7 +239,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
 
     def test_update_group_not_found(self) -> None:
         """Test updating non-existent group."""
-        with mock.patch('imbi.neo4j.fetch_node', return_value=None):
+        with mock.patch('imbi_api.neo4j.fetch_node', return_value=None):
             response = self.client.put(
                 '/groups/nonexistent',
                 json={
@@ -249,14 +253,14 @@ class GroupEndpointsTestCase(unittest.TestCase):
 
     def test_delete_group_success(self) -> None:
         """Test deleting a group."""
-        with mock.patch('imbi.neo4j.delete_node', return_value=True):
+        with mock.patch('imbi_api.neo4j.delete_node', return_value=True):
             response = self.client.delete('/groups/engineering')
 
             self.assertEqual(response.status_code, 204)
 
     def test_delete_group_not_found(self) -> None:
         """Test deleting non-existent group."""
-        with mock.patch('imbi.neo4j.delete_node', return_value=False):
+        with mock.patch('imbi_api.neo4j.delete_node', return_value=False):
             response = self.client.delete('/groups/nonexistent')
 
             self.assertEqual(response.status_code, 404)
@@ -276,7 +280,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_set_result.__aexit__.return_value = None
 
         with mock.patch(
-            'imbi.neo4j.run',
+            'imbi_api.neo4j.run',
             side_effect=[mock_circular_result, mock_set_result],
         ):
             response = self.client.post(
@@ -304,7 +308,9 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_circular_result.__aenter__.return_value = mock_circular_result
         mock_circular_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_circular_result):
+        with mock.patch(
+            'imbi_api.neo4j.run', return_value=mock_circular_result
+        ):
             response = self.client.post(
                 '/groups/engineering/parent',
                 json={'parent_slug': 'sub-team'},
@@ -328,7 +334,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_set_result.__aexit__.return_value = None
 
         with mock.patch(
-            'imbi.neo4j.run',
+            'imbi_api.neo4j.run',
             side_effect=[mock_circular_result, mock_set_result],
         ):
             response = self.client.post(
@@ -345,7 +351,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             response = self.client.delete('/groups/sub-team/parent')
 
             self.assertEqual(response.status_code, 204)
@@ -357,7 +363,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             response = self.client.post(
                 '/groups/engineering/roles',
                 json={'role_slug': 'developer'},
@@ -372,7 +378,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             response = self.client.post(
                 '/groups/nonexistent/roles',
                 json={'role_slug': 'developer'},
@@ -387,7 +393,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             response = self.client.delete(
                 '/groups/engineering/roles/developer'
             )
@@ -401,7 +407,7 @@ class GroupEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
             response = self.client.delete('/groups/engineering/roles/admin')
 
             self.assertEqual(response.status_code, 404)

@@ -62,7 +62,7 @@ We will implement seven authentication enhancements in Phase 5:
 - Python `cryptography` library provides battle-tested implementation
 
 **Implementation**:
-- New module: `src/imbi/auth/encryption.py` with `TokenEncryption` singleton
+- New module: `src/imbi_api/auth/encryption.py` with `TokenEncryption` singleton
 - Encryption key from environment variable `IMBI_AUTH_ENCRYPTION_KEY`
 - Auto-generate key on startup if not provided (with warning)
 - Update OAuthIdentity model with `set_encrypted_tokens()` and `get_decrypted_tokens()` methods
@@ -91,7 +91,7 @@ We will implement seven authentication enhancements in Phase 5:
 - Memory-based storage avoids Redis dependency for v2 alpha
 
 **Implementation**:
-- New middleware: `src/imbi/middleware/rate_limit.py`
+- New middleware: `src/imbi_api/middleware/rate_limit.py`
 - Limits: 5/min login, 10/min refresh, 3/min OAuth, 100/min API keys
 - Key function: API key ID > User ID > IP address (prioritized)
 - Decorator-based application to specific endpoints
@@ -120,7 +120,7 @@ We will implement seven authentication enhancements in Phase 5:
 - Usage tracking via ClickHouse provides observability
 
 **Implementation**:
-- New endpoint module: `src/imbi/endpoints/api_keys.py`
+- New endpoint module: `src/imbi_api/endpoints/api_keys.py`
 - Key format: `ik_<16chars>_<32chars>` (prefix for identification, URL-safe)
 - Secret hashed with Argon2 (same as passwords)
 - Scopes filter user permissions (e.g., `['project:read', 'blueprint:read']`)
@@ -179,7 +179,7 @@ We will implement seven authentication enhancements in Phase 5:
 - Backup codes handle device loss scenario
 
 **Implementation**:
-- New endpoint module: `src/imbi/endpoints/mfa.py`
+- New endpoint module: `src/imbi_api/endpoints/mfa.py`
 - New model: `TOTPSecret` with secret, enabled flag, backup codes
 - Setup flow: generate secret, QR code, backup codes (not enabled until verified)
 - Login flow: check for enabled MFA, require code, fall back to backup codes
@@ -251,7 +251,7 @@ We will implement seven authentication enhancements in Phase 5:
 
 ### Phase 1: Foundation (Week 1)
 - Add dependencies to pyproject.toml
-- Implement encryption utility (`src/imbi/auth/encryption.py`)
+- Implement encryption utility (`src/imbi_api/auth/encryption.py`)
 - Add new models (TOTPSecret, Session, APIKey)
 - Create ClickHouse tables
 - Update settings

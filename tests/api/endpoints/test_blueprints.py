@@ -6,7 +6,7 @@ from unittest import mock
 
 from fastapi import testclient
 
-from imbi import app, models
+from imbi_api import app, models
 
 
 class BlueprintEndpointsTestCase(unittest.TestCase):
@@ -30,7 +30,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
         Overrides the get_current_user dependency to return the admin
         auth context so tests run with elevated permissions.
         """
-        from imbi.auth import permissions
+        from imbi_api.auth import permissions
 
         self.test_app = app.create_app()
 
@@ -79,7 +79,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
 
     def test_create_blueprint_success(self) -> None:
         """Test successful blueprint creation."""
-        with mock.patch('imbi.neo4j.create_node') as mock_create:
+        with mock.patch('imbi_api.neo4j.create_node') as mock_create:
             # Mock node that can be converted to dict
             mock_node = {
                 'name': 'New Blueprint',
@@ -115,7 +115,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
         import neo4j
 
         with (
-            mock.patch('imbi.neo4j.create_node') as mock_create,
+            mock.patch('imbi_api.neo4j.create_node') as mock_create,
         ):
             mock_create.side_effect = neo4j.exceptions.ConstraintError(
                 'Constraint violation'
@@ -160,7 +160,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi.neo4j.fetch_nodes', return_value=empty_generator()
+                'imbi_api.neo4j.fetch_nodes', return_value=empty_generator()
             ),
         ):
             response = self.client.get('/blueprints/')
@@ -185,7 +185,8 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi.neo4j.fetch_nodes', return_value=blueprint_generator()
+                'imbi_api.neo4j.fetch_nodes',
+                return_value=blueprint_generator(),
             ),
         ):
             response = self.client.get('/blueprints/')
@@ -212,7 +213,8 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi.neo4j.fetch_nodes', return_value=blueprint_generator()
+                'imbi_api.neo4j.fetch_nodes',
+                return_value=blueprint_generator(),
             ) as mock_fetch,
         ):
             response = self.client.get('/blueprints/?enabled=true')
@@ -239,7 +241,8 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi.neo4j.fetch_nodes', return_value=blueprint_generator()
+                'imbi_api.neo4j.fetch_nodes',
+                return_value=blueprint_generator(),
             ) as mock_fetch,
         ):
             response = self.client.get('/blueprints/Project')
@@ -269,7 +272,8 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi.neo4j.fetch_nodes', return_value=blueprint_generator()
+                'imbi_api.neo4j.fetch_nodes',
+                return_value=blueprint_generator(),
             ) as mock_fetch,
         ):
             response = self.client.get('/blueprints/Project?enabled=false')
@@ -285,7 +289,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
         """Test getting a specific blueprint."""
         with (
             mock.patch(
-                'imbi.neo4j.fetch_node', return_value=self.test_blueprint
+                'imbi_api.neo4j.fetch_node', return_value=self.test_blueprint
             ),
         ):
             response = self.client.get('/blueprints/Project/test-blueprint')
@@ -299,7 +303,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
     def test_get_blueprint_not_found(self) -> None:
         """Test getting non-existent blueprint returns 404."""
         with (
-            mock.patch('imbi.neo4j.fetch_node', return_value=None),
+            mock.patch('imbi_api.neo4j.fetch_node', return_value=None),
         ):
             response = self.client.get('/blueprints/Project/nonexistent-slug')
 
@@ -309,7 +313,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
     def test_update_blueprint_success(self) -> None:
         """Test updating a blueprint."""
         with (
-            mock.patch('imbi.neo4j.upsert') as mock_upsert,
+            mock.patch('imbi_api.neo4j.upsert') as mock_upsert,
         ):
             mock_upsert.return_value = 'element123'
 
@@ -363,7 +367,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
     def test_delete_blueprint_success(self) -> None:
         """Test deleting a blueprint."""
         with (
-            mock.patch('imbi.neo4j.delete_node', return_value=True),
+            mock.patch('imbi_api.neo4j.delete_node', return_value=True),
         ):
             response = self.client.delete('/blueprints/Project/test-blueprint')
 
@@ -373,7 +377,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
     def test_delete_blueprint_not_found(self) -> None:
         """Test deleting non-existent blueprint returns 404."""
         with (
-            mock.patch('imbi.neo4j.delete_node', return_value=False),
+            mock.patch('imbi_api.neo4j.delete_node', return_value=False),
         ):
             response = self.client.delete(
                 '/blueprints/Project/nonexistent-slug'
@@ -391,7 +395,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
         test's authentication dependency override after the checks to
         avoid affecting other tests.
         """
-        from imbi.auth import permissions
+        from imbi_api.auth import permissions
 
         # Clear dependency overrides to test actual authentication
         self.test_app.dependency_overrides.clear()
