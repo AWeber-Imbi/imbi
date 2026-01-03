@@ -23,6 +23,11 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('role:read', 'role', 'read', 'View role information'),
     ('role:update', 'role', 'update', 'Update role information'),
     ('role:delete', 'role', 'delete', 'Delete roles'),
+    # Organization management
+    ('organization:create', 'organization', 'create', 'Create organizations'),
+    ('organization:read', 'organization', 'read', 'View organizations'),
+    ('organization:update', 'organization', 'update', 'Update organizations'),
+    ('organization:delete', 'organization', 'delete', 'Delete organizations'),
     # Blueprint management
     ('blueprint:read', 'blueprint', 'read', 'View blueprints'),
     ('blueprint:write', 'blueprint', 'write', 'Create/update blueprints'),
@@ -31,10 +36,6 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('project:read', 'project', 'read', 'View projects'),
     ('project:write', 'project', 'write', 'Create/update projects'),
     ('project:delete', 'project', 'delete', 'Delete projects'),
-    # Namespace management
-    ('namespace:read', 'namespace', 'read', 'View namespaces'),
-    ('namespace:write', 'namespace', 'write', 'Create/update namespaces'),
-    ('namespace:delete', 'namespace', 'delete', 'Delete namespaces'),
 ]
 
 # Default role definitions
@@ -56,8 +57,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'blueprint:write',
             'project:read',
             'project:write',
-            'namespace:read',
-            'namespace:write',
+            'organization:read',
+            'organization:update',
             'group:read',
             'user:read',
         ],
@@ -70,7 +71,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
         [
             'blueprint:read',
             'project:read',
-            'namespace:read',
+            'organization:read',
             'group:read',
             'user:read',
             'role:read',

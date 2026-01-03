@@ -5,7 +5,9 @@ from .auth import auth_router
 from .blueprints import blueprint_router
 from .groups import groups_router
 from .mfa import mfa_router
+from .organizations import organizations_router
 from .roles import roles_router
+from .schema import schema_router
 from .status import status_router
 from .users import users_router
 
@@ -15,7 +17,9 @@ routers: list[fastapi.APIRouter] = [
     blueprint_router,
     groups_router,
     mfa_router,
+    organizations_router,
     roles_router,
+    schema_router,
     status_router,
     users_router,
 ]

@@ -68,18 +68,9 @@ def _map_schema_type_to_python(prop_schema: typing.Any) -> type[typing.Any]:
         return typing.Any
 
 
-async def get_model(
-    model: type[pydantic.BaseModel],
+def _apply_blueprints(
+    model: type[pydantic.BaseModel], blueprints: list[models.Blueprint]
 ) -> type[pydantic.BaseModel]:
-    """Return a model class with blueprints applied"""
-    blueprints: list[models.Blueprint] = []
-    async for blueprint in neo4j.fetch_nodes(
-        models.Blueprint,
-        {'type': model.__name__, 'enabled': True},
-        order_by='priority',
-    ):
-        blueprints.append(blueprint)
-
     kwargs: dict[str, typing.Any] = {}
 
     # Add all fields from the base model
@@ -130,3 +121,17 @@ async def get_model(
     return pydantic.create_model(
         model.__name__, __config__=model.model_config, **kwargs
     )
+
+
+async def get_model(
+    model: type[pydantic.BaseModel],
+) -> type[pydantic.BaseModel]:
+    """Return a model class with blueprints applied"""
+    blueprints: list[models.Blueprint] = []
+    async for blueprint in neo4j.fetch_nodes(
+        models.Blueprint,
+        {'type': model.__name__, 'enabled': True},
+        order_by='priority',
+    ):
+        blueprints.append(blueprint)
+    return _apply_blueprints(model, blueprints)

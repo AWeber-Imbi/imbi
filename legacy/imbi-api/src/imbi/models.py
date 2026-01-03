@@ -7,6 +7,7 @@ import slugify
 from jsonschema_models.models import Schema
 
 __all__ = [
+    'MODEL_TYPES',
     'APIKey',
     'Blueprint',
     'BlueprintAssignment',
@@ -98,12 +99,18 @@ class BlueprintEdge(typing.NamedTuple):
 
 
 class Node(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(extra='ignore')
+    """Base model for Cypherantic nodes.
+
+    The `icon` attribute can either be a URL or a CSS class name
+
+    """
+
+    model_config = pydantic.ConfigDict(extra='allow')
 
     name: str
     slug: str
     description: str | None = None
-    icon_url: pydantic.HttpUrl | None = None
+    icon: pydantic.HttpUrl | str | None = None
 
 
 class Organization(Node): ...
@@ -138,6 +145,16 @@ class Project(Node):
     links: dict[str, pydantic.HttpUrl]
     urls: dict[str, pydantic.HttpUrl]
     identifiers: dict[str, int | str]
+
+
+# Model type mapping for schema generation
+MODEL_TYPES: dict[str, type[pydantic.BaseModel]] = {
+    'Organization': Organization,
+    'Team': Team,
+    'Environment': Environment,
+    'ProjectType': ProjectType,
+    'Project': Project,
+}
 
 
 # Authentication and Authorization Models

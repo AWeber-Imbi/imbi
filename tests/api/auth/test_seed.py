@@ -10,7 +10,7 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
     """Test permission seeding functionality."""
 
     async def test_seed_permissions_creates_all(self) -> None:
-        """Verify all 21 standard permissions are created."""
+        """Verify all 22 standard permissions are created."""
         mock_result = mock.AsyncMock()
         # Simulate all permissions being newly created
         mock_result.data.return_value = [{'is_new': True}]
@@ -20,8 +20,8 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch('imbi.neo4j.run', return_value=mock_result):
             count = await seed.seed_permissions()
 
-        # Should create 21 permissions (6 resource types x 3-4 actions each)
-        self.assertEqual(count, 21)
+        # Should create 22 permissions (6 resource types x 3-4 actions each)
+        self.assertEqual(count, 22)
 
     async def test_seed_permissions_idempotent(self) -> None:
         """Second run creates no duplicates."""
@@ -113,7 +113,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         # Verify admin has all permissions
         admin_role = next(r for r in seed.DEFAULT_ROLES if r[0] == 'admin')
         admin_permissions = admin_role[4]
-        self.assertEqual(len(admin_permissions), 21)
+        self.assertEqual(len(admin_permissions), 22)
 
         # Verify developer has subset of permissions
         dev_role = next(r for r in seed.DEFAULT_ROLES if r[0] == 'developer')
