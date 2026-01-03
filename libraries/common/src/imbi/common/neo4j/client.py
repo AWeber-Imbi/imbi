@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import typing
+from importlib import metadata
 
 import cypherantic
 import neo4j
@@ -21,6 +22,11 @@ RelationshipProperties = typing.TypeVar(
     'RelationshipProperties', bound=pydantic.BaseModel
 )
 EdgeType = typing.TypeVar('EdgeType')
+
+try:
+    version = metadata.version('imbi-common')
+except metadata.PackageNotFoundError:
+    version = '0.0.0'
 
 
 class Neo4j:
@@ -71,8 +77,6 @@ class Neo4j:
             yield session
 
     def _create_client(self) -> neo4j.AsyncDriver:
-        from imbi_common import version
-
         auth: tuple[str, str] | None = None
         if self._settings.user and self._settings.password:
             auth = (self._settings.user, self._settings.password)
