@@ -1,0 +1,46 @@
+# Base ClickHouse schemas for imbi-common
+# These tables are used across multiple Imbi services
+
+# Session Activity Tracking
+# GDPR Compliance Notes:
+# - ip_address: Store hashed IP (SHA256) or truncated subnet only
+# - user_agent: Aggregate to browser family/version, not full UA string
+# - metadata: MUST NOT contain PII (emails, names, passwords, tokens)
+#   Allowed: non-sensitive context like endpoint paths, error codes
+# - TTL: 30 days for compliance with data minimization
+[session_activity]
+query = """
+CREATE TABLE IF NOT EXISTS session_activity (
+    timestamp DateTime64(3),
+    session_id String,
+    user_id String,
+    activity_type Enum('login' = 1, 'logout' = 2, 'token_refresh' = 3, 'api_call' = 4),
+    ip_subnet String COMMENT 'Truncated to /24 (IPv4) or /48 (IPv6)',
+    user_agent_family String COMMENT 'Browser family only, not full UA',
+    user_agent_version String COMMENT 'Major.minor version only',
+    metadata String COMMENT 'Non-PII context only: endpoints, codes'
+) ENGINE = MergeTree()
+ORDER BY (timestamp, session_id)
+PARTITION BY toYYYYMM(timestamp)
+TTL timestamp + INTERVAL 30 DAY;
+"""
+enabled = true
+
+# MFA Events
+# GDPR Compliance Notes:
+# - ip_address: Store hashed IP (SHA256) or truncated subnet only
+# - TTL: 90 days for security audit and compliance
+[mfa_events]
+query = """
+CREATE TABLE IF NOT EXISTS mfa_events (
+    timestamp DateTime64(3),
+    user_id String,
+    event_type Enum('enabled' = 1, 'disabled' = 2, 'verified' = 3, 'failed' = 4, 'backup_used' = 5),
+    ip_subnet String COMMENT 'Truncated to /24 (IPv4) or /48 (IPv6)',
+    success Bool
+) ENGINE = MergeTree()
+ORDER BY (timestamp, user_id)
+PARTITION BY toYYYYMM(timestamp)
+TTL timestamp + INTERVAL 90 DAY;
+"""
+enabled = true

@@ -1,0 +1,135 @@
+[build-system]
+requires = ["hatchling", "build", "wheel"]
+build-backend = "hatchling.build"
+
+[project]
+name = "imbi-common"
+version = "0.1.0"
+description = "Shared library for the Imbi ecosystem providing core data access, authentication primitives, and domain models"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "BSD-3-Clause" }
+license-file = "LICENSE"
+authors = [
+  { name = "Gavin M. Roy", email = "gavinr@aweber.com" }
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+  "argon2-cffi>=25.1.0",
+  "clickhouse-connect",
+  "cryptography>=42.0.4",
+  # Temporary fork with Neo4j datetime conversion and relationship field fixes
+  # See: https://github.com/gmr/cypherantic/tree/fix/neo4j-datetime-and-relationship-fields
+  # TODO: Replace with upstream once PR is merged or released
+  "cypherantic@git+https://github.com/gmr/cypherantic.git#egg=main",
+  "jsonschema-models",
+  "neo4j",
+  "pydantic>=2.0",
+  "pydantic-settings",
+  "pyjwt>=2.10.1", # CVE-2025-45768 disputed, monitor for 2.11.0+ when available
+  "python-slugify",
+]
+
+[tool.coverage.html]
+directory = "build/coverage"
+
+[tool.coverage.report]
+exclude_also = ["typing.TYPE_CHECKING"]
+fail_under = 90
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/imbi_common"]
+
+[tool.coverage.xml]
+output = "build/coverage.xml"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imbi_common"]
+include = ["src/imbi_common/log-config.toml"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.mkdocs]
+config-file = "mkdocs.yml"
+
+[tool.pyright]
+include = ["src", "tests"]
+deprecateTypingAliases = true
+reportMissingSuperCall = "hint"
+typeCheckingMode = "strict"
+
+[tool.ruff]
+line-length = 79
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "BLE", # flake8-blind-except
+  "C4", # flake8-comprehensions
+  "C90", # mccabe
+  "E", "W", # pycodestyle
+  "F", # pyflakes
+  "G", # flake8-logging-format
+  "I", # isort
+  "N", # pep8-naming
+  "Q", # flake8-quotes
+  "S", # flake8-bandit
+  "ASYNC", # flake8-async
+  "B", # flake8-bugbear
+  "DTZ", # flake8-datetimez
+  "FURB", # refurb
+  "RUF", # ruff-specific
+  "T20", # flake8-print
+  "UP", # pyupgrade
+]
+ignore = [
+  "N818", # exception class names are not required to end in Error
+  "RSE", # contradicts Python Style Guide
+  "S105", # false positive: hardcoded password (for literal strings like 'bearer', 'access', 'refresh')
+  "S106", # false positive: hardcoded password in function argument
+  "TRY003", # message text in exception initializers is okay
+  "TRY400", # logging.exception is not always preferable
+  "UP040", # allow non-pep695-type-alias
+  "UP047", # allow non-pep695-generic-functions
+]
+flake8-quotes = { inline-quotes = "single" }
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S"]
+
+[dependency-groups]
+dev = [
+  "build",
+  "coverage[toml]",
+  "httpx",
+  "mypy",
+  "pre-commit",
+  "pyright",
+  "ruff",
+  "watchfiles"
+]
+docs = [
+  "griffe-pydantic",
+  "mkdocs>=1.5,<2",
+  "mkdocs-material>9.5,<10",
+  "mkdocstrings[python]",
+  "mkdocstrings-python-xref>=1.6,<2"
+]

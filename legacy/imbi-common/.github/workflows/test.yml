@@ -1,0 +1,66 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/testpassword
+        ports:
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p testpassword 'RETURN 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      clickhouse:
+        image: clickhouse/clickhouse-server:latest
+        ports:
+          - 8123:8123
+          - 9000:9000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[dev]"
+
+      - name: Run unit tests
+        run: |
+          SKIP_INTEGRATION_TESTS=1 python -m unittest discover tests -v
+
+      - name: Run integration tests
+        env:
+          NEO4J_URL: neo4j://neo4j:testpassword@localhost:7687
+          CLICKHOUSE_URL: http://localhost:8123
+        run: |
+          python -m unittest discover tests -v
+
+      - name: Type checking with mypy
+        run: |
+          mypy src/imbi_common
+
+      - name: Lint with ruff
+        run: |
+          ruff check src/imbi_common tests

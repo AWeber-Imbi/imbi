@@ -1,0 +1,9 @@
+.*
+/build
+/dist
+/public
+/site
+VERSION
+!/.github
+!/.gitignore
+!/.pre-commit-config.yaml

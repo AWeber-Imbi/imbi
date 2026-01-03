@@ -1,0 +1,81 @@
+site_name: Imbi Common Library
+site_description: Shared library for the Imbi ecosystem
+site_author: Imbi Team
+site_url: https://aweber.github.io/imbi-common/
+
+repo_name: aweber/imbi-common
+repo_url: https://github.com/aweber/imbi-common
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: installation.md
+      - Quick Start: quickstart.md
+      - Configuration: configuration.md
+  - API Reference:
+      - Settings: api/settings.md
+      - Neo4j Client: api/neo4j.md
+      - ClickHouse Client: api/clickhouse.md
+      - Models: api/models.md
+      - Blueprints: api/blueprints.md
+      - Authentication: api/auth.md
+      - Logging: api/logging.md
+  - Guides:
+      - Database Setup: guides/database-setup.md
+      - Authentication: guides/authentication.md
+      - Testing: guides/testing.md
+  - Architecture:
+      - ADR 0001: adr/0001-imbi-common-library-extraction.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            docstring_style: google
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
