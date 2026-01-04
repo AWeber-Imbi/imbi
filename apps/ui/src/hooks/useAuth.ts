@@ -25,10 +25,15 @@ export function useAuth(): UseAuthReturn {
       try {
         return await getUserByUsername(username)
       } catch (error: any) {
+        console.error('[Auth] Error fetching user:', error)
+        // Check if it's a "user not found or inactive" error
         if (error.response?.status === 401 && error.response?.data?.detail?.includes('not found or inactive')) {
+          console.log('[Auth] User not found or inactive, clearing tokens')
           clearTokens()
           throw new Error('Your account is not active. Please contact your administrator.')
         }
+        // For other 401 errors, let the API client handle the redirect
+        // Don't interfere with the redirect flow
         throw error
       }
     },
@@ -44,6 +49,9 @@ export function useAuth(): UseAuthReturn {
         if (!refreshToken) {
           clearTokens()
           if (location.pathname !== '/login') {
+            // Save current path before redirecting to login
+            const currentPath = location.pathname + location.search
+            sessionStorage.setItem('imbi_redirect_after_login', currentPath)
             navigate('/login', { replace: true })
           }
           throw new Error('No refresh token available')
@@ -56,6 +64,9 @@ export function useAuth(): UseAuthReturn {
           console.error('[Auth] Token refresh failed during initialization:', error)
           clearTokens()
           if (location.pathname !== '/login') {
+            // Save current path before redirecting to login
+            const currentPath = location.pathname + location.search
+            sessionStorage.setItem('imbi_redirect_after_login', currentPath)
             navigate('/login', { replace: true })
           }
           throw error
@@ -75,9 +86,8 @@ export function useAuth(): UseAuthReturn {
 
       try {
         await refetch()
-        const returnTo = sessionStorage.getItem('returnTo') || '/dashboard'
-        sessionStorage.removeItem('returnTo')
-        navigate(returnTo, { replace: true })
+        // This redirect is now handled in LoginPage
+        // to be consistent with OAuth flow
       } catch (error: any) {
         console.error('[Auth] Failed to fetch user after login:', error)
         // Re-throw to show error on login page
@@ -124,15 +134,18 @@ export function useAuth(): UseAuthReturn {
     onError: () => {
       clearTokens()
       if (location.pathname !== '/login') {
+        // Save current path before redirecting to login
+        const currentPath = location.pathname + location.search
+        sessionStorage.setItem('imbi_redirect_after_login', currentPath)
         navigate('/login', { replace: true })
       }
     }
   })
 
   const loginWithOAuth = (providerId: string) => {
-    const currentPath = window.location.pathname
+    const currentPath = window.location.pathname + window.location.search
     if (currentPath !== '/login') {
-      sessionStorage.setItem('returnTo', currentPath)
+      sessionStorage.setItem('imbi_redirect_after_login', currentPath)
     }
     window.location.href = `/auth/oauth/${providerId}`
   }
