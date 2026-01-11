@@ -1,0 +1,101 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "imbi-gateway"
+version = "0.0.0"
+description = "Imbi webhook receiver"
+readme = "README.md"
+authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
+requires-python = ">=3.14"
+dependencies = ["imbi-common"]
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.37.1",
+  "coverage[toml]>=7.13.1",
+  "mypy~=1.19.1",
+  "pre-commit>=4.5.1",
+  "pytest>=9.0.2",
+  "pytest-cov>=7.0.0",
+  "ruff~=0.14.6",
+]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.mypy]
+namespace_packages = true            # required for opentelemetry
+show_error_codes = true
+strict = true
+packages = ["imbi_gateway", "tests"]
+
+[tool.pyright]
+deprecateTypingAliases = true
+reportMissingSuperCall = "hint"
+typeCheckingMode = "strict"
+
+[tool.ruff]
+line-length = 79
+target-version = "py312"
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "ANN",
+  "ARG",
+  "ASYNC",
+  "B",
+  "BLE",
+  "C4",
+  "C90",
+  "DTZ",
+  "E",
+  "ERA",
+  "F",
+  "FLY",
+  "FURB",
+  "G",
+  "I",
+  "LOG",
+  "N",
+  "PIE",
+  "PL",
+  "PTH",
+  "Q",
+  "RET",
+  "RSE",
+  "RUF",
+  "S",
+  "SIM",
+  "T10",
+  "T20",
+  "TC",
+  "TRY",
+  "W",
+]
+ignore = [
+  "TRY003", # message text in exception initializers is okay
+  "TRY400", # logging.exception is not always preferable
+]
+flake8-quotes = { inline-quotes = "single" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+  "--cov=src/imbi_gateway",
+  "--cov-report=xml:build/coverage.xml",
+  "--cov-report=term",
+]
+
+[tool.uv.sources]
+imbi-common = { path = "../imbi-common", editable = true }
