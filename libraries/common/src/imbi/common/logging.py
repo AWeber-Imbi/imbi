@@ -1,11 +1,21 @@
 """Logging configuration for Imbi services."""
 
 import tomllib
+import typing
 from importlib import resources
 from logging import config
 
 
-def get_log_config() -> dict:
+# Minimal type checking for the configuration that we rely upon
+class _LoggerConfig(typing.TypedDict, total=False):
+    level: typing.Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+
+
+class _LoggingConfig(typing.TypedDict, total=False):
+    loggers: dict[str, _LoggerConfig]
+
+
+def get_log_config() -> _LoggingConfig:
     """Load logging configuration from bundled log-config.toml.
 
     Returns:
@@ -14,11 +24,14 @@ def get_log_config() -> dict:
 
     """
     log_config_file = resources.files('imbi_common') / 'log-config.toml'
-    return tomllib.loads(log_config_file.read_text())
+    return typing.cast(
+        _LoggingConfig,
+        typing.cast(object, tomllib.loads(log_config_file.read_text())),
+    )
 
 
 def configure_logging(
-    log_config: dict | None = None, dev: bool = False
+    log_config: _LoggingConfig | None = None, dev: bool = False
 ) -> None:
     """Configure logging using dictConfig.
 
@@ -36,4 +49,4 @@ def configure_logging(
         loggers.setdefault('imbi', {})
         loggers['imbi']['level'] = 'DEBUG'
 
-    config.dictConfig(log_config)
+    config.dictConfig(log_config)  # type: ignore[arg-type]

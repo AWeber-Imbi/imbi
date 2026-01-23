@@ -21,13 +21,12 @@ import pathlib
 import tomllib
 import typing
 
-import clickhouse_connect
+import clickhouse_connect.driver
 import pydantic
-from clickhouse_connect import driver
 from clickhouse_connect.datatypes import format
-from clickhouse_connect.driver import exceptions, summary
+from clickhouse_connect.driver import asyncclient, exceptions, summary
 
-from imbi_common import settings
+from imbi_common import helpers, settings
 
 try:
     import sentry_sdk
@@ -53,7 +52,7 @@ class Clickhouse:
     _instance = None
 
     def __init__(self) -> None:
-        self._clickhouse: driver.AsyncClient | None = None
+        self._clickhouse: asyncclient.AsyncClient | None = None
         self._lock = asyncio.Lock()
         self._settings = settings.Clickhouse()
         format.set_read_format('IPv*', 'string')
@@ -91,7 +90,8 @@ class Clickhouse:
         """Close any open connections to Clickhouse."""
         async with self._lock:
             if self._clickhouse is not None:
-                await self._clickhouse.close()
+                # https://github.com/ClickHouse/clickhouse-connect/issues/567
+                await self._clickhouse.close()  # type: ignore[no-untyped-call]
             self._clickhouse = None
 
     async def insert(
@@ -151,11 +151,17 @@ class Clickhouse:
 
     async def _connect(
         self, delay: float = 0.5, attempt: int = 1
-    ) -> clickhouse_connect.driver.AsyncClient | None:
+    ) -> asyncclient.AsyncClient | None:
+        host = helpers.unwrap_as(str, self._settings.url.host)
+        port = (
+            8123
+            if self._settings.url.port is None
+            else self._settings.url.port
+        )
         LOGGER.debug(
             'Connecting to Clickhouse at %s:%s (attempt %d)...',
-            self._settings.url.host,
-            self._settings.url.port,
+            host,
+            port,
             attempt,
         )
         try:
@@ -165,12 +171,13 @@ class Clickhouse:
             if not database:
                 database = 'internal'
 
-            return await clickhouse_connect.create_async_client(
-                host=self._settings.url.host,
-                port=self._settings.url.port,
+            return await clickhouse_connect.driver.create_async_client(
+                host=host,
+                port=port,
                 username=self._settings.url.username,
-                password=self._settings.url.password,
+                password=self._settings.url.password or '',
                 database=database,
+                connect_timeout=self._settings.connect_timeout,
             )
         except exceptions.OperationalError as err:
             LOGGER.warning(
@@ -179,9 +186,10 @@ class Clickhouse:
                 err,
             )
             await asyncio.sleep(delay)
-            if attempt >= 10:
+            if attempt >= self._settings.max_connect_attempts:
                 LOGGER.critical(
-                    'Failed to Connect to Clickhouse after 10 attempts'
+                    'Failed to Connect to Clickhouse after %s attempts',
+                    attempt,
                 )
                 return None
             return await self._connect(delay * 2, attempt + 1)

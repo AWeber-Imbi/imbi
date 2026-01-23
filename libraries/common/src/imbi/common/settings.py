@@ -37,6 +37,8 @@ class Clickhouse(pydantic_settings.BaseSettings):
     model_config = base_settings_config(env_prefix='CLICKHOUSE_')
 
     url: pydantic.HttpUrl = pydantic.HttpUrl('http://localhost:8123')
+    connect_timeout: float = 10.0  # default in clickhouse client
+    max_connect_attempts: int = 10
 
 
 class Neo4j(pydantic_settings.BaseSettings):

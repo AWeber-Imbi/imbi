@@ -59,11 +59,18 @@ allow-direct-references = true
 [tool.mkdocs]
 config-file = "mkdocs.yml"
 
+[tool.mypy]
+strict = true
+show_error_codes = true
+
 [tool.pyright]
-include = ["src", "tests"]
 deprecateTypingAliases = true
 reportMissingSuperCall = "hint"
 typeCheckingMode = "strict"
+executionEnvironments = [
+  { root = "src" },
+  { root = "tests", reportPrivateUsage = false },
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -118,15 +125,16 @@ max-complexity = 15
 
 [dependency-groups]
 dev = [
+  "basedpyright",
   "build",
   "coverage[toml]",
   "httpx",
-  "mypy",
+  "mypy~=1.19.1",
   "pre-commit",
-  "pyright",
   "pytest",
   "pytest-cov",
-  "ruff",
+  "ruff~=0.14.6",
+  "sentry-sdk>=2.48.0",
 ]
 dist = [
   "build",
@@ -140,3 +148,7 @@ docs = [
   "mkdocstrings[python]",
   "mkdocstrings-python-xref>=1.6,<2"
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
