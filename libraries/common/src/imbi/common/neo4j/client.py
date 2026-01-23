@@ -87,5 +87,5 @@ class Neo4j:
             liveness_check_timeout=self._settings.liveness_check_timeout,
             max_connection_lifetime=self._settings.max_connection_lifetime,
             user_agent=f'imbi/{version}',
-            notifications_min_severity='WARNING',
+            notifications_min_severity='OFF',
         )

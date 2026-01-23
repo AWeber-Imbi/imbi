@@ -12,6 +12,11 @@ from . import client
 
 LOGGER = logging.getLogger(__name__)
 
+# Suppress Neo4j driver notifications about non-existent relationship types
+# and property keys. These warnings are expected when querying optional
+# relationships/properties in a fresh or partially populated database.
+logging.getLogger('neo4j.notifications').setLevel(logging.ERROR)
+
 
 def convert_neo4j_types(data: typing.Any) -> typing.Any:
     """Convert Neo4j-specific types to Python native types.
