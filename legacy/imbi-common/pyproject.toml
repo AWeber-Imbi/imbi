@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "build", "wheel"]
+requires = ["build", "hatchling", "wheel"]
 build-backend = "hatchling.build"
 
 [project]
@@ -9,10 +9,7 @@ description = "Shared library for the Imbi ecosystem providing core data access,
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "BSD-3-Clause" }
-license-file = "LICENSE"
-authors = [
-  { name = "Gavin M. Roy", email = "gavinr@aweber.com" }
-]
+authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
@@ -34,11 +31,12 @@ dependencies = [
   "jsonschema-models",
   "neo4j",
   "orjson",
-  "pydantic[email]>=2.0",
   "pydantic-settings",
-  "pyjwt>=2.10.1", # CVE-2025-45768 disputed, monitor for 2.11.0+ when available
+  "pydantic[email]>=2.0",
+  "pyjwt>=2.10.1",  # CVE-2025-45768 disputed, monitor for 2.11.0+ when available
   "python-slugify",
 ]
+license-file = "LICENSE"
 
 [tool.coverage.report]
 exclude_also = ["typing.TYPE_CHECKING"]
@@ -89,31 +87,32 @@ quote-style = "single"
 
 [tool.ruff.lint]
 select = [
-  "BLE", # flake8-blind-except
-  "C4", # flake8-comprehensions
-  "C90", # mccabe
-  "E", "W", # pycodestyle
-  "F", # pyflakes
-  "G", # flake8-logging-format
-  "I", # isort
-  "N", # pep8-naming
-  "Q", # flake8-quotes
-  "S", # flake8-bandit
-  "ASYNC", # flake8-async
-  "B", # flake8-bugbear
-  "DTZ", # flake8-datetimez
-  "FURB", # refurb
-  "RUF", # ruff-specific
-  "T20", # flake8-print
-  "UP", # pyupgrade
+  "BLE",  # flake8-blind-except
+  "C4",  # flake8-comprehensions
+  "C90",  # mccabe
+  "E",
+  "W",  # pycodestyle
+  "F",  # pyflakes
+  "G",  # flake8-logging-format
+  "I",  # isort
+  "N",  # pep8-naming
+  "Q",  # flake8-quotes
+  "S",  # flake8-bandit
+  "ASYNC",  # flake8-async
+  "B",  # flake8-bugbear
+  "DTZ",  # flake8-datetimez
+  "FURB",  # refurb
+  "RUF",  # ruff-specific
+  "T20",  # flake8-print
+  "UP",  # pyupgrade
 ]
 ignore = [
-  "N818", # exception class names are not required to end in Error
-  "RSE", # contradicts Python Style Guide
-  "S105", # false positives on non-password strings
-  "TRY003", # message text in exception initializers is okay
-  "TRY400", # logging.exception is not always preferable
-  "UP047", # type parameter syntax not yet adopted
+  "N818",  # exception class names are not required to end in Error
+  "RSE",  # contradicts Python Style Guide
+  "S105",  # false positives on non-password strings
+  "TRY003",  # message text in exception initializers is okay
+  "TRY400",  # logging.exception is not always preferable
+  "UP047",  # type parameter syntax not yet adopted
 ]
 flake8-quotes = { inline-quotes = "single" }
 
@@ -127,6 +126,7 @@ max-complexity = 15
 dev = [
   "basedpyright",
   "build",
+  "click~=8.2.1",  # 8.3+ breaks mkdocs serve (https://github.com/mkdocs/mkdocs/issues/4032)
   "coverage[toml]",
   "httpx",
   "mypy~=1.19.1",
@@ -136,17 +136,13 @@ dev = [
   "ruff~=0.14.6",
   "sentry-sdk>=2.48.0",
 ]
-dist = [
-  "build",
-  "twine",
-  "wheel"
-]
+dist = ["build", "twine", "wheel"]
 docs = [
   "griffe-pydantic",
   "mkdocs>=1.5,<2",
   "mkdocs-material>9.5,<10",
-  "mkdocstrings[python]",
-  "mkdocstrings-python-xref>=1.6,<2"
+  "mkdocstrings-python-xref>=1.6,<2",
+  "mkdocstrings[python]"
 ]
 
 [[tool.uv.index]]

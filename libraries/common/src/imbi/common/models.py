@@ -113,7 +113,8 @@ class Node(pydantic.BaseModel):
     icon: pydantic.HttpUrl | str | None = None
 
 
-class Organization(Node): ...
+class Organization(Node):
+    pass
 
 
 class Team(Node):
@@ -123,10 +124,12 @@ class Team(Node):
     ]
 
 
-class Environment(Node): ...
+class Environment(Node):
+    pass
 
 
-class ProjectType(Node): ...
+class ProjectType(Node):
+    pass
 
 
 class Project(Node):
@@ -287,7 +290,7 @@ class Role(Node):
 class EmptyRelationship(pydantic.BaseModel):
     """Empty relationship properties for simple relationships without data."""
 
-    ...  # Explicitly empty - no relationship properties needed
+    pass  # Explicitly empty - no relationship properties needed
 
 
 class GroupEdge(typing.NamedTuple):
