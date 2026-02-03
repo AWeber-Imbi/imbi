@@ -7,9 +7,9 @@ name = "imbi-gateway"
 version = "0.0.0"
 description = "Imbi webhook receiver"
 readme = "README.md"
-authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
-license = "BSD-3-Clause"
 requires-python = ">=3.14"
+license = "BSD-3-Clause"
+authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
 dependencies = ["fastapi>=0.128.0", "imbi-common"]
 
 [dependency-groups]
@@ -33,7 +33,7 @@ branch = true
 source = ["src"]
 
 [tool.mypy]
-namespace_packages = true            # required for opentelemetry
+namespace_packages = true  # required for opentelemetry
 show_error_codes = true
 strict = true
 packages = ["imbi_gateway", "tests"]
@@ -86,8 +86,8 @@ select = [
   "W",
 ]
 ignore = [
-  "TRY003", # message text in exception initializers is okay
-  "TRY400", # logging.exception is not always preferable
+  "TRY003",  # message text in exception initializers is okay
+  "TRY400",  # logging.exception is not always preferable
 ]
 flake8-quotes = { inline-quotes = "single" }
 
