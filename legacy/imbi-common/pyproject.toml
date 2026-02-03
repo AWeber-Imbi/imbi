@@ -35,6 +35,7 @@ dependencies = [
   "pydantic[email]>=2.0",
   "pyjwt>=2.10.1",  # CVE-2025-45768 disputed, monitor for 2.11.0+ when available
   "python-slugify",
+  "typer>=0.21.1",
 ]
 license-file = "LICENSE"
 
@@ -71,6 +72,7 @@ executionEnvironments = [
 ]
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = [
   "--cov=src/imbi_common",
@@ -135,6 +137,7 @@ dev = [
   "pytest-cov",
   "ruff~=0.14.6",
   "sentry-sdk>=2.48.0",
+  "tomli-w~=1.2",
 ]
 dist = ["build", "twine", "wheel"]
 docs = [
@@ -144,6 +147,14 @@ docs = [
   "mkdocstrings-python-xref>=1.6,<2",
   "mkdocstrings[python]"
 ]
+server = [
+  "uvicorn[standard]>=0.40.0",
+]
+
+[tool.uv]
+# dependency groups that are installed by `uv run`
+# https://docs.astral.sh/uv/reference/settings/#default-groups
+default-groups = ["dev", "server"]
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"

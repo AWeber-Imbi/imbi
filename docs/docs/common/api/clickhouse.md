@@ -67,10 +67,14 @@ hashed = privacy.hash_pii("user@example.com")
 
 ### Client
 
-::: imbi_common.clickhouse.client.ClickHouseClient
+::: imbi_common.clickhouse.client.Clickhouse
 
 ### Privacy Utilities
 
-::: imbi_common.clickhouse.privacy.truncate_ip
+::: imbi_common.clickhouse.privacy.hash_ip_address
 
-::: imbi_common.clickhouse.privacy.hash_pii
+::: imbi_common.clickhouse.privacy.parse_user_agent
+
+::: imbi_common.clickhouse.privacy.sanitize_metadata
+
+::: imbi_common.clickhouse.privacy.truncate_ip_to_subnet

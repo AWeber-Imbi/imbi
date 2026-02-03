@@ -47,6 +47,7 @@ nav:
       - Logging: api/logging.md
   - Guides:
       - Database Setup: guides/database-setup.md
+      - Deployment: guides/deployment.md
       - Authentication: guides/authentication.md
       - Testing: guides/testing.md
   - Architecture:

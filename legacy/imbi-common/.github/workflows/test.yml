@@ -25,11 +25,8 @@ jobs:
           python-version: "${{ matrix.python }}"
           enable-cache: true
 
-      - name: Install pre-commit
-        uses: pre-commit/action@v3.0.1
-
       - name: Lint Check
-        run: pre-commit run --all-files
+        run: uv run pre-commit run --all-files
 
       - name: Bootstrap environment
         run: ./bootstrap
