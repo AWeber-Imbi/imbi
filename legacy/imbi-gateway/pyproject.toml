@@ -8,6 +8,7 @@ version = "0.0.0"
 description = "Imbi webhook receiver"
 readme = "README.md"
 authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
+license = "BSD-3-Clause"
 requires-python = ">=3.14"
 dependencies = ["fastapi>=0.128.0", "imbi-common"]
 
