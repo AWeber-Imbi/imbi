@@ -10,7 +10,10 @@ readme = "README.md"
 requires-python = ">=3.14"
 license = "BSD-3-Clause"
 authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
-dependencies = ["fastapi>=0.128.0", "imbi-common"]
+dependencies = [
+  "fastapi>=0.128.0",
+  "imbi-common[server]",
+]
 
 [dependency-groups]
 dev = [
@@ -100,4 +103,4 @@ addopts = [
 ]
 
 [tool.uv.sources]
-imbi-common = { path = "../imbi-common", editable = true }
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common", rev = "main" }
