@@ -15,6 +15,9 @@ dependencies = [
   "imbi-common[server]",
 ]
 
+[project.scripts]
+imbi-gateway = "imbi_gateway.app:cli"
+
 [dependency-groups]
 dev = [
   "basedpyright>=1.37.1",
