@@ -24,10 +24,7 @@ dependencies = [
   "argon2-cffi>=25.1.0",
   "clickhouse-connect",
   "cryptography>=42.0.4",
-  # Temporary fork with Neo4j datetime conversion and relationship field fixes
-  # See: https://github.com/gmr/cypherantic/tree/fix/neo4j-datetime-and-relationship-fields
-  # TODO: Replace with upstream once PR is merged or released
-  "cypherantic@git+https://github.com/gmr/cypherantic.git#egg=main",
+  "cypherantic",
   "jsonschema-models",
   "neo4j",
   "orjson",
