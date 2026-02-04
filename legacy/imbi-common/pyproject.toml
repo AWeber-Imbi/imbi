@@ -39,6 +39,11 @@ dependencies = [
 ]
 license-file = "LICENSE"
 
+[project.optional-dependencies]
+server = [
+  "uvicorn[standard]>=0.40.0",
+]
+
 [tool.coverage.report]
 exclude_also = ["typing.TYPE_CHECKING"]
 fail_under = 90
@@ -138,6 +143,7 @@ dev = [
   "ruff~=0.14.6",
   "sentry-sdk>=2.48.0",
   "tomli-w~=1.2",
+  "uvicorn[standard]>=0.40.0",
 ]
 dist = ["build", "twine", "wheel"]
 docs = [
@@ -147,14 +153,11 @@ docs = [
   "mkdocstrings-python-xref>=1.6,<2",
   "mkdocstrings[python]"
 ]
-server = [
-  "uvicorn[standard]>=0.40.0",
-]
 
 [tool.uv]
 # dependency groups that are installed by `uv run`
 # https://docs.astral.sh/uv/reference/settings/#default-groups
-default-groups = ["dev", "server"]
+default-groups = ["dev"]
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
