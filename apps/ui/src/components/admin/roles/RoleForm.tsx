@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Save, X, AlertCircle, AlertTriangle, Info } from 'lucide-react'
-import { Button } from '../../ui/button'
-import { Input } from '../../ui/input'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { getRole } from '@/api/endpoints'
 import type { RoleCreate } from '@/types'
 
@@ -28,7 +28,7 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
   const isEditing = !!roleSlug
 
   // Fetch existing role when editing
-  const { data: existingRole, isLoading: roleLoading } = useQuery({
+  const { data: existingRole, isLoading: roleLoading, error: roleError } = useQuery({
     queryKey: ['role', roleSlug],
     queryFn: () => getRole(roleSlug!),
     enabled: isEditing,
@@ -97,6 +97,7 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
   }
 
   const handleSave = () => {
+    if (isEditing && !existingRole) return
     if (!validateForm()) return
 
     const roleData: RoleCreate = {
@@ -122,6 +123,22 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
       <div className="flex items-center justify-center py-12">
         <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
           Loading role...
+        </div>
+      </div>
+    )
+  }
+
+  if (isEditing && roleError) {
+    return (
+      <div className={`flex items-center gap-3 p-4 rounded-lg border ${
+        isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
+      }`}>
+        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        <div>
+          <div className="font-medium">Failed to load role</div>
+          <div className="text-sm mt-1">
+            {roleError instanceof Error ? roleError.message : 'An error occurred'}
+          </div>
         </div>
       </div>
     )

@@ -4,8 +4,8 @@ import {
   ArrowLeft, Edit2, Shield, Lock, Plus, X, AlertCircle,
   Users, UsersRound, Info
 } from 'lucide-react'
-import { Button } from '../../ui/button'
-import { Gravatar } from '../../ui/gravatar'
+import { Button } from '@/components/ui/button'
+import { Gravatar } from '@/components/ui/gravatar'
 import { getRole, getAdminSettings, getRoleUsers, getRoleGroups, grantPermission, revokePermission } from '@/api/endpoints'
 import type { Permission, RoleUser, Group } from '@/types'
 
@@ -37,14 +37,14 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
   })
 
   // Fetch users with this role
-  const { data: roleUsers, isLoading: usersLoading } = useQuery({
+  const { data: roleUsers, isLoading: usersLoading, error: usersError } = useQuery({
     queryKey: ['roleUsers', slug],
     queryFn: () => getRoleUsers(slug),
     enabled: activeTab === 'users',
   })
 
   // Fetch groups with this role
-  const { data: roleGroups, isLoading: groupsLoading } = useQuery({
+  const { data: roleGroups, isLoading: groupsLoading, error: groupsError } = useQuery({
     queryKey: ['roleGroups', slug],
     queryFn: () => getRoleGroups(slug),
     enabled: activeTab === 'groups',
@@ -382,6 +382,18 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
                 Loading users...
               </div>
             </div>
+          ) : usersError ? (
+            <div className={`flex items-center gap-3 p-4 rounded-lg border ${
+              isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <div>
+                <div className="font-medium">Failed to load users</div>
+                <div className="text-sm mt-1">
+                  {usersError instanceof Error ? usersError.message : 'An error occurred'}
+                </div>
+              </div>
+            </div>
           ) : !roleUsers || roleUsers.length === 0 ? (
             <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -468,6 +480,18 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
             <div className="flex items-center justify-center py-8">
               <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 Loading groups...
+              </div>
+            </div>
+          ) : groupsError ? (
+            <div className={`flex items-center gap-3 p-4 rounded-lg border ${
+              isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <div>
+                <div className="font-medium">Failed to load groups</div>
+                <div className="text-sm mt-1">
+                  {groupsError instanceof Error ? groupsError.message : 'An error occurred'}
+                </div>
               </div>
             </div>
           ) : !roleGroups || roleGroups.length === 0 ? (
