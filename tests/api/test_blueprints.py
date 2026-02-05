@@ -3,9 +3,10 @@ import unittest
 from unittest import mock
 
 import pydantic
+from imbi_common import blueprints, neo4j
 from neo4j import exceptions
 
-from imbi_api import blueprints, models, neo4j
+from imbi_api import models
 
 
 class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
@@ -14,7 +15,7 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         # Mock neo4j.fetch_nodes to return test blueprints
-        self.fetch_nodes_patcher = mock.patch('imbi_api.neo4j.fetch_nodes')
+        self.fetch_nodes_patcher = mock.patch('imbi_common.neo4j.fetch_nodes')
         self.mock_fetch_nodes = self.fetch_nodes_patcher.start()
         self.addCleanup(self.fetch_nodes_patcher.stop)
 

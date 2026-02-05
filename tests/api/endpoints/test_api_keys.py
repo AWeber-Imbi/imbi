@@ -5,9 +5,10 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
+from imbi_common import settings
+from imbi_common.auth import core
 
-from imbi_api import app, models, settings
-from imbi_api.auth import core
+from imbi_api import app, models
 
 
 class APIKeysEndpointsTestCase(unittest.TestCase):
@@ -77,12 +78,15 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run', side_effect=self._create_mock_run(None)
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(None),
             ),
-            mock.patch('imbi_api.neo4j.create_node'),
-            mock.patch('imbi_api.neo4j.create_relationship'),
+            mock.patch('imbi_common.neo4j.create_node'),
+            mock.patch('imbi_common.neo4j.create_relationship'),
         ):
             mock_settings.return_value = self.auth_settings
 
@@ -118,12 +122,15 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run', side_effect=self._create_mock_run(None)
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(None),
             ),
-            mock.patch('imbi_api.neo4j.create_node'),
-            mock.patch('imbi_api.neo4j.create_relationship'),
+            mock.patch('imbi_common.neo4j.create_node'),
+            mock.patch('imbi_common.neo4j.create_relationship'),
         ):
             mock_settings.return_value = self.auth_settings
 
@@ -144,12 +151,15 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run', side_effect=self._create_mock_run(None)
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(None),
             ),
-            mock.patch('imbi_api.neo4j.create_node'),
-            mock.patch('imbi_api.neo4j.create_relationship'),
+            mock.patch('imbi_common.neo4j.create_node'),
+            mock.patch('imbi_common.neo4j.create_relationship'),
         ):
             mock_settings.return_value = self.auth_settings
 
@@ -175,9 +185,12 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run', side_effect=self._create_mock_run(None)
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(None),
             ),
         ):
             mock_settings.return_value = self.auth_settings
@@ -200,9 +213,12 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run', side_effect=self._create_mock_run(None)
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(None),
             ),
         ):
             mock_settings.return_value = self.auth_settings
@@ -278,8 +294,10 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
             return mock_result
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
-            mock.patch('imbi_api.neo4j.run', side_effect=mock_run_list),
+            mock.patch(
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch('imbi_common.neo4j.run', side_effect=mock_run_list),
         ):
             mock_settings.return_value = self.auth_settings
 
@@ -309,9 +327,11 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         }
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run',
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(api_key_data),
             ),
         ):
@@ -331,9 +351,12 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run', side_effect=self._create_mock_run(None)
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(None),
             ),
         ):
             mock_settings.return_value = self.auth_settings
@@ -363,9 +386,11 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         }
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run',
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(api_key_data),
             ),
         ):
@@ -395,9 +420,12 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run', side_effect=self._create_mock_run(None)
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(None),
             ),
         ):
             mock_settings.return_value = self.auth_settings
@@ -423,9 +451,11 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
         }
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_api.neo4j.run',
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(api_key_data),
             ),
         ):

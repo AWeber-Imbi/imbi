@@ -6,9 +6,11 @@ from unittest import mock
 
 import fastapi
 from fastapi import security
+from imbi_common import settings
+from imbi_common.auth import core
 
-from imbi_api import models, settings
-from imbi_api.auth import core, permissions
+from imbi_api import models
+from imbi_api.auth import permissions
 
 
 class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
@@ -71,7 +73,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
             return mock_result
 
-        with mock.patch('imbi_api.neo4j.run', side_effect=mock_run):
+        with mock.patch('imbi_common.neo4j.run', side_effect=mock_run):
             auth_context = await permissions.authenticate_api_key(
                 self.full_key, self.auth_settings
             )
@@ -103,7 +105,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_result
 
         with (
-            mock.patch('imbi_api.neo4j.run', side_effect=mock_run),
+            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
@@ -131,7 +133,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_result
 
         with (
-            mock.patch('imbi_api.neo4j.run', side_effect=mock_run),
+            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
@@ -162,7 +164,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_result
 
         with (
-            mock.patch('imbi_api.neo4j.run', side_effect=mock_run),
+            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
@@ -195,7 +197,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_result
 
         with (
-            mock.patch('imbi_api.neo4j.run', side_effect=mock_run),
+            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
@@ -225,7 +227,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_result
 
         with (
-            mock.patch('imbi_api.neo4j.run', side_effect=mock_run),
+            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
@@ -260,7 +262,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_result
 
         with (
-            mock.patch('imbi_api.neo4j.run', side_effect=mock_run),
+            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
@@ -300,7 +302,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
             return mock_result
 
-        with mock.patch('imbi_api.neo4j.run', side_effect=mock_run):
+        with mock.patch('imbi_common.neo4j.run', side_effect=mock_run):
             auth_context = await permissions.authenticate_api_key(
                 self.full_key, self.auth_settings
             )
@@ -340,7 +342,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_result
 
         with (
-            mock.patch('imbi_api.neo4j.run', side_effect=mock_run),
+            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
@@ -387,7 +389,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
             return mock_result
 
-        with mock.patch('imbi_api.neo4j.run', side_effect=mock_run):
+        with mock.patch('imbi_common.neo4j.run', side_effect=mock_run):
             auth_context = await permissions.authenticate_api_key(
                 self.full_key, self.auth_settings
             )
@@ -450,8 +452,10 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_result
 
         with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
-            mock.patch('imbi_api.neo4j.run', side_effect=mock_run),
+            mock.patch(
+                'imbi_common.settings.get_auth_settings'
+            ) as mock_settings,
+            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
         ):
             mock_settings.return_value = self.auth_settings
 

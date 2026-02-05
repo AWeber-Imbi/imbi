@@ -17,7 +17,7 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             count = await seed.seed_permissions()
 
         # Should create 22 permissions (6 resource types x 3-4 actions each)
@@ -31,7 +31,7 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             count = await seed.seed_permissions()
 
         # Should create 0 new permissions
@@ -76,7 +76,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
                 return mock_perm_result
             return mock_role_result
 
-        with mock.patch('imbi_api.neo4j.run', side_effect=run_side_effect):
+        with mock.patch('imbi_common.neo4j.run', side_effect=run_side_effect):
             count = await seed.seed_default_roles()
 
         # Should create 3 roles (admin, developer, readonly)
@@ -99,7 +99,7 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
                 return mock_perm_result
             return mock_role_result
 
-        with mock.patch('imbi_api.neo4j.run', side_effect=run_side_effect):
+        with mock.patch('imbi_common.neo4j.run', side_effect=run_side_effect):
             count = await seed.seed_default_roles()
 
         # Should create 0 new roles
@@ -178,7 +178,7 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             is_seeded = await seed.check_if_seeded()
 
         self.assertTrue(is_seeded)
@@ -190,7 +190,7 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             is_seeded = await seed.check_if_seeded()
 
         self.assertFalse(is_seeded)
@@ -202,7 +202,7 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             is_seeded = await seed.check_if_seeded()
 
         self.assertFalse(is_seeded)

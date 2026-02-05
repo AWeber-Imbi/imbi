@@ -4,8 +4,8 @@ from unittest import mock
 
 import httpx
 import jwt
+from imbi_common import settings
 
-from imbi_api import settings
 from imbi_api.auth import models, oauth
 
 

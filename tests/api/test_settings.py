@@ -1,8 +1,7 @@
 import unittest
 
 import pydantic
-
-from imbi_api import settings
+from imbi_common import settings
 
 
 class Neo4jSettingsTestCase(unittest.TestCase):

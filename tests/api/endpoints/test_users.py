@@ -65,8 +65,8 @@ class UserEndpointsTestCase(unittest.TestCase):
     def test_create_user_success_with_password(self) -> None:
         """Test successful user creation with password."""
         with (
-            mock.patch('imbi_api.auth.core.hash_password') as mock_hash,
-            mock.patch('imbi_api.neo4j.create_node') as mock_create,
+            mock.patch('imbi_common.auth.core.hash_password') as mock_hash,
+            mock.patch('imbi_common.neo4j.create_node') as mock_create,
         ):
             mock_hash.return_value = '$argon2id$hashed'
             mock_create.return_value = None
@@ -91,7 +91,7 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_create_user_oauth_only(self) -> None:
         """Test creating user without password (OAuth-only)."""
-        with mock.patch('imbi_api.neo4j.create_node') as mock_create:
+        with mock.patch('imbi_common.neo4j.create_node') as mock_create:
             mock_create.return_value = None
 
             response = self.client.post(
@@ -107,7 +107,7 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_create_user_duplicate_username(self) -> None:
         """Test creating user with duplicate username."""
-        with mock.patch('imbi_api.neo4j.create_node') as mock_create:
+        with mock.patch('imbi_common.neo4j.create_node') as mock_create:
             mock_create.side_effect = exceptions.ConstraintError('Duplicate')
 
             response = self.client.post(
@@ -140,7 +140,7 @@ class UserEndpointsTestCase(unittest.TestCase):
                 yield user
 
         with mock.patch(
-            'imbi_api.neo4j.fetch_nodes', return_value=mock_fetch()
+            'imbi_common.neo4j.fetch_nodes', return_value=mock_fetch()
         ):
             response = self.client.get('/users/')
 
@@ -167,7 +167,7 @@ class UserEndpointsTestCase(unittest.TestCase):
                 yield user
 
         with mock.patch(
-            'imbi_api.neo4j.fetch_nodes', return_value=mock_fetch()
+            'imbi_common.neo4j.fetch_nodes', return_value=mock_fetch()
         ):
             response = self.client.get('/users/?is_active=true')
 
@@ -194,7 +194,7 @@ class UserEndpointsTestCase(unittest.TestCase):
                 yield user
 
         with mock.patch(
-            'imbi_api.neo4j.fetch_nodes', return_value=mock_fetch()
+            'imbi_common.neo4j.fetch_nodes', return_value=mock_fetch()
         ):
             response = self.client.get('/users/?is_admin=true')
 
@@ -218,9 +218,11 @@ class UserEndpointsTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_api.neo4j.fetch_node', return_value=mock_user
+                'imbi_common.neo4j.fetch_node', return_value=mock_user
             ) as mock_fetch,
-            mock.patch('imbi_api.neo4j.refresh_relationship') as mock_refresh,
+            mock.patch(
+                'imbi_common.neo4j.refresh_relationship'
+            ) as mock_refresh,
         ):
             response = self.client.get('/users/test@example.com')
 
@@ -232,7 +234,7 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_get_user_not_found(self) -> None:
         """Test retrieving non-existent user."""
-        with mock.patch('imbi_api.neo4j.fetch_node', return_value=None):
+        with mock.patch('imbi_common.neo4j.fetch_node', return_value=None):
             response = self.client.get('/users/nonexistent@example.com')
 
             self.assertEqual(response.status_code, 404)
@@ -252,9 +254,9 @@ class UserEndpointsTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_api.neo4j.fetch_node', return_value=existing_user
+                'imbi_common.neo4j.fetch_node', return_value=existing_user
             ),
-            mock.patch('imbi_api.neo4j.upsert') as mock_upsert,
+            mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
         ):
             response = self.client.put(
                 '/users/test@example.com',
@@ -301,7 +303,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with mock.patch(
-            'imbi_api.neo4j.fetch_node', return_value=existing_user
+            'imbi_common.neo4j.fetch_node', return_value=existing_user
         ):
             response = self.client.put(
                 '/users/test@example.com',
@@ -333,7 +335,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with mock.patch(
-            'imbi_api.neo4j.fetch_node', return_value=existing_user
+            'imbi_common.neo4j.fetch_node', return_value=existing_user
         ):
             response = self.client.put(
                 '/users/test@example.com',
@@ -352,7 +354,7 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_update_user_not_found(self) -> None:
         """Test updating non-existent user."""
-        with mock.patch('imbi_api.neo4j.fetch_node', return_value=None):
+        with mock.patch('imbi_common.neo4j.fetch_node', return_value=None):
             response = self.client.put(
                 '/users/nonexistent@example.com',
                 json={
@@ -365,7 +367,7 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_delete_user_success(self) -> None:
         """Test deleting a user."""
-        with mock.patch('imbi_api.neo4j.delete_node', return_value=True):
+        with mock.patch('imbi_common.neo4j.delete_node', return_value=True):
             response = self.client.delete('/users/test@example.com')
 
             self.assertEqual(response.status_code, 204)
@@ -385,7 +387,7 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_delete_user_not_found(self) -> None:
         """Test deleting non-existent user."""
-        with mock.patch('imbi_api.neo4j.delete_node', return_value=False):
+        with mock.patch('imbi_common.neo4j.delete_node', return_value=False):
             response = self.client.delete('/users/nonexistent@example.com')
 
             self.assertEqual(response.status_code, 404)
@@ -407,12 +409,12 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.neo4j.fetch_node', return_value=mock_user),
+            mock.patch('imbi_common.neo4j.fetch_node', return_value=mock_user),
             mock.patch(
-                'imbi_api.auth.core.verify_password', return_value=True
+                'imbi_common.auth.core.verify_password', return_value=True
             ),
-            mock.patch('imbi_api.auth.core.hash_password') as mock_hash,
-            mock.patch('imbi_api.neo4j.upsert') as mock_upsert,
+            mock.patch('imbi_common.auth.core.hash_password') as mock_hash,
+            mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
         ):
             mock_hash.return_value = '$argon2id$newhash'
 
@@ -445,9 +447,9 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.neo4j.fetch_node', return_value=mock_user),
-            mock.patch('imbi_api.auth.core.hash_password') as mock_hash,
-            mock.patch('imbi_api.neo4j.upsert'),
+            mock.patch('imbi_common.neo4j.fetch_node', return_value=mock_user),
+            mock.patch('imbi_common.auth.core.hash_password') as mock_hash,
+            mock.patch('imbi_common.neo4j.upsert'),
         ):
             mock_hash.return_value = '$argon2id$newhash'
 
@@ -478,9 +480,9 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_api.neo4j.fetch_node', return_value=mock_user),
+            mock.patch('imbi_common.neo4j.fetch_node', return_value=mock_user),
             mock.patch(
-                'imbi_api.auth.core.verify_password', return_value=False
+                'imbi_common.auth.core.verify_password', return_value=False
             ),
         ):
             response = self.client.post(
@@ -527,7 +529,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             response = self.client.post(
                 '/users/testuser/roles',
                 json={'role_slug': 'developer'},
@@ -542,7 +544,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             response = self.client.post(
                 '/users/nonexistent/roles',
                 json={'role_slug': 'developer'},
@@ -557,7 +559,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             response = self.client.delete('/users/testuser/roles/developer')
 
             self.assertEqual(response.status_code, 204)
@@ -569,7 +571,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             response = self.client.delete('/users/testuser/roles/admin')
 
             self.assertEqual(response.status_code, 404)
@@ -582,7 +584,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             response = self.client.post(
                 '/users/testuser/groups',
                 json={'group_slug': 'engineering'},
@@ -597,7 +599,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             response = self.client.post(
                 '/users/testuser/groups',
                 json={'group_slug': 'nonexistent'},
@@ -612,7 +614,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             response = self.client.delete('/users/testuser/groups/engineering')
 
             self.assertEqual(response.status_code, 204)
@@ -624,7 +626,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             response = self.client.delete('/users/testuser/groups/finance')
 
             self.assertEqual(response.status_code, 404)

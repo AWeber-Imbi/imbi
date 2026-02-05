@@ -4,7 +4,8 @@ import datetime
 import unittest
 from unittest import mock
 
-from imbi_api import settings
+from imbi_common import settings
+
 from imbi_api.auth import sessions
 
 
@@ -22,7 +23,7 @@ class EnforceSessionLimitTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
         mock_result.__aexit__ = mock.AsyncMock(return_value=None)
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             # Should not raise, just return
             await sessions.enforce_session_limit(
                 'testuser', self.auth_settings
@@ -46,7 +47,7 @@ class EnforceSessionLimitTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
         mock_result.__aexit__ = mock.AsyncMock(return_value=None)
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             # Should not delete any sessions
             await sessions.enforce_session_limit(
                 'testuser', self.auth_settings
@@ -99,7 +100,7 @@ class EnforceSessionLimitTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_result
 
         with mock.patch(
-            'imbi_api.neo4j.run', side_effect=mock_run_side_effect
+            'imbi_common.neo4j.run', side_effect=mock_run_side_effect
         ):
             await sessions.enforce_session_limit(
                 'testuser', self.auth_settings
@@ -117,7 +118,7 @@ class UpdateSessionActivityTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aexit__ = mock.AsyncMock(return_value=None)
 
         with mock.patch(
-            'imbi_api.neo4j.run', return_value=mock_result
+            'imbi_common.neo4j.run', return_value=mock_result
         ) as mock_run:
             await sessions.update_session_activity('session123')
 
@@ -138,7 +139,7 @@ class DeleteExpiredSessionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
         mock_result.__aexit__ = mock.AsyncMock(return_value=None)
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             count = await sessions.delete_expired_sessions()
             self.assertEqual(0, count)
 
@@ -149,7 +150,7 @@ class DeleteExpiredSessionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
         mock_result.__aexit__ = mock.AsyncMock(return_value=None)
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             count = await sessions.delete_expired_sessions()
             self.assertEqual(5, count)
 
@@ -160,6 +161,6 @@ class DeleteExpiredSessionsTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
         mock_result.__aexit__ = mock.AsyncMock(return_value=None)
 
-        with mock.patch('imbi_api.neo4j.run', return_value=mock_result):
+        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             count = await sessions.delete_expired_sessions()
             self.assertEqual(0, count)

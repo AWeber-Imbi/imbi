@@ -3,8 +3,7 @@ import unittest
 from unittest import mock
 
 import pydantic
-
-from imbi_api import clickhouse
+from imbi_common import clickhouse
 
 
 class SampleModel(pydantic.BaseModel):

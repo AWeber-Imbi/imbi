@@ -76,7 +76,7 @@ class RoleEndpointsTestCase(unittest.TestCase):
 
     def test_create_role_success(self) -> None:
         """Test successful role creation."""
-        with mock.patch('imbi_api.neo4j.create_node') as mock_create:
+        with mock.patch('imbi_common.neo4j.create_node') as mock_create:
             mock_node = {
                 'name': 'New Role',
                 'slug': 'new-role',
@@ -107,7 +107,7 @@ class RoleEndpointsTestCase(unittest.TestCase):
         """Test creating duplicate role returns 409."""
         import neo4j
 
-        with mock.patch('imbi_api.neo4j.create_node') as mock_create:
+        with mock.patch('imbi_common.neo4j.create_node') as mock_create:
             mock_create.side_effect = neo4j.exceptions.ConstraintError(
                 'Constraint violation'
             )
@@ -147,7 +147,7 @@ class RoleEndpointsTestCase(unittest.TestCase):
             yield self.test_role
 
         with mock.patch(
-            'imbi_api.neo4j.fetch_nodes', return_value=role_generator()
+            'imbi_common.neo4j.fetch_nodes', return_value=role_generator()
         ) as mock_fetch:
             response = self.client.get('/roles/')
 
@@ -165,9 +165,11 @@ class RoleEndpointsTestCase(unittest.TestCase):
         """Test getting a specific role."""
         with (
             mock.patch(
-                'imbi_api.neo4j.fetch_node', return_value=self.test_role
+                'imbi_common.neo4j.fetch_node', return_value=self.test_role
             ),
-            mock.patch('imbi_api.neo4j.refresh_relationship') as mock_refresh,
+            mock.patch(
+                'imbi_common.neo4j.refresh_relationship'
+            ) as mock_refresh,
         ):
             response = self.client.get('/roles/test-role')
 
@@ -184,7 +186,7 @@ class RoleEndpointsTestCase(unittest.TestCase):
 
     def test_get_role_not_found(self) -> None:
         """Test getting non-existent role returns 404."""
-        with mock.patch('imbi_api.neo4j.fetch_node', return_value=None):
+        with mock.patch('imbi_common.neo4j.fetch_node', return_value=None):
             response = self.client.get('/roles/nonexistent')
 
             self.assertEqual(response.status_code, 404)
@@ -193,8 +195,8 @@ class RoleEndpointsTestCase(unittest.TestCase):
     def test_update_role_success(self) -> None:
         """Test updating a role."""
         with (
-            mock.patch('imbi_api.neo4j.fetch_node', return_value=None),
-            mock.patch('imbi_api.neo4j.upsert') as mock_upsert,
+            mock.patch('imbi_common.neo4j.fetch_node', return_value=None),
+            mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
         ):
             mock_upsert.return_value = 'element123'
 
@@ -238,7 +240,9 @@ class RoleEndpointsTestCase(unittest.TestCase):
             is_system=True,
         )
 
-        with mock.patch('imbi_api.neo4j.fetch_node', return_value=system_role):
+        with mock.patch(
+            'imbi_common.neo4j.fetch_node', return_value=system_role
+        ):
             response = self.client.put(
                 '/roles/system-role',
                 json={
@@ -265,9 +269,9 @@ class RoleEndpointsTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_api.neo4j.fetch_node', return_value=non_system_role
+                'imbi_common.neo4j.fetch_node', return_value=non_system_role
             ),
-            mock.patch('imbi_api.neo4j.delete_node', return_value=True),
+            mock.patch('imbi_common.neo4j.delete_node', return_value=True),
         ):
             response = self.client.delete('/roles/non-system')
 
@@ -276,7 +280,7 @@ class RoleEndpointsTestCase(unittest.TestCase):
 
     def test_delete_role_not_found(self) -> None:
         """Test deleting non-existent role returns 404."""
-        with mock.patch('imbi_api.neo4j.fetch_node', return_value=None):
+        with mock.patch('imbi_common.neo4j.fetch_node', return_value=None):
             response = self.client.delete('/roles/nonexistent')
 
             self.assertEqual(response.status_code, 404)
@@ -291,7 +295,9 @@ class RoleEndpointsTestCase(unittest.TestCase):
             is_system=True,
         )
 
-        with mock.patch('imbi_api.neo4j.fetch_node', return_value=system_role):
+        with mock.patch(
+            'imbi_common.neo4j.fetch_node', return_value=system_role
+        ):
             response = self.client.delete('/roles/system-role')
 
             self.assertEqual(response.status_code, 400)
@@ -316,9 +322,9 @@ class RoleEndpointsTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_api.neo4j.fetch_node', side_effect=[role, permission]
+                'imbi_common.neo4j.fetch_node', side_effect=[role, permission]
             ),
-            mock.patch('imbi_api.neo4j.run', return_value=mock_result),
+            mock.patch('imbi_common.neo4j.run', return_value=mock_result),
         ):
             response = self.client.post(
                 '/roles/test-role/permissions',
@@ -330,7 +336,7 @@ class RoleEndpointsTestCase(unittest.TestCase):
 
     def test_grant_permission_role_not_found(self) -> None:
         """Test granting permission when role doesn't exist."""
-        with mock.patch('imbi_api.neo4j.fetch_node', return_value=None):
+        with mock.patch('imbi_common.neo4j.fetch_node', return_value=None):
             response = self.client.post(
                 '/roles/nonexistent/permissions',
                 json={'permission_name': 'blueprint:read'},
@@ -343,7 +349,9 @@ class RoleEndpointsTestCase(unittest.TestCase):
         """Test granting non-existent permission."""
         role = self.test_role
 
-        with mock.patch('imbi_api.neo4j.fetch_node', side_effect=[role, None]):
+        with mock.patch(
+            'imbi_common.neo4j.fetch_node', side_effect=[role, None]
+        ):
             response = self.client.post(
                 '/roles/test-role/permissions',
                 json={'permission_name': 'nonexistent:perm'},
@@ -362,8 +370,8 @@ class RoleEndpointsTestCase(unittest.TestCase):
         mock_result.__aexit__.return_value = None
 
         with (
-            mock.patch('imbi_api.neo4j.fetch_node', return_value=role),
-            mock.patch('imbi_api.neo4j.run', return_value=mock_result),
+            mock.patch('imbi_common.neo4j.fetch_node', return_value=role),
+            mock.patch('imbi_common.neo4j.run', return_value=mock_result),
         ):
             response = self.client.delete(
                 '/roles/test-role/permissions/blueprint:read'
@@ -374,7 +382,7 @@ class RoleEndpointsTestCase(unittest.TestCase):
 
     def test_revoke_permission_role_not_found(self) -> None:
         """Test revoking permission when role doesn't exist."""
-        with mock.patch('imbi_api.neo4j.fetch_node', return_value=None):
+        with mock.patch('imbi_common.neo4j.fetch_node', return_value=None):
             response = self.client.delete(
                 '/roles/nonexistent/permissions/blueprint:read'
             )
@@ -395,8 +403,8 @@ class RoleEndpointsTestCase(unittest.TestCase):
         mock_result.__aexit__.return_value = None
 
         with (
-            mock.patch('imbi_api.neo4j.fetch_node', return_value=role),
-            mock.patch('imbi_api.neo4j.run', return_value=mock_result),
+            mock.patch('imbi_common.neo4j.fetch_node', return_value=role),
+            mock.patch('imbi_common.neo4j.run', return_value=mock_result),
         ):
             response = self.client.delete(
                 '/roles/test-role/permissions/blueprint:write'
