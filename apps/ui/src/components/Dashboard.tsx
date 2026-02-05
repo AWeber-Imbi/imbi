@@ -1,11 +1,32 @@
-import { TrendingUp, TrendingDown, CheckCircle, XCircle, AlertTriangle, ChevronRight } from 'lucide-react'
-import { Card } from './ui/card'
-import { RecentActivity } from './RecentActivity'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { Settings } from 'lucide-react'
+import { Button } from './ui/button'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  rectSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { WidgetSelector, WidgetConfig } from './dashboard/WidgetSelector'
+import { StatWidget } from './dashboard/widgets/StatWidget'
+import { TeamActivityWidget } from './dashboard/widgets/TeamActivityWidget'
+import { RecentActivityWidget } from './dashboard/widgets/RecentActivityWidget'
+import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
+import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
+import { RecentDeploymentsWidget } from './dashboard/widgets/RecentDeploymentsWidget'
 import { useQuery } from '@tanstack/react-query'
-import { useInfiniteActivityFeed } from '@/hooks/useInfiniteActivityFeed'
 import { getProjects } from '@/api/endpoints'
-import type { Project } from '@/types'
 
 interface DashboardProps {
   onViewChange?: (view: any) => void
@@ -14,343 +35,319 @@ interface DashboardProps {
   isDarkMode: boolean
 }
 
-export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkMode }: DashboardProps) {
-  const [viewMode, setViewMode] = useState<'namespaces' | 'project-types' | 'recent-activity'>('namespaces')
+const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v3'
 
-  // Fetch real data
-  const { data: projects, isLoading: projectsLoading } = useQuery({
+const availableWidgets: WidgetConfig[] = [
+  {
+    id: 'stat-total-projects',
+    name: 'Total Projects',
+    description: 'Total number of projects',
+    icon: '📁',
+    category: 'stats',
+    columnSpan: 1
+  },
+  {
+    id: 'stat-active-deployments',
+    name: 'Active Deployments',
+    description: 'Number of active deployments',
+    icon: '🚀',
+    category: 'stats',
+    columnSpan: 1
+  },
+  {
+    id: 'stat-teams',
+    name: 'Teams',
+    description: 'Total number of teams',
+    icon: '👥',
+    category: 'stats',
+    columnSpan: 1
+  },
+  {
+    id: 'stat-namespaces',
+    name: 'Namespaces',
+    description: 'Total number of namespaces',
+    icon: '📦',
+    category: 'stats',
+    columnSpan: 1
+  },
+  {
+    id: 'team-activity',
+    name: 'Team Activity',
+    description: 'Overview of team projects and deployments',
+    icon: '👥',
+    category: 'activity',
+    columnSpan: 2
+  },
+  {
+    id: 'recent-activity',
+    name: 'Recent Activity',
+    description: 'Latest actions and updates across projects',
+    icon: '📝',
+    category: 'activity',
+    columnSpan: 2
+  },
+  {
+    id: 'recent-deployments',
+    name: 'Recent Deployments',
+    description: 'Latest deployment activity across environments',
+    icon: '🚀',
+    category: 'activity',
+    columnSpan: 2
+  },
+  {
+    id: 'my-pull-requests',
+    name: 'My Pull Requests',
+    description: 'Your pending code reviews and PR status',
+    icon: '🔀',
+    category: 'development',
+    columnSpan: 2
+  },
+  {
+    id: 'outdated-components',
+    name: 'Outdated Components',
+    description: 'Dependencies that need updating',
+    icon: '📦',
+    category: 'health',
+    columnSpan: 2
+  }
+]
+
+const defaultWidgets = [
+  'stat-total-projects',
+  'stat-active-deployments',
+  'stat-teams',
+  'stat-namespaces',
+  'team-activity',
+  'recent-activity',
+  'my-pull-requests'
+]
+
+interface SortableWidgetProps {
+  id: string
+  children: React.ReactNode
+  isDarkMode: boolean
+}
+
+function SortableWidget({ id, children, isDarkMode }: SortableWidgetProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="group relative break-inside-avoid mb-4"
+    >
+      {/* Drag handle - appears on hover */}
+      <div
+        {...attributes}
+        {...listeners}
+        className={`absolute top-2 left-2 z-20 p-1 rounded cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity ${
+          isDarkMode ? 'bg-gray-700/80 text-gray-400 hover:text-gray-200' : 'bg-white/80 text-gray-400 hover:text-gray-600'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
+        </svg>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkMode }: DashboardProps) {
+  const [showWidgetSelector, setShowWidgetSelector] = useState(false)
+
+  const [selectedWidgets, setSelectedWidgets] = useState<string[]>(() => {
+    const stored = localStorage.getItem(WIDGET_STORAGE_KEY)
+    if (stored) {
+      try {
+        return JSON.parse(stored)
+      } catch {
+        return defaultWidgets
+      }
+    }
+    return defaultWidgets
+  })
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  // Fetch real data for stats
+  const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => getProjects(),
   })
 
-  const {
-    data: activityData,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading: activityLoading,
-  } = useInfiniteActivityFeed()
+  const projectCount = projects?.length || 0
+  const namespaceCount = projects ? new Set(projects.map(p => p.namespace)).size : 0
 
-  const activityFeed = activityData?.activities || []
+  // Persist selections
+  useEffect(() => {
+    localStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify(selectedWidgets))
+  }, [selectedWidgets])
 
-  const handleNamespaceClick = (namespaceName: string) => {
-    onViewChange?.({ view: 'projects', filter: { namespace: namespaceName } })
-  }
-
-  const handleDeploymentClick = (e: React.MouseEvent, namespaceName: string) => {
-    e.stopPropagation()
-    onViewChange?.({ view: 'deployments', filter: { namespace: namespaceName } })
-  }
-
-  // Group real projects by namespace
-  const projectsByNamespace = projects?.reduce((acc, project) => {
-    if (!acc[project.namespace]) {
-      acc[project.namespace] = []
-    }
-    acc[project.namespace].push(project)
-    return acc
-  }, {} as Record<string, Project[]>) || {}
-
-  // Group by project type
-  const projectsByType = projects?.reduce((acc, project) => {
-    if (!acc[project.project_type]) {
-      acc[project.project_type] = []
-    }
-    acc[project.project_type].push(project)
-    return acc
-  }, {} as Record<string, Project[]>) || {}
-
-  const stats = [
-    { label: 'Total Projects', value: (projects?.length || 0).toString(), change: '+12', trend: 'up' },
-    { label: 'Active Deployments', value: '445', change: '+5', trend: 'up' },
-    { label: 'Avg Health Score', value: '87%', change: '+3%', trend: 'up' },
-    { label: 'Deployments Today', value: '34', change: '+8', trend: 'up' }
-  ]
-
-  // Mock function for environment health (TODO: get real deployment data)
-  const getEnvironmentHealth = (projects: Project[]) => {
-    const envHealth = {
-      testing: { success: 0, warning: 0, error: 0, total: 0 },
-      staging: { success: 0, warning: 0, error: 0, total: 0 },
-      production: { success: 0, warning: 0, error: 0, total: 0 }
-    }
-
-    // Mock data - distribute projects across statuses
-    const count = projects.length
-    envHealth.testing.success = Math.floor(count * 0.7)
-    envHealth.testing.warning = Math.floor(count * 0.2)
-    envHealth.testing.error = count - envHealth.testing.success - envHealth.testing.warning
-
-    envHealth.staging.success = Math.floor(count * 0.75)
-    envHealth.staging.warning = Math.floor(count * 0.15)
-    envHealth.staging.error = count - envHealth.staging.success - envHealth.staging.warning
-
-    envHealth.production.success = Math.floor(count * 0.8)
-    envHealth.production.warning = Math.floor(count * 0.1)
-    envHealth.production.error = count - envHealth.production.success - envHealth.production.warning
-
-    return envHealth
-  }
-
-  const getHealthScore = (_projects: Project[]) => {
-    // Mock health score calculation
-    return Math.floor(85 + Math.random() * 10)
-  }
-
-  const getHealthColor = (health: number) => {
-    if (health >= 90) return 'text-green-600'
-    if (health >= 80) return 'text-emerald-600'
-    if (health >= 70) return 'text-amber-600'
-    return 'text-red-600'
-  }
-
-  if (projectsLoading || activityLoading) {
-    return (
-      <div className="max-w-[1600px] mx-auto px-6 py-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-lg">Loading dashboard...</div>
-        </div>
-      </div>
+  const handleToggleWidget = (widgetId: string) => {
+    setSelectedWidgets(prev =>
+      prev.includes(widgetId)
+        ? prev.filter(id => id !== widgetId)
+        : [...prev, widgetId]
     )
   }
 
-  const displayItems = viewMode === 'namespaces'
-    ? Object.entries(projectsByNamespace).map(([name, projects]) => ({ name, projects }))
-    : Object.entries(projectsByType).map(([name, projects]) => ({ name, projects }))
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      setSelectedWidgets((items) => {
+        const oldIndex = items.indexOf(active.id as string)
+        const newIndex = items.indexOf(over.id as string)
+        return arrayMove(items, oldIndex, newIndex)
+      })
+    }
+  }
+
+  const renderWidget = (widgetId: string) => {
+    switch (widgetId) {
+      case 'stat-total-projects':
+        return <StatWidget title="Total Projects" value={projectCount.toLocaleString()} icon="📁" isDarkMode={isDarkMode} />
+      case 'stat-active-deployments':
+        return <StatWidget title="Active Deployments" value="1,429" icon="🚀" isDarkMode={isDarkMode} />
+      case 'stat-teams':
+        return <StatWidget title="Teams" value="11" icon="👥" isDarkMode={isDarkMode} />
+      case 'stat-namespaces':
+        return <StatWidget title="Namespaces" value={namespaceCount.toLocaleString()} icon="📦" isDarkMode={isDarkMode} />
+      case 'team-activity':
+        return <TeamActivityWidget isDarkMode={isDarkMode} onViewChange={onViewChange} />
+      case 'recent-activity':
+        return <RecentActivityWidget isDarkMode={isDarkMode} onUserSelect={onUserSelect} onProjectSelect={onProjectSelect} />
+      case 'recent-deployments':
+        return <RecentDeploymentsWidget isDarkMode={isDarkMode} onProjectSelect={onProjectSelect} />
+      case 'my-pull-requests':
+        return <MyPullRequestsWidget isDarkMode={isDarkMode} onUserSelect={onUserSelect} />
+      case 'outdated-components':
+        return <OutdatedComponentsWidget isDarkMode={isDarkMode} onProjectSelect={onProjectSelect} />
+      default:
+        return null
+    }
+  }
+
+  // Separate stat widgets from other widgets for layout
+  const statWidgets = selectedWidgets.filter(id => id.startsWith('stat-'))
+  const otherWidgets = selectedWidgets.filter(id => !id.startsWith('stat-'))
 
   return (
-    <div className="max-w-[1600px] mx-auto px-6 py-8">
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {stats.map((stat, index) => (
-          <Card key={index} className={`p-6 ${isDarkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}>{stat.label}</p>
-                <p className={`text-3xl mb-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{stat.value}</p>
-                <div className="flex items-center gap-1">
-                  {stat.trend === 'up' ? (
-                    <TrendingUp className="w-3 h-3 text-green-600" />
-                  ) : (
-                    <TrendingDown className="w-3 h-3 text-green-600" />
-                  )}
-                  <span className="text-green-600 text-sm">{stat.change}</span>
-                  <span className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-slate-400'}`}>this week</span>
+    <div className="max-w-[1400px] mx-auto px-6 py-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className={`text-3xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Dashboard
+          </h1>
+          <p className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Welcome back! Here's what's happening across your projects.
+          </p>
+        </div>
+        <Button
+          onClick={() => setShowWidgetSelector(true)}
+          variant="outline"
+          className={`gap-2 ${isDarkMode ? 'border-gray-600 text-gray-300' : ''}`}
+        >
+          <Settings className="w-4 h-4" />
+          Customize
+        </Button>
+      </div>
+
+      {/* Widgets */}
+      {selectedWidgets.length === 0 ? (
+        <div className={`p-12 rounded-lg border text-center ${
+          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+        }`}>
+          <div className={`text-6xl mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}>
+            📊
+          </div>
+          <h3 className={`text-xl font-medium mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            No Widgets Selected
+          </h3>
+          <p className={`max-w-md mx-auto mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Customize your dashboard by selecting widgets to display
+          </p>
+          <Button
+            onClick={() => setShowWidgetSelector(true)}
+            className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+          >
+            Add Widgets
+          </Button>
+        </div>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="space-y-4">
+            {/* Stats Row - always in a grid row, also sortable */}
+            {statWidgets.length > 0 && (
+              <SortableContext items={statWidgets} strategy={rectSortingStrategy}>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {statWidgets.map((widgetId) => (
+                    <SortableWidget key={widgetId} id={widgetId} isDarkMode={isDarkMode}>
+                      {renderWidget(widgetId)}
+                    </SortableWidget>
+                  ))}
                 </div>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+              </SortableContext>
+            )}
 
-      {/* Integrated Namespace + Deployment View */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Namespace/Project Type Cards - 2/3 width */}
-        <div className="lg:col-span-2">
-          {/* Tab Navigation - Underline Style */}
-          <div className={`border-b mb-4 ${isDarkMode ? 'border-gray-700' : 'border-slate-200'}`}>
-            <div className="flex gap-6">
-              <button
-                onClick={() => setViewMode('namespaces')}
-                className={`pb-3 border-b-2 transition-colors whitespace-nowrap ${
-                  viewMode === 'namespaces'
-                    ? 'border-blue-600 text-blue-600'
-                    : isDarkMode
-                      ? 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
-                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
-                }`}
-              >
-                Namespaces
-              </button>
-              <button
-                onClick={() => setViewMode('project-types')}
-                className={`pb-3 border-b-2 transition-colors whitespace-nowrap ${
-                  viewMode === 'project-types'
-                    ? 'border-blue-600 text-blue-600'
-                    : isDarkMode
-                      ? 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
-                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
-                }`}
-              >
-                Project Types
-              </button>
-            </div>
+            {/* Other widgets - CSS columns for true masonry */}
+            {otherWidgets.length > 0 && (
+              <SortableContext items={otherWidgets} strategy={rectSortingStrategy}>
+                <div
+                  className="columns-1 md:columns-2 gap-4"
+                  style={{ columnFill: 'balance' }}
+                >
+                  {otherWidgets.map((widgetId) => (
+                    <SortableWidget key={widgetId} id={widgetId} isDarkMode={isDarkMode}>
+                      {renderWidget(widgetId)}
+                    </SortableWidget>
+                  ))}
+                </div>
+              </SortableContext>
+            )}
           </div>
+        </DndContext>
+      )}
 
-          {/* Render cards based on view mode */}
-          {viewMode !== 'recent-activity' && (
-            <div className="space-y-3">
-              {displayItems
-                .sort((a, b) => b.projects.length - a.projects.length)
-                .map((item) => {
-                  const envHealth = getEnvironmentHealth(item.projects)
-                  const health = getHealthScore(item.projects)
-
-                  return (
-                    <Card
-                      key={item.name}
-                      className={`overflow-hidden hover:shadow-md transition-shadow cursor-pointer ${
-                        isDarkMode ? 'bg-gray-800 border-gray-700' : ''
-                      }`}
-                      onClick={() => handleNamespaceClick(item.name)}
-                    >
-                      <div className="px-6 py-4">
-                        <div className="flex items-center justify-between gap-6">
-                          {/* Left: Namespace Info */}
-                          <div className="flex-shrink-0" style={{ width: '280px' }}>
-                            <h3 className={isDarkMode ? 'text-white mb-1' : 'text-slate-900 mb-1'}>{item.name}</h3>
-                            <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                              {item.projects.length} projects
-                            </p>
-                          </div>
-
-                          {/* Center: Environment Health */}
-                          <div
-                            className="flex-1 flex items-center gap-12 -my-4 py-4 rounded transition-colors"
-                            onClick={(e) => handleDeploymentClick(e, item.name)}
-                          >
-                            {/* Testing */}
-                            <div className="text-center" style={{ width: '120px' }}>
-                              <div className={`text-xs mb-2 ${isDarkMode ? 'text-gray-500' : 'text-slate-400'}`}>Testing</div>
-                              <div className="flex items-center justify-center gap-3">
-                                {envHealth.testing.success > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {envHealth.testing.success}
-                                    </span>
-                                  </div>
-                                )}
-                                {envHealth.testing.warning > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {envHealth.testing.warning}
-                                    </span>
-                                  </div>
-                                )}
-                                {envHealth.testing.error > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <XCircle className="w-4 h-4 text-red-600" />
-                                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {envHealth.testing.error}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Staging */}
-                            <div className="text-center" style={{ width: '120px' }}>
-                              <div className={`text-xs mb-2 ${isDarkMode ? 'text-gray-500' : 'text-slate-400'}`}>Staging</div>
-                              <div className="flex items-center justify-center gap-3">
-                                {envHealth.staging.success > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {envHealth.staging.success}
-                                    </span>
-                                  </div>
-                                )}
-                                {envHealth.staging.warning > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {envHealth.staging.warning}
-                                    </span>
-                                  </div>
-                                )}
-                                {envHealth.staging.error > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <XCircle className="w-4 h-4 text-red-600" />
-                                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {envHealth.staging.error}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Production */}
-                            <div className="text-center" style={{ width: '120px' }}>
-                              <div className={`text-xs mb-2 ${isDarkMode ? 'text-gray-500' : 'text-slate-400'}`}>Production</div>
-                              <div className="flex items-center justify-center gap-3">
-                                {envHealth.production.success > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {envHealth.production.success}
-                                    </span>
-                                  </div>
-                                )}
-                                {envHealth.production.warning > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {envHealth.production.warning}
-                                    </span>
-                                  </div>
-                                )}
-                                {envHealth.production.error > 0 && (
-                                  <div className="flex items-center gap-1">
-                                    <XCircle className="w-4 h-4 text-red-600" />
-                                    <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {envHealth.production.error}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Right: Health Score */}
-                          <div className="flex-shrink-0 flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4 text-green-600" />
-                            <span className={`text-2xl ${getHealthColor(health)}`}>
-                              {health}
-                            </span>
-                            <ChevronRight className={`w-5 h-5 ${isDarkMode ? 'text-gray-500' : 'text-slate-400'}`} />
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  )
-                })}
-            </div>
-          )}
-        </div>
-
-        {/* Recent Activity - 1/3 width */}
-        <div className="lg:col-span-1">
-          {/* Tab Navigation - Underline Style */}
-          <div className={`border-b mb-4 ${isDarkMode ? 'border-gray-700' : 'border-slate-200'}`}>
-            <div className="flex gap-6">
-              <button
-                onClick={() => setViewMode('recent-activity')}
-                className={`pb-3 border-b-2 transition-colors whitespace-nowrap ${
-                  viewMode === 'recent-activity'
-                    ? 'border-blue-600 text-blue-600'
-                    : isDarkMode
-                      ? 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
-                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
-                }`}
-              >
-                Recent Activity
-              </button>
-            </div>
-          </div>
-
-          <RecentActivity
-            activities={activityFeed}
-            onUserSelect={onUserSelect}
-            onProjectSelect={onProjectSelect}
-            isDarkMode={isDarkMode}
-            hideHeading={true}
-            onLoadMore={hasNextPage ? () => fetchNextPage() : undefined}
-            isLoadingMore={isFetchingNextPage}
-          />
-        </div>
-      </div>
+      {/* Widget Selector Modal */}
+      {showWidgetSelector && (
+        <WidgetSelector
+          availableWidgets={availableWidgets}
+          selectedWidgets={selectedWidgets}
+          onToggleWidget={handleToggleWidget}
+          onClose={() => setShowWidgetSelector(false)}
+          isDarkMode={isDarkMode}
+        />
+      )}
     </div>
   )
 }

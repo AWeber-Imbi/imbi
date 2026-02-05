@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Navigation } from '@/components/Navigation'
 import { ProjectsView } from '@/components/ProjectsView'
-import { Footer } from '@/components/Footer'
+import { CommandBar } from '@/components/CommandBar'
 
 export function ProjectsPage() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -17,13 +17,13 @@ export function ProjectsPage() {
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
-      <div className={`min-h-screen flex flex-col ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}>
+      <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}>
         <Navigation
           currentView="projects"
           isDarkMode={isDarkMode}
           onThemeToggle={handleThemeToggle}
         />
-        <main className="pt-16 flex-1">
+        <main className="pt-16 pb-32">
           <ProjectsView
             onProjectSelect={(projectId) => {
               console.log('Selected project:', projectId)
@@ -32,7 +32,7 @@ export function ProjectsPage() {
             isDarkMode={isDarkMode}
           />
         </main>
-        <Footer isDarkMode={isDarkMode} />
+        <CommandBar isDarkMode={isDarkMode} />
       </div>
     </div>
   )

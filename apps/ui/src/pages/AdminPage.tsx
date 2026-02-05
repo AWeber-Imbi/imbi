@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigation } from '@/components/Navigation'
-import { Footer } from '@/components/Footer'
+import { CommandBar } from '@/components/CommandBar'
 import { Admin } from '@/components/Admin'
 
 const THEME_STORAGE_KEY = 'imbi-theme'
@@ -19,16 +19,16 @@ export function AdminPage() {
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
-      <div className={`min-h-screen flex flex-col ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}>
+      <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}>
         <Navigation
           currentView="admin"
           isDarkMode={isDarkMode}
           onThemeToggle={handleThemeToggle}
         />
-        <main className="pt-16 flex-1">
+        <main className="pt-16 pb-32">
           <Admin isDarkMode={isDarkMode} />
         </main>
-        <Footer isDarkMode={isDarkMode} />
+        <CommandBar isDarkMode={isDarkMode} />
       </div>
     </div>
   )

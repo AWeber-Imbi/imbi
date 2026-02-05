@@ -1,7 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Search, Settings, User, Rocket, FolderKanban, Activity, BarChart3, Sparkles, Plus, ChevronDown, UserCircle, LogOut, Moon, Sun } from 'lucide-react'
+import { Settings, User, Rocket, FolderKanban, Activity, BarChart3, Plus, ChevronDown, UserCircle, LogOut, Moon, Sun } from 'lucide-react'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Gravatar } from './ui/gravatar'
 import { useAuth } from '@/hooks/useAuth'
@@ -12,7 +11,6 @@ import { useMemo } from 'react'
 interface NavigationProps {
   currentView?: string
   onViewChange?: (view: string) => void
-  onChatToggle?: () => void
   onNewOpsEntry?: () => void
   onNewProject?: () => void
   onNewDeployment?: () => void
@@ -23,7 +21,6 @@ interface NavigationProps {
 export function Navigation({
   currentView,
   onViewChange,
-  onChatToggle,
   onNewOpsEntry,
   onNewDeployment,
   onNewProject,
@@ -109,32 +106,6 @@ export function Navigation({
 
         {/* Right Side Actions */}
         <div className="flex items-center gap-3">
-          {/* Search */}
-          <div className="hidden sm:block relative">
-            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-400'
-            }`} />
-            <Input
-              type="text"
-              placeholder="Search projects..."
-              className={`pl-9 w-64 h-9 ${
-                isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder:text-gray-400'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-500'
-              }`}
-            />
-          </div>
-
-          <Button
-            variant="default"
-            size="sm"
-            onClick={onChatToggle}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-          >
-            <Sparkles className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">AI Assistant</span>
-          </Button>
-
           {/* Quick Actions Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
