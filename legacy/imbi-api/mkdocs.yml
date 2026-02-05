@@ -65,10 +65,10 @@ nav:
   - Configuration: configuration.md
   - Architecture Decision Records:
       - Overview: adr.md
-      - Record Architecture Decisions: doc/adr/0001-record-architecture-decisions.md
-      - Authentication and Authorization: doc/adr/0002-authentication-and-authorization-architecture.md
-      - Email Sending: doc/adr/0003-email-sending-architecture.md
-      - Phase 5 Authentication Enhancements: adr/0001-phase-5-authentication-enhancements.md
+      - Record Architecture Decisions: adr/0001-record-architecture-decisions.md
+      - Authentication and Authorization: adr/0002-authentication-and-authorization-architecture.md
+      - Email Sending: adr/0003-email-sending-architecture.md
+      - Phase 5 Authentication Enhancements: adr/0004-phase-5-authentication-enhancements.md
 
 extra:
   version:
