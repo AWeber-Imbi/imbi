@@ -183,10 +183,49 @@ export interface ViewChangeConfig {
 }
 
 // Admin User Management Types (matching API schema)
+export interface Permission {
+  name: string
+  resource_type: string
+  action: string
+  description?: string | null
+}
+
 export interface Role {
   name: string
   slug: string
   description?: string | null
+}
+
+export interface RoleDetail extends Role {
+  priority: number
+  is_system: boolean
+  permissions: Permission[]
+  parent_role?: Role | null
+}
+
+export interface RoleCreate {
+  name: string
+  slug: string
+  description?: string | null
+  priority?: number
+}
+
+export interface AdminSettings {
+  permissions: Permission[]
+  oauth_provider_types: string[]
+  auth_methods: string[]
+  auth_types: string[]
+}
+
+export interface RoleUser {
+  email: string
+  display_name: string
+  is_active: boolean
+  is_admin: boolean
+  is_service_account: boolean
+  created_at: string
+  last_login?: string | null
+  avatar_url?: string | null
 }
 
 export interface Group {

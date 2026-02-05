@@ -14,8 +14,12 @@ import type {
   UserResponse,
   AdminUser,
   AdminUserCreate,
+  AdminSettings,
   Group,
-  Role
+  Role,
+  RoleDetail,
+  RoleCreate,
+  RoleUser
 } from '@/types'
 
 // Status/Health
@@ -138,3 +142,43 @@ export const getRoles = async (): Promise<Role[]> => {
     return []
   }
 }
+
+export const getRole = (slug: string) =>
+  apiClient.get<RoleDetail>(`/roles/${encodeURIComponent(slug)}`)
+
+export const createRole = (role: RoleCreate) =>
+  apiClient.post<RoleDetail>('/roles/', role)
+
+export const updateRole = (slug: string, role: RoleCreate) =>
+  apiClient.put<RoleDetail>(`/roles/${encodeURIComponent(slug)}`, role)
+
+export const deleteRole = (slug: string) =>
+  apiClient.delete<void>(`/roles/${encodeURIComponent(slug)}`)
+
+export const grantPermission = (slug: string, permissionName: string) =>
+  apiClient.post<void>(`/roles/${encodeURIComponent(slug)}/permissions`, {
+    permission_name: permissionName
+  })
+
+export const revokePermission = (slug: string, permissionName: string) =>
+  apiClient.delete<void>(
+    `/roles/${encodeURIComponent(slug)}/permissions/${encodeURIComponent(permissionName)}`
+  )
+
+export const getRoleUsers = async (slug: string): Promise<RoleUser[]> => {
+  const response = await apiClient.get<RoleUser[]>(
+    `/roles/${encodeURIComponent(slug)}/users`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getRoleGroups = async (slug: string): Promise<Group[]> => {
+  const response = await apiClient.get<Group[]>(
+    `/roles/${encodeURIComponent(slug)}/groups`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+// Admin - Settings (reference data)
+export const getAdminSettings = () =>
+  apiClient.get<AdminSettings>('/admin/settings')
