@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { Users, ChevronRight } from 'lucide-react'
+import { Users, Shield, ChevronRight } from 'lucide-react'
 import { UserManagement } from './admin/UserManagement'
+import { RoleManagement } from './admin/RoleManagement'
 import { useNavigate } from 'react-router-dom'
 
 interface AdminProps {
   isDarkMode: boolean
 }
 
-type AdminSection = 'users'
+type AdminSection = 'users' | 'roles'
 
 export function Admin({ isDarkMode }: AdminProps) {
   const navigate = useNavigate()
@@ -15,6 +16,7 @@ export function Admin({ isDarkMode }: AdminProps) {
 
   const adminSections = [
     { id: 'users' as AdminSection, label: 'User Management', icon: Users, description: 'Manage user accounts and service accounts' },
+    { id: 'roles' as AdminSection, label: 'Roles', icon: Shield, description: 'Define roles and permission collections' },
   ]
 
   const currentSectionData = adminSections.find(s => s.id === currentSection)
@@ -106,6 +108,7 @@ export function Admin({ isDarkMode }: AdminProps) {
           {/* Section Content */}
           <div className="p-8">
             {currentSection === 'users' && <UserManagement isDarkMode={isDarkMode} />}
+            {currentSection === 'roles' && <RoleManagement isDarkMode={isDarkMode} />}
           </div>
         </main>
       </div>
