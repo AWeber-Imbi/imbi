@@ -1,6 +1,7 @@
 import unittest
 from unittest import mock
 
+import jwt
 from fastapi import testclient
 from imbi_common import settings
 
@@ -352,7 +353,7 @@ class LoginPasswordRehashTestCase(unittest.TestCase):
                 'imbi_common.auth.core.verify_password', return_value=True
             ),
             mock.patch(
-                'imbi_common.auth.core.password_needs_rehash',
+                'imbi_common.auth.core.needs_rehash',
                 return_value=True,
             ) as mock_needs_rehash,
             mock.patch(
@@ -1309,9 +1310,15 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
 
         # Create refresh token
-        refresh_token, refresh_jti = core.create_refresh_token(
-            test_user.email, auth_settings
+        refresh_token = core.create_refresh_token(
+            test_user.email, auth_settings=auth_settings
         )
+        payload = jwt.decode(
+            refresh_token,
+            auth_settings.jwt_secret,
+            algorithms=[auth_settings.jwt_algorithm],
+        )
+        refresh_jti = payload['jti']
 
         # Create token metadata
         token_meta = models.TokenMetadata(
@@ -1427,8 +1434,8 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
 
         # Create access token (wrong type)
-        access_token, _ = core.create_access_token(
-            test_user.email, auth_settings
+        access_token = core.create_access_token(
+            test_user.email, auth_settings=auth_settings
         )
 
         with mock.patch(
@@ -1464,9 +1471,15 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
 
         # Create refresh token
-        refresh_token, refresh_jti = core.create_refresh_token(
-            test_user.email, auth_settings
+        refresh_token = core.create_refresh_token(
+            test_user.email, auth_settings=auth_settings
         )
+        payload = jwt.decode(
+            refresh_token,
+            auth_settings.jwt_secret,
+            algorithms=[auth_settings.jwt_algorithm],
+        )
+        refresh_jti = payload['jti']
 
         # Create revoked token metadata
         token_meta = models.TokenMetadata(
@@ -1519,9 +1532,15 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
 
         # Create refresh token
-        refresh_token, refresh_jti = core.create_refresh_token(
-            test_user.email, auth_settings
+        refresh_token = core.create_refresh_token(
+            test_user.email, auth_settings=auth_settings
         )
+        payload = jwt.decode(
+            refresh_token,
+            auth_settings.jwt_secret,
+            algorithms=[auth_settings.jwt_algorithm],
+        )
+        refresh_jti = payload['jti']
 
         # Create token metadata
         token_meta = models.TokenMetadata(
@@ -1591,9 +1610,15 @@ class LogoutTestCase(unittest.TestCase):
         )
 
         # Create access token
-        access_token, access_jti = core.create_access_token(
-            test_user.email, auth_settings
+        access_token = core.create_access_token(
+            test_user.email, auth_settings=auth_settings
         )
+        payload = jwt.decode(
+            access_token,
+            auth_settings.jwt_secret,
+            algorithms=[auth_settings.jwt_algorithm],
+        )
+        access_jti = payload['jti']
 
         # Create mock auth context
         mock_auth = permissions.AuthContext(
@@ -1685,9 +1710,15 @@ class LogoutTestCase(unittest.TestCase):
         )
 
         # Create access token
-        access_token, access_jti = core.create_access_token(
-            test_user.email, auth_settings
+        access_token = core.create_access_token(
+            test_user.email, auth_settings=auth_settings
         )
+        payload = jwt.decode(
+            access_token,
+            auth_settings.jwt_secret,
+            algorithms=[auth_settings.jwt_algorithm],
+        )
+        access_jti = payload['jti']
 
         # Create mock auth context
         mock_auth = permissions.AuthContext(

@@ -73,8 +73,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_create_api_key_success(self) -> None:
         """Test successful API key creation."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -117,8 +117,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_create_api_key_with_expiration(self) -> None:
         """Test API key creation with expiration."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -146,8 +146,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_create_api_key_with_scopes(self) -> None:
         """Test API key creation with scopes."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -180,8 +180,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_create_api_key_expiration_exceeds_max(self) -> None:
         """Test API key creation with expiration exceeding maximum."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -208,8 +208,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_list_api_keys_empty(self) -> None:
         """Test listing API keys when user has none."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -234,8 +234,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_list_api_keys_with_keys(self) -> None:
         """Test listing API keys with multiple keys."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         api_keys_data = [
@@ -316,8 +316,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_revoke_api_key_success(self) -> None:
         """Test successful API key revocation."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         api_key_data = {
@@ -346,8 +346,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_revoke_api_key_not_found(self) -> None:
         """Test revoking non-existent API key."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -371,8 +371,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_rotate_api_key_success(self) -> None:
         """Test successful API key rotation."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         api_key_data = {
@@ -415,8 +415,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_rotate_api_key_not_found(self) -> None:
         """Test rotating non-existent API key."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -440,8 +440,8 @@ class APIKeysEndpointsTestCase(unittest.TestCase):
 
     def test_rotate_revoked_api_key(self) -> None:
         """Test rotating revoked API key."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         api_key_data = {

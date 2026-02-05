@@ -38,7 +38,7 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Patch the async client creation
         self.client_patcher = mock.patch(
-            'clickhouse_connect.create_async_client',
+            'clickhouse_connect.driver.create_async_client',
             return_value=self.mock_client,
         )
         self.mock_create_client = self.client_patcher.start()

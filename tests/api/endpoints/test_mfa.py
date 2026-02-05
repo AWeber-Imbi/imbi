@@ -103,8 +103,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_get_mfa_status_not_setup(self) -> None:
         """Test MFA status when not setup."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -130,8 +130,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_get_mfa_status_enabled(self) -> None:
         """Test MFA status when enabled."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         totp_data = {
@@ -164,8 +164,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_get_mfa_status_not_enabled(self) -> None:
         """Test MFA status when setup but not enabled."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         totp_data = {
@@ -198,8 +198,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_setup_mfa_success(self) -> None:
         """Test successful MFA setup."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         # Mock QR code generation
@@ -264,8 +264,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_verify_mfa_valid_code(self) -> None:
         """Test MFA verification with valid code."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         # Generate valid TOTP code
@@ -303,8 +303,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_verify_mfa_invalid_code(self) -> None:
         """Test MFA verification with invalid code."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         totp_data = {
@@ -336,8 +336,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_verify_mfa_not_setup(self) -> None:
         """Test MFA verification when not setup."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -364,8 +364,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_disable_mfa_success(self) -> None:
         """Test MFA disable with valid password."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -390,8 +390,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_disable_mfa_invalid_password(self) -> None:
         """Test MFA disable with invalid password."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -426,8 +426,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        access_token, _ = core.create_access_token(
-            oauth_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            oauth_user.email, auth_settings=self.auth_settings
         )
 
         def mock_run_oauth(query: str, **params):
@@ -476,8 +476,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_verify_mfa_decryption_failure(self) -> None:
         """Test MFA verification when decryption fails."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         totp_data = {
@@ -521,8 +521,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_verify_mfa_decryption_returns_none(self) -> None:
         """Test MFA verification when decryption returns None."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         totp_data = {
@@ -564,8 +564,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_verify_mfa_with_backup_code(self) -> None:
         """Test MFA verification with backup code."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         secret = 'JBSWY3DPEHPK3PXP'
@@ -602,8 +602,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
     def test_disable_mfa_password_required(self) -> None:
         """Test MFA disable requires password for password-based users."""
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with (
@@ -641,8 +641,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        access_token, _ = core.create_access_token(
-            oauth_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            oauth_user.email, auth_settings=self.auth_settings
         )
 
         # Generate valid TOTP code
@@ -715,8 +715,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        access_token, _ = core.create_access_token(
-            oauth_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            oauth_user.email, auth_settings=self.auth_settings
         )
 
         secret = 'JBSWY3DPEHPK3PXP'
@@ -788,8 +788,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        access_token, _ = core.create_access_token(
-            oauth_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            oauth_user.email, auth_settings=self.auth_settings
         )
 
         secret = 'JBSWY3DPEHPK3PXP'
@@ -859,8 +859,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        access_token, _ = core.create_access_token(
-            oauth_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            oauth_user.email, auth_settings=self.auth_settings
         )
 
         def mock_run_oauth_no_mfa(query: str, **params):
@@ -919,8 +919,8 @@ class MFAEndpointsTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        access_token, _ = core.create_access_token(
-            oauth_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            oauth_user.email, auth_settings=self.auth_settings
         )
 
         totp_data = {

@@ -54,39 +54,55 @@ class JWTTokenTestCase(unittest.TestCase):
     def test_create_access_token(self) -> None:
         """Test access token creation."""
         user_id = 'testuser'
-        token, jti = core.create_access_token(user_id, self.auth_settings)
+        token = core.create_access_token(
+            user_id, auth_settings=self.auth_settings
+        )
 
         self.assertIsInstance(token, str)
-        self.assertIsInstance(jti, str)
 
         # Decode and verify token
-        payload = core.decode_token(token, self.auth_settings)
+        payload = jwt.decode(
+            token,
+            self.auth_settings.jwt_secret,
+            algorithms=[self.auth_settings.jwt_algorithm],
+        )
         self.assertEqual(payload['sub'], user_id)
         self.assertEqual(payload['type'], 'access')
-        self.assertEqual(payload['jti'], jti)
+        self.assertIn('jti', payload)
         self.assertIn('exp', payload)
         self.assertIn('iat', payload)
 
     def test_create_refresh_token(self) -> None:
         """Test refresh token creation."""
         user_id = 'testuser'
-        token, jti = core.create_refresh_token(user_id, self.auth_settings)
+        token = core.create_refresh_token(
+            user_id, auth_settings=self.auth_settings
+        )
 
         self.assertIsInstance(token, str)
-        self.assertIsInstance(jti, str)
 
         # Decode and verify token
-        payload = core.decode_token(token, self.auth_settings)
+        payload = jwt.decode(
+            token,
+            self.auth_settings.jwt_secret,
+            algorithms=[self.auth_settings.jwt_algorithm],
+        )
         self.assertEqual(payload['sub'], user_id)
         self.assertEqual(payload['type'], 'refresh')
-        self.assertEqual(payload['jti'], jti)
+        self.assertIn('jti', payload)
 
     def test_decode_token_success(self) -> None:
         """Test successful token decoding."""
         user_id = 'testuser'
-        token, _ = core.create_access_token(user_id, self.auth_settings)
+        token = core.create_access_token(
+            user_id, auth_settings=self.auth_settings
+        )
 
-        payload = core.decode_token(token, self.auth_settings)
+        payload = jwt.decode(
+            token,
+            self.auth_settings.jwt_secret,
+            algorithms=[self.auth_settings.jwt_algorithm],
+        )
         self.assertEqual(payload['sub'], user_id)
 
     def test_decode_token_expired(self) -> None:
@@ -98,15 +114,25 @@ class JWTTokenTestCase(unittest.TestCase):
         )
 
         user_id = 'testuser'
-        token, _ = core.create_access_token(user_id, expired_settings)
+        token = core.create_access_token(
+            user_id, auth_settings=expired_settings
+        )
 
         with self.assertRaises(jwt.ExpiredSignatureError):
-            core.decode_token(token, expired_settings)
+            jwt.decode(
+                token,
+                expired_settings.jwt_secret,
+                algorithms=[expired_settings.jwt_algorithm],
+            )
 
     def test_decode_token_invalid(self) -> None:
         """Test decoding invalid token."""
         with self.assertRaises(jwt.InvalidTokenError):
-            core.decode_token('invalid.token.here', self.auth_settings)
+            jwt.decode(
+                'invalid.token.here',
+                self.auth_settings.jwt_secret,
+                algorithms=[self.auth_settings.jwt_algorithm],
+            )
 
 
 class LoginEndpointTestCase(unittest.TestCase):
@@ -278,9 +304,15 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
     def test_token_refresh_success(self) -> None:
         """Test successful token refresh."""
         # Create a valid refresh token
-        refresh_token, refresh_jti = core.create_refresh_token(
-            self.test_user.email, self.auth_settings
+        refresh_token = core.create_refresh_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
+        payload = jwt.decode(
+            refresh_token,
+            self.auth_settings.jwt_secret,
+            algorithms=[self.auth_settings.jwt_algorithm],
+        )
+        refresh_jti = payload['jti']
 
         # Create non-revoked token metadata
         token_metadata = models.TokenMetadata(
@@ -327,8 +359,8 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
             jwt_secret='test-secret-key-32-characters!',
             refresh_token_expire_seconds=-1,
         )
-        refresh_token, _ = core.create_refresh_token(
-            self.test_user.email, expired_settings
+        refresh_token = core.create_refresh_token(
+            self.test_user.email, auth_settings=expired_settings
         )
 
         with mock.patch(
@@ -357,8 +389,8 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
     def test_token_refresh_wrong_type(self) -> None:
         """Test refresh with access token instead of refresh token."""
         # Use access token instead of refresh token
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         with mock.patch(
@@ -377,9 +409,15 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
 
     def test_token_refresh_revoked(self) -> None:
         """Test refresh with revoked token."""
-        refresh_token, refresh_jti = core.create_refresh_token(
-            self.test_user.email, self.auth_settings
+        refresh_token = core.create_refresh_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
+        payload = jwt.decode(
+            refresh_token,
+            self.auth_settings.jwt_secret,
+            algorithms=[self.auth_settings.jwt_algorithm],
+        )
+        refresh_jti = payload['jti']
 
         # Create revoked token metadata
         revoked_token = models.TokenMetadata(
@@ -434,8 +472,8 @@ class LogoutEndpointTestCase(unittest.TestCase):
     def test_logout(self) -> None:
         """Test logout endpoint revokes tokens."""
         # Create access token
-        access_token, _ = core.create_access_token(
-            self.test_user.email, self.auth_settings
+        access_token = core.create_access_token(
+            self.test_user.email, auth_settings=self.auth_settings
         )
 
         # Mock Neo4j run calls - different results for different queries

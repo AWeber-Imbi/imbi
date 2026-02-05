@@ -72,7 +72,17 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_authenticate_jwt_success(self) -> None:
         """Test successful JWT authentication."""
-        token, jti = core.create_access_token('testuser', self.auth_settings)
+        token = core.create_access_token(
+            'testuser', auth_settings=self.auth_settings
+        )
+        import jwt as pyjwt
+
+        payload = pyjwt.decode(
+            token,
+            self.auth_settings.jwt_secret,
+            algorithms=[self.auth_settings.jwt_algorithm],
+        )
+        jti = payload['jti']
 
         # Mock Neo4j queries
         mock_token_result = mock.AsyncMock()
@@ -127,7 +137,9 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
             jwt_secret='test-secret-key-32-characters!',
             access_token_expire_seconds=-1,  # Already expired
         )
-        token, _ = core.create_access_token('testuser', expired_settings)
+        token = core.create_access_token(
+            'testuser', auth_settings=expired_settings
+        )
 
         from fastapi import HTTPException
 
@@ -150,7 +162,9 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_authenticate_jwt_revoked_token(self) -> None:
         """Test authentication with revoked token."""
-        token, _ = core.create_access_token('testuser', self.auth_settings)
+        token = core.create_access_token(
+            'testuser', auth_settings=self.auth_settings
+        )
 
         # Mock token as revoked
         mock_result = mock.AsyncMock()
@@ -171,7 +185,9 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_authenticate_jwt_inactive_user(self) -> None:
         """Test authentication with inactive user."""
-        token, _jti = core.create_access_token('testuser', self.auth_settings)
+        token = core.create_access_token(
+            'testuser', auth_settings=self.auth_settings
+        )
 
         # Mock Neo4j queries
         mock_token_result = mock.AsyncMock()
@@ -235,8 +251,8 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
             jwt_algorithm='HS256',
             access_token_expire_seconds=3600,
         )
-        refresh_token, _jti = core.create_refresh_token(
-            'testuser', token_settings
+        refresh_token = core.create_refresh_token(
+            'testuser', auth_settings=token_settings
         )
 
         from fastapi import HTTPException
@@ -249,39 +265,37 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_authenticate_jwt_missing_subject(self) -> None:
         """Test authentication with token missing subject."""
-        # Mock decode to return claims without 'sub' field
+        import jwt as pyjwt
+
+        # Create a token without 'sub' claim
         claims_without_sub = {
             'type': 'access',
             'jti': 'test-jti',
+            'exp': datetime.datetime.now(datetime.UTC)
+            + datetime.timedelta(hours=1),
         }
-
-        mock_token_result = mock.AsyncMock()
-        mock_token_result.data.return_value = [{'revoked': False}]
-        mock_token_result.__aenter__.return_value = mock_token_result
-        mock_token_result.__aexit__.return_value = None
+        token_no_sub = pyjwt.encode(
+            claims_without_sub,
+            self.auth_settings.jwt_secret,
+            algorithm=self.auth_settings.jwt_algorithm,
+        )
 
         from fastapi import HTTPException
 
-        with (
-            mock.patch(
-                'imbi_common.auth.core.decode_token',
-                return_value=claims_without_sub,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.run', return_value=mock_token_result
-            ),
-            self.assertRaises(HTTPException) as ctx,
-        ):
+        # verify_token requires 'sub' claim, so PyJWT raises
+        # MissingRequiredClaimError (subclass of InvalidTokenError)
+        with self.assertRaises(HTTPException) as ctx:
             await permissions.authenticate_jwt(
-                'test-token', self.auth_settings
+                token_no_sub, self.auth_settings
             )
 
         self.assertEqual(ctx.exception.status_code, 401)
-        self.assertIn('subject', str(ctx.exception.detail).lower())
 
     async def test_authenticate_jwt_user_not_found(self) -> None:
         """Test authentication when user doesn't exist."""
-        token, _jti = core.create_access_token('testuser', self.auth_settings)
+        token = core.create_access_token(
+            'testuser', auth_settings=self.auth_settings
+        )
 
         mock_token_result = mock.AsyncMock()
         mock_token_result.data.return_value = [{'revoked': False}]
@@ -334,7 +348,9 @@ class ProtectedEndpointTestCase(unittest.TestCase):
 
     def test_blueprint_list_with_valid_token(self) -> None:
         """Test accessing blueprint list with valid token and permission."""
-        token, _jti = core.create_access_token('testuser', self.auth_settings)
+        token = core.create_access_token(
+            'testuser', auth_settings=self.auth_settings
+        )
 
         test_user = models.User(
             email='test@example.com',
@@ -420,7 +436,9 @@ class ProtectedEndpointTestCase(unittest.TestCase):
 
     def test_blueprint_list_without_permission(self) -> None:
         """Test accessing blueprint list without required permission."""
-        token, _jti = core.create_access_token('testuser', self.auth_settings)
+        token = core.create_access_token(
+            'testuser', auth_settings=self.auth_settings
+        )
 
         test_user = models.User(
             email='test@example.com',

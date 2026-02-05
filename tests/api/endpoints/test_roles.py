@@ -163,13 +163,26 @@ class RoleEndpointsTestCase(unittest.TestCase):
 
     def test_get_role_success(self) -> None:
         """Test getting a specific role."""
+        # Mock neo4j.run for the Cypher queries that load
+        # permissions and parent role
+        mock_perm_result = mock.AsyncMock()
+        mock_perm_result.data.return_value = []
+        mock_perm_result.__aenter__.return_value = mock_perm_result
+        mock_perm_result.__aexit__.return_value = None
+
+        mock_parent_result = mock.AsyncMock()
+        mock_parent_result.data.return_value = []
+        mock_parent_result.__aenter__.return_value = mock_parent_result
+        mock_parent_result.__aexit__.return_value = None
+
         with (
             mock.patch(
                 'imbi_common.neo4j.fetch_node', return_value=self.test_role
             ),
             mock.patch(
-                'imbi_common.neo4j.refresh_relationship'
-            ) as mock_refresh,
+                'imbi_common.neo4j.run',
+                side_effect=[mock_perm_result, mock_parent_result],
+            ) as mock_run,
         ):
             response = self.client.get('/roles/test-role')
 
@@ -178,11 +191,9 @@ class RoleEndpointsTestCase(unittest.TestCase):
             self.assertEqual(data['name'], 'Test Role')
             self.assertEqual(data['slug'], 'test-role')
 
-            # Verify relationships were loaded
-            self.assertEqual(mock_refresh.call_count, 2)
-            calls = [call[0][1] for call in mock_refresh.call_args_list]
-            self.assertIn('permissions', calls)
-            self.assertIn('parent_role', calls)
+            # Verify Cypher queries were executed for permissions
+            # and parent role
+            self.assertEqual(mock_run.call_count, 2)
 
     def test_get_role_not_found(self) -> None:
         """Test getting non-existent role returns 404."""
