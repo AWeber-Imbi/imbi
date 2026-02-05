@@ -54,10 +54,23 @@ echo 'Creating Clickhouse Database...'
 docker compose exec clickhouse clickhouse client -q "CREATE DATABASE imbi"
 
 printf 'Generating .env...'
+
+# Preserve existing JWT secret or generate a new one
+if test -f .env && grep -q '^IMBI_AUTH_JWT_SECRET=' .env; then
+	JWT_SECRET=$(grep -m1 '^IMBI_AUTH_JWT_SECRET=' .env | cut -d= -f2- | tr -d '\r')
+else
+	JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+fi
+if test -z "${JWT_SECRET}"; then
+	JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+fi
+
 cat >.env <<EOF
 TEST_HOST=${TEST_HOST}
 CLICKHOUSE_URL=http://default:password@${TEST_HOST}:$(get_exposed_port clickhouse 8123)/imbi
 FILE_CACHE_ENABLED=no
+IMBI_AUTH_ENCRYPTION_KEY=development
+IMBI_AUTH_JWT_SECRET=${JWT_SECRET}
 IMBI_EMAIL_ENABLED=true
 IMBI_EMAIL_SMTP_HOST=${TEST_HOST}
 IMBI_EMAIL_SMTP_PORT=$(get_exposed_port mailpit 1025)
@@ -83,7 +96,7 @@ fi
 
 if test "${CI}" = 'true'; then
 	echo "::group::.env"
-	cat .env
+	sed -E 's/^(IMBI_AUTH_(JWT_SECRET|ENCRYPTION_KEY)=).*/\1[REDACTED]/' .env
 	echo '::endgroup::'
 fi
 

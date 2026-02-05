@@ -154,7 +154,7 @@ async def login(
         )
 
     # Check if password needs rehashing
-    if core.password_needs_rehash(user.password_hash):
+    if core.needs_rehash(user.password_hash):
         user.password_hash = core.hash_password(password)
         await neo4j.upsert(user, {'email': user.email})
         LOGGER.info('Rehashed password for user %s', user.email)
@@ -245,12 +245,17 @@ async def login(
 
     # Create tokens
     auth_settings = settings.get_auth_settings()
-    access_token, access_jti = core.create_access_token(
-        user.email, auth_settings
+    access_token = core.create_access_token(
+        user.email, auth_settings=auth_settings
     )
-    refresh_token, refresh_jti = core.create_refresh_token(
-        user.email, auth_settings
+    access_claims = core.verify_token(access_token, auth_settings)
+    access_jti = access_claims['jti']
+
+    refresh_token = core.create_refresh_token(
+        user.email, auth_settings=auth_settings
     )
+    refresh_claims = core.verify_token(refresh_token, auth_settings)
+    refresh_jti = refresh_claims['jti']
 
     # Store token metadata for access token
     now = datetime.datetime.now(datetime.UTC)
@@ -319,7 +324,7 @@ async def refresh_token(
 
     # Decode and validate refresh token
     try:
-        payload = core.decode_token(
+        payload = core.verify_token(
             refresh_request.refresh_token, auth_settings
         )
     except jwt.ExpiredSignatureError as err:
@@ -370,14 +375,18 @@ async def refresh_token(
         )
 
     # Create new access token
-    access_token, access_jti = core.create_access_token(
-        user.email, auth_settings
+    access_token = core.create_access_token(
+        user.email, auth_settings=auth_settings
     )
+    access_claims = core.verify_token(access_token, auth_settings)
+    access_jti = access_claims['jti']
 
     # Phase 5: Create NEW refresh token (token rotation)
-    new_refresh_token, new_refresh_jti = core.create_refresh_token(
-        user.email, auth_settings
+    new_refresh_token = core.create_refresh_token(
+        user.email, auth_settings=auth_settings
     )
+    new_refresh_claims = core.verify_token(new_refresh_token, auth_settings)
+    new_refresh_jti = new_refresh_claims['jti']
 
     # Store new access token metadata
     now = datetime.datetime.now(datetime.UTC)
@@ -649,12 +658,17 @@ async def oauth_callback(
         user = oauth_identity.user
 
         # Create JWT tokens (reusing existing token creation logic)
-        access_token, access_jti = core.create_access_token(
-            user.email, auth_settings
+        access_token = core.create_access_token(
+            user.email, auth_settings=auth_settings
         )
-        refresh_token, refresh_jti = core.create_refresh_token(
-            user.email, auth_settings
+        access_claims = core.verify_token(access_token, auth_settings)
+        access_jti = access_claims['jti']
+
+        refresh_token = core.create_refresh_token(
+            user.email, auth_settings=auth_settings
         )
+        refresh_claims = core.verify_token(refresh_token, auth_settings)
+        refresh_jti = refresh_claims['jti']
 
         # Store token metadata
         now = datetime.datetime.now(datetime.UTC)

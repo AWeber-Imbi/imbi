@@ -66,7 +66,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
 
     def test_get_model_schema_organization(self) -> None:
         """Test getting schema for Organization model type."""
-        with mock.patch('imbi_api.blueprints.get_model') as mock_get_model:
+        with mock.patch('imbi_common.blueprints.get_model') as mock_get_model:
             # Mock returns the base Organization model
             mock_get_model.return_value = models.Organization
 
@@ -90,7 +90,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
 
     def test_get_model_schema_project(self) -> None:
         """Test getting schema for Project model type."""
-        with mock.patch('imbi_api.blueprints.get_model') as mock_get_model:
+        with mock.patch('imbi_common.blueprints.get_model') as mock_get_model:
             # Mock returns the base Project model
             mock_get_model.return_value = models.Project
 
@@ -125,7 +125,9 @@ class SchemaEndpointsTestCase(unittest.TestCase):
         for model_type in model_types:
             with (
                 self.subTest(model_type=model_type),
-                mock.patch('imbi_api.blueprints.get_model') as mock_get_model,
+                mock.patch(
+                    'imbi_common.blueprints.get_model'
+                ) as mock_get_model,
             ):
                 # Mock returns the appropriate model class
                 mock_get_model.return_value = models.MODEL_TYPES[model_type]
@@ -146,7 +148,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
 
     def test_get_all_schemas(self) -> None:
         """Test getting schemas for all model types."""
-        with mock.patch('imbi_api.blueprints.get_model') as mock_get_model:
+        with mock.patch('imbi_common.blueprints.get_model') as mock_get_model:
             # Mock returns the appropriate model class for each call
             def mock_get_model_side_effect(model_class):
                 return model_class
@@ -177,7 +179,7 @@ class SchemaEndpointsTestCase(unittest.TestCase):
 
     def test_get_all_schemas_returns_dict(self) -> None:
         """Test that /schemata returns a dict mapping types to schemas."""
-        with mock.patch('imbi_api.blueprints.get_model') as mock_get_model:
+        with mock.patch('imbi_common.blueprints.get_model') as mock_get_model:
             # Mock returns the appropriate model class for each call
             def mock_get_model_side_effect(model_class):
                 return model_class
@@ -210,4 +212,64 @@ class SchemaEndpointsTestCase(unittest.TestCase):
         self.assertIn(response.status_code, [401, 403])
 
         response = client.get('/schemata')
+        self.assertIn(response.status_code, [401, 403])
+
+
+class RefreshSchemaEndpointTestCase(unittest.TestCase):
+    """Test cases for the schema refresh endpoint."""
+
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        from imbi_api.auth import permissions
+
+        self.test_app = app.create_app()
+
+        # Create an admin user (admins bypass permission checks)
+        self.admin_user = models.User(
+            email='admin@example.com',
+            display_name='Admin User',
+            is_active=True,
+            is_admin=True,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.auth_context = permissions.AuthContext(
+            user=self.admin_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions=set(),  # Admin bypasses permission checks
+        )
+
+        async def mock_get_current_user():
+            return self.auth_context
+
+        # Override get_current_user - require_permission depends on this
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+        self.client = testclient.TestClient(self.test_app)
+
+    def test_refresh_schemas_success(self) -> None:
+        """Test successful schema refresh."""
+        with mock.patch('imbi_common.blueprints.get_model') as mock_get_model:
+            mock_get_model.side_effect = lambda m: m
+
+            response = self.client.post('/schema/refresh')
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertIn('refreshed_models', data)
+            self.assertEqual(data['refreshed_models'], 5)
+
+    def test_refresh_schemas_requires_permission(self) -> None:
+        """Test that refresh requires blueprint:write permission."""
+        # Create a new app without dependency overrides
+        test_app = app.create_app()
+        client = testclient.TestClient(test_app)
+
+        response = client.post('/schema/refresh')
+
+        # Should return 401 or 403
         self.assertIn(response.status_code, [401, 403])

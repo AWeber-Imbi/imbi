@@ -59,7 +59,7 @@ async def list_roles(
     """
     roles = []
     async for role in neo4j.fetch_nodes(
-        models.Role, order_by='priority DESC, name'
+        models.Role, order_by=['priority DESC', 'name']
     ):
         roles.append(role)
     return roles
@@ -92,13 +92,114 @@ async def get_role(
             status_code=404, detail=f'Role with slug {slug!r} not found'
         )
 
-    # Load permissions relationship
-    await neo4j.refresh_relationship(role, 'permissions')
+    # Load permissions via direct Cypher query
+    perm_query = """
+    MATCH (r:Role {slug: $slug})-[:GRANTS]->(p:Permission)
+    RETURN p
+    ORDER BY p.name
+    """
+    async with neo4j.run(perm_query, slug=slug) as result:
+        records = await result.data()
+        role.permissions = [
+            models.Permission(**neo4j.convert_neo4j_types(r['p']))
+            for r in records
+        ]
 
-    # Load parent role relationship
-    await neo4j.refresh_relationship(role, 'parent_role')
+    # Load parent role via direct Cypher query
+    parent_query = """
+    MATCH (r:Role {slug: $slug})-[:INHERITS_FROM]->(parent:Role)
+    RETURN parent
+    """
+    async with neo4j.run(parent_query, slug=slug) as result:
+        records = await result.data()
+        if records:
+            role.parent_role = models.Role(
+                **neo4j.convert_neo4j_types(records[0]['parent'])
+            )
 
     return role
+
+
+@roles_router.get('/{slug}/users', response_model=list[models.UserResponse])
+async def list_role_users(
+    slug: str,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('role:read')),
+    ],
+) -> list[models.UserResponse]:
+    """Retrieve all users who have been directly assigned this role.
+
+    Parameters:
+        slug: Role slug identifier.
+
+    Returns:
+        list[models.UserResponse]: Users with a direct HAS_ROLE
+            relationship to this role.
+
+    Raises:
+        fastapi.HTTPException: HTTP 404 if role not found.
+    """
+    query = """
+    MATCH (r:Role {slug: $slug})
+    OPTIONAL MATCH (u:User)-[:HAS_ROLE]->(r)
+    RETURN r, collect(u) AS users
+    """
+    async with neo4j.run(query, slug=slug) as result:
+        records = await result.data()
+        if not records or not records[0].get('r'):
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f'Role with slug {slug!r} not found',
+            )
+
+        user_data = records[0].get('users', [])
+        return [
+            models.UserResponse(**neo4j.convert_neo4j_types(u))
+            for u in user_data
+            if u
+        ]
+
+
+@roles_router.get('/{slug}/groups', response_model=list[models.Group])
+async def list_role_groups(
+    slug: str,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('role:read')),
+    ],
+) -> list[models.Group]:
+    """Retrieve all groups that have been assigned this role.
+
+    Parameters:
+        slug: Role slug identifier.
+
+    Returns:
+        list[models.Group]: Groups with a direct ASSIGNED_ROLE
+            relationship to this role.
+
+    Raises:
+        fastapi.HTTPException: HTTP 404 if role not found.
+    """
+    query = """
+    MATCH (r:Role {slug: $slug})
+    OPTIONAL MATCH (g:Group)-[:ASSIGNED_ROLE]->(r)
+    RETURN r, collect(g) AS groups
+    """
+    async with neo4j.run(query, slug=slug) as result:
+        records = await result.data()
+        if not records or not records[0].get('r'):
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f'Role with slug {slug!r} not found',
+            )
+
+        group_data = records[0].get('groups', [])
+        return [
+            models.Group(**neo4j.convert_neo4j_types(g))
+            for g in group_data
+            if g
+        ]
 
 
 @roles_router.put('/{slug}', response_model=models.Role)

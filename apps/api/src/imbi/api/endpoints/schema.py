@@ -6,6 +6,7 @@ import typing
 import fastapi
 from imbi_common import blueprints, models
 
+from imbi_api import openapi
 from imbi_api.auth import permissions
 
 LOGGER = logging.getLogger(__name__)
@@ -109,3 +110,33 @@ async def get_all_schemas(
     LOGGER.debug('Generated %d schemas total', len(schemas))
 
     return schemas
+
+
+@schema_router.post('/schema/refresh', status_code=200)
+async def refresh_schemas(
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('blueprint:write')),
+    ],
+) -> dict[str, int]:
+    """
+    Refresh OpenAPI schema with current blueprint definitions.
+
+    This endpoint regenerates the cached blueprint-enhanced models used in
+    the OpenAPI documentation. Call this after creating, updating, or
+    deleting blueprints to reflect changes in the API documentation.
+
+    Returns:
+        dict: Count of refreshed models
+            Example: {"refreshed_models": 5}
+
+    Raises:
+        401: Not authenticated
+        403: Missing blueprint:write permission
+    """
+    LOGGER.info(
+        'Refreshing OpenAPI schema models, requested by %s',
+        auth.user.email,
+    )
+    models_dict = await openapi.refresh_blueprint_models()
+    return {'refreshed_models': len(models_dict)}

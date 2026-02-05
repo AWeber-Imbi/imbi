@@ -578,12 +578,16 @@ wheels = [
 
 [[package]]
 name = "cypherantic"
-version = "0.0.0"
-source = { git = "https://github.com/gmr/cypherantic.git#d025eacb9f03efc4a48a973b4b23b329daea7902" }
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "neo4j" },
     { name = "pydantic" },
     { name = "typing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bf/38/839b2cd8bd244ded23c840ea6c924c8ec39dfa849616c69368ffb5ddf14c/cypherantic-0.0.1.tar.gz", hash = "sha256:0e1e315d6be2b6156ef88069fb661005943073590adc044f2ee46e761d05675b", size = 69496, upload-time = "2026-02-04T16:22:55.234Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/24/dd91cd82b123ea26af27cf199470f977bc432f1aa69526c452e37e026cd3/cypherantic-0.0.1-py3-none-any.whl", hash = "sha256:e546356579f259a3afd3d136604889c7537de3e1375d8c5c4d98e68f9f9347e9", size = 8235, upload-time = "2026-02-04T16:22:52.961Z" },
 ]
 
 [[package]]
@@ -936,7 +940,7 @@ docs = [
 [[package]]
 name = "imbi-common"
 version = "0.1.0"
-source = { git = "https://github.com/aweber-imbi/imbi-common.git#6a4688827733a2f99ca36b07f4427f92e4f736a6" }
+source = { git = "https://github.com/aweber-imbi/imbi-common.git#f744c6f3d3c97dbd00dfe2fe24886f1080b55f5b" }
 dependencies = [
     { name = "argon2-cffi" },
     { name = "clickhouse-connect" },
@@ -944,10 +948,12 @@ dependencies = [
     { name = "cypherantic" },
     { name = "jsonschema-models" },
     { name = "neo4j" },
-    { name = "pydantic" },
+    { name = "orjson" },
+    { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "python-slugify" },
+    { name = "typer" },
 ]
 
 [[package]]
@@ -2313,7 +2319,7 @@ wheels = [
 
 [[package]]
 name = "typer"
-version = "0.21.0"
+version = "0.21.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2321,9 +2327,9 @@ dependencies = [
     { name = "shellingham" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/85/30/ff9ede605e3bd086b4dd842499814e128500621f7951ca1e5ce84bbf61b1/typer-0.21.0.tar.gz", hash = "sha256:c87c0d2b6eee3b49c5c64649ec92425492c14488096dfbc8a0c2799b2f6f9c53", size = 106781, upload-time = "2025-12-25T09:54:53.651Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/bf/8825b5929afd84d0dabd606c67cd57b8388cb3ec385f7ef19c5cc2202069/typer-0.21.1.tar.gz", hash = "sha256:ea835607cd752343b6b2b7ce676893e5a0324082268b48f27aa058bdb7d2145d", size = 110371, upload-time = "2026-01-06T11:21:10.989Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e1/e4/5ebc1899d31d2b1601b32d21cfb4bba022ae6fce323d365f0448031b1660/typer-0.21.0-py3-none-any.whl", hash = "sha256:c79c01ca6b30af9fd48284058a7056ba0d3bf5cf10d0ff3d0c5b11b68c258ac6", size = 47109, upload-time = "2025-12-25T09:54:51.918Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/1d/d9257dd49ff2ca23ea5f132edf1281a0c4f9de8a762b9ae399b670a59235/typer-0.21.1-py3-none-any.whl", hash = "sha256:7985e89081c636b88d172c2ee0cfe33c253160994d47bdfdc302defd7d1f1d01", size = 47381, upload-time = "2026-01-06T11:21:09.824Z" },
 ]
 
 [[package]]

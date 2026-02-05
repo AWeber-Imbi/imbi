@@ -84,7 +84,7 @@ async def authenticate_jwt(
     """
     try:
         # Decode and validate token
-        claims = core.decode_token(token, auth_settings)
+        claims = core.verify_token(token, auth_settings)
     except jwt.ExpiredSignatureError as err:
         raise fastapi.HTTPException(
             status_code=401, detail='Token has expired'

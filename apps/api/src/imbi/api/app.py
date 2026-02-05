@@ -6,7 +6,7 @@ import typing
 import fastapi
 from imbi_common import clickhouse, neo4j
 
-from imbi_api import email, endpoints, version
+from imbi_api import email, endpoints, openapi, version
 from imbi_api.middleware import rate_limit
 
 LOGGER = logging.getLogger(__name__)
@@ -51,6 +51,13 @@ async def fastapi_lifespan(
                 await asyncio.gather(*cleanup_tasks, return_exceptions=True)
             raise result
 
+    # Refresh blueprint models for OpenAPI schema (must run after Neo4j init)
+    try:
+        await openapi.refresh_blueprint_models()
+    except Exception as e:  # noqa: BLE001 - intentionally non-fatal
+        LOGGER.warning('Failed to refresh blueprint models: %s', e)
+        # Non-fatal - app can still start without enhanced OpenAPI schemas
+
     LOGGER.debug('Startup complete')
     yield
     shutdown_results = await asyncio.gather(
@@ -85,4 +92,9 @@ def create_app() -> fastapi.FastAPI:
 
     for router in endpoints.routers:
         app.include_router(router)
+
+    # Set custom OpenAPI schema generator with blueprint-enhanced models
+    # FastAPI pattern: override openapi method to customize schema
+    app.openapi = openapi.create_custom_openapi(app)  # type: ignore[method-assign]
+
     return app
