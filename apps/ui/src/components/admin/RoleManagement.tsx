@@ -139,14 +139,15 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
 
   // View mode: Create or Edit
   if (viewMode === 'create' || viewMode === 'edit') {
+    const isCreate = viewMode === 'create'
     return (
       <RoleForm
         roleSlug={selectedRoleSlug}
         onSave={handleSave}
         onCancel={handleCancel}
         isDarkMode={isDarkMode}
-        isLoading={createMutation.isPending || updateMutation.isPending}
-        error={createMutation.error || updateMutation.error}
+        isLoading={isCreate ? createMutation.isPending : updateMutation.isPending}
+        error={isCreate ? createMutation.error : updateMutation.error}
       />
     )
   }
