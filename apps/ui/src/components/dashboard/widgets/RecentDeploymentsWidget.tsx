@@ -1,5 +1,5 @@
 import { Rocket, CheckCircle, XCircle, Clock, ChevronRight } from 'lucide-react'
-import { Card } from '../../ui/card'
+import { Card } from '@/components/ui/card'
 
 interface RecentDeploymentsWidgetProps {
   isDarkMode: boolean
@@ -103,6 +103,7 @@ export function RecentDeploymentsWidget({ isDarkMode, onProjectSelect }: RecentD
 
           return (
             <button
+              type="button"
               key={deployment.id}
               onClick={() => onProjectSelect?.(deployment.projectId)}
               className={`w-full p-3 rounded-lg border text-left transition-colors ${
@@ -138,7 +139,7 @@ export function RecentDeploymentsWidget({ isDarkMode, onProjectSelect }: RecentD
                         {status.label}
                       </span>
                     </div>
-                    <div className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                    <div className="text-xs text-gray-500">
                       {deployment.deployedBy} • {deployment.deployedAt}
                     </div>
                   </div>

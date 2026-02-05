@@ -1,5 +1,5 @@
 import { Package, AlertTriangle, TrendingUp, ExternalLink } from 'lucide-react'
-import { Card } from '../../ui/card'
+import { Card } from '@/components/ui/card'
 
 interface OutdatedComponentsWidgetProps {
   isDarkMode: boolean
@@ -110,6 +110,7 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
                     </div>
 
                     <button
+                      type="button"
                       onClick={() => onProjectSelect?.(item.projectId)}
                       className={`text-sm mb-2 hover:underline ${
                         isDarkMode ? 'text-blue-400' : 'text-[#2A4DD0]'
@@ -133,12 +134,14 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
                 </div>
 
                 <button
+                  type="button"
+                  onClick={() => onProjectSelect?.(item.projectId)}
                   className={`p-2 rounded transition-colors flex-shrink-0 ${
                     isDarkMode
                       ? 'hover:bg-gray-700 text-gray-400 hover:text-white'
                       : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900'
                   }`}
-                  title="View update details"
+                  aria-label={`View update details for ${item.component}`}
                 >
                   <TrendingUp className="w-4 h-4" />
                 </button>
@@ -149,9 +152,13 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
       </div>
 
       <div className={`mt-4 pt-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-        <button className={`text-sm flex items-center gap-1 ${
-          isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#2A4DD0] hover:text-blue-700'
-        }`}>
+        <button
+          type="button"
+          onClick={() => onProjectSelect?.('outdated-components')}
+          className={`text-sm flex items-center gap-1 ${
+            isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#2A4DD0] hover:text-blue-700'
+          }`}
+        >
           View all outdated components
           <ExternalLink className="w-3 h-3" />
         </button>

@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { Button } from '../ui/button'
+import { Button } from '@/components/ui/button'
 
 interface WidgetSelectorProps {
   availableWidgets: WidgetConfig[]
@@ -37,15 +37,20 @@ export function WidgetSelector({ availableWidgets, selectedWidgets, onToggleWidg
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className={`w-full max-w-2xl max-h-[80vh] rounded-lg shadow-xl ${
-        isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
-      }`}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="widget-selector-title"
+        className={`w-full max-w-2xl max-h-[80vh] rounded-lg shadow-xl ${
+          isDarkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white border border-gray-200'
+        }`}
+      >
         {/* Header */}
         <div className={`flex items-center justify-between p-6 border-b ${
           isDarkMode ? 'border-gray-700' : 'border-gray-200'
         }`}>
           <div>
-            <h2 className={`text-xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            <h2 id="widget-selector-title" className={`text-xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
               Customize Dashboard
             </h2>
             <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
@@ -54,6 +59,8 @@ export function WidgetSelector({ availableWidgets, selectedWidgets, onToggleWidg
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
+            type="button"
             className={`p-2 rounded ${
               isDarkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-gray-100 text-gray-600'
             }`}
@@ -77,6 +84,8 @@ export function WidgetSelector({ availableWidgets, selectedWidgets, onToggleWidg
                   return (
                     <button
                       key={widget.id}
+                      type="button"
+                      aria-pressed={isSelected}
                       onClick={() => onToggleWidget(widget.id)}
                       className={`w-full flex items-center gap-3 p-4 rounded-lg border transition-all ${
                         isSelected
@@ -96,7 +105,7 @@ export function WidgetSelector({ availableWidgets, selectedWidgets, onToggleWidg
                         <div className={`text-sm ${
                           isSelected
                             ? isDarkMode ? 'text-blue-300' : 'text-blue-700'
-                            : isDarkMode ? 'text-gray-500' : 'text-gray-500'
+                            : 'text-gray-500'
                         }`}>
                           {widget.description}
                         </div>

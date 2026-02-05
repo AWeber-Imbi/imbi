@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Settings } from 'lucide-react'
-import { Button } from './ui/button'
+import { Button } from '@/components/ui/button'
 import {
   DndContext,
   closestCenter,
@@ -28,8 +28,13 @@ import { RecentDeploymentsWidget } from './dashboard/widgets/RecentDeploymentsWi
 import { useQuery } from '@tanstack/react-query'
 import { getProjects } from '@/api/endpoints'
 
+interface ViewChangeEvent {
+  view: string
+  filter: Record<string, string>
+}
+
 interface DashboardProps {
-  onViewChange?: (view: any) => void
+  onViewChange?: (view: ViewChangeEvent) => void
   onUserSelect?: (userName: string) => void
   onProjectSelect?: (projectId: string) => void
   isDarkMode: boolean

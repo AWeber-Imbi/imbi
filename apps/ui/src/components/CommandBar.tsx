@@ -19,6 +19,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
   const [isListening, setIsListening] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -26,6 +27,13 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [messages, isExpanded])
+
+  // Clear pending timeouts on unmount
+  useEffect(() => {
+    return () => {
+      timeoutsRef.current.forEach(clearTimeout)
+    }
+  }, [])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -41,15 +49,17 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
     setMessages(prev => [...prev, userMessage])
 
     // Simulate AI response
-    setTimeout(() => {
+    const responseText = getAIResponse(input)
+    const timeoutId = setTimeout(() => {
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
-        content: getAIResponse(input),
+        content: responseText,
         timestamp: new Date()
       }
       setMessages(prev => [...prev, aiMessage])
     }, 500)
+    timeoutsRef.current.push(timeoutId)
 
     setInput('')
 
@@ -137,6 +147,8 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
             )}
             <button
               onClick={() => setIsExpanded(false)}
+              aria-label="Close AI assistant"
+              type="button"
               className={`p-1 rounded ${
                 isDarkMode
                   ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-700'
@@ -217,6 +229,8 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
         <div className="flex justify-center">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
+            aria-label={isExpanded ? 'Collapse command bar' : 'Expand command bar'}
+            type="button"
             className={`-mt-3 px-6 py-1 rounded-t-lg border border-b-0 transition-all ${
               isDarkMode
                 ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-300'
@@ -272,7 +286,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
                     ? 'bg-gray-900 text-gray-400 hover:bg-gray-950 hover:text-white border border-gray-700'
                     : 'bg-gray-900 text-gray-300 hover:bg-black hover:text-white'
               }`}
-              title={isListening ? 'Stop listening' : 'Start voice input'}
+              aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
             >
               <Mic className="w-4 h-4" />
             </button>

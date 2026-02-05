@@ -1,9 +1,14 @@
 import { TrendingUp, TrendingDown, CheckCircle, XCircle, AlertTriangle, ChevronRight } from 'lucide-react'
-import { Card } from '../../ui/card'
+import { Card } from '@/components/ui/card'
+
+interface ViewChangeEvent {
+  view: string
+  filter: Record<string, string>
+}
 
 interface TeamActivityWidgetProps {
   isDarkMode: boolean
-  onViewChange?: (view: any) => void
+  onViewChange?: (view: ViewChangeEvent) => void
 }
 
 export function TeamActivityWidget({ isDarkMode, onViewChange }: TeamActivityWidgetProps) {
@@ -52,6 +57,7 @@ export function TeamActivityWidget({ isDarkMode, onViewChange }: TeamActivityWid
 
           return (
             <button
+              type="button"
               key={team.name}
               onClick={() => handleTeamClick(team.name)}
               className={`p-4 rounded-lg border text-left transition-all ${
@@ -84,6 +90,7 @@ export function TeamActivityWidget({ isDarkMode, onViewChange }: TeamActivityWid
                 </div>
                 <div className={`text-sm ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}>•</div>
                 <button
+                  type="button"
                   onClick={(e) => handleDeploymentClick(e, team.name)}
                   className={`text-sm ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#2A4DD0] hover:text-blue-700'}`}
                 >

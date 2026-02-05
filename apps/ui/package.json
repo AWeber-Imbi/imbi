@@ -57,8 +57,6 @@
     "md5": "^2.3.0",
     "react": "^18.3.1",
     "react-day-picker": "^9.4.4",
-    "react-dnd": "^16.0.1",
-    "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.1.1",
     "recharts": "^2.15.0",

@@ -1,5 +1,5 @@
 import { GitPullRequest, Clock, MessageSquare, CheckCircle } from 'lucide-react'
-import { Card } from '../../ui/card'
+import { Card } from '@/components/ui/card'
 
 interface MyPullRequestsWidgetProps {
   isDarkMode: boolean
@@ -113,23 +113,22 @@ export function MyPullRequestsWidget({ isDarkMode, onUserSelect }: MyPullRequest
                     </span>
 
                     {pr.comments > 0 && (
-                      <span className={`text-xs flex items-center gap-1 ${
-                        isDarkMode ? 'text-gray-500' : 'text-gray-500'
-                      }`}>
+                      <span className="text-xs flex items-center gap-1 text-gray-500">
                         <MessageSquare className="w-3 h-3" />
                         {pr.comments}
                       </span>
                     )}
 
-                    <span className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                    <span className="text-xs text-gray-500">
                       {pr.createdAt}
                     </span>
                   </div>
 
                   {pr.reviewers.length > 0 && (
-                    <div className={`mt-2 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                    <div className="mt-2 text-xs text-gray-500">
                       Reviewers: {pr.reviewers.map((reviewer, idx) => (
                         <button
+                          type="button"
                           key={idx}
                           onClick={() => onUserSelect?.(reviewer)}
                           className={`${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#2A4DD0] hover:text-blue-700'} ${
