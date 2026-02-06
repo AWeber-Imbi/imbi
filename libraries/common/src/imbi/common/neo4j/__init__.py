@@ -355,26 +355,65 @@ async def fetch_nodes(
 
 
 async def upsert(
-    node: pydantic.BaseModel, constraint: dict[str, typing.Any]
+    node: pydantic.BaseModel,
+    constraint: dict[str, typing.Any],
+    auto_increment: list[str] | None = None,
 ) -> str:
-    """Save a node to the graph, returning the elementId"""
+    """Save a node to the graph, returning the elementId.
+
+    :param node: Pydantic model instance to upsert
+    :param constraint: Dict of properties for the MERGE match
+    :param auto_increment: Optional list of field names (not aliases)
+        to increment atomically server-side using
+        ``coalesce(node.field, 0) + 1`` instead of client values.
+        The model instance is updated in-place with the new values.
+    :returns: The elementId of the upserted node
+
+    """
+    auto_increment_fields = set(auto_increment or [])
+
+    # Build field-name-to-alias mapping for alias-safe handling
+    field_to_alias = {
+        name: info.alias or name for name, info in node.model_fields.items()
+    }
+    alias_to_field = {v: k for k, v in field_to_alias.items()}
+    auto_increment_aliases = {
+        field_to_alias.get(f, f) for f in auto_increment_fields
+    }
+
     properties = node.model_dump(by_alias=True)
     label = node.__class__.__name__
     assignment = []
     for key in properties.keys():
-        assignment.append(f'node.{key} = ${key}')
+        if key in auto_increment_aliases:
+            assignment.append(f'node.{key} = coalesce(node.{key}, 0) + 1')
+        else:
+            assignment.append(f'node.{key} = ${key}')
 
     parameters = {}
     parameters.update(constraint)
-    parameters.update(properties)
+    # Exclude auto_increment fields from parameters
+    parameters.update(
+        {
+            k: v
+            for k, v in properties.items()
+            if k not in auto_increment_aliases
+        }
+    )
 
     where_props = _cypher_property_params(constraint)
+
+    return_fields = 'elementId(node) AS nodeId'
+    if auto_increment_aliases:
+        return_fields += ', ' + ', '.join(
+            f'node.{key} AS {key}' for key in sorted(auto_increment_aliases)
+        )
 
     query = (
         f'         MERGE (node:{label} {{{where_props}}})'
         f' ON CREATE SET {", ".join(assignment)}'
         f'  ON MATCH SET {", ".join(assignment)}'
-        f'        RETURN elementId(node) AS nodeId'
+        f'        RETURN {return_fields}'
     ).strip()
     LOGGER.debug('Upsert query: %s', query)
     LOGGER.debug('Upsert parameters: %r', parameters)
@@ -383,6 +422,11 @@ async def upsert(
         record = await result.single()
         if record is None:
             raise ValueError('Upsert query returned no results')
+        # Update model in-place with server-computed values
+        for alias in sorted(auto_increment_aliases):
+            if alias in record:
+                field_name = alias_to_field.get(alias, alias)
+                setattr(node, field_name, record[alias])
         return str(record['nodeId'])
 
 
