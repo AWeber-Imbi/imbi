@@ -16,6 +16,8 @@ import type {
   AdminUserCreate,
   AdminSettings,
   Group,
+  GroupCreate,
+  GroupMember,
   Role,
   RoleDetail,
   RoleCreate,
@@ -130,6 +132,35 @@ export const getGroups = async (): Promise<Group[]> => {
     return []
   }
 }
+
+export const getGroup = (slug: string) =>
+  apiClient.get<Group>(`/groups/${encodeURIComponent(slug)}`)
+
+export const createGroup = (group: GroupCreate) =>
+  apiClient.post<Group>('/groups/', group)
+
+export const updateGroup = (slug: string, group: GroupCreate) =>
+  apiClient.put<Group>(`/groups/${encodeURIComponent(slug)}`, group)
+
+export const deleteGroup = (slug: string) =>
+  apiClient.delete<void>(`/groups/${encodeURIComponent(slug)}`)
+
+export const getGroupMembers = async (slug: string): Promise<GroupMember[]> => {
+  const response = await apiClient.get<GroupMember[]>(
+    `/groups/${encodeURIComponent(slug)}/members`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const assignGroupRole = (slug: string, roleSlug: string) =>
+  apiClient.post<void>(`/groups/${encodeURIComponent(slug)}/roles`, {
+    role_slug: roleSlug
+  })
+
+export const unassignGroupRole = (slug: string, roleSlug: string) =>
+  apiClient.delete<void>(
+    `/groups/${encodeURIComponent(slug)}/roles/${encodeURIComponent(roleSlug)}`
+  )
 
 // Admin - Roles Management
 export const getRoles = async (): Promise<Role[]> => {
