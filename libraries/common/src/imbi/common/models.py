@@ -14,18 +14,18 @@ __all__ = [
     'BlueprintEdge',
     'EmptyRelationship',
     'Environment',
-    'Group',
-    'GroupEdge',
+    'MembershipProperties',
     'Node',
     'OAuthIdentity',
+    'OrgMembership',
     'Organization',
+    'OrganizationEdge',
     'PasswordChangeRequest',
     'Permission',
     'Project',
     'ProjectType',
     'ResourcePermission',
     'Role',
-    'RoleEdge',
     'Schema',
     'Session',
     'TOTPSecret',
@@ -185,13 +185,9 @@ class User(pydantic.BaseModel):
     last_login: datetime.datetime | None = None
     avatar_url: pydantic.HttpUrl | None = None
 
-    groups: typing.Annotated[
-        list['GroupEdge'],
+    organizations: typing.Annotated[
+        list['OrganizationEdge'],
         cypherantic.Relationship(rel_type='MEMBER_OF', direction='OUTGOING'),
-    ] = []
-    roles: typing.Annotated[
-        list['RoleEdge'],
-        cypherantic.Relationship(rel_type='HAS_ROLE', direction='OUTGOING'),
     ] = []
 
 
@@ -259,34 +255,34 @@ class OAuthIdentity(pydantic.BaseModel):
         )
 
 
-class Group(Node):
-    """Group for organizing users and assigning roles."""
+class MembershipProperties(pydantic.BaseModel):
+    """Properties on User->Organization MEMBER_OF relationships."""
 
-    organization: typing.Annotated[
-        Organization,
-        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
-    ]
-    parent: typing.Annotated[
-        'Group | None',
-        cypherantic.Relationship(
-            rel_type='PARENT_GROUP', direction='OUTGOING'
-        ),
-    ] = None
-    roles: typing.Annotated[
-        list['Role'],
-        cypherantic.Relationship(
-            rel_type='ASSIGNED_ROLE', direction='OUTGOING'
-        ),
-    ] = []
+    cypherantic_config: typing.ClassVar[cypherantic.RelationshipConfig] = (
+        cypherantic.RelationshipConfig(rel_type='MEMBER_OF')
+    )
+    role: str  # Role slug
+
+
+class OrganizationEdge(typing.NamedTuple):
+    """Edge type for User->Organization MEMBER_OF relationships."""
+
+    node: Organization
+    properties: MembershipProperties
+
+
+class OrgMembership(pydantic.BaseModel):
+    """Organization membership with role for API responses."""
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+    organization_name: str
+    organization_slug: str
+    role: str
 
 
 class Role(Node):
     """Role for grouping permissions."""
 
-    organization: typing.Annotated[
-        Organization,
-        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
-    ]
     priority: int = 0
     is_system: bool = False
 
@@ -306,20 +302,6 @@ class EmptyRelationship(pydantic.BaseModel):
     """Empty relationship properties for simple relationships without data."""
 
     pass  # Explicitly empty - no relationship properties needed
-
-
-class GroupEdge(typing.NamedTuple):
-    """Edge type for User->Group MEMBER_OF relationships."""
-
-    node: Group
-    properties: EmptyRelationship
-
-
-class RoleEdge(typing.NamedTuple):
-    """Edge type for User->Role HAS_ROLE relationships."""
-
-    node: Role
-    properties: EmptyRelationship
 
 
 class Permission(pydantic.BaseModel):
@@ -526,8 +508,7 @@ class UserResponse(pydantic.BaseModel):
     last_login: datetime.datetime | None = None
     avatar_url: pydantic.HttpUrl | None = None
 
-    groups: list[Group] = []
-    roles: list[Role] = []
+    organizations: list[OrgMembership] = []
 
 
 class PasswordChangeRequest(pydantic.BaseModel):

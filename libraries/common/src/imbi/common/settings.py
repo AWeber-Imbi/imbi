@@ -247,8 +247,8 @@ class Storage(pydantic_settings.BaseSettings):
     model_config = base_settings_config(env_prefix='S3_')
 
     endpoint_url: str | None = None  # None = real AWS S3
-    access_key: str = ''
-    secret_key: str = ''
+    access_key: str | None = None
+    secret_key: str | None = None
     bucket: str = 'imbi-uploads'
     region: str = 'us-east-1'
     create_bucket_on_init: bool = True
