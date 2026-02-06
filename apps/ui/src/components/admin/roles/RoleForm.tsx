@@ -193,9 +193,13 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
 
     const next = new Set(selectedPermissions)
     if (allSelected) {
-      groupPerms.forEach(p => next.delete(p))
+      for (const p of groupPerms) {
+        next.delete(p)
+      }
     } else {
-      groupPerms.forEach(p => next.add(p))
+      for (const p of groupPerms) {
+        next.add(p)
+      }
     }
     setSelectedPermissions(next)
   }

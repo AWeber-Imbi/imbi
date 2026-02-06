@@ -55,9 +55,9 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   // Create role mutation with permission sync
   const createMutation = useMutation({
     mutationFn: async ({ role, permissions }: { role: RoleCreate, permissions: string[] }) => {
-      await createRole(role)
+      const created = await createRole(role)
       if (permissions.length > 0) {
-        await syncPermissions(role.slug, permissions)
+        await syncPermissions(created.slug, permissions)
       }
     },
     onSuccess: () => {
@@ -73,8 +73,8 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   // Update role mutation with permission sync
   const updateMutation = useMutation({
     mutationFn: async ({ slug, role, permissions }: { slug: string, role: RoleCreate, permissions: string[] }) => {
-      await updateRole(slug, role)
-      await syncPermissions(slug, permissions)
+      const updated = await updateRole(slug, role)
+      await syncPermissions(updated.slug, permissions)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
