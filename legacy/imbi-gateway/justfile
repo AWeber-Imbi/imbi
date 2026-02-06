@@ -1,8 +1,10 @@
-[doc("Bootstrap the environment and run the service in the foregroud")]
-[no-exit-message]
+[doc("Bootstrap the environment and run the service in the foreground")]
 [group("Testing")]
 serve *ARGS:
     -uv run imbi-gateway serve {{ARGS}}
+
+# I would use [no-exit-message] here instead but it doesn't prevent a message
+# when I Ctrl+C the process (https://github.com/casey/just/issues/2895)
 
 [default]
 [private]
