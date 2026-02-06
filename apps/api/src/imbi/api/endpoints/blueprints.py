@@ -205,8 +205,11 @@ async def update_blueprint(
             f'blueprint data ({blueprint.type!r})',
         )
 
-    blueprint.version += 1
-    await neo4j.upsert(blueprint, {'slug': slug, 'type': blueprint_type})
+    await neo4j.upsert(
+        blueprint,
+        {'slug': slug, 'type': blueprint_type},
+        auto_increment=['version'],
+    )
     return blueprint
 
 
