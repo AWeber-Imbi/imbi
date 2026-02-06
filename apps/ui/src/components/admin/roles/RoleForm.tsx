@@ -493,10 +493,9 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
                     <div className="flex items-center gap-2 flex-1">
                       <Checkbox
                         id={`group-${resource}`}
-                        checked={allSelected}
+                        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                         disabled={isSystemRole}
                         onCheckedChange={() => toggleAllInGroup(resource)}
-                        className={someSelected ? 'data-[state=checked]:bg-gray-400' : ''}
                       />
                       <label
                         htmlFor={`group-${resource}`}
