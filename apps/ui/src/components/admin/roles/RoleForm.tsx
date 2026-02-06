@@ -57,7 +57,11 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
   })
 
   // Fetch available permissions
-  const { data: adminSettings } = useQuery({
+  const {
+    data: adminSettings,
+    isLoading: adminSettingsLoading,
+    error: adminSettingsError,
+  } = useQuery({
     queryKey: ['adminSettings'],
     queryFn: getAdminSettings,
   })
@@ -257,7 +261,7 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
           {!isSystemRole && (
             <Button
               onClick={handleSave}
-              disabled={isLoading}
+              disabled={isLoading || (!isEditing && (adminSettingsLoading || !!adminSettingsError))}
               className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
             >
               <Save className="w-4 h-4 mr-2" />
@@ -443,6 +447,16 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
         </div>
 
         <div className="space-y-3">
+          {adminSettingsLoading && (
+            <div className={`text-center py-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Loading permissions...
+            </div>
+          )}
+          {adminSettingsError && (
+            <div className={`text-center py-6 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
+              Failed to load permissions. Please retry.
+            </div>
+          )}
           {Object.entries(groupedPermissions)
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([resource, perms]) => {
@@ -463,6 +477,8 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
                     <button
                       type="button"
                       onClick={() => toggleGroup(resource)}
+                      aria-label={isExpanded ? 'Collapse permissions group' : 'Expand permissions group'}
+                      aria-expanded={isExpanded}
                       className={`p-0.5 rounded ${
                         isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'
                       }`}
@@ -548,7 +564,8 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
               )
             })}
 
-          {(!adminSettings?.permissions || adminSettings.permissions.length === 0) && (
+          {!adminSettingsLoading && !adminSettingsError &&
+            (!adminSettings?.permissions || adminSettings.permissions.length === 0) && (
             <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               <div>No permissions available</div>
               <div className="text-sm mt-1">Permissions are configured in the backend</div>
