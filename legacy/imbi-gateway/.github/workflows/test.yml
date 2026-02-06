@@ -1,0 +1,46 @@
+name: "Run Tests"
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    name: "Static Analysis"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --all-groups --all-extras --frozen
+      - name: Run pre-commit checks
+        run: uv run pre-commit run --all-files
+      - name: Check types
+        run: |
+          uv run basedpyright
+          uv run mypy
+
+  test:
+    name: "Automated Tests"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [ "3.12", "3.13", "3.14" ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - name: Run tests
+        env:
+          UV_FROZEN: "1"
+        run: uv run pytest
