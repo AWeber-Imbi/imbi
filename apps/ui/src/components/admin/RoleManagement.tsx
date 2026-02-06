@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RoleForm } from './roles/RoleForm'
 import { RoleDetail } from './roles/RoleDetail'
-import { getRoles, deleteRole, createRole, updateRole } from '@/api/endpoints'
+import { getRoles, getRole, deleteRole, createRole, updateRole, grantPermission, revokePermission } from '@/api/endpoints'
 import type { RoleDetail as RoleDetailType, RoleCreate } from '@/types'
 
 interface RoleManagementProps {
@@ -37,9 +37,29 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     }
   })
 
-  // Create role mutation
+  // Sync permissions: grant new ones, revoke removed ones
+  const syncPermissions = async (slug: string, desired: string[]) => {
+    const current = await getRole(slug)
+    const currentPerms = new Set(current.permissions?.map(p => p.name) || [])
+    const desiredPerms = new Set(desired)
+
+    const toGrant = desired.filter(p => !currentPerms.has(p))
+    const toRevoke = [...currentPerms].filter(p => !desiredPerms.has(p))
+
+    await Promise.all([
+      ...toGrant.map(p => grantPermission(slug, p)),
+      ...toRevoke.map(p => revokePermission(slug, p)),
+    ])
+  }
+
+  // Create role mutation with permission sync
   const createMutation = useMutation({
-    mutationFn: createRole,
+    mutationFn: async ({ role, permissions }: { role: RoleCreate, permissions: string[] }) => {
+      await createRole(role)
+      if (permissions.length > 0) {
+        await syncPermissions(role.slug, permissions)
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
       setViewMode('list')
@@ -50,12 +70,15 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     }
   })
 
-  // Update role mutation
+  // Update role mutation with permission sync
   const updateMutation = useMutation({
-    mutationFn: ({ slug, role }: { slug: string, role: RoleCreate }) =>
-      updateRole(slug, role),
+    mutationFn: async ({ slug, role, permissions }: { slug: string, role: RoleCreate, permissions: string[] }) => {
+      await updateRole(slug, role)
+      await syncPermissions(slug, permissions)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
+      queryClient.invalidateQueries({ queryKey: ['role'] })
       setViewMode('list')
       setSelectedRoleSlug(null)
     },
@@ -98,11 +121,11 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     setViewMode('detail')
   }
 
-  const handleSave = (roleData: RoleCreate) => {
+  const handleSave = (roleData: RoleCreate, permissions: string[]) => {
     if (viewMode === 'create') {
-      createMutation.mutate(roleData)
+      createMutation.mutate({ role: roleData, permissions })
     } else if (selectedRoleSlug) {
-      updateMutation.mutate({ slug: selectedRoleSlug, role: roleData })
+      updateMutation.mutate({ slug: selectedRoleSlug, role: roleData, permissions })
     }
   }
 

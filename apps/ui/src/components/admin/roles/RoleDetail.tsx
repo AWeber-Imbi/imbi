@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Edit2, Shield, Lock, Plus, X, AlertCircle,
+  ArrowLeft, Edit2, Shield, Lock, Plus, Trash2, AlertCircle,
   Users, UsersRound, Info
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -241,15 +241,29 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
       {/* Permissions Tab */}
       {activeTab === 'permissions' && (
         <div className="space-y-4">
-          {/* Add Permission */}
+          {/* Add Permission Section */}
           {!role.is_system && (
-            <div className="flex items-center gap-2">
-              {showAddPermission ? (
-                <>
+            <div className={`p-4 rounded-lg border ${
+              isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+            }`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  Assign Permission
+                </h3>
+                <button
+                  onClick={() => setShowAddPermission(!showAddPermission)}
+                  className={`text-sm ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#2A4DD0] hover:text-blue-700'}`}
+                >
+                  {showAddPermission ? 'Cancel' : 'Add Permission'}
+                </button>
+              </div>
+
+              {showAddPermission && (
+                <div className="flex items-center gap-2">
                   <select
                     value={selectedPermission}
                     onChange={(e) => setSelectedPermission(e.target.value)}
-                    className={`flex-1 px-3 py-2 rounded-md border text-sm ${
+                    className={`flex-1 px-3 py-2 rounded-lg border text-sm ${
                       isDarkMode
                         ? 'bg-gray-700 border-gray-600 text-white'
                         : 'bg-white border-gray-300 text-gray-900'
@@ -268,94 +282,92 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
                     className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
                     size="sm"
                   >
-                    {grantMutation.isPending ? 'Adding...' : 'Add'}
+                    <Plus className="w-4 h-4 mr-2" />
+                    {grantMutation.isPending ? 'Adding...' : 'Assign'}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setShowAddPermission(false)
-                      setSelectedPermission('')
-                    }}
-                    className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-                  >
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  onClick={() => setShowAddPermission(true)}
-                  variant="outline"
-                  size="sm"
-                  className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add Permission
-                </Button>
+                </div>
               )}
+
+              <div className={`flex items-start gap-2 mt-3 p-2 rounded text-xs ${
+                isDarkMode ? 'bg-blue-900/20 text-blue-400' : 'bg-blue-50 text-blue-700'
+              }`}>
+                <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                <span>Permissions define what actions users with this role can perform</span>
+              </div>
             </div>
           )}
 
-          {/* Grouped Permissions */}
+          {/* Permissions Table */}
           {Object.keys(groupedPermissions).length === 0 ? (
             <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               <Shield className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <div>No permissions assigned</div>
               {!role.is_system && (
-                <div className="text-sm mt-1">Use the button above to add permissions</div>
+                <div className="text-sm mt-1">Use the section above to add permissions</div>
               )}
             </div>
           ) : (
-            Object.entries(groupedPermissions)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([resourceType, perms]) => (
-                <div
-                  key={resourceType}
-                  className={`rounded-lg border ${
-                    isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-                  }`}
-                >
-                  <div className={`px-4 py-3 border-b ${
-                    isDarkMode ? 'border-gray-700' : 'border-gray-200'
-                  }`}>
-                    <h4 className={`text-sm font-medium capitalize ${
-                      isDarkMode ? 'text-gray-200' : 'text-gray-900'
+            <div className={`rounded-lg border overflow-hidden ${
+              isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+            }`}>
+              <table className="w-full">
+                <thead className={isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'bg-gray-50 border-b border-gray-200'}>
+                  <tr>
+                    <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
                     }`}>
-                      {resourceType}
-                    </h4>
-                  </div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {perms.sort((a, b) => a.action.localeCompare(b.action)).map((perm) => (
-                      <div key={perm.name} className="flex items-center justify-between px-4 py-2.5">
-                        <div className="flex items-center gap-3">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-mono ${
-                            isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
+                      Permission
+                    </th>
+                    <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}>
+                      Description
+                    </th>
+                    {!role.is_system && (
+                      <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`}>
+                        Actions
+                      </th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className={isDarkMode ? 'divide-y divide-gray-700' : 'divide-y divide-gray-200'}>
+                  {(role.permissions || [])
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((perm) => (
+                      <tr key={perm.name} className={isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}>
+                        <td className={`px-6 py-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                          <code className={`px-2 py-1 rounded text-sm ${
+                            isDarkMode ? 'bg-gray-750 text-blue-400' : 'bg-gray-100 text-[#2A4DD0]'
                           }`}>
-                            {perm.action}
-                          </span>
-                          <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                            {perm.description || perm.name}
-                          </span>
-                        </div>
+                            {perm.name}
+                          </code>
+                        </td>
+                        <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                          {perm.description || perm.action}
+                        </td>
                         {!role.is_system && (
-                          <button
-                            onClick={() => handleRevokePermission(perm.name)}
-                            disabled={revokeMutation.isPending}
-                            className={`p-1 rounded ${
-                              isDarkMode
-                                ? 'text-gray-500 hover:text-red-400 hover:bg-gray-700'
-                                : 'text-gray-400 hover:text-red-600 hover:bg-gray-100'
-                            }`}
-                            title="Remove permission"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              onClick={() => handleRevokePermission(perm.name)}
+                              disabled={revokeMutation.isPending}
+                              className={`p-1.5 rounded ${
+                                isDarkMode
+                                  ? 'text-red-400 hover:bg-red-900/20'
+                                  : 'text-red-600 hover:bg-red-50'
+                              }`}
+                              title="Remove permission"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
                         )}
-                      </div>
+                      </tr>
                     ))}
-                  </div>
-                </div>
-              ))
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
