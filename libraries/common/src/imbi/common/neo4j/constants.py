@@ -53,4 +53,7 @@ INDEXES: list[str] = [
     # Note: 'user' is a relationship (OWNED_BY), not a property
     'CREATE INDEX api_key_revoked IF NOT EXISTS '
     'FOR (n:APIKey) ON (n.revoked);',
+    # Uploads
+    'CREATE CONSTRAINT upload_id_unique IF NOT EXISTS '
+    'FOR (n:Upload) REQUIRE n.id IS UNIQUE;',
 ]

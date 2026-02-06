@@ -241,6 +241,34 @@ class Email(pydantic_settings.BaseSettings):
         return self
 
 
+class Storage(pydantic_settings.BaseSettings):
+    """S3-compatible object storage configuration."""
+
+    model_config = base_settings_config(env_prefix='S3_')
+
+    endpoint_url: str | None = None  # None = real AWS S3
+    access_key: str = ''
+    secret_key: str = ''
+    bucket: str = 'imbi-uploads'
+    region: str = 'us-east-1'
+    create_bucket_on_init: bool = True
+
+    # Upload constraints
+    max_file_size: int = 50 * 1024 * 1024  # 50 MB
+    allowed_content_types: list[str] = [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/svg+xml',
+        'application/pdf',
+    ]
+
+    # Thumbnail settings
+    thumbnail_max_size: int = 256
+    thumbnail_quality: int = 85
+
+
 class Configuration(pydantic.BaseModel):
     """Root configuration combining all settings sections.
 
@@ -291,6 +319,7 @@ class Configuration(pydantic.BaseModel):
             'server': ServerConfig,
             'auth': Auth,
             'email': Email,
+            'storage': Storage,
         }
         for field, settings_cls in settings_fields.items():
             if field in data and data[field] is not None:
@@ -305,6 +334,7 @@ class Configuration(pydantic.BaseModel):
     server: ServerConfig = pydantic.Field(default_factory=ServerConfig)
     auth: Auth = pydantic.Field(default_factory=Auth)
     email: Email = pydantic.Field(default_factory=Email)
+    storage: Storage = pydantic.Field(default_factory=Storage)
 
 
 def load_config() -> Configuration:
