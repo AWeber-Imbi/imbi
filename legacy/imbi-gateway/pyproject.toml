@@ -7,7 +7,7 @@ name = "imbi-gateway"
 version = "0.0.0"
 description = "Imbi webhook receiver"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 license = "BSD-3-Clause"
 authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
 dependencies = [
@@ -93,8 +93,8 @@ select = [
   "W",
 ]
 ignore = [
-  "TRY003",  # message text in exception initializers is okay
-  "TRY400",  # logging.exception is not always preferable
+  "TRY003", # message text in exception initializers is okay
+  "TRY400", # logging.exception is not always preferable
 ]
 flake8-quotes = { inline-quotes = "single" }
 
