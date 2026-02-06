@@ -120,30 +120,136 @@ class NodeModelTestCase(unittest.TestCase):
 
     def test_environment_creation(self) -> None:
         """Test creating an Environment model."""
+        org = models.Organization(name='Org', slug='org')
         env = models.Environment(
             name='Production',
             slug='prod',
             description='Production environment',
+            organization=org,
         )
         self.assertEqual(env.name, 'Production')
         self.assertEqual(env.slug, 'prod')
         self.assertEqual(env.description, 'Production environment')
+        self.assertEqual(env.organization, org)
 
     def test_project_type_creation(self) -> None:
         """Test creating a ProjectType model."""
+        org = models.Organization(name='Org', slug='org')
         project_type = models.ProjectType(
             name='Web Service',
             slug='web-service',
             description='HTTP-based services',
+            organization=org,
         )
         self.assertEqual(project_type.name, 'Web Service')
         self.assertEqual(project_type.slug, 'web-service')
         self.assertEqual(project_type.description, 'HTTP-based services')
+        self.assertEqual(project_type.organization, org)
 
     def test_node_validation(self) -> None:
         """Test Node model validation."""
+        org = models.Organization(name='Org', slug='org')
         with self.assertRaises(pydantic.ValidationError):
-            models.Environment(name='Test')  # Missing slug
+            models.Environment(name='Test', organization=org)  # Missing slug
+
+
+class UploadModelTestCase(unittest.TestCase):
+    """Test cases for Upload model."""
+
+    def _make_upload(self, **overrides: object) -> models.Upload:
+        defaults = {
+            'id': 'upload-1',
+            'filename': 'test.png',
+            'content_type': 'image/png',
+            'size': 1024,
+            's3_key': 'uploads/test.png',
+            'uploaded_by': 'user@example.com',
+            'created_at': '2024-01-01T00:00:00Z',
+        }
+        defaults.update(overrides)
+        return models.Upload(**defaults)
+
+    def test_upload_creation(self) -> None:
+        """Test creating a valid Upload model."""
+        upload = self._make_upload()
+        self.assertEqual(upload.id, 'upload-1')
+        self.assertEqual(upload.size, 1024)
+        self.assertFalse(upload.has_thumbnail)
+        self.assertIsNone(upload.thumbnail_s3_key)
+
+    def test_upload_with_thumbnail(self) -> None:
+        """Test Upload with valid thumbnail fields."""
+        upload = self._make_upload(
+            has_thumbnail=True,
+            thumbnail_s3_key='uploads/test_thumb.png',
+        )
+        self.assertTrue(upload.has_thumbnail)
+        self.assertEqual(upload.thumbnail_s3_key, 'uploads/test_thumb.png')
+
+    def test_upload_negative_size(self) -> None:
+        """Test that negative size raises validation error."""
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            self._make_upload(size=-1)
+        self.assertIn('non-negative', str(ctx.exception))
+
+    def test_upload_zero_size(self) -> None:
+        """Test that zero size is valid."""
+        upload = self._make_upload(size=0)
+        self.assertEqual(upload.size, 0)
+
+    def test_upload_thumbnail_true_without_key(self) -> None:
+        """Test has_thumbnail=True without thumbnail_s3_key."""
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            self._make_upload(has_thumbnail=True)
+        self.assertIn('thumbnail_s3_key is required', str(ctx.exception))
+
+    def test_upload_thumbnail_false_with_key(self) -> None:
+        """Test has_thumbnail=False with thumbnail_s3_key set."""
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            self._make_upload(
+                has_thumbnail=False,
+                thumbnail_s3_key='uploads/thumb.png',
+            )
+        self.assertIn('thumbnail_s3_key must be empty', str(ctx.exception))
+
+
+class PasswordChangeRequestTestCase(unittest.TestCase):
+    """Test cases for PasswordChangeRequest model."""
+
+    def test_valid_password(self) -> None:
+        """Test a valid password passes validation."""
+        req = models.PasswordChangeRequest(new_password='Str0ng!Pass12')
+        self.assertEqual(req.new_password, 'Str0ng!Pass12')
+
+    def test_password_too_short(self) -> None:
+        """Test password shorter than 12 characters."""
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            models.PasswordChangeRequest(new_password='Sh0rt!')
+        self.assertIn('at least 12', str(ctx.exception))
+
+    def test_password_no_uppercase(self) -> None:
+        """Test password without uppercase letter."""
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            models.PasswordChangeRequest(new_password='nouppercase1!')
+        self.assertIn('uppercase', str(ctx.exception))
+
+    def test_password_no_lowercase(self) -> None:
+        """Test password without lowercase letter."""
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            models.PasswordChangeRequest(new_password='NOLOWERCASE1!')
+        self.assertIn('lowercase', str(ctx.exception))
+
+    def test_password_no_digit(self) -> None:
+        """Test password without a digit."""
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            models.PasswordChangeRequest(new_password='NoDigitHere!!')
+        self.assertIn('digit', str(ctx.exception))
+
+    def test_password_no_special(self) -> None:
+        """Test password without a special character."""
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            models.PasswordChangeRequest(new_password='NoSpecialChar1')
+        self.assertIn('special', str(ctx.exception))
 
 
 class ProjectModelTestCase(unittest.TestCase):
@@ -153,8 +259,10 @@ class ProjectModelTestCase(unittest.TestCase):
         """Test Project URL validation."""
         # Create minimal valid related objects
         org = models.Organization(name='Org', slug='org')
-        team = models.Team(name='Team', slug='team', member_of=org)
-        project_type = models.ProjectType(name='Type', slug='type')
+        team = models.Team(name='Team', slug='team', organization=org)
+        project_type = models.ProjectType(
+            name='Type', slug='type', organization=org
+        )
 
         with self.assertRaises(pydantic.ValidationError):
             models.Project(

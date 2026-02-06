@@ -31,6 +31,7 @@ __all__ = [
     'TOTPSecret',
     'Team',
     'TokenMetadata',
+    'Upload',
     'User',
     'UserCreate',
     'UserResponse',
@@ -118,18 +119,24 @@ class Organization(Node):
 
 
 class Team(Node):
-    member_of: typing.Annotated[
+    organization: typing.Annotated[
         Organization,
-        cypherantic.Relationship(rel_type='MANAGED_BY', direction='OUTGOING'),
+        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
     ]
 
 
 class Environment(Node):
-    pass
+    organization: typing.Annotated[
+        Organization,
+        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
+    ]
 
 
 class ProjectType(Node):
-    pass
+    organization: typing.Annotated[
+        Organization,
+        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
+    ]
 
 
 class Project(Node):
@@ -255,6 +262,10 @@ class OAuthIdentity(pydantic.BaseModel):
 class Group(Node):
     """Group for organizing users and assigning roles."""
 
+    organization: typing.Annotated[
+        Organization,
+        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
+    ]
     parent: typing.Annotated[
         'Group | None',
         cypherantic.Relationship(
@@ -272,6 +283,10 @@ class Group(Node):
 class Role(Node):
     """Role for grouping permissions."""
 
+    organization: typing.Annotated[
+        Organization,
+        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
+    ]
     priority: int = 0
     is_system: bool = False
 
@@ -447,6 +462,43 @@ class APIKey(pydantic.BaseModel):
         User,
         cypherantic.Relationship(rel_type='OWNED_BY', direction='OUTGOING'),
     ]
+
+
+class Upload(pydantic.BaseModel):
+    """Metadata for an uploaded file stored in S3."""
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+    id: str
+    filename: str
+    content_type: str
+    size: int
+    s3_key: str
+    has_thumbnail: bool = False
+    thumbnail_s3_key: str | None = None
+    uploaded_by: str
+    created_at: datetime.datetime
+
+    @pydantic.field_validator('size')
+    @classmethod
+    def validate_size(cls, value: int) -> int:
+        """Validate that file size is non-negative."""
+        if value < 0:
+            raise ValueError('size must be non-negative')
+        return value
+
+    @pydantic.model_validator(mode='after')
+    def validate_thumbnail_consistency(self) -> typing.Self:
+        """Validate has_thumbnail and thumbnail_s3_key are consistent."""
+        if self.has_thumbnail and self.thumbnail_s3_key is None:
+            raise ValueError(
+                'thumbnail_s3_key is required when has_thumbnail is True'
+            )
+        if not self.has_thumbnail and self.thumbnail_s3_key:
+            raise ValueError(
+                'thumbnail_s3_key must be empty when has_thumbnail is False'
+            )
+        return self
 
 
 class UserCreate(pydantic.BaseModel):
