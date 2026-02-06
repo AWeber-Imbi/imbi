@@ -237,6 +237,24 @@ export interface Group {
   roles: Role[]
 }
 
+export interface GroupCreate {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+}
+
+export interface GroupMember {
+  email: string
+  display_name: string
+  is_active: boolean
+  is_admin: boolean
+  is_service_account: boolean
+  created_at: string
+  last_login?: string | null
+  avatar_url?: string | null
+}
+
 export interface AdminUser {
   email: string
   display_name: string
