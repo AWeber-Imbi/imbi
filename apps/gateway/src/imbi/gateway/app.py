@@ -11,7 +11,7 @@ def create_app() -> fastapi.FastAPI:
 
 
 @cli.callback()
-def _callback() -> None:
+def _callback() -> None:  # pyright: ignore[reportUnusedFunction]
     """Imbi Gateway CLI"""
     # Providing an empty callback forces typer to require a command
     # name - https://typer.tiangolo.com/tutorial/commands/one-or-multiple/
