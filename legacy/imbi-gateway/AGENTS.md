@@ -58,6 +58,77 @@ just real-clean         # Remove everything including .venv and caches (requires
 - **`tests/helpers.py`**: Base test case using `unittest.IsolatedAsyncioTestCase`
     - All test classes should inherit from `helpers.TestCase` for async test support
 
+### Lifespan Management Pattern
+
+**Problem:** FastAPI's `lifespan` parameter accepts only one callable, but
+applications need multiple independent resources (database pools, Redis
+connections) with separate setup/teardown lifecycles.
+
+**Solution:** The `Lifespan` class in `src/imbi_gateway/lifespan.py`
+composes multiple async context managers into a single lifespan while
+preserving type information through dependency injection. This enables
+type-safe access to lifespan-managed resources in route handlers.
+
+**Standard Usage Pattern:**
+
+1. **Define a lifespan hook** as an async context manager that yields the
+   resource:
+
+   ```python
+   @contextlib.asynccontextmanager
+   async def postgres_lifespan() -> abc.AsyncIterator[PoolType]:
+       async with psycopg_pool.AsyncConnectionPool(...) as pool:
+           await pool.open(wait=True)
+           yield pool
+   ```
+
+2. **Create a dependency injection function** that retrieves the resource
+   using `get_state()`:
+
+   ```python
+   async def _get_postgres_cursor(
+       context: lifespan.InjectLifespan
+   ) -> abc.AsyncIterator[CursorType]:
+       pool = context.get_state(postgres_lifespan)
+       async with pool.connection() as conn:
+           async with conn.cursor() as cursor:
+               yield cursor
+   ```
+
+3. **Define a type alias** for dependency injection:
+
+   ```python
+   PostgresCursor = typing.Annotated[
+       CursorType, fastapi.Depends(_get_postgres_cursor)
+   ]
+   ```
+
+4. **Combine hooks** when creating the FastAPI application:
+
+   ```python
+   app = fastapi.FastAPI(
+       lifespan=lifespan.Lifespan(postgres_lifespan, redis_lifespan)
+   )
+   ```
+
+5. **Use the type alias** in route handler parameters:
+
+   ```python
+   @app.get('/data')
+   async def handler(*, cursor: PostgresCursor) -> None:
+       await cursor.execute('SELECT ...')
+   ```
+
+**Type Safety:** The `TypedLifespanHook[T]` type alias and generic
+`get_state()` method preserve type information through the dependency
+chain, enabling strict type checking and IDE autocomplete for resources.
+
+**Key Files:**
+
+- `src/imbi_gateway/lifespan.py` - Implementation with module docstring
+- `tests/test_lifespan.py` - 10 test cases with examples and edge cases
+- `docs/lifespan-pattern.md` - Comprehensive tutorial and API reference
+
 ### Shared Library: imbi-common
 
 The project depends heavily on the `imbi-common` library (from https://github.com/AWeber-Imbi/imbi-common), which provides:

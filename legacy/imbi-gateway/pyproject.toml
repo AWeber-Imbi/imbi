@@ -50,6 +50,15 @@ deprecateTypingAliases = true
 reportMissingSuperCall = "hint"
 typeCheckingMode = "strict"
 
+[[tool.pyright.executionEnvironments]]
+root = "src"
+reportUnusedFunction = "warning"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportUnusedFunction = "none"  # flags decorated local functions used as request handlers
+extraPaths = ["src", "."]  # '.' allows imports from `tests` to work
+
 [tool.ruff]
 line-length = 79
 target-version = "py312"
