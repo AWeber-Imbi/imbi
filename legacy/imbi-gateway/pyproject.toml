@@ -93,8 +93,8 @@ select = [
   "W",
 ]
 ignore = [
-  "TRY003", # message text in exception initializers is okay
-  "TRY400", # logging.exception is not always preferable
+  "TRY003",  # message text in exception initializers is okay
+  "TRY400",  # logging.exception is not always preferable
 ]
 flake8-quotes = { inline-quotes = "single" }
 
