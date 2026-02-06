@@ -89,9 +89,29 @@ async def get_group(
             detail=f'Group with slug {slug!r} not found',
         )
 
-    # Load relationships
-    await neo4j.refresh_relationship(group, 'parent')
-    await neo4j.refresh_relationship(group, 'roles')
+    # Load roles via direct Cypher query
+    roles_query = """
+    MATCH (g:Group {slug: $slug})-[:ASSIGNED_ROLE]->(r:Role)
+    RETURN r
+    ORDER BY r.name
+    """
+    async with neo4j.run(roles_query, slug=slug) as result:
+        records = await result.data()
+        group.roles = [
+            models.Role(**neo4j.convert_neo4j_types(r['r'])) for r in records
+        ]
+
+    # Load parent group via direct Cypher query
+    parent_query = """
+    MATCH (g:Group {slug: $slug})-[:PARENT_GROUP]->(parent:Group)
+    RETURN parent
+    """
+    async with neo4j.run(parent_query, slug=slug) as result:
+        records = await result.data()
+        if records:
+            group.parent = models.Group(
+                **neo4j.convert_neo4j_types(records[0]['parent'])
+            )
 
     return group
 

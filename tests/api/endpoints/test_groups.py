@@ -128,20 +128,32 @@ class GroupEndpointsTestCase(unittest.TestCase):
             roles=[],
         )
 
+        mock_roles_result = mock.AsyncMock()
+        mock_roles_result.data.return_value = []
+        mock_roles_ctx = mock.AsyncMock()
+        mock_roles_ctx.__aenter__.return_value = mock_roles_result
+        mock_roles_ctx.__aexit__.return_value = None
+
+        mock_parent_result = mock.AsyncMock()
+        mock_parent_result.data.return_value = []
+        mock_parent_ctx = mock.AsyncMock()
+        mock_parent_ctx.__aenter__.return_value = mock_parent_result
+        mock_parent_ctx.__aexit__.return_value = None
+
         with (
             mock.patch(
                 'imbi_common.neo4j.fetch_node', return_value=mock_group
             ),
             mock.patch(
-                'imbi_common.neo4j.refresh_relationship'
-            ) as mock_refresh,
+                'imbi_common.neo4j.run',
+                side_effect=[mock_roles_ctx, mock_parent_ctx],
+            ),
         ):
             response = self.client.get('/groups/engineering')
 
             self.assertEqual(response.status_code, 200)
             data = response.json()
             self.assertEqual(data['slug'], 'engineering')
-            self.assertEqual(mock_refresh.call_count, 2)
 
     def test_get_group_not_found(self) -> None:
         """Test retrieving non-existent group."""
