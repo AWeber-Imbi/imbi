@@ -18,4 +18,7 @@ EXPOSE 8000
 ENV PATH="/app/bin:$PATH"
 WORKDIR /app
 COPY --from=builder /app/ /app/
+RUN useradd -r -g users imbi \
+ && chown -R imbi /app
+USER imbi
 CMD ["/app/bin/imbi-gateway", "serve", "--host", "0.0.0.0"]
