@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Filter, Edit2, Trash2, Eye, Power, Crown, Bot, AlertCircle } from 'lucide-react'
+import { Plus, Search, Filter, Edit2, Trash2, Power, Crown, Bot, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Gravatar } from '../ui/gravatar'
@@ -416,11 +416,12 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
               filteredUsers.map((user) => (
                 <tr
                   key={user.email}
-                  className={`${isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'} ${
+                  onClick={() => handleViewClick(user)}
+                  className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'} ${
                     !user.is_active ? 'opacity-60' : ''
                   }`}
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
                       checked={selectedEmails.has(user.email)}
@@ -478,7 +479,10 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                   </td>
                   <td className="px-4 py-3 text-center">
                     <button
-                      onClick={() => handleToggleActive(user)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleToggleActive(user)
+                      }}
                       disabled={toggleActiveMutation.isPending}
                       className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${
                         user.is_active
@@ -500,16 +504,10 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => handleViewClick(user)}
-                        className={`p-1.5 rounded ${
-                          isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                        }`}
-                        title="View"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleEditClick(user)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEditClick(user)
+                        }}
                         className={`p-1.5 rounded ${
                           isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                         }`}
@@ -518,7 +516,10 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(user.email)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDelete(user.email)
+                        }}
                         disabled={deleteMutation.isPending}
                         className={`p-1.5 rounded ${
                           isDarkMode ? 'text-red-400 hover:text-red-300 hover:bg-gray-700' : 'text-red-600 hover:text-red-700 hover:bg-gray-100'

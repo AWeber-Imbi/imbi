@@ -1,24 +1,32 @@
-import { useState } from 'react'
-import { Users, Shield, UsersRound, ChevronRight } from 'lucide-react'
+import { Users, Shield, UsersRound, FileJson, ChevronRight } from 'lucide-react'
 import { UserManagement } from './admin/UserManagement'
 import { RoleManagement } from './admin/RoleManagement'
 import { GroupManagement } from './admin/GroupManagement'
-import { useNavigate } from 'react-router-dom'
+import { BlueprintManagement } from './admin/BlueprintManagement'
+import { useNavigate, useParams } from 'react-router-dom'
 
 interface AdminProps {
   isDarkMode: boolean
 }
 
-type AdminSection = 'users' | 'groups' | 'roles'
+type AdminSection = 'users' | 'groups' | 'roles' | 'blueprints'
+
+const VALID_SECTIONS: AdminSection[] = ['users', 'groups', 'roles', 'blueprints']
+
+function isValidSection(value: string | undefined): value is AdminSection {
+  return VALID_SECTIONS.includes(value as AdminSection)
+}
 
 export function Admin({ isDarkMode }: AdminProps) {
   const navigate = useNavigate()
-  const [currentSection, setCurrentSection] = useState<AdminSection>('users')
+  const { section } = useParams<{ section?: string }>()
+  const currentSection: AdminSection = isValidSection(section) ? section : 'users'
 
   const adminSections = [
     { id: 'users' as AdminSection, label: 'User Management', icon: Users, description: 'Manage user accounts and service accounts' },
     { id: 'groups' as AdminSection, label: 'Groups', icon: UsersRound, description: 'Organize users and assign roles collectively' },
     { id: 'roles' as AdminSection, label: 'Roles', icon: Shield, description: 'Define roles and permission collections' },
+    { id: 'blueprints' as AdminSection, label: 'Blueprints', icon: FileJson, description: 'Define metadata schemas for entities' },
   ]
 
   const currentSectionData = adminSections.find(s => s.id === currentSection)
@@ -44,7 +52,7 @@ export function Admin({ isDarkMode }: AdminProps) {
               return (
                 <button
                   key={section.id}
-                  onClick={() => setCurrentSection(section.id)}
+                  onClick={() => navigate(`/admin/${section.id}`)}
                   className={`w-full flex items-start gap-3 px-4 py-3 rounded-lg transition-colors text-left ${
                     isActive
                       ? isDarkMode
@@ -112,6 +120,7 @@ export function Admin({ isDarkMode }: AdminProps) {
             {currentSection === 'users' && <UserManagement isDarkMode={isDarkMode} />}
             {currentSection === 'groups' && <GroupManagement isDarkMode={isDarkMode} />}
             {currentSection === 'roles' && <RoleManagement isDarkMode={isDarkMode} />}
+            {currentSection === 'blueprints' && <BlueprintManagement isDarkMode={isDarkMode} />}
           </div>
         </main>
       </div>
