@@ -21,7 +21,9 @@ import type {
   Role,
   RoleDetail,
   RoleCreate,
-  RoleUser
+  RoleUser,
+  Blueprint,
+  BlueprintCreate
 } from '@/types'
 
 // Status/Health
@@ -213,3 +215,48 @@ export const getRoleGroups = async (slug: string): Promise<Group[]> => {
 // Admin - Settings (reference data)
 export const getAdminSettings = () =>
   apiClient.get<AdminSettings>('/admin/settings')
+
+// Admin - Blueprints
+export const listBlueprints = async (params?: {
+  enabled?: boolean
+}): Promise<Blueprint[]> => {
+  const response = await apiClient.get<Blueprint[]>('/blueprints/', params)
+  return Array.isArray(response) ? response : []
+}
+
+export const listBlueprintsByType = async (
+  type: string,
+  params?: { enabled?: boolean }
+): Promise<Blueprint[]> => {
+  const response = await apiClient.get<Blueprint[]>(
+    `/blueprints/${encodeURIComponent(type)}`,
+    params
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getBlueprint = (type: string, slug: string) =>
+  apiClient.get<Blueprint>(
+    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`
+  )
+
+export const createBlueprint = (blueprint: BlueprintCreate) =>
+  apiClient.post<Blueprint>('/blueprints/', blueprint)
+
+export const updateBlueprint = (
+  type: string,
+  slug: string,
+  blueprint: BlueprintCreate
+) =>
+  apiClient.put<Blueprint>(
+    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`,
+    blueprint
+  )
+
+export const deleteBlueprint = (type: string, slug: string) =>
+  apiClient.delete<void>(
+    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`
+  )
+
+export const refreshBlueprintSchemas = () =>
+  apiClient.post<{ refreshed_models: number }>('/schema/refresh', {})

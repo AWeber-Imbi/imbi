@@ -276,3 +276,42 @@ export interface AdminUserCreate {
   is_admin?: boolean
   is_service_account?: boolean
 }
+
+// Blueprint types
+export interface Blueprint {
+  name: string
+  slug: string
+  type: string
+  description?: string | null
+  enabled: boolean
+  priority: number
+  filter?: Record<string, unknown> | null
+  json_schema: string
+  version: number
+}
+
+export interface BlueprintCreate {
+  name: string
+  slug?: string
+  type: string
+  description?: string | null
+  enabled?: boolean
+  priority?: number
+  json_schema: Record<string, unknown>
+  version?: number
+}
+
+export interface SchemaProperty {
+  id: string
+  name: string
+  type: 'string' | 'integer' | 'number' | 'boolean' | 'array' | 'object'
+  format?: string
+  description?: string
+  required: boolean
+  defaultValue?: string
+  enumValues?: string[]
+  minimum?: number
+  maximum?: number
+  minLength?: number
+  maxLength?: number
+}

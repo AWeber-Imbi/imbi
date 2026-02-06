@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Edit2, Trash2, Eye, UsersRound, AlertCircle } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, UsersRound, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { GroupForm } from './groups/GroupForm'
@@ -256,7 +256,8 @@ export function GroupManagement({ isDarkMode }: GroupManagementProps) {
               filteredGroups.map((group) => (
                 <tr
                   key={group.slug}
-                  className={isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}
+                  onClick={() => handleViewClick(group.slug)}
+                  className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}`}
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -287,16 +288,10 @@ export function GroupManagement({ isDarkMode }: GroupManagementProps) {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => handleViewClick(group.slug)}
-                        className={`p-1.5 rounded ${
-                          isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                        }`}
-                        title="View"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleEditClick(group.slug)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEditClick(group.slug)
+                        }}
                         className={`p-1.5 rounded ${
                           isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                         }`}
@@ -305,7 +300,10 @@ export function GroupManagement({ isDarkMode }: GroupManagementProps) {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(group.slug)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDelete(group.slug)
+                        }}
                         disabled={deleteMutation.isPending}
                         className={`p-1.5 rounded ${
                           isDarkMode

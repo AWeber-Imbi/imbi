@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Edit2, Trash2, Eye, Shield, AlertCircle, Lock } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Shield, AlertCircle, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RoleForm } from './roles/RoleForm'
@@ -269,7 +269,8 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                 return (
                   <tr
                     key={role.slug}
-                    className={isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}
+                    onClick={() => handleViewClick(role.slug)}
+                    className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}`}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -306,16 +307,10 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => handleViewClick(role.slug)}
-                          className={`p-1.5 rounded ${
-                            isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                          }`}
-                          title="View"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleEditClick(role.slug)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleEditClick(role.slug)
+                          }}
                           disabled={isSystem}
                           className={`p-1.5 rounded ${
                             isSystem
@@ -329,7 +324,10 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(role.slug)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDelete(role.slug)
+                          }}
                           disabled={deleteMutation.isPending || isSystem}
                           className={`p-1.5 rounded ${
                             isSystem
