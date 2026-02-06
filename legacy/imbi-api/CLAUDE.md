@@ -52,58 +52,6 @@ NEO4J_PASSWORD=password
 
 **Neo4j URL credential extraction**: The settings model automatically extracts credentials from URLs like `neo4j://user:pass@host:7687`, URL-decodes them, and strips them from the connection URL for security. Explicit `NEO4J_USER`/`NEO4J_PASSWORD` take precedence over URL credentials.
 
-### Configuration File Support
-
-Imbi supports loading configuration from `config.toml` files with environment variable overrides. This provides a more structured alternative to `.env` files for complex configurations.
-
-**Priority order** (highest to lowest):
-1. Environment variables (always take precedence)
-2. `./config.toml` (project root)
-3. `~/.config/imbi/config.toml` (user config)
-4. `/etc/imbi/config.toml` (system config)
-5. Built-in defaults
-
-**Example config.toml**:
-```toml
-[server]
-environment = "production"
-host = "0.0.0.0"
-port = 8080
-
-[neo4j]
-url = "neo4j://neo4j-prod:7687"
-user = "admin"
-password = "secret"
-
-[clickhouse]
-url = "http://clickhouse-prod:8123"
-
-[auth]
-jwt_secret = "your-secret-here"
-access_token_expire_seconds = 7200
-min_password_length = 16
-
-[email]
-enabled = true
-smtp_host = "smtp.example.com"
-smtp_port = 587
-from_email = "noreply@example.com"
-```
-
-**Using config.toml programmatically**:
-```python
-from imbi_api import settings
-
-# Load configuration from config.toml with env var overrides
-config = settings.load_config()
-
-# Access individual settings sections
-print(config.server.environment)
-print(config.neo4j.url)
-print(config.auth.jwt_secret)
-```
-
-**Note**: The existing environment variable approach (`NEO4J_URL`, `IMBI_PORT`, etc.) continues to work without modification. Config files are optional and provide additional flexibility for complex deployments.
 
 ## Common Development Commands
 
@@ -181,11 +129,8 @@ docker compose logs -f clickhouse
 
 ### High-Level Structure
 - **`src/imbi_api/`**: Main application code
-  - `app.py`: FastAPI application factory with lifespan management and auto-seeding
-  - `entrypoint.py`: CLI commands (Typer-based)
-  - `models.py`: Core domain models (Blueprint, User, Group, Role, Permission, Project, etc.)
-  - `settings.py`: Configuration via Pydantic Settings with URL credential extraction
-  - `blueprints.py`: Blueprint filtering and schema validation logic
+  - `app.py`: FastAPI application factory with lifespan management
+  - `entrypoint.py`: CLI commands (Typer-based) including `setup` and `serve`
   - `endpoints/`: API endpoint routers
     - `status.py`: Health check endpoint
     - `auth.py`: Authentication (OAuth2/OIDC, local password) and token management
@@ -194,11 +139,17 @@ docker compose logs -f clickhouse
     - `roles.py`: Role CRUD operations
     - `blueprints.py`: Blueprint CRUD operations
   - `auth/`: Authentication and authorization system
-    - `core.py`: JWT token generation and password hashing
-    - `oauth.py`: OAuth2/OIDC provider integration (Google, GitHub, Keycloak)
     - `permissions.py`: Permission checking and resource-based authorization
-    - `seed.py`: Auto-seeding of roles and permissions
-    - `models.py`: Auth-specific data models
+    - `seed.py`: Auth system seeding (roles and permissions)
+    - `sessions.py`: Session management
+    - `oauth.py`: OAuth2/OIDC provider integration (Google, GitHub, Keycloak)
+  - `email/`: Email notification system
+  - `middleware/`: FastAPI middleware (rate limiting)
+  - `openapi.py`: Custom OpenAPI schema generation
+- **`imbi_common` package** (external dependency): Shared code used across Imbi services
+  - `models.py`: Core domain models (Blueprint, User, Group, Role, Permission, Project, etc.)
+  - `settings.py`: Configuration via Pydantic Settings with URL credential extraction
+  - `blueprints.py`: Blueprint filtering and schema validation logic
   - `neo4j/`: Neo4j graph database integration layer
     - `client.py`: Singleton driver with event loop awareness
     - `__init__.py`: High-level API and cypherantic wrappers
@@ -206,20 +157,22 @@ docker compose logs -f clickhouse
   - `clickhouse/`: ClickHouse analytics database integration
     - `client.py`: Async ClickHouse client with connection pooling
     - `__init__.py`: High-level API for queries and inserts
-- **`tests/`**: Test suite with 315 tests (~30% coverage, being expanded)
+  - `auth/core.py`: JWT token generation and password hashing
+  - `logging.py`: Logging configuration
+- **`tests/`**: Test suite with ~30% coverage, being expanded
 
 ### ClickHouse Integration Pattern
 
 The ClickHouse module provides async operations for analytics and time-series data:
 
 ```python
-from imbi_api import clickhouse
+from imbi_common import clickhouse
 
 # Initialize connection (called during app startup)
 await clickhouse.initialize()
 
 # Insert Pydantic models
-from imbi_api.models import SomeModel
+from imbi_common.models import SomeModel
 data = [SomeModel(...), SomeModel(...)]
 result = await clickhouse.insert('table_name', data)
 
@@ -233,7 +186,7 @@ results = await clickhouse.query(
 await clickhouse.aclose()
 ```
 
-**Implementation details** (`src/imbi_api/clickhouse/client.py`):
+**Implementation details** (`imbi_common/clickhouse/client.py`):
 - Singleton pattern with async connection management
 - Automatic Pydantic model serialization for inserts
 - Support for nested/complex types via flattening
@@ -244,7 +197,7 @@ await clickhouse.aclose()
 The Neo4j module uses a **singleton pattern with event loop awareness**:
 
 ```python
-from imbi_api import neo4j
+from imbi_common import neo4j
 
 # Module-level APIs (preferred):
 async with neo4j.session() as sess:
@@ -268,19 +221,19 @@ await neo4j.refresh_relationship(model, 'dependencies')  # Lazy-load relationshi
 edges = await neo4j.retrieve_relationship_edges(model, 'dependencies')
 ```
 
-**Implementation details** (`src/imbi_api/neo4j/client.py`):
+**Implementation details** (`imbi_common/neo4j/client.py`):
 - `Neo4j.get_instance()`: Returns singleton driver instance
 - Automatically reinitializes if event loop changes (important for FastAPI)
 - Manages connection pool with keep-alive and max connection settings
 - `initialize()` creates indexes defined in `neo4j/constants.py`
 
-**Upsert pattern** (`neo4j/__init__.py:upsert()`):
+**Upsert pattern** (`imbi_common/neo4j/__init__.py:upsert()`):
 - Uses Cypher `MERGE` with `ON CREATE SET` and `ON MATCH SET`
 - Takes constraint dict for matching (e.g., `{'id': '123'}`)
 - Automatically maps Pydantic model properties to node properties
 - Returns Neo4j elementId of created/updated node
 
-**Cypherantic integration** (`neo4j/__init__.py`):
+**Cypherantic integration** (`imbi_common/neo4j/__init__.py`):
 - `create_node()`: Create Neo4j nodes from Pydantic models with automatic label/property mapping
 - `create_relationship()`: Create typed relationships between nodes with optional properties
 - `refresh_relationship()`: Lazy-load relationship properties from graph (on-demand fetching)
@@ -321,14 +274,14 @@ has_permission = await permissions.user_has_permission(
 4. `require_permission()` dependency validates token and checks permissions
 5. Endpoint receives `AuthContext` with user and token metadata
 
-**Setup and seeding** (`auth/seed.py`, `entrypoint.py:setup`):
+**Setup and seeding** (`src/imbi_api/auth/seed.py`, `src/imbi_api/entrypoint.py:setup`):
 - Run `imbi-api setup` once to initialize a new instance
 - Creates default roles (admin, developer, readonly) with permissions
 - Interactively prompts for initial admin user creation
 - Idempotent: checks if system is seeded before running
 - No auto-seeding on startup (explicit setup required for security)
 
-**OAuth providers** (`auth/oauth.py`):
+**OAuth providers** (`src/imbi_api/auth/oauth.py`):
 - Google, GitHub, Keycloak support
 - Configurable via environment variables (client ID, secret, discovery URLs)
 - Automatic user creation on first OAuth login
@@ -346,8 +299,9 @@ app = create_app()  # Returns configured FastAPI instance
 **Lifespan management**: The application uses FastAPI's lifespan context manager to:
 - Initialize Neo4j indexes on startup (`neo4j.initialize()`)
 - Initialize ClickHouse connection and test connectivity (`clickhouse.initialize()`)
-- Auto-seed authentication system with default roles and permissions (if not already seeded)
-- Clean up Neo4j and ClickHouse connections on shutdown
+- Initialize Email system (`email.initialize()`)
+- Refresh blueprint models for OpenAPI schema
+- Clean up Neo4j, ClickHouse, and Email connections on shutdown
 - Ensures proper resource management across application lifecycle
 
 **Endpoint registration** (`src/imbi_api/endpoints/`):
@@ -364,19 +318,19 @@ app = create_app()  # Returns configured FastAPI instance
 
 ### Data Modeling Conventions
 
-1. **Pydantic models** (`src/imbi_api/models.py`):
+1. **Pydantic models** (`imbi_common/models.py`):
    - Domain entities use `pydantic.BaseModel`
    - Keep models simple, focused on data structure
    - Model class names become Neo4j labels (lowercase)
    - Includes: Blueprint, User, Group, Role, Permission, Project, Organization, Team, etc.
 
-2. **Settings** (`src/imbi_api/settings.py`):
+2. **Settings** (`imbi_common/settings.py`):
    - Use `pydantic_settings.BaseSettings` for configuration
    - Prefix environment variables (e.g., `NEO4J_URL`, `CLICKHOUSE_URL`)
-   - Support `.env` files with `BASE_SETTINGS` config dict
-   - Separate settings classes for auth, Neo4j, ClickHouse
+   - Support `.env` files
+   - Separate settings classes for auth, Neo4j, ClickHouse, server, email
 
-3. **Auth models** (`src/imbi_api/auth/models.py`):
+3. **Auth models** (`imbi_common/auth/models.py`):
    - JWT token payloads and metadata
    - OAuth provider configurations
    - Authentication request/response models
@@ -502,12 +456,12 @@ gh pr create --base main --title "Add new feature" --body "..."
 
 ## Important Notes
 
-**Current development status**: This is a v2 alpha rewrite. Core infrastructure and authentication complete with 315 tests (~30% coverage):
+**Current development status**: This is a v2 alpha rewrite. Core infrastructure and authentication complete (~30% test coverage):
 
 ✅ **Implemented**:
-- FastAPI application with lifespan management (Neo4j, ClickHouse init/cleanup, auto-seeding)
+- FastAPI application with lifespan management (Neo4j, ClickHouse, Email init/cleanup)
 - Status endpoint with health check (`GET /status`)
-- CLI with `serve` command (development and production modes)
+- CLI with `serve` and `setup` commands (development and production modes)
 - Neo4j integration with singleton pattern, cypherantic wrappers, indexes, upsert operations
 - ClickHouse integration with async client, schema management, insert/query operations
 - Settings management via Pydantic with URL credential extraction
@@ -518,15 +472,17 @@ gh pr create --base main --title "Add new feature" --body "..."
   - OAuth2/OIDC support (Google, GitHub, Keycloak)
   - Local password authentication
   - JWT token generation and refresh
-  - Auto-seeding of roles and permissions on startup
+  - MFA/TOTP support
+  - Seeding of roles and permissions via `imbi-api setup` command
 - Authorization system:
   - Permission-based access control
   - Resource-level permissions (read, write, delete)
   - Role-based authorization with group support
-- Docker Compose development environment (Neo4j, ClickHouse, Jaeger)
+- Email notification system
+- Docker Compose development environment (Neo4j, ClickHouse, Jaeger, Mailpit)
 - Pre-commit hooks with Ruff linting and formatting
 - Bootstrap script for automated setup
-- Test suite with 315 tests (coverage being expanded)
+- Test suite (coverage being expanded to 90%+)
 
 🚧 **In Progress**:
 - Expanding test coverage to 90%+ (currently ~30%)
@@ -540,6 +496,6 @@ gh pr create --base main --title "Add new feature" --body "..."
 - **Neo4j**: Graph database for service relationships, dependencies, and user/permission model
 - **ClickHouse**: Analytics and time-series data for operations logs and metrics
 
-**Vector embeddings**: Configuration present for 1536-dimensional vectors with cosine similarity for AI-powered search (see `neo4j/constants.py`)
+**Vector embeddings**: Configuration present for 1536-dimensional vectors with cosine similarity for AI-powered search (see `imbi_common/neo4j/constants.py`)
 
 **Authentication/Authorization**: Full OAuth2/OIDC support with multiple providers, local password auth, JWT tokens, and fine-grained permission system integrated with all endpoints

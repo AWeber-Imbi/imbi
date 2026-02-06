@@ -164,3 +164,7 @@ docs = [
   "mkdocstrings[python]",
   "mkdocstrings-python-xref>=1.6,<2"
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
