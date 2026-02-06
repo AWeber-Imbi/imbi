@@ -13,6 +13,7 @@ authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
 dependencies = [
   "fastapi>=0.128.0",
   "imbi-common[server]",
+  "pydantic~=2.12",
 ]
 
 [project.scripts]

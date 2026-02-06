@@ -1,8 +1,8 @@
 [doc("Bootstrap the environment and run the service in the foregroud")]
 [no-exit-message]
 [group("Testing")]
-serve:
-    -uv run imbi-gateway serve
+serve *ARGS:
+    -uv run imbi-gateway serve {{ARGS}}
 
 [default]
 [private]

@@ -440,6 +440,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "imbi-common", extra = ["server"] },
+    { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
@@ -458,6 +459,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.128.0" },
     { name = "imbi-common", extras = ["server"], git = "https://github.com/AWeber-Imbi/imbi-common?rev=main" },
+    { name = "pydantic", specifier = "~=2.12" },
 ]
 
 [package.metadata.requires-dev]
