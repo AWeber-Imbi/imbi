@@ -125,9 +125,10 @@ async def create_node(model: ModelType) -> ModelType:
     async with session() as sess:
         node = await cypherantic.create_node(sess, model)
         node_props = convert_neo4j_types(dict(node))
-        # Use model_copy to preserve relationship fields from original model
-        # while updating scalar properties with values from Neo4j
-        return model.model_copy(update=node_props)
+        # Use model_validate to ensure field validators run on
+        # round-tripped data (e.g. json_schema stored as string)
+        prepared = _prepare_node_data(type(model), node_props)
+        return type(model).model_validate(prepared)
 
 
 @typing.overload
@@ -358,7 +359,7 @@ async def upsert(
 ) -> str:
     """Save a node to the graph, returning the elementId"""
     properties = node.model_dump(by_alias=True)
-    labels = node.__class__.__name__.lower()
+    label = node.__class__.__name__
     assignment = []
     for key in properties.keys():
         assignment.append(f'node.{key} = ${key}')
@@ -370,7 +371,7 @@ async def upsert(
     where_props = _cypher_property_params(constraint)
 
     query = (
-        f'         MERGE (node:{":".join(labels)} {{{where_props}}})'
+        f'         MERGE (node:{label} {{{where_props}}})'
         f' ON CREATE SET {", ".join(assignment)}'
         f'  ON MATCH SET {", ".join(assignment)}'
         f'        RETURN elementId(node) AS nodeId'
@@ -392,7 +393,7 @@ async def delete_node(
     """Delete a node from the graph by matching parameters.
 
     This method deletes a node that matches the given parameters.
-    The node label is extracted from the model class name (lowercase).
+    The node label is extracted from the model class name.
 
     :param model: Pydantic model class (label extracted from class name)
     :param parameters: Dict of properties to match
@@ -414,7 +415,7 @@ async def delete_node(
             print('Blueprint not found')
 
     """
-    label = model.__name__.lower()
+    label = model.__name__
     where_clauses = [f'node.{key} = ${key}' for key in parameters]
     where_clause = ' AND '.join(where_clauses)
 
