@@ -26,13 +26,17 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
+  "aioboto3>=15.5.0",
   "aiohttp",
   "authlib>=1.6.6",
-  "imbi-common@git+https://github.com/aweber-imbi/imbi-common.git#egg=main",
+  "filetype",
+  "imbi-common@git+https://github.com/aweber-imbi/imbi-common.git@main",
   "fastapi",
   "httpx>=0.28.1",
   "orjson",
+  "Pillow",
   "pydantic[email]",
+  "python-multipart>=0.0.22",
   "pyotp>=2.9.0",
   "qrcode>=8.0",
   "slowapi==0.1.9", # Pin: alpha quality, API may change

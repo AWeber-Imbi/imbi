@@ -6,7 +6,7 @@ import typing
 import fastapi
 from imbi_common import clickhouse, neo4j
 
-from imbi_api import email, endpoints, openapi, version
+from imbi_api import email, endpoints, openapi, storage, version
 from imbi_api.middleware import rate_limit
 
 LOGGER = logging.getLogger(__name__)
@@ -21,32 +21,47 @@ async def fastapi_lifespan(
         clickhouse.initialize(),
         neo4j.initialize(),
         email.initialize(),
+        storage.initialize(),
         return_exceptions=True,
     )
+
+    service_names = ['ClickHouse', 'Neo4j', 'Email', 'Storage']
+    close_fns = [
+        clickhouse.aclose,
+        neo4j.aclose,
+        email.aclose,
+        storage.aclose,
+    ]
 
     # Check if ClickHouse init returned False (failure without exception)
     if init_results[0] is False:
         LOGGER.error('ClickHouse initialization failed')
-        # Clean up Neo4j and Email if they succeeded
-        if not isinstance(init_results[1], Exception):
-            await neo4j.aclose()
-        if not isinstance(init_results[2], Exception):
-            await email.aclose()
+        # Clean up successfully initialized services
+        cleanup_tasks = [
+            close_fns[i]()
+            for i in range(1, len(init_results))
+            if not isinstance(init_results[i], Exception)
+        ]
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
         raise RuntimeError('ClickHouse initialization failed')
 
     # Check for initialization failures (exceptions)
     for i, result in enumerate(init_results):
         if isinstance(result, Exception):
-            service_name = ['ClickHouse', 'Neo4j', 'Email'][i]
-            LOGGER.error('%s initialization failed: %s', service_name, result)
+            LOGGER.error(
+                '%s initialization failed: %s',
+                service_names[i],
+                result,
+            )
             # Clean up successfully initialized services
-            cleanup_tasks = []
-            if i > 0 and init_results[0] is True:
-                cleanup_tasks.append(clickhouse.aclose())
-            if i != 1 and not isinstance(init_results[1], Exception):
-                cleanup_tasks.append(neo4j.aclose())
-            if i != 2 and not isinstance(init_results[2], Exception):
-                cleanup_tasks.append(email.aclose())
+            cleanup_tasks = [
+                close_fns[j]()
+                for j in range(len(init_results))
+                if j != i
+                and not isinstance(init_results[j], Exception)
+                and init_results[j] is not False
+            ]
             if cleanup_tasks:
                 await asyncio.gather(*cleanup_tasks, return_exceptions=True)
             raise result
@@ -64,13 +79,18 @@ async def fastapi_lifespan(
         neo4j.aclose(),
         clickhouse.aclose(),
         email.aclose(),
+        storage.aclose(),
         return_exceptions=True,
     )
     # Log any shutdown failures but don't raise
+    shutdown_names = ['Neo4j', 'ClickHouse', 'Email', 'Storage']
     for i, result in enumerate(shutdown_results):
         if isinstance(result, Exception):
-            service_name = ['Neo4j', 'ClickHouse', 'Email'][i]
-            LOGGER.warning('%s shutdown failed: %s', service_name, result)
+            LOGGER.warning(
+                '%s shutdown failed: %s',
+                shutdown_names[i],
+                result,
+            )
     LOGGER.debug('Clean shutdown complete')
 
 

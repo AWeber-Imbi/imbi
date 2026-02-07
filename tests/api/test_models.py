@@ -120,10 +120,12 @@ class NodeModelTestCase(unittest.TestCase):
 
     def test_environment_creation(self) -> None:
         """Test creating an Environment model."""
+        org = models.Organization(name='Org', slug='org')
         env = models.Environment(
             name='Production',
             slug='prod',
             description='Production environment',
+            organization=org,
         )
         self.assertEqual(env.name, 'Production')
         self.assertEqual(env.slug, 'prod')
@@ -131,10 +133,12 @@ class NodeModelTestCase(unittest.TestCase):
 
     def test_project_type_creation(self) -> None:
         """Test creating a ProjectType model."""
+        org = models.Organization(name='Org', slug='org')
         project_type = models.ProjectType(
             name='Web Service',
             slug='web-service',
             description='HTTP-based services',
+            organization=org,
         )
         self.assertEqual(project_type.name, 'Web Service')
         self.assertEqual(project_type.slug, 'web-service')
@@ -153,8 +157,16 @@ class ProjectModelTestCase(unittest.TestCase):
         """Test Project URL validation."""
         # Create minimal valid related objects
         org = models.Organization(name='Org', slug='org')
-        team = models.Team(name='Team', slug='team', member_of=org)
-        project_type = models.ProjectType(name='Type', slug='type')
+        team = models.Team(
+            name='Team',
+            slug='team',
+            organization=org,
+        )
+        project_type = models.ProjectType(
+            name='Type',
+            slug='type',
+            organization=org,
+        )
 
         with self.assertRaises(pydantic.ValidationError):
             models.Project(

@@ -65,7 +65,9 @@ class UserEndpointsTestCase(unittest.TestCase):
     def test_create_user_success_with_password(self) -> None:
         """Test successful user creation with password."""
         with (
-            mock.patch('imbi_common.auth.core.hash_password') as mock_hash,
+            mock.patch(
+                'imbi_common.auth.core.hash_password',
+            ) as mock_hash,
             mock.patch('imbi_common.neo4j.create_node') as mock_create,
         ):
             mock_hash.return_value = '$argon2id$hashed'
@@ -91,7 +93,9 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_create_user_oauth_only(self) -> None:
         """Test creating user without password (OAuth-only)."""
-        with mock.patch('imbi_common.neo4j.create_node') as mock_create:
+        with mock.patch(
+            'imbi_common.neo4j.create_node',
+        ) as mock_create:
             mock_create.return_value = None
 
             response = self.client.post(
@@ -107,7 +111,9 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_create_user_duplicate_username(self) -> None:
         """Test creating user with duplicate username."""
-        with mock.patch('imbi_common.neo4j.create_node') as mock_create:
+        with mock.patch(
+            'imbi_common.neo4j.create_node',
+        ) as mock_create:
             mock_create.side_effect = exceptions.ConstraintError('Duplicate')
 
             response = self.client.post(
@@ -140,7 +146,8 @@ class UserEndpointsTestCase(unittest.TestCase):
                 yield user
 
         with mock.patch(
-            'imbi_common.neo4j.fetch_nodes', return_value=mock_fetch()
+            'imbi_common.neo4j.fetch_nodes',
+            return_value=mock_fetch(),
         ):
             response = self.client.get('/users/')
 
@@ -167,7 +174,8 @@ class UserEndpointsTestCase(unittest.TestCase):
                 yield user
 
         with mock.patch(
-            'imbi_common.neo4j.fetch_nodes', return_value=mock_fetch()
+            'imbi_common.neo4j.fetch_nodes',
+            return_value=mock_fetch(),
         ):
             response = self.client.get('/users/?is_active=true')
 
@@ -194,7 +202,8 @@ class UserEndpointsTestCase(unittest.TestCase):
                 yield user
 
         with mock.patch(
-            'imbi_common.neo4j.fetch_nodes', return_value=mock_fetch()
+            'imbi_common.neo4j.fetch_nodes',
+            return_value=mock_fetch(),
         ):
             response = self.client.get('/users/?is_admin=true')
 
@@ -204,7 +213,7 @@ class UserEndpointsTestCase(unittest.TestCase):
             self.assertTrue(data[0]['is_admin'])
 
     def test_get_user_success(self) -> None:
-        """Test retrieving a single user with relationships."""
+        """Test retrieving a single user with org memberships."""
         mock_user = models.User(
             email='test@example.com',
             display_name='Test User',
@@ -212,29 +221,50 @@ class UserEndpointsTestCase(unittest.TestCase):
             is_admin=False,
             is_service_account=False,
             created_at=datetime.datetime.now(datetime.UTC),
-            groups=[],
-            roles=[],
         )
+
+        mock_org_result = mock.AsyncMock()
+        mock_org_result.data.return_value = [
+            {
+                'org_name': 'Default',
+                'org_slug': 'default',
+                'role': 'developer',
+            }
+        ]
+        mock_org_result.__aenter__.return_value = mock_org_result
+        mock_org_result.__aexit__.return_value = None
 
         with (
             mock.patch(
-                'imbi_common.neo4j.fetch_node', return_value=mock_user
-            ) as mock_fetch,
+                'imbi_common.neo4j.fetch_node',
+                return_value=mock_user,
+            ),
             mock.patch(
-                'imbi_common.neo4j.refresh_relationship'
-            ) as mock_refresh,
+                'imbi_common.neo4j.run',
+                return_value=mock_org_result,
+            ),
         ):
             response = self.client.get('/users/test@example.com')
 
             self.assertEqual(response.status_code, 200)
             data = response.json()
             self.assertNotIn('password_hash', data)
-            mock_fetch.assert_called_once()
-            self.assertEqual(mock_refresh.call_count, 2)
+            self.assertEqual(len(data['organizations']), 1)
+            self.assertEqual(
+                data['organizations'][0]['organization_slug'],
+                'default',
+            )
+            self.assertEqual(
+                data['organizations'][0]['role'],
+                'developer',
+            )
 
     def test_get_user_not_found(self) -> None:
         """Test retrieving non-existent user."""
-        with mock.patch('imbi_common.neo4j.fetch_node', return_value=None):
+        with mock.patch(
+            'imbi_common.neo4j.fetch_node',
+            return_value=None,
+        ):
             response = self.client.get('/users/nonexistent@example.com')
 
             self.assertEqual(response.status_code, 404)
@@ -249,12 +279,18 @@ class UserEndpointsTestCase(unittest.TestCase):
             is_active=True,
             is_admin=False,
             is_service_account=False,
-            created_at=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
+            created_at=datetime.datetime(
+                2024,
+                1,
+                1,
+                tzinfo=datetime.UTC,
+            ),
         )
 
         with (
             mock.patch(
-                'imbi_common.neo4j.fetch_node', return_value=existing_user
+                'imbi_common.neo4j.fetch_node',
+                return_value=existing_user,
             ),
             mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
         ):
@@ -303,7 +339,8 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with mock.patch(
-            'imbi_common.neo4j.fetch_node', return_value=existing_user
+            'imbi_common.neo4j.fetch_node',
+            return_value=existing_user,
         ):
             response = self.client.put(
                 '/users/test@example.com',
@@ -322,7 +359,6 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_update_user_cannot_deactivate_self(self) -> None:
         """Test user cannot deactivate their own account."""
-        # Set auth user to be the same as the user being updated
         self.auth_context.user.email = 'test@example.com'
 
         existing_user = models.User(
@@ -335,26 +371,29 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with mock.patch(
-            'imbi_common.neo4j.fetch_node', return_value=existing_user
+            'imbi_common.neo4j.fetch_node',
+            return_value=existing_user,
         ):
             response = self.client.put(
                 '/users/test@example.com',
                 json={
                     'email': 'test@example.com',
                     'display_name': 'Test',
-                    'is_active': False,  # Trying to deactivate
+                    'is_active': False,
                 },
             )
 
             self.assertEqual(response.status_code, 400)
             self.assertIn('deactivate', response.json()['detail'])
 
-        # Restore admin username
         self.auth_context.user.email = 'admin@example.com'
 
     def test_update_user_not_found(self) -> None:
         """Test updating non-existent user."""
-        with mock.patch('imbi_common.neo4j.fetch_node', return_value=None):
+        with mock.patch(
+            'imbi_common.neo4j.fetch_node',
+            return_value=None,
+        ):
             response = self.client.put(
                 '/users/nonexistent@example.com',
                 json={
@@ -367,14 +406,16 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_delete_user_success(self) -> None:
         """Test deleting a user."""
-        with mock.patch('imbi_common.neo4j.delete_node', return_value=True):
+        with mock.patch(
+            'imbi_common.neo4j.delete_node',
+            return_value=True,
+        ):
             response = self.client.delete('/users/test@example.com')
 
             self.assertEqual(response.status_code, 204)
 
     def test_delete_user_cannot_delete_self(self) -> None:
         """Test user cannot delete their own account."""
-        # Set auth user to be the same as the user being deleted
         self.auth_context.user.email = 'test@example.com'
 
         response = self.client.delete('/users/test@example.com')
@@ -382,19 +423,20 @@ class UserEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('delete', response.json()['detail'])
 
-        # Restore admin username
         self.auth_context.user.email = 'admin@example.com'
 
     def test_delete_user_not_found(self) -> None:
         """Test deleting non-existent user."""
-        with mock.patch('imbi_common.neo4j.delete_node', return_value=False):
+        with mock.patch(
+            'imbi_common.neo4j.delete_node',
+            return_value=False,
+        ):
             response = self.client.delete('/users/nonexistent@example.com')
 
             self.assertEqual(response.status_code, 404)
 
     def test_change_password_self_success(self) -> None:
         """Test user changing their own password."""
-        # Set auth user to be the same as target user
         self.auth_context.user.email = 'test@example.com'
         self.auth_context.user.is_admin = False
 
@@ -409,11 +451,17 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=mock_user),
             mock.patch(
-                'imbi_common.auth.core.verify_password', return_value=True
+                'imbi_common.neo4j.fetch_node',
+                return_value=mock_user,
             ),
-            mock.patch('imbi_common.auth.core.hash_password') as mock_hash,
+            mock.patch(
+                'imbi_common.auth.core.verify_password',
+                return_value=True,
+            ),
+            mock.patch(
+                'imbi_common.auth.core.hash_password',
+            ) as mock_hash,
             mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
         ):
             mock_hash.return_value = '$argon2id$newhash'
@@ -430,12 +478,11 @@ class UserEndpointsTestCase(unittest.TestCase):
             mock_hash.assert_called_once_with('NewSecure123!@#')
             mock_upsert.assert_called_once()
 
-        # Restore admin
         self.auth_context.user.email = 'admin@example.com'
         self.auth_context.user.is_admin = True
 
     def test_change_password_admin_force_change(self) -> None:
-        """Test admin changing another user's password without current."""
+        """Test admin changing another user's password."""
         mock_user = models.User(
             email='other@example.com',
             display_name='Other',
@@ -447,8 +494,13 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=mock_user),
-            mock.patch('imbi_common.auth.core.hash_password') as mock_hash,
+            mock.patch(
+                'imbi_common.neo4j.fetch_node',
+                return_value=mock_user,
+            ),
+            mock.patch(
+                'imbi_common.auth.core.hash_password',
+            ) as mock_hash,
             mock.patch('imbi_common.neo4j.upsert'),
         ):
             mock_hash.return_value = '$argon2id$newhash'
@@ -465,7 +517,6 @@ class UserEndpointsTestCase(unittest.TestCase):
 
     def test_change_password_wrong_current(self) -> None:
         """Test password change with incorrect current password."""
-        # Set auth user to be target user
         self.auth_context.user.email = 'test@example.com'
         self.auth_context.user.is_admin = False
 
@@ -480,9 +531,13 @@ class UserEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=mock_user),
             mock.patch(
-                'imbi_common.auth.core.verify_password', return_value=False
+                'imbi_common.neo4j.fetch_node',
+                return_value=mock_user,
+            ),
+            mock.patch(
+                'imbi_common.auth.core.verify_password',
+                return_value=False,
             ),
         ):
             response = self.client.post(
@@ -494,15 +549,16 @@ class UserEndpointsTestCase(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 401)
-            self.assertIn('incorrect', response.json()['detail'].lower())
+            self.assertIn(
+                'incorrect',
+                response.json()['detail'].lower(),
+            )
 
-        # Restore admin
         self.auth_context.user.email = 'admin@example.com'
         self.auth_context.user.is_admin = True
 
     def test_change_password_not_self_or_admin(self) -> None:
         """Test non-admin cannot change another user's password."""
-        # Set auth user to non-admin without permission
         self.auth_context.user.is_admin = False
         self.auth_context.permissions = set()
 
@@ -513,7 +569,6 @@ class UserEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
 
-        # Restore admin
         self.auth_context.user.is_admin = True
         self.auth_context.permissions = {
             'user:create',
@@ -522,112 +577,173 @@ class UserEndpointsTestCase(unittest.TestCase):
             'user:delete',
         }
 
-    def test_grant_role_success(self) -> None:
-        """Test granting a role to a user."""
+
+class OrgMembershipEndpointsTestCase(unittest.TestCase):
+    """Test org membership endpoints on users."""
+
+    def setUp(self) -> None:
+        """Set up test app with admin authentication context."""
+        from imbi_api.auth import permissions
+
+        self.test_app = app.create_app()
+
+        self.admin_user = models.User(
+            email='admin@example.com',
+            display_name='Admin User',
+            is_active=True,
+            is_admin=True,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.auth_context = permissions.AuthContext(
+            user=self.admin_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'user:update'},
+        )
+
+        async def mock_get_current_user():
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+        self.client = testclient.TestClient(self.test_app)
+
+    def test_add_to_organization_success(self) -> None:
+        """Test adding a user to an organization."""
         mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'u': {}, 'r': {}}]
+        mock_result.data.return_value = [{'u': {}, 'o': {}, 'r': {}}]
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
             response = self.client.post(
-                '/users/testuser/roles',
-                json={'role_slug': 'developer'},
+                '/users/test@example.com/organizations',
+                json={
+                    'organization_slug': 'default',
+                    'role_slug': 'developer',
+                },
             )
 
             self.assertEqual(response.status_code, 204)
 
-    def test_grant_role_user_not_found(self) -> None:
-        """Test granting role to non-existent user."""
+    def test_add_to_organization_missing_fields(self) -> None:
+        """Test adding to org with missing required fields."""
+        response = self.client.post(
+            '/users/test@example.com/organizations',
+            json={'organization_slug': 'default'},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('required', response.json()['detail'])
+
+    def test_add_to_organization_not_found(self) -> None:
+        """Test adding to non-existent org/user/role."""
         mock_result = mock.AsyncMock()
         mock_result.data.return_value = []
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
             response = self.client.post(
-                '/users/nonexistent/roles',
-                json={'role_slug': 'developer'},
+                '/users/test@example.com/organizations',
+                json={
+                    'organization_slug': 'nonexistent',
+                    'role_slug': 'developer',
+                },
             )
 
             self.assertEqual(response.status_code, 404)
 
-    def test_revoke_role_success(self) -> None:
-        """Test revoking a role from a user."""
+    def test_update_organization_role_success(self) -> None:
+        """Test changing a user's role in an organization."""
         mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'deleted': 1}]
+        mock_result.data.return_value = [{'u': {}, 'o': {}, 'r': {}}]
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
-            response = self.client.delete('/users/testuser/roles/developer')
-
-            self.assertEqual(response.status_code, 204)
-
-    def test_revoke_role_not_granted(self) -> None:
-        """Test revoking role that user doesn't have."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'deleted': 0}]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
-
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
-            response = self.client.delete('/users/testuser/roles/admin')
-
-            self.assertEqual(response.status_code, 404)
-            self.assertIn('does not have', response.json()['detail'])
-
-    def test_add_to_group_success(self) -> None:
-        """Test adding a user to a group."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'u': {}, 'g': {}}]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
-
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
-            response = self.client.post(
-                '/users/testuser/groups',
-                json={'group_slug': 'engineering'},
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
+            response = self.client.put(
+                '/users/test@example.com/organizations/default',
+                json={'role_slug': 'admin'},
             )
 
             self.assertEqual(response.status_code, 204)
 
-    def test_add_to_group_not_found(self) -> None:
-        """Test adding user to non-existent group."""
+    def test_update_organization_role_missing_slug(self) -> None:
+        """Test updating role without role_slug."""
+        response = self.client.put(
+            '/users/test@example.com/organizations/default',
+            json={},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('required', response.json()['detail'])
+
+    def test_update_organization_role_not_found(self) -> None:
+        """Test updating role for non-existent membership."""
         mock_result = mock.AsyncMock()
         mock_result.data.return_value = []
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
-            response = self.client.post(
-                '/users/testuser/groups',
-                json={'group_slug': 'nonexistent'},
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
+            response = self.client.put(
+                '/users/test@example.com/organizations/nonexistent',
+                json={'role_slug': 'admin'},
             )
 
             self.assertEqual(response.status_code, 404)
 
-    def test_remove_from_group_success(self) -> None:
-        """Test removing a user from a group."""
+    def test_remove_from_organization_success(self) -> None:
+        """Test removing a user from an organization."""
         mock_result = mock.AsyncMock()
         mock_result.data.return_value = [{'deleted': 1}]
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
-            response = self.client.delete('/users/testuser/groups/engineering')
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
+            response = self.client.delete(
+                '/users/test@example.com/organizations/default'
+            )
 
             self.assertEqual(response.status_code, 204)
 
-    def test_remove_from_group_not_member(self) -> None:
-        """Test removing user from group they're not in."""
+    def test_remove_from_organization_not_member(self) -> None:
+        """Test removing user from org they're not in."""
         mock_result = mock.AsyncMock()
         mock_result.data.return_value = [{'deleted': 0}]
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
-            response = self.client.delete('/users/testuser/groups/finance')
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
+            response = self.client.delete(
+                '/users/test@example.com/organizations/other-org'
+            )
 
             self.assertEqual(response.status_code, 404)
-            self.assertIn('not a member', response.json()['detail'])
+            self.assertIn(
+                'not a member',
+                response.json()['detail'],
+            )

@@ -18,6 +18,8 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.fetch_nodes_patcher = mock.patch('imbi_common.neo4j.fetch_nodes')
         self.mock_fetch_nodes = self.fetch_nodes_patcher.start()
         self.addCleanup(self.fetch_nodes_patcher.stop)
+        # Create a shared organization for model instantiation
+        self.org = models.Organization(name='Test Org', slug='test-org')
 
     async def test_get_model_no_blueprints(self) -> None:
         """Test get_model with no blueprints returns base model."""
@@ -74,14 +76,21 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Test instantiation with required field
         instance = result_model(
-            name='Test Env', slug='test-env', domain='example.com'
+            name='Test Env',
+            slug='test-env',
+            organization=self.org,
+            domain='example.com',
         )
         self.assertEqual(instance.domain, 'example.com')
         self.assertIsNone(instance.region)  # Optional field
 
         # Test that missing required field raises error
         with self.assertRaises(pydantic.ValidationError):
-            result_model(name='Test', slug='test')  # Missing domain
+            result_model(
+                name='Test',
+                slug='test',
+                organization=self.org,
+            )  # Missing domain
 
     async def test_get_model_with_integer_and_number_fields(self) -> None:
         """Test get_model with integer and number fields."""
@@ -111,6 +120,7 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         instance = result_model(
             name='Test',
             slug='test',
+            organization=self.org,
             max_instances=10,
             cpu_threshold=0.75,
         )
@@ -119,7 +129,12 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Test type validation
         with self.assertRaises(pydantic.ValidationError):
-            result_model(name='Test', slug='test', max_instances='not-an-int')
+            result_model(
+                name='Test',
+                slug='test',
+                organization=self.org,
+                max_instances='not-an-int',
+            )
 
     async def test_get_model_with_boolean_field(self) -> None:
         """Test get_model with boolean field."""
@@ -141,7 +156,12 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
         result_model = await blueprints.get_model(models.Environment)
 
-        instance = result_model(name='Test', slug='test', is_production=True)
+        instance = result_model(
+            name='Test',
+            slug='test',
+            organization=self.org,
+            is_production=True,
+        )
         self.assertTrue(instance.is_production)
 
     async def test_get_model_with_array_fields(self) -> None:
@@ -174,6 +194,7 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         instance = result_model(
             name='Test',
             slug='test',
+            organization=self.org,
             tags=['prod', 'web'],
             ports=[80, 443],
             generic_list=[1, 'two', True],
@@ -203,7 +224,10 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         result_model = await blueprints.get_model(models.Environment)
 
         instance = result_model(
-            name='Test', slug='test', metadata={'key': 'value'}
+            name='Test',
+            slug='test',
+            organization=self.org,
+            metadata={'key': 'value'},
         )
         self.assertEqual(instance.metadata, {'key': 'value'})
 
@@ -230,13 +254,21 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         result_model = await blueprints.get_model(models.Environment)
 
         instance = result_model(
-            name='Test', slug='test', contact='user@example.com'
+            name='Test',
+            slug='test',
+            organization=self.org,
+            contact='user@example.com',
         )
         self.assertEqual(str(instance.contact), 'user@example.com')
 
         # Test invalid email
         with self.assertRaises(pydantic.ValidationError):
-            result_model(name='Test', slug='test', contact='not-an-email')
+            result_model(
+                name='Test',
+                slug='test',
+                organization=self.org,
+                contact='not-an-email',
+            )
 
     async def test_get_model_with_uri_format(self) -> None:
         """Test get_model with uri/url format string."""
@@ -261,7 +293,10 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         result_model = await blueprints.get_model(models.Environment)
 
         instance = result_model(
-            name='Test', slug='test', homepage='https://example.com'
+            name='Test',
+            slug='test',
+            organization=self.org,
+            homepage='https://example.com',
         )
         self.assertEqual(str(instance.homepage), 'https://example.com/')
 
@@ -302,6 +337,7 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         instance = result_model(
             name='Test',
             slug='test',
+            organization=self.org,
             created_at=now,
             launch_date=today,
             maintenance_window=maintenance,
@@ -335,12 +371,22 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
         result_model = await blueprints.get_model(models.Environment)
 
-        instance = result_model(name='Test', slug='test', tier='production')
+        instance = result_model(
+            name='Test',
+            slug='test',
+            organization=self.org,
+            tier='production',
+        )
         self.assertEqual(instance.tier, 'production')
 
         # Test invalid enum value
         with self.assertRaises(pydantic.ValidationError):
-            result_model(name='Test', slug='test', tier='invalid')
+            result_model(
+                name='Test',
+                slug='test',
+                organization=self.org,
+                tier='invalid',
+            )
 
     async def test_get_model_with_default_values(self) -> None:
         """Test get_model with default values from schema."""
@@ -369,13 +415,21 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         result_model = await blueprints.get_model(models.Environment)
 
         # Create instance without providing optional fields
-        instance = result_model(name='Test', slug='test')
+        instance = result_model(
+            name='Test',
+            slug='test',
+            organization=self.org,
+        )
         self.assertEqual(instance.region, 'us-east-1')
         self.assertEqual(instance.replicas, 3)
 
         # Override defaults
         instance2 = result_model(
-            name='Test', slug='test', region='eu-west-1', replicas=5
+            name='Test',
+            slug='test',
+            organization=self.org,
+            region='eu-west-1',
+            replicas=5,
         )
         self.assertEqual(instance2.region, 'eu-west-1')
         self.assertEqual(instance2.replicas, 5)
@@ -447,7 +501,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('field2', result_model.model_fields)
 
         instance = result_model(
-            name='Test', slug='test', field1='test', field2=42
+            name='Test',
+            slug='test',
+            organization=self.org,
+            field1='test',
+            field2=42,
         )
         self.assertEqual(instance.field1, 'test')
         self.assertEqual(instance.field2, 42)
@@ -519,7 +577,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Valid instance
         instance = result_model(
-            name='Prod', slug='prod', domain='example.com', max_instances=10
+            name='Prod',
+            slug='prod',
+            organization=self.org,
+            domain='example.com',
+            max_instances=10,
         )
         self.assertEqual(instance.name, 'Prod')
         self.assertEqual(instance.domain, 'example.com')
@@ -541,6 +603,7 @@ class GetModelIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
+        self.org = models.Organization(name='Test Org', slug='test-org')
         # Initialize Neo4j connection
         await neo4j.initialize()
         # Clean up any existing test blueprints before starting
@@ -632,6 +695,7 @@ class GetModelIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         instance = dynamic_model(
             name='Production',
             slug='prod',
+            organization=self.org,
             domain='example.com',
             region='us-east-1',
         )
@@ -648,6 +712,7 @@ class GetModelIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         instance2 = dynamic_model(
             name='Staging',
             slug='staging',
+            organization=self.org,
             domain='staging.example.com',
             region='us-west-2',
             max_instances=5,
@@ -657,7 +722,10 @@ class GetModelIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         # Test validation - missing required field should fail
         with self.assertRaises(pydantic.ValidationError):
             dynamic_model(
-                name='Test', slug='test', domain='test.com'
+                name='Test',
+                slug='test',
+                organization=self.org,
+                domain='test.com',
             )  # Missing region
 
         # Test JSON schema generation

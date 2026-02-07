@@ -214,6 +214,48 @@ async def update_organization(
     return typing.cast(dict[str, typing.Any], org.model_dump())
 
 
+@organizations_router.get('/{slug}/members')
+async def list_organization_members(
+    slug: str,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('organization:read')),
+    ],
+) -> list[dict[str, typing.Any]]:
+    """
+    List all members of an organization with their roles.
+
+    Parameters:
+        slug: Organization slug identifier.
+
+    Returns:
+        list: Members with email, display_name, and role.
+
+    Raises:
+        404: Organization not found
+        401: Not authenticated
+        403: Missing organization:read permission
+    """
+    query: typing.LiteralString = """
+    MATCH (o:Organization {slug: $slug})
+    OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->(o)
+    RETURN o, collect({
+        email: u.email,
+        display_name: u.display_name,
+        role: m.role
+    }) AS members
+    """
+    async with neo4j.run(query, slug=slug) as result:
+        records = await result.data()
+        if not records or not records[0].get('o'):
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f'Organization with slug {slug!r} not found',
+            )
+        members = records[0].get('members', [])
+        return [m for m in members if m.get('email')]
+
+
 @organizations_router.delete('/{slug}', status_code=204)
 async def delete_organization(
     slug: str,

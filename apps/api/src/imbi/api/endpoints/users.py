@@ -139,13 +139,13 @@ async def get_user(
     ],
 ) -> models.UserResponse:
     """
-    Retrieve a user by email with loaded relationships.
+    Retrieve a user by email with loaded organization memberships.
 
     Parameters:
         email (str): Email address of the user to retrieve.
 
     Returns:
-        models.UserResponse: User with loaded groups and roles, without
+        models.UserResponse: User with loaded organizations, without
             password hash.
 
     Raises:
@@ -161,13 +161,23 @@ async def get_user(
             detail=f'User with email {email!r} not found',
         )
 
-    # Load relationships
-    await neo4j.refresh_relationship(user, 'groups')
-    await neo4j.refresh_relationship(user, 'roles')
-
-    # Extract nodes from edges
-    groups = [edge.node for edge in user.groups]
-    roles = [edge.node for edge in user.roles]
+    # Load organization memberships via Cypher
+    org_query = """
+    MATCH (u:User {email: $email})-[m:MEMBER_OF]->(o:Organization)
+    RETURN o.name AS org_name, o.slug AS org_slug, m.role AS role
+    ORDER BY o.name
+    """
+    organizations: list[models.OrgMembership] = []
+    async with neo4j.run(org_query, email=email) as result:
+        records = await result.data()
+        for record in records:
+            organizations.append(
+                models.OrgMembership(
+                    organization_name=record['org_name'],
+                    organization_slug=record['org_slug'],
+                    role=record['role'],
+                )
+            )
 
     return models.UserResponse(
         email=user.email,
@@ -178,8 +188,7 @@ async def get_user(
         created_at=user.created_at,
         last_login=user.last_login,
         avatar_url=user.avatar_url,
-        groups=groups,
-        roles=roles,
+        organizations=organizations,
     )
 
 
@@ -376,29 +385,88 @@ async def change_password(
     await neo4j.upsert(user, {'email': email})
 
 
-@users_router.post('/{email}/roles', status_code=204)
-async def grant_role(
+@users_router.post('/{email}/organizations', status_code=204)
+async def add_to_organization(
     email: str,
-    role_grant: dict[str, str],
+    membership: dict[str, str],
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:update')),
     ],
 ) -> None:
     """
-    Grant a role to a user.
+    Add a user to an organization with a role.
 
     Parameters:
-        email (str): Email of user to grant role to.
-        role_grant (dict): Dictionary with 'role_slug' key.
+        email (str): Email of user to add.
+        membership (dict): Dictionary with 'organization_slug' and
+            'role_slug' keys.
 
     Raises:
-        fastapi.HTTPException: HTTP 404 if user or role not found.
+        fastapi.HTTPException: HTTP 400 if required fields missing,
+            HTTP 404 if user, organization, or role not found.
     """
-    # URL decode email in case it's percent-encoded
     email = urlparse.unquote(email)
 
-    role_slug = role_grant.get('role_slug')
+    org_slug = membership.get('organization_slug')
+    role_slug = membership.get('role_slug')
+    if not org_slug or not role_slug:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='organization_slug and role_slug are required',
+        )
+
+    query = """
+    MATCH (u:User {email: $email})
+    MATCH (o:Organization {slug: $org_slug})
+    MATCH (r:Role {slug: $role_slug})
+    MERGE (u)-[m:MEMBER_OF]->(o)
+    SET m.role = $role_slug
+    RETURN u, o, r
+    """
+    async with neo4j.run(
+        query,
+        email=email,
+        org_slug=org_slug,
+        role_slug=role_slug,
+    ) as result:
+        records = await result.data()
+        if not records:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f'User {email!r}, organization {org_slug!r},'
+                f' or role {role_slug!r} not found',
+            )
+
+
+@users_router.put(
+    '/{email}/organizations/{org_slug}',
+    status_code=204,
+)
+async def update_organization_role(
+    email: str,
+    org_slug: str,
+    role_data: dict[str, str],
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('user:update')),
+    ],
+) -> None:
+    """
+    Change a user's role in an organization.
+
+    Parameters:
+        email (str): Email of user.
+        org_slug (str): Organization slug.
+        role_data (dict): Dictionary with 'role_slug' key.
+
+    Raises:
+        fastapi.HTTPException: HTTP 400 if role_slug missing,
+            HTTP 404 if membership or role not found.
+    """
+    email = urlparse.unquote(email)
+
+    role_slug = role_data.get('role_slug')
     if not role_slug:
         raise fastapi.HTTPException(
             status_code=400,
@@ -406,138 +474,66 @@ async def grant_role(
         )
 
     query = """
-    MATCH (u:User {email: $email})
+    MATCH (u:User {email: $email})-[m:MEMBER_OF]->
+          (o:Organization {slug: $org_slug})
     MATCH (r:Role {slug: $role_slug})
-    MERGE (u)-[:HAS_ROLE]->(r)
-    RETURN u, r
+    SET m.role = $role_slug
+    RETURN u, o, r
     """
-
-    async with neo4j.run(query, email=email, role_slug=role_slug) as result:
+    async with neo4j.run(
+        query,
+        email=email,
+        org_slug=org_slug,
+        role_slug=role_slug,
+    ) as result:
         records = await result.data()
         if not records:
             raise fastapi.HTTPException(
                 status_code=404,
-                detail=f'User {email!r} or role {role_slug!r} not found',
+                detail=f'Membership for {email!r} in {org_slug!r}'
+                f' or role {role_slug!r} not found',
             )
 
 
-@users_router.delete('/{email}/roles/{role_slug}', status_code=204)
-async def revoke_role(
+@users_router.delete(
+    '/{email}/organizations/{org_slug}',
+    status_code=204,
+)
+async def remove_from_organization(
     email: str,
-    role_slug: str,
+    org_slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:update')),
     ],
 ) -> None:
     """
-    Revoke a role from a user.
+    Remove a user from an organization.
 
     Parameters:
-        email (str): Email of user to revoke role from.
-        role_slug (str): Slug of role to revoke.
+        email (str): Email of user.
+        org_slug (str): Organization slug.
 
     Raises:
-        fastapi.HTTPException: HTTP 404 if relationship doesn't exist.
+        fastapi.HTTPException: HTTP 404 if membership not found.
     """
-    # URL decode email in case it's percent-encoded
     email = urlparse.unquote(email)
 
     query = """
-    MATCH (u:User {email: $email})-[r:HAS_ROLE]->
-          (role:Role {slug: $role_slug})
-    DELETE r
-    RETURN count(r) AS deleted
+    MATCH (u:User {email: $email})-[m:MEMBER_OF]->
+          (o:Organization {slug: $org_slug})
+    DELETE m
+    RETURN count(m) AS deleted
     """
-
-    async with neo4j.run(query, email=email, role_slug=role_slug) as result:
+    async with neo4j.run(
+        query,
+        email=email,
+        org_slug=org_slug,
+    ) as result:
         records = await result.data()
         if not records or records[0].get('deleted', 0) == 0:
             raise fastapi.HTTPException(
                 status_code=404,
-                detail=f'User {email!r} does not have role {role_slug!r}',
-            )
-
-
-@users_router.post('/{email}/groups', status_code=204)
-async def add_to_group(
-    email: str,
-    group_add: dict[str, str],
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('user:update')),
-    ],
-) -> None:
-    """
-    Add a user to a group.
-
-    Parameters:
-        email (str): Email of user to add to group.
-        group_add (dict): Dictionary with 'group_slug' key.
-
-    Raises:
-        fastapi.HTTPException: HTTP 404 if user or group not found.
-    """
-    # URL decode email in case it's percent-encoded
-    email = urlparse.unquote(email)
-
-    group_slug = group_add.get('group_slug')
-    if not group_slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='group_slug is required',
-        )
-
-    query = """
-    MATCH (u:User {email: $email})
-    MATCH (g:Group {slug: $group_slug})
-    MERGE (u)-[:MEMBER_OF]->(g)
-    RETURN u, g
-    """
-
-    async with neo4j.run(query, email=email, group_slug=group_slug) as result:
-        records = await result.data()
-        if not records:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'User {email!r} or group {group_slug!r} not found',
-            )
-
-
-@users_router.delete('/{email}/groups/{group_slug}', status_code=204)
-async def remove_from_group(
-    email: str,
-    group_slug: str,
-    auth: typing.Annotated[
-        permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('user:update')),
-    ],
-) -> None:
-    """
-    Remove a user from a group.
-
-    Parameters:
-        email (str): Email of user to remove from group.
-        group_slug (str): Slug of group to remove from.
-
-    Raises:
-        fastapi.HTTPException: HTTP 404 if relationship doesn't exist.
-    """
-    # URL decode email in case it's percent-encoded
-    email = urlparse.unquote(email)
-
-    query = """
-    MATCH (u:User {email: $email})-[r:MEMBER_OF]->
-          (g:Group {slug: $group_slug})
-    DELETE r
-    RETURN count(r) AS deleted
-    """
-
-    async with neo4j.run(query, email=email, group_slug=group_slug) as result:
-        records = await result.data()
-        if not records or records[0].get('deleted', 0) == 0:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'User {email!r} is not a member of group '
-                f'{group_slug!r}',
+                detail=f'User {email!r} is not a member of '
+                f'organization {org_slug!r}',
             )

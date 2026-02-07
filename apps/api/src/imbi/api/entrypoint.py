@@ -120,11 +120,14 @@ async def _setup_async() -> None:
                 typer.echo('Setup cancelled.')
                 return
 
-        # Step 1: Seed permissions, roles, org, and group
-        typer.echo(
-            'Step 1: Seeding permissions, roles, organization, and group...'
-        )
+        # Step 1: Seed organization, permissions, and roles
+        typer.echo('Step 1: Seeding organization, permissions, and roles...')
         seed_result = await seed.bootstrap_auth_system()
+
+        if seed_result['organization']:
+            typer.echo('  ✓ Created default organization')
+        else:
+            typer.echo('  ✓ Default organization already exists')
 
         if seed_result['permissions'] > 0 or seed_result['roles'] > 0:
             typer.echo(
@@ -136,16 +139,6 @@ async def _setup_async() -> None:
                 '  ✓ Permissions and roles already exist '
                 '(no new entities created)'
             )
-
-        if seed_result['organization']:
-            typer.echo('  ✓ Created default organization')
-        else:
-            typer.echo('  ✓ Default organization already exists')
-
-        if seed_result['group']:
-            typer.echo('  ✓ Created default users group')
-        else:
-            typer.echo('  ✓ Default users group already exists')
 
         # Step 2: Create admin user
         typer.echo('\nStep 2: Create initial admin user')
@@ -280,14 +273,18 @@ async def _create_admin_user(
         if not records:
             raise RuntimeError('Failed to create user')
 
-    # Assign admin role to user
-    role_query = """
+    # Add user to default organization with admin role
+    membership_query = """
     MATCH (u:User {email: $email})
-    MATCH (r:Role {slug: 'admin'})
-    MERGE (u)-[:HAS_ROLE]->(r)
+    MATCH (o:Organization {slug: 'default'})
+    MERGE (u)-[m:MEMBER_OF]->(o)
+    SET m.role = 'admin'
     """
 
-    async with neo4j.run(query=role_query, email=email) as result:
+    async with neo4j.run(
+        query=membership_query,
+        email=email,
+    ) as result:
         await result.consume()
 
     return user

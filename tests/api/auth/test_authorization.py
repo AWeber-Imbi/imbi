@@ -13,7 +13,7 @@ from imbi_api.auth import permissions
 
 
 class PermissionLoadingTestCase(unittest.IsolatedAsyncioTestCase):
-    """Test permission loading from roles and groups."""
+    """Test permission loading from org membership roles."""
 
     async def test_load_user_permissions_direct_role(self) -> None:
         """Test loading permissions from direct role assignment."""

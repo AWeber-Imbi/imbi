@@ -121,6 +121,31 @@ completion.
 
 ---
 
+#### [ADR 0005: File Upload Storage Architecture](adr/0005-file-upload-storage-architecture.md)
+
+*Date: 2026-02-06 | Status: Accepted*
+
+Design for general-purpose file upload system backed by S3-compatible storage, supporting icons, avatars, and documents
+for all Node-based entities.
+
+**Key Decisions:**
+
+- S3-compatible object storage with aioboto3 for async operations
+- LocalStack for development (full AWS API emulation)
+- Neo4j for upload metadata (consistent with all other entities)
+- Presigned URL redirects (307) for efficient file serving
+- Pillow for thumbnail generation, filetype for magic-byte validation
+- WEBP thumbnails at 256x256 max, maintaining aspect ratio
+
+**Upload Features:**
+
+- Content type validation with magic-byte verification
+- Configurable size limits (default 50 MB)
+- Automatic thumbnail generation for raster images
+- Permission-based access control (upload:create, upload:read, upload:delete)
+
+---
+
 ## ADR Format
 
 Our ADRs follow this structure:

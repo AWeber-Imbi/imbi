@@ -10,7 +10,7 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
     """Test permission seeding functionality."""
 
     async def test_seed_permissions_creates_all(self) -> None:
-        """Verify all 22 standard permissions are created."""
+        """Verify all standard permissions are created."""
         mock_result = mock.AsyncMock()
         # Simulate all permissions being newly created
         mock_result.data.return_value = [{'is_new': True}]
@@ -20,8 +20,7 @@ class SeedPermissionsTestCase(unittest.IsolatedAsyncioTestCase):
         with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
             count = await seed.seed_permissions()
 
-        # Should create 22 permissions (6 resource types x 3-4 actions each)
-        self.assertEqual(count, 22)
+        self.assertEqual(count, len(seed.STANDARD_PERMISSIONS))
 
     async def test_seed_permissions_idempotent(self) -> None:
         """Second run creates no duplicates."""
@@ -70,13 +69,18 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         mock_perm_result.__aenter__.return_value = mock_perm_result
         mock_perm_result.__aexit__.return_value = None
 
-        def run_side_effect(query: str, **_kwargs: object) -> mock.AsyncMock:
-            # Return role result for MERGE queries, perm result for GRANTS
+        def run_side_effect(
+            query: str,
+            **_kwargs: object,
+        ) -> mock.AsyncMock:
             if 'GRANTS' in query:
                 return mock_perm_result
             return mock_role_result
 
-        with mock.patch('imbi_common.neo4j.run', side_effect=run_side_effect):
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            side_effect=run_side_effect,
+        ):
             count = await seed.seed_default_roles()
 
         # Should create 3 roles (admin, developer, readonly)
@@ -94,12 +98,18 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         mock_perm_result.__aenter__.return_value = mock_perm_result
         mock_perm_result.__aexit__.return_value = None
 
-        def run_side_effect(query: str, **_kwargs: object) -> mock.AsyncMock:
+        def run_side_effect(
+            query: str,
+            **_kwargs: object,
+        ) -> mock.AsyncMock:
             if 'GRANTS' in query:
                 return mock_perm_result
             return mock_role_result
 
-        with mock.patch('imbi_common.neo4j.run', side_effect=run_side_effect):
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            side_effect=run_side_effect,
+        ):
             count = await seed.seed_default_roles()
 
         # Should create 0 new roles
@@ -113,13 +123,19 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         # Verify admin has all permissions
         admin_role = next(r for r in seed.DEFAULT_ROLES if r[0] == 'admin')
         admin_permissions = admin_role[4]
-        self.assertEqual(len(admin_permissions), 22)
+        self.assertEqual(
+            len(admin_permissions),
+            len(seed.STANDARD_PERMISSIONS),
+        )
 
         # Verify developer has subset of permissions
         dev_role = next(r for r in seed.DEFAULT_ROLES if r[0] == 'developer')
         dev_permissions = dev_role[4]
         self.assertGreater(len(dev_permissions), 0)
-        self.assertLess(len(dev_permissions), 21)
+        self.assertLess(
+            len(dev_permissions),
+            len(seed.STANDARD_PERMISSIONS),
+        )
 
         # Verify readonly has only read permissions
         readonly_role = next(
@@ -129,6 +145,14 @@ class SeedDefaultRolesTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             all(':read' in perm for perm in readonly_permissions),
             'Readonly role should only have read permissions',
+        )
+
+    def test_no_group_permissions(self) -> None:
+        """Verify no group permissions exist."""
+        perm_names = {p[0] for p in seed.STANDARD_PERMISSIONS}
+        group_perms = {p for p in perm_names if p.startswith('group:')}
+        self.assertEqual(
+            group_perms, set(), 'No group permissions should exist'
         )
 
 
@@ -142,7 +166,10 @@ class SeedDefaultOrganizationTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
             created = await seed.seed_default_organization()
 
         self.assertTrue(created)
@@ -154,36 +181,11 @@ class SeedDefaultOrganizationTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
             created = await seed.seed_default_organization()
-
-        self.assertFalse(created)
-
-
-class SeedDefaultGroupTestCase(unittest.IsolatedAsyncioTestCase):
-    """Test default users group seeding."""
-
-    async def test_seed_default_group_creates(self) -> None:
-        """Verify default users group is created when new."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'is_new': True}]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
-
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
-            created = await seed.seed_default_group()
-
-        self.assertTrue(created)
-
-    async def test_seed_default_group_idempotent(self) -> None:
-        """Second run does not recreate the group."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'is_new': False}]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
-
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
-            created = await seed.seed_default_group()
 
         self.assertFalse(created)
 
@@ -195,54 +197,72 @@ class BootstrapAuthSystemTestCase(unittest.IsolatedAsyncioTestCase):
         """Complete bootstrap creates all seed entities."""
         with (
             mock.patch(
-                'imbi_api.auth.seed.seed_permissions', return_value=21
-            ) as mock_perms,
-            mock.patch(
-                'imbi_api.auth.seed.seed_default_roles', return_value=3
-            ) as mock_roles,
-            mock.patch(
                 'imbi_api.auth.seed.seed_default_organization',
                 return_value=True,
             ) as mock_org,
             mock.patch(
-                'imbi_api.auth.seed.seed_default_group',
-                return_value=True,
-            ) as mock_group,
+                'imbi_api.auth.seed.seed_permissions',
+                return_value=len(seed.STANDARD_PERMISSIONS),
+            ) as mock_perms,
+            mock.patch(
+                'imbi_api.auth.seed.seed_default_roles',
+                return_value=3,
+            ) as mock_roles,
         ):
             result = await seed.bootstrap_auth_system()
 
+        mock_org.assert_called_once()
         mock_perms.assert_called_once()
         mock_roles.assert_called_once()
-        mock_org.assert_called_once()
-        mock_group.assert_called_once()
 
-        self.assertEqual(result['permissions'], 21)
-        self.assertEqual(result['roles'], 3)
         self.assertTrue(result['organization'])
-        self.assertTrue(result['group'])
+        self.assertEqual(
+            result['permissions'],
+            len(seed.STANDARD_PERMISSIONS),
+        )
+        self.assertEqual(result['roles'], 3)
 
     async def test_bootstrap_auth_system_idempotent(self) -> None:
         """Bootstrap can be safely run multiple times."""
         with (
-            mock.patch('imbi_api.auth.seed.seed_permissions', return_value=0),
-            mock.patch(
-                'imbi_api.auth.seed.seed_default_roles', return_value=0
-            ),
             mock.patch(
                 'imbi_api.auth.seed.seed_default_organization',
                 return_value=False,
             ),
             mock.patch(
-                'imbi_api.auth.seed.seed_default_group',
-                return_value=False,
+                'imbi_api.auth.seed.seed_permissions',
+                return_value=0,
+            ),
+            mock.patch(
+                'imbi_api.auth.seed.seed_default_roles',
+                return_value=0,
             ),
         ):
             result = await seed.bootstrap_auth_system()
 
+        self.assertFalse(result['organization'])
         self.assertEqual(result['permissions'], 0)
         self.assertEqual(result['roles'], 0)
-        self.assertFalse(result['organization'])
-        self.assertFalse(result['group'])
+
+    async def test_bootstrap_result_has_no_group_key(self) -> None:
+        """Verify bootstrap result does not contain group key."""
+        with (
+            mock.patch(
+                'imbi_api.auth.seed.seed_default_organization',
+                return_value=True,
+            ),
+            mock.patch(
+                'imbi_api.auth.seed.seed_permissions',
+                return_value=0,
+            ),
+            mock.patch(
+                'imbi_api.auth.seed.seed_default_roles',
+                return_value=0,
+            ),
+        ):
+            result = await seed.bootstrap_auth_system()
+
+        self.assertNotIn('group', result)
 
 
 class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
@@ -251,11 +271,14 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_check_if_seeded_true(self) -> None:
         """Returns True when permissions exist."""
         mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'count': 24}]
+        mock_result.data.return_value = [{'count': 20}]
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
             is_seeded = await seed.check_if_seeded()
 
         self.assertTrue(is_seeded)
@@ -267,7 +290,10 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
             is_seeded = await seed.check_if_seeded()
 
         self.assertFalse(is_seeded)
@@ -279,7 +305,10 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
         mock_result.__aenter__.return_value = mock_result
         mock_result.__aexit__.return_value = None
 
-        with mock.patch('imbi_common.neo4j.run', return_value=mock_result):
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
             is_seeded = await seed.check_if_seeded()
 
         self.assertFalse(is_seeded)

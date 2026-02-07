@@ -30,6 +30,19 @@ services:
     healthcheck:
       test: [ "CMD", "wget", "-qO-", "http://localhost:8025/api/v1/info" ]
 
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566"
+    environment:
+      - SERVICES=s3
+      - DEBUG=0
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:4566/_localstack/health" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   neo4j:
     image: neo4j:latest
     environment:

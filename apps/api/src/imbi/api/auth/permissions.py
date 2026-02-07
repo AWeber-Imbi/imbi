@@ -30,8 +30,9 @@ async def load_user_permissions(email: str) -> set[str]:
     """
     Get permission names granted to a user.
 
-    Collects permissions from the user's direct roles, group-assigned
-    roles, and any inherited roles.
+    Collects permissions from the user's organization memberships.
+    Each membership has a role property that links to a Role node.
+    Role inheritance is followed to collect all granted permissions.
 
     Parameters:
         email (str): Email of user whose permissions will be resolved.
@@ -41,12 +42,8 @@ async def load_user_permissions(email: str) -> set[str]:
             'blueprint:read', 'project:write').
     """
     query = """
-    MATCH (u:User {email: $email})
-    OPTIONAL MATCH (u)-[:HAS_ROLE]->(role:Role)
-    OPTIONAL MATCH (u)-[:MEMBER_OF*]->(group:Group)
-    OPTIONAL MATCH (group)-[:ASSIGNED_ROLE]->(group_role:Role)
-    WITH u, collect(DISTINCT role) + collect(DISTINCT group_role) AS all_roles
-    UNWIND all_roles AS r
+    MATCH (u:User {email: $email})-[m:MEMBER_OF]->(o:Organization)
+    MATCH (r:Role {slug: m.role})
     OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role)
     WITH DISTINCT parent
     OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission)
@@ -368,19 +365,10 @@ async def check_resource_permission(
     """
     query = """
     MATCH (u:User {email: $email})
-    OPTIONAL MATCH (u)-[:MEMBER_OF*]->(group:Group)
-    WITH u, collect(DISTINCT group) AS groups
     MATCH (resource {slug: $resource_slug})
     WHERE $resource_type IN labels(resource)
-    OPTIONAL MATCH (u)-[user_access:CAN_ACCESS]->(resource)
-    OPTIONAL MATCH (group)-[group_access:CAN_ACCESS]->(resource)
-    WHERE group IN groups
-    WITH user_access, group_access
-    WHERE user_access IS NOT NULL OR group_access IS NOT NULL
-    WITH collect(DISTINCT user_access.actions) +
-         collect(DISTINCT group_access.actions) AS all_actions
-    UNWIND all_actions AS action_list
-    UNWIND action_list AS action_item
+    MATCH (u)-[access:CAN_ACCESS]->(resource)
+    UNWIND access.actions AS action_item
     RETURN collect(DISTINCT action_item) AS actions
     """
     async with neo4j.run(

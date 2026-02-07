@@ -14,11 +14,6 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('user:read', 'user', 'read', 'View user information'),
     ('user:update', 'user', 'update', 'Update user information'),
     ('user:delete', 'user', 'delete', 'Delete users'),
-    # Group management
-    ('group:create', 'group', 'create', 'Create new groups'),
-    ('group:read', 'group', 'read', 'View group information'),
-    ('group:update', 'group', 'update', 'Update group information'),
-    ('group:delete', 'group', 'delete', 'Delete groups'),
     # Role management
     ('role:create', 'role', 'create', 'Create new roles'),
     ('role:read', 'role', 'read', 'View role information'),
@@ -29,6 +24,11 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('organization:read', 'organization', 'read', 'View organizations'),
     ('organization:update', 'organization', 'update', 'Update organizations'),
     ('organization:delete', 'organization', 'delete', 'Delete organizations'),
+    # Team management
+    ('team:create', 'team', 'create', 'Create teams'),
+    ('team:read', 'team', 'read', 'View teams'),
+    ('team:update', 'team', 'update', 'Update teams'),
+    ('team:delete', 'team', 'delete', 'Delete teams'),
     # Blueprint management
     ('blueprint:read', 'blueprint', 'read', 'View blueprints'),
     ('blueprint:write', 'blueprint', 'write', 'Create/update blueprints'),
@@ -37,6 +37,10 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('project:read', 'project', 'read', 'View projects'),
     ('project:write', 'project', 'write', 'Create/update projects'),
     ('project:delete', 'project', 'delete', 'Delete projects'),
+    # Upload management
+    ('upload:create', 'upload', 'create', 'Upload files'),
+    ('upload:read', 'upload', 'read', 'View and download uploads'),
+    ('upload:delete', 'upload', 'delete', 'Delete uploads'),
 ]
 
 # Default role definitions
@@ -60,8 +64,11 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'project:write',
             'organization:read',
             'organization:update',
-            'group:read',
+            'team:read',
+            'team:update',
             'user:read',
+            'upload:create',
+            'upload:read',
         ],
     ),
     (
@@ -73,9 +80,10 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'blueprint:read',
             'project:read',
             'organization:read',
-            'group:read',
+            'team:read',
             'user:read',
             'role:read',
+            'upload:read',
         ],
     ),
 ]
@@ -145,15 +153,6 @@ async def seed_default_roles() -> int:
     created_count = 0
 
     for slug, name, description, priority, permission_names in DEFAULT_ROLES:
-        # Create Role model
-        role = models.Role(
-            name=name,
-            slug=slug,
-            description=description,
-            priority=priority,
-            is_system=True,  # Mark as system role
-        )
-
         # Use MERGE to avoid duplicates
         role_query = """
         OPTIONAL MATCH (existing:Role {slug: $slug})
@@ -174,11 +173,11 @@ async def seed_default_roles() -> int:
 
         async with neo4j.run(
             query=role_query,
-            slug=role.slug,
-            name=role.name,
-            description=role.description,
-            priority=role.priority,
-            is_system=role.is_system,
+            slug=slug,
+            name=name,
+            description=description,
+            priority=priority,
+            is_system=True,
         ) as result:
             records = await result.data()
             if records and records[0].get('is_new'):
@@ -238,86 +237,36 @@ async def seed_default_organization() -> bool:
     return created
 
 
-async def seed_default_group() -> bool:
-    """Seed the default 'Users' group within the default organization.
-
-    Creates a 'Users' group and links it to the default organization
-    via a MANAGED_BY relationship. Uses MERGE for idempotency.
-
-    The default organization must exist before calling this function.
-
-    Returns:
-        True if the group was newly created, False if it already
-        existed.
-
-    """
-    query: typing.LiteralString = """
-    MATCH (o:Organization {slug: $org_slug})
-    OPTIONAL MATCH (existing:Group {slug: $group_slug})
-    WITH o, existing IS NULL AS is_new
-    MERGE (g:Group {slug: $group_slug})
-    ON CREATE SET
-        g.name = $group_name,
-        g.description = $group_description
-    ON MATCH SET
-        g.name = $group_name,
-        g.description = $group_description
-    MERGE (g)-[:MANAGED_BY]->(o)
-    RETURN g, is_new
-    """
-    async with neo4j.run(
-        query,
-        org_slug='default',
-        group_slug='users',
-        group_name='Users',
-        group_description='Default users group',
-    ) as result:
-        records = await result.data()
-        created = bool(records and records[0].get('is_new'))
-
-    if created:
-        LOGGER.info('Created default users group')
-    else:
-        LOGGER.info('Default users group already exists')
-    return created
-
-
 async def bootstrap_auth_system() -> dict[str, int | bool]:
     """Complete bootstrap of the authentication system.
 
-    Seeds permissions, creates default roles, the default organization,
-    and the default users group. This operation is idempotent and can
-    be run multiple times safely.
+    Seeds the default organization, permissions, and default roles.
+    This operation is idempotent and can be run multiple times safely.
 
     Returns:
         dict with keys:
+            - 'organization': Whether the default org was created
             - 'permissions': Number of permissions created
             - 'roles': Number of roles created
-            - 'organization': Whether the default org was created
-            - 'group': Whether the default group was created
 
     """
     LOGGER.info('Starting authentication system bootstrap')
 
+    org_created = await seed_default_organization()
     permissions_created = await seed_permissions()
     roles_created = await seed_default_roles()
-    org_created = await seed_default_organization()
-    group_created = await seed_default_group()
 
     result: dict[str, int | bool] = {
+        'organization': org_created,
         'permissions': permissions_created,
         'roles': roles_created,
-        'organization': org_created,
-        'group': group_created,
     }
 
     LOGGER.info(
-        'Bootstrap complete: %d permissions, %d roles, '
-        'org created=%s, group created=%s',
+        'Bootstrap complete: org created=%s, %d permissions, %d roles',
+        org_created,
         permissions_created,
         roles_created,
-        org_created,
-        group_created,
     )
 
     return result
