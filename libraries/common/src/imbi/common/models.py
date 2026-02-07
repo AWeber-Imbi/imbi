@@ -106,7 +106,7 @@ class Node(pydantic.BaseModel):
 
     """
 
-    model_config = pydantic.ConfigDict(extra='allow')
+    model_config = pydantic.ConfigDict(extra='ignore')
 
     name: str
     slug: str
