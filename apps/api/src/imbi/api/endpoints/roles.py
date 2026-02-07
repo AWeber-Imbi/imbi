@@ -189,14 +189,6 @@ async def update_role(
         fastapi.HTTPException: 403 if the caller lacks the
             `role:update` permission.
     """
-    # Validate that URL slug matches role slug
-    if role.slug != slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=f'Slug in URL ({slug!r}) must match slug in '
-            f'role data ({role.slug!r})',
-        )
-
     # Check if role is a system role
     existing_role = await neo4j.fetch_node(models.Role, {'slug': slug})
     if existing_role and existing_role.is_system:

@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
+from neo4j import exceptions
 
 from imbi_api import app, models
 
@@ -174,6 +175,32 @@ class TeamEndpointsTestCase(unittest.TestCase):
             response.json()['detail'],
         )
 
+    def test_create_team_slug_conflict(self) -> None:
+        """Test creating team with a slug that already exists."""
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=exceptions.ConstraintError(),
+            ),
+        ):
+            mock_get_model.return_value = models.Team
+
+            response = self.client.post(
+                '/teams/',
+                json={
+                    'name': 'Backend',
+                    'slug': 'backend',
+                    'description': 'Backend team',
+                    'organization_slug': 'engineering',
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
+
     def test_list_teams(self) -> None:
         """Test listing all teams."""
         mock_result = mock.AsyncMock()
@@ -250,22 +277,52 @@ class TeamEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    def _mock_team_run(self, team_data=None):
+        """Create a mock for neo4j.run returning team data."""
+        mock_result = mock.AsyncMock()
+        if team_data is not None:
+            mock_result.data.return_value = [
+                {'team': team_data},
+            ]
+        else:
+            mock_result.data.return_value = []
+        mock_result.__aenter__.return_value = mock_result
+        mock_result.__aexit__.return_value = None
+        return mock_result
+
     def test_update_team(self) -> None:
         """Test updating a team."""
+        team_data = {
+            'name': 'Backend',
+            'slug': 'backend',
+            'description': 'Backend team',
+            'organization': {
+                'name': 'Engineering',
+                'slug': 'engineering',
+            },
+        }
+        updated_data = {
+            'name': 'Backend Services',
+            'slug': 'backend',
+            'description': 'Updated description',
+            'organization': {
+                'name': 'Engineering',
+                'slug': 'engineering',
+            },
+        }
+        fetch_result = self._mock_team_run(team_data)
+        update_result = self._mock_team_run(updated_data)
+
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.fetch_node',
-            ) as mock_fetch,
-            mock.patch(
-                'imbi_common.neo4j.upsert',
-            ) as mock_upsert,
+                'imbi_common.neo4j.run',
+                side_effect=[fetch_result, update_result],
+            ),
         ):
             mock_get_model.return_value = models.Team
-            mock_fetch.return_value = self.test_team
-            mock_upsert.return_value = None
 
             response = self.client.put(
                 '/teams/backend',
@@ -279,33 +336,144 @@ class TeamEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['name'], 'Backend Services')
-        mock_upsert.assert_called_once()
 
-    def test_update_team_slug_mismatch(self) -> None:
-        """Test updating with mismatched slugs."""
-        response = self.client.put(
-            '/teams/backend',
-            json={
-                'name': 'Backend',
-                'slug': 'different-slug',
+    def test_update_team_slug_rename(self) -> None:
+        """Test updating with different slug renames it."""
+        team_data = {
+            'name': 'Backend',
+            'slug': 'backend',
+            'description': 'Backend team',
+            'organization': {
+                'name': 'Engineering',
+                'slug': 'engineering',
             },
-        )
+        }
+        updated_data = {
+            'name': 'Backend',
+            'slug': 'new-slug',
+            'organization': {
+                'name': 'Engineering',
+                'slug': 'engineering',
+            },
+        }
+        fetch_result = self._mock_team_run(team_data)
+        update_result = self._mock_team_run(updated_data)
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('must match', response.json()['detail'])
-
-    def test_update_team_not_found(self) -> None:
-        """Test updating nonexistent team."""
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.fetch_node',
-            ) as mock_fetch,
+                'imbi_common.neo4j.run',
+                side_effect=[fetch_result, update_result],
+            ) as mock_run,
         ):
             mock_get_model.return_value = models.Team
-            mock_fetch.return_value = None
+
+            response = self.client.put(
+                '/teams/backend',
+                json={
+                    'name': 'Backend',
+                    'slug': 'new-slug',
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            # Second call is the update query with the old slug
+            update_call = mock_run.call_args_list[1]
+            self.assertEqual(
+                update_call.kwargs['slug'],
+                'backend',
+            )
+
+    def test_update_team_slug_conflict(self) -> None:
+        """Test updating team with a slug that already exists."""
+        team_data = {
+            'name': 'Backend',
+            'slug': 'backend',
+            'description': 'Backend team',
+            'organization': {
+                'name': 'Engineering',
+                'slug': 'engineering',
+            },
+        }
+        fetch_result = self._mock_team_run(team_data)
+
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=[
+                    fetch_result,
+                    exceptions.ConstraintError(),
+                ],
+            ),
+        ):
+            mock_get_model.return_value = models.Team
+
+            response = self.client.put(
+                '/teams/backend',
+                json={
+                    'name': 'Backend',
+                    'slug': 'existing-slug',
+                },
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
+
+    def test_update_team_concurrent_delete(self) -> None:
+        """Test updating a team that is deleted between fetch and update."""
+        team_data = {
+            'name': 'Backend',
+            'slug': 'backend',
+            'description': 'Backend team',
+            'organization': {
+                'name': 'Engineering',
+                'slug': 'engineering',
+            },
+        }
+        fetch_result = self._mock_team_run(team_data)
+        empty_result = self._mock_team_run(None)
+
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=[fetch_result, empty_result],
+            ),
+        ):
+            mock_get_model.return_value = models.Team
+
+            response = self.client.put(
+                '/teams/backend',
+                json={
+                    'name': 'Backend Updated',
+                    'slug': 'backend',
+                },
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_update_team_not_found(self) -> None:
+        """Test updating nonexistent team."""
+        mock_run = self._mock_team_run(None)
+
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                return_value=mock_run,
+            ),
+        ):
+            mock_get_model.return_value = models.Team
 
             response = self.client.put(
                 '/teams/nonexistent',
@@ -316,6 +484,37 @@ class TeamEndpointsTestCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_update_team_validation_error(self) -> None:
+        """Test updating team with invalid data."""
+        team_data = {
+            'name': 'Backend',
+            'slug': 'backend',
+            'description': 'Backend team',
+            'organization': {
+                'name': 'Engineering',
+                'slug': 'engineering',
+            },
+        }
+        mock_run = self._mock_team_run(team_data)
+
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                return_value=mock_run,
+            ),
+        ):
+            mock_get_model.return_value = models.Team
+
+            response = self.client.put(
+                '/teams/backend',
+                json={'name': 123},
+            )
+
+        self.assertEqual(response.status_code, 400)
 
     def test_delete_team(self) -> None:
         """Test deleting a team."""

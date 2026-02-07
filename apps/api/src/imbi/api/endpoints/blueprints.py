@@ -82,9 +82,7 @@ async def list_blueprints(
 @blueprint_router.get('/{type}', response_model=list[models.Blueprint])
 async def list_blueprints_by_type(
     blueprint_type: typing.Annotated[
-        typing.Literal[
-            'Organization', 'Team', 'Environment', 'ProjectType', 'Project'
-        ],
+        typing.Literal['Team', 'Environment', 'ProjectType', 'Project'],
         fastapi.Path(alias='type'),
     ],
     auth: typing.Annotated[
@@ -97,7 +95,7 @@ async def list_blueprints_by_type(
     Retrieve all blueprints of the given type.
 
     Parameters:
-        blueprint_type (Literal['Organization', 'Team', 'Environment',
+        blueprint_type (Literal['Team', 'Environment',
             'ProjectType', 'Project']): Type of blueprint to return.
         enabled (bool | None): If provided, only include blueprints whose
             enabled status matches this value.
@@ -121,9 +119,7 @@ async def list_blueprints_by_type(
 @blueprint_router.get('/{type}/{slug}', response_model=models.Blueprint)
 async def get_blueprint(
     blueprint_type: typing.Annotated[
-        typing.Literal[
-            'Organization', 'Team', 'Environment', 'ProjectType', 'Project'
-        ],
+        typing.Literal['Team', 'Environment', 'ProjectType', 'Project'],
         fastapi.Path(alias='type'),
     ],
     slug: str,
@@ -159,9 +155,7 @@ async def get_blueprint(
 @blueprint_router.put('/{type}/{slug}', response_model=models.Blueprint)
 async def update_blueprint(
     blueprint_type: typing.Annotated[
-        typing.Literal[
-            'Organization', 'Team', 'Environment', 'ProjectType', 'Project'
-        ],
+        typing.Literal['Team', 'Environment', 'ProjectType', 'Project'],
         fastapi.Path(alias='type'),
     ],
     slug: str,
@@ -189,22 +183,6 @@ async def update_blueprint(
         400: If the URL `slug` does not match `blueprint.slug` or the
             URL `type` does not match `blueprint.type`.
     """
-    # Validate that URL slug matches blueprint slug
-    if blueprint.slug != slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=f'Slug in URL ({slug!r}) must match slug in '
-            f'blueprint data ({blueprint.slug!r})',
-        )
-
-    # Validate that URL type matches blueprint type
-    if blueprint.type != blueprint_type:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=f'Type in URL ({blueprint_type!r}) must match type in '
-            f'blueprint data ({blueprint.type!r})',
-        )
-
     await neo4j.upsert(
         blueprint,
         {'slug': slug, 'type': blueprint_type},
@@ -216,9 +194,7 @@ async def update_blueprint(
 @blueprint_router.delete('/{type}/{slug}', status_code=204)
 async def delete_blueprint(
     blueprint_type: typing.Annotated[
-        typing.Literal[
-            'Organization', 'Team', 'Environment', 'ProjectType', 'Project'
-        ],
+        typing.Literal['Team', 'Environment', 'ProjectType', 'Project'],
         fastapi.Path(alias='type'),
     ],
     slug: str,
@@ -231,7 +207,7 @@ async def delete_blueprint(
     Delete a blueprint identified by its type and slug.
 
     Parameters:
-        blueprint_type (Literal['Organization', 'Team', 'Environment',
+        blueprint_type (Literal['Team', 'Environment',
             'ProjectType', 'Project']): The blueprint type.
         slug (str): The blueprint slug (URL-safe identifier).
 

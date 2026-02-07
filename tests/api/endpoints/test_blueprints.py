@@ -335,35 +335,30 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
             self.assertEqual(data['description'], 'Updated description')
             mock_upsert.assert_called_once()
 
-    def test_update_blueprint_slug_mismatch(self) -> None:
-        """Test updating blueprint with mismatched slug returns 400."""
-        response = self.client.put(
-            '/blueprints/Project/test-blueprint',
-            json={
-                'name': 'Test',
-                'slug': 'wrong-slug',  # Doesn't match URL
-                'type': 'Project',
-                'json_schema': {'type': 'object', 'properties': {}},
-            },
-        )
+    def test_update_blueprint_slug_rename(self) -> None:
+        """Test updating blueprint with different slug renames it."""
+        with mock.patch('imbi_common.neo4j.upsert') as mock_upsert:
+            response = self.client.put(
+                '/blueprints/Project/test-blueprint',
+                json={
+                    'name': 'Test',
+                    'slug': 'new-slug',
+                    'type': 'Project',
+                    'json_schema': {
+                        'type': 'object',
+                        'properties': {},
+                    },
+                },
+            )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('must match', response.json()['detail'])
-
-    def test_update_blueprint_type_mismatch(self) -> None:
-        """Test updating blueprint with mismatched type returns 400."""
-        response = self.client.put(
-            '/blueprints/Project/test-blueprint',
-            json={
-                'name': 'Test',
-                'slug': 'test-blueprint',
-                'type': 'Environment',  # Doesn't match URL
-                'json_schema': {'type': 'object', 'properties': {}},
-            },
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('must match', response.json()['detail'])
+            self.assertEqual(response.status_code, 200)
+            mock_upsert.assert_called_once()
+            call_args = mock_upsert.call_args
+            self.assertEqual(call_args[0][0].slug, 'new-slug')
+            self.assertEqual(
+                call_args[0][1],
+                {'slug': 'test-blueprint', 'type': 'Project'},
+            )
 
     def test_delete_blueprint_success(self) -> None:
         """Test deleting a blueprint."""

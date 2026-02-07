@@ -1,11 +1,10 @@
-"""Organization management endpoints with blueprint support."""
+"""Organization management endpoints."""
 
 import logging
 import typing
 
 import fastapi
-import pydantic
-from imbi_common import blueprints, models, neo4j
+from imbi_common import models, neo4j
 from neo4j import exceptions
 
 from imbi_api.auth import permissions
@@ -19,182 +18,123 @@ organizations_router = fastapi.APIRouter(
 
 @organizations_router.post('/', status_code=201)
 async def create_organization(
-    data: dict[str, typing.Any],
-    auth: typing.Annotated[
+    org: models.Organization,
+    _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('organization:create')),
+        fastapi.Depends(
+            permissions.require_permission('organization:create'),
+        ),
     ],
-) -> dict[str, typing.Any]:
-    """
-    Create a new organization with blueprint fields applied.
-
-    This endpoint accepts the base Organization fields (name, slug,
-    description, icon) plus any additional fields defined by enabled
-    blueprints.
-
-    To see the current schema with all blueprint fields, use:
-    `GET /schema/Organization`
+) -> models.Organization:
+    """Create a new organization.
 
     Parameters:
-        data: Organization data including base fields and blueprint fields.
-            Base fields:
-            - name (str, required): Organization name
-            - slug (str, required): URL-safe identifier
-            - description (str, optional): Organization description
-            - icon (str, optional): Icon URL
+        org: Organization data.
 
     Returns:
-        dict: The created organization with all fields (base + blueprint)
+        The created organization.
 
     Raises:
-        400: Invalid data or validation error
-        409: Organization with slug already exists
-        401: Not authenticated
-        403: Missing organization:create permission
+        409: Organization with slug already exists.
 
-    Example:
-        ```json
-        {
-            "name": "Engineering",
-            "slug": "engineering",
-            "description": "Engineering department",
-            "icon": "https://example.com/icon.png",
-            "region": "us-west-2",  // Custom blueprint field
-            "cost_center": "ENG-001"  // Custom blueprint field
-        }
-        ```
     """
-    dynamic_model = await blueprints.get_model(models.Organization)
-    try:
-        org = dynamic_model(**data)
-    except pydantic.ValidationError as e:
-        LOGGER.warning('Validation error creating organization: %s', e)
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=f'Validation error: {e.errors()}',
-        ) from e
-
     try:
         created = await neo4j.create_node(org)
-        return typing.cast(dict[str, typing.Any], created.model_dump())
+        return typing.cast(models.Organization, created)
     except exceptions.ConstraintError as e:
         raise fastapi.HTTPException(
             status_code=409,
-            detail=f'Organization with slug {org.slug!r} already exists',
+            detail=(f'Organization with slug {org.slug!r} already exists'),
         ) from e
 
 
 @organizations_router.get('/')
 async def list_organizations(
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('organization:read')),
+        fastapi.Depends(
+            permissions.require_permission('organization:read'),
+        ),
     ],
-) -> list[dict[str, typing.Any]]:
-    """
-    Retrieve all organizations with blueprint fields applied.
-
-    Returns organizations ordered by name. Each organization includes base
-    fields plus any additional fields from enabled blueprints.
-
-    To see the current schema with all blueprint fields, use:
-    `GET /schema/Organization`
+) -> list[models.Organization]:
+    """Retrieve all organizations ordered by name.
 
     Returns:
-        list: Organizations with base + blueprint fields, ordered by name
+        List of organizations.
 
-    Raises:
-        401: Not authenticated
-        403: Missing organization:read permission
     """
-    # Apply blueprints to get dynamic model
-    dynamic_model = await blueprints.get_model(models.Organization)
-
-    organizations: list[dict[str, typing.Any]] = []
-    async for org in neo4j.fetch_nodes(dynamic_model, order_by='name'):
-        organizations.append(org.model_dump())
+    organizations: list[models.Organization] = []
+    async for org in neo4j.fetch_nodes(
+        models.Organization,
+        order_by='name',
+    ):
+        organizations.append(org)
     return organizations
 
 
 @organizations_router.get('/{slug}')
 async def get_organization(
     slug: str,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('organization:read')),
+        fastapi.Depends(
+            permissions.require_permission('organization:read'),
+        ),
     ],
-) -> dict[str, typing.Any]:
-    """
-    Retrieve an organization by slug with blueprint fields applied.
-
-    To see the current schema with all blueprint fields, use:
-    `GET /schema/Organization`
+) -> models.Organization:
+    """Retrieve an organization by slug.
 
     Parameters:
-        slug: Organization slug identifier
+        slug: Organization slug identifier.
 
     Returns:
-        dict: Organization with base + blueprint fields
+        The organization.
 
     Raises:
-        404: Organization not found
-        401: Not authenticated
-        403: Missing organization:read permission
+        404: Organization not found.
+
     """
-    dynamic_model = await blueprints.get_model(models.Organization)
-    org = await neo4j.fetch_node(dynamic_model, {'slug': slug})
+    org = await neo4j.fetch_node(
+        models.Organization,
+        {'slug': slug},
+    )
     if org is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Organization with slug {slug!r} not found',
         )
-    return typing.cast(dict[str, typing.Any], org.model_dump())
+    return org
 
 
 @organizations_router.put('/{slug}')
 async def update_organization(
     slug: str,
-    data: dict[str, typing.Any],
-    auth: typing.Annotated[
+    org: models.Organization,
+    _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('organization:update')),
+        fastapi.Depends(
+            permissions.require_permission('organization:update'),
+        ),
     ],
-) -> dict[str, typing.Any]:
-    """
-    Update an existing organization with blueprint fields.
-
-    This endpoint accepts the base Organization fields plus any additional
-    fields defined by enabled blueprints.
-
-    To see the current schema with all blueprint fields, use:
-    `GET /schema/Organization`
+) -> models.Organization:
+    """Update an existing organization.
 
     Parameters:
-        slug: Organization slug from URL
-        data: Updated organization data (base + blueprint fields)
+        slug: Organization slug from URL (identifies existing record).
+        org: Updated organization data.
 
     Returns:
-        dict: The updated organization with all fields
+        The updated organization.
 
     Raises:
-        400: Invalid data, validation error, or slug mismatch
-        404: Organization not found
-        401: Not authenticated
-        403: Missing organization:update permission
+        404: Organization not found.
+        409: Slug rename conflicts with existing organization.
+
     """
-    # Verify slug in data matches URL
-    if 'slug' in data and data['slug'] != slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=f'Slug in URL ({slug!r}) must match slug in body '
-            f'({data["slug"]!r})',
-        )
-
-    # Ensure slug is in data
-    data['slug'] = slug
-
-    dynamic_model = await blueprints.get_model(models.Organization)
-    existing = await neo4j.fetch_node(dynamic_model, {'slug': slug})
+    existing = await neo4j.fetch_node(
+        models.Organization,
+        {'slug': slug},
+    )
     if existing is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -202,16 +142,13 @@ async def update_organization(
         )
 
     try:
-        org = dynamic_model(**data)
-    except pydantic.ValidationError as e:
-        LOGGER.warning('Validation error updating organization: %s', e)
+        await neo4j.upsert(org, {'slug': slug})
+    except exceptions.ConstraintError as e:
         raise fastapi.HTTPException(
-            status_code=400,
-            detail=f'Validation error: {e.errors()}',
+            status_code=409,
+            detail=(f'Organization with slug {org.slug!r} already exists'),
         ) from e
-
-    await neo4j.upsert(org, {'slug': slug})
-    return typing.cast(dict[str, typing.Any], org.model_dump())
+    return org
 
 
 @organizations_router.get('/{slug}/members')
@@ -219,22 +156,22 @@ async def list_organization_members(
     slug: str,
     _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('organization:read')),
+        fastapi.Depends(
+            permissions.require_permission('organization:read'),
+        ),
     ],
 ) -> list[dict[str, typing.Any]]:
-    """
-    List all members of an organization with their roles.
+    """List all members of an organization with their roles.
 
     Parameters:
         slug: Organization slug identifier.
 
     Returns:
-        list: Members with email, display_name, and role.
+        Members with email, display_name, and role.
 
     Raises:
-        404: Organization not found
-        401: Not authenticated
-        403: Missing organization:read permission
+        404: Organization not found.
+
     """
     query: typing.LiteralString = """
     MATCH (o:Organization {slug: $slug})
@@ -250,7 +187,7 @@ async def list_organization_members(
         if not records or not records[0].get('o'):
             raise fastapi.HTTPException(
                 status_code=404,
-                detail=f'Organization with slug {slug!r} not found',
+                detail=(f'Organization with slug {slug!r} not found'),
             )
         members = records[0].get('members', [])
         return [m for m in members if m.get('email')]
@@ -259,25 +196,28 @@ async def list_organization_members(
 @organizations_router.delete('/{slug}', status_code=204)
 async def delete_organization(
     slug: str,
-    auth: typing.Annotated[
+    _auth: typing.Annotated[
         permissions.AuthContext,
-        fastapi.Depends(permissions.require_permission('organization:delete')),
+        fastapi.Depends(
+            permissions.require_permission('organization:delete'),
+        ),
     ],
 ) -> None:
-    """
-    Delete an organization.
+    """Delete an organization.
 
     Parameters:
-        slug: Organization slug to delete
+        slug: Organization slug to delete.
 
     Raises:
-        404: Organization not found
-        401: Not authenticated
-        403: Missing organization:delete permission
+        404: Organization not found.
+
     """
-    deleted = await neo4j.delete_node(models.Organization, {'slug': slug})
+    deleted = await neo4j.delete_node(
+        models.Organization,
+        {'slug': slug},
+    )
     if not deleted:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Organization with slug {slug!r} not found',
+            detail=(f'Organization with slug {slug!r} not found'),
         )

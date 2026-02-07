@@ -399,12 +399,12 @@ class ProtectedEndpointTestCase(unittest.TestCase):
 
             Yields:
                 models.Blueprint: A blueprint with name "Test Blueprint",
-                    type "Organization", and json_schema
+                    type "Team", and json_schema
                     {"type": "object"}.
             """
             yield models.Blueprint(
                 name='Test Blueprint',
-                type='Organization',
+                type='Team',
                 json_schema={'type': 'object'},
             )
 

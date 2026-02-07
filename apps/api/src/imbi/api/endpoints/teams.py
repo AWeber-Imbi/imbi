@@ -6,6 +6,7 @@ import typing
 import fastapi
 import pydantic
 from imbi_common import blueprints, models, neo4j
+from neo4j import exceptions
 
 from imbi_api.auth import permissions
 
@@ -74,12 +75,18 @@ async def create_team(
     CREATE (t)-[:BELONGS_TO]->(o)
     RETURN t{.*, organization: o{.*}} AS team
     """
-    async with neo4j.run(
-        query,
-        org_slug=org_slug,
-        props=props,
-    ) as result:
-        records = await result.data()
+    try:
+        async with neo4j.run(
+            query,
+            org_slug=org_slug,
+            props=props,
+        ) as result:
+            records = await result.data()
+    except exceptions.ConstraintError as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(f'Team with slug {props["slug"]!r} already exists'),
+        ) from e
 
     if not records:
         raise fastapi.HTTPException(
@@ -181,35 +188,34 @@ async def update_team(
         404: Team not found
 
     """
-    if 'slug' in data and data['slug'] != slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=(
-                f'Slug in URL ({slug!r}) must match slug '
-                f'in body ({data["slug"]!r})'
-            ),
-        )
-    data['slug'] = slug
+    # If no slug in body, default to the URL slug (no rename)
+    if 'slug' not in data:
+        data['slug'] = slug
 
     # Remove organization_slug if present (not updatable)
     data.pop('organization_slug', None)
 
     dynamic_model = await blueprints.get_model(models.Team)
 
-    # First check the team exists
-    existing = await neo4j.fetch_node(
-        dynamic_model,
-        {'slug': slug},
-    )
-    if existing is None:
+    # Fetch team with its organization relationship
+    query: typing.LiteralString = """
+    MATCH (t:Team {slug: $slug})-[:BELONGS_TO]->(o:Organization)
+    RETURN t{.*, organization: o{.*}} AS team
+    """
+    async with neo4j.run(query, slug=slug) as result:
+        records = await result.data()
+
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Team with slug {slug!r} not found',
         )
 
+    existing = records[0]['team']
+
     try:
         team = dynamic_model(
-            organization=existing.organization,
+            organization=existing['organization'],
             **data,
         )
     except pydantic.ValidationError as e:
@@ -222,12 +228,36 @@ async def update_team(
             detail=f'Validation error: {e.errors()}',
         ) from e
 
-    await neo4j.upsert(team, {'slug': slug})
+    # Build property SET from model fields, excluding relationship
+    props = team.model_dump(exclude={'organization'})
 
-    # Return updated team with organization
+    update_query: typing.LiteralString = """
+    MATCH (t:Team {slug: $slug})-[:BELONGS_TO]->(o:Organization)
+    SET t = $props
+    RETURN t{.*, organization: o{.*}} AS team
+    """
+    try:
+        async with neo4j.run(
+            update_query,
+            slug=slug,
+            props=props,
+        ) as result:
+            updated = await result.data()
+    except exceptions.ConstraintError as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(f'Team with slug {data["slug"]!r} already exists'),
+        ) from e
+
+    if not updated:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Team with slug {slug!r} not found',
+        )
+
     return typing.cast(
         dict[str, typing.Any],
-        team.model_dump(),
+        updated[0]['team'],
     )
 
 

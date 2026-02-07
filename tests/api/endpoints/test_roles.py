@@ -228,19 +228,32 @@ class RoleEndpointsTestCase(unittest.TestCase):
             self.assertEqual(data['priority'], 200)
             mock_upsert.assert_called_once()
 
-    def test_update_role_slug_mismatch(self) -> None:
-        """Test updating role with mismatched slug returns 400."""
-        response = self.client.put(
-            '/roles/test-role',
-            json={
-                'name': 'Test',
-                'slug': 'wrong-slug',
-                'priority': 100,
-            },
-        )
+    def test_update_role_slug_rename(self) -> None:
+        """Test updating role with different slug renames it."""
+        with (
+            mock.patch(
+                'imbi_common.neo4j.fetch_node',
+                return_value=None,
+            ),
+            mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
+        ):
+            response = self.client.put(
+                '/roles/test-role',
+                json={
+                    'name': 'Test',
+                    'slug': 'new-slug',
+                    'priority': 100,
+                },
+            )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('must match', response.json()['detail'])
+            self.assertEqual(response.status_code, 200)
+            mock_upsert.assert_called_once()
+            call_args = mock_upsert.call_args
+            self.assertEqual(call_args[0][0].slug, 'new-slug')
+            self.assertEqual(
+                call_args[0][1],
+                {'slug': 'test-role'},
+            )
 
     def test_update_system_role_denied(self) -> None:
         """Test updating system role is denied."""

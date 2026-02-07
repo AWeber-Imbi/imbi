@@ -7,7 +7,6 @@ from .blueprints import blueprint_router
 from .mfa import mfa_router
 from .organizations import organizations_router
 from .roles import roles_router
-from .schema import schema_router
 from .status import status_router
 from .teams import teams_router
 from .uploads import uploads_router
@@ -21,7 +20,6 @@ routers: list[fastapi.APIRouter] = [
     mfa_router,
     organizations_router,
     roles_router,
-    schema_router,
     status_router,
     teams_router,
     uploads_router,
