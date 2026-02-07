@@ -43,9 +43,7 @@ class Blueprint(pydantic.BaseModel):
 
     name: str
     slug: str | None = None
-    type: typing.Literal[
-        'Organization', 'Team', 'Environment', 'ProjectType', 'Project'
-    ]
+    type: typing.Literal['Team', 'Environment', 'ProjectType', 'Project']
     description: str | None = None
     enabled: bool = True
     priority: int = 0
@@ -159,7 +157,6 @@ class Project(Node):
 
 # Model type mapping for schema generation
 MODEL_TYPES: dict[str, type[pydantic.BaseModel]] = {
-    'Organization': Organization,
     'Team': Team,
     'Environment': Environment,
     'ProjectType': ProjectType,
