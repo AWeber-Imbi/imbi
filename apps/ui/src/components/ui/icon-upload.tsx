@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Upload, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { uploadFile, getUploadThumbnailUrl, deleteUpload } from '@/api/endpoints'
@@ -12,8 +13,15 @@ interface IconUploadProps {
 
 export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: IconUploadProps) {
   const [error, setError] = useState<string>('')
-  const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const uploadMutation = useMutation({
+    mutationFn: uploadFile,
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteUpload,
+  })
 
   const isImageUrl = value && value.length > 0
 
@@ -34,15 +42,11 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
       return
     }
 
-    setIsUploading(true)
-
     try {
-      const upload = await uploadFile(file)
+      const upload = await uploadMutation.mutateAsync(file)
       onChange(`/uploads/${upload.id}`)
     } catch {
       setError('Failed to upload image')
-    } finally {
-      setIsUploading(false)
     }
   }
 
@@ -51,8 +55,10 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
     if (value) {
       const match = value.match(/\/uploads\/(.+)$/)
       if (match) {
-        deleteUpload(match[1]).catch(() => {
-          // Ignore delete errors - the file may already be gone
+        deleteMutation.mutate(match[1], {
+          onError: () => {
+            // Ignore delete errors - the file may already be gone
+          }
         })
       }
     }
@@ -109,10 +115,10 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
             type="button"
             variant="outline"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
+            disabled={uploadMutation.isPending}
             className={`w-full ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
           >
-            {isUploading ? (
+            {uploadMutation.isPending ? (
               <>
                 <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
                 Uploading...
