@@ -40,6 +40,10 @@ export default defineConfig(({ mode }) => {
             })
           },
         },
+        '/uploads': {
+          target: env.VITE_PROXY_TARGET || 'https://imbi.aweber.io',
+          changeOrigin: true,
+        },
       },
     },
   }

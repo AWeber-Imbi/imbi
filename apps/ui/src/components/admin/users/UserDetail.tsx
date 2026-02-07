@@ -1,4 +1,4 @@
-import { ArrowLeft, Edit2, Power, Clock, User, Mail, Calendar, Shield, Users } from 'lucide-react'
+import { ArrowLeft, Edit2, Power, Clock, User, Mail, Calendar, Shield } from 'lucide-react'
 import { Button } from '../../ui/button'
 import { Gravatar } from '../../ui/gravatar'
 import type { AdminUser } from '@/types'
@@ -141,65 +141,36 @@ export function UserDetail({ user, onEdit, onBack, isDarkMode }: UserDetailProps
         </div>
       </div>
 
-      {/* Groups & Roles */}
+      {/* Roles */}
       <div className={`p-6 rounded-lg border ${
         isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
       }`}>
         <h3 className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          Groups & Roles
+          Roles
         </h3>
 
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <div className={`flex items-center gap-2 text-sm mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              <Users className="w-4 h-4" />
-              Group Membership
-            </div>
-            {user.groups.length > 0 ? (
-              <div className="space-y-1">
-                {user.groups.map((group) => (
-                  <div key={group.slug} className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    • {group.name}
-                    {group.description && (
-                      <span className={`text-xs ml-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                        ({group.description})
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                No groups
-              </div>
-            )}
-          </div>
-
-          <div>
-            <div className={`flex items-center gap-2 text-sm mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              <Shield className="w-4 h-4" />
-              Direct Roles
-            </div>
-            {user.roles.length > 0 ? (
-              <div className="space-y-1">
-                {user.roles.map((role) => (
-                  <div key={role.slug} className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    • {role.name}
-                    {role.description && (
-                      <span className={`text-xs ml-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                        ({role.description})
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                No direct roles
-              </div>
-            )}
-          </div>
+        <div className={`flex items-center gap-2 text-sm mb-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <Shield className="w-4 h-4" />
+          Assigned Roles
         </div>
+        {(user.roles?.length ?? 0) > 0 ? (
+          <div className="space-y-1">
+            {user.roles!.map((role) => (
+              <div key={role.slug} className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                • {role.name}
+                {role.description && (
+                  <span className={`text-xs ml-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                    ({role.description})
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            No roles assigned
+          </div>
+        )}
       </div>
 
       {/* Active Sessions */}

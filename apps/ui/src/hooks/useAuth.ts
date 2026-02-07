@@ -7,7 +7,7 @@ import {
   refreshToken as refreshTokenApi,
   getUserByUsername
 } from '@/api/endpoints'
-import type { User, LoginRequest, UseAuthReturn } from '@/types'
+import type { UserResponse, LoginRequest, UseAuthReturn } from '@/types'
 
 export function useAuth(): UseAuthReturn {
   const navigate = useNavigate()
@@ -15,7 +15,7 @@ export function useAuth(): UseAuthReturn {
   const queryClient = useQueryClient()
   const { accessToken, refreshToken, setTokens, clearTokens, getUsername, isTokenExpired } = useAuthStore()
 
-  const { data: user, isLoading, error, refetch } = useQuery<User>({
+  const { data: user, isLoading, error, refetch } = useQuery<UserResponse>({
     queryKey: ['currentUser', getUsername()],
     queryFn: async () => {
       const username = getUsername()

@@ -1,9 +1,10 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Settings, User, Rocket, FolderKanban, Activity, BarChart3, Plus, ChevronDown, UserCircle, LogOut, Moon, Sun } from 'lucide-react'
+import { Settings, User, Rocket, FolderKanban, Activity, BarChart3, Plus, ChevronDown, UserCircle, LogOut, Moon, Sun, Building2 } from 'lucide-react'
 import { Button } from './ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
 import { Gravatar } from './ui/gravatar'
 import { useAuth } from '@/hooks/useAuth'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { UserResponse } from '@/types'
 import imbiLogo from '@/assets/logo.svg'
 import { useMemo } from 'react'
@@ -28,6 +29,7 @@ export function Navigation({
   onThemeToggle
 }: NavigationProps) {
   const { user, logout } = useAuth()
+  const { organizations, selectedOrganization, setSelectedOrganization } = useOrganization()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -106,6 +108,43 @@ export function Navigation({
 
         {/* Right Side Actions */}
         <div className="flex items-center gap-3">
+          {/* Organization Selector */}
+          {organizations.length > 0 && selectedOrganization && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`gap-2 max-w-[200px] ${
+                    isDarkMode
+                      ? 'border-gray-600 text-gray-300 hover:bg-gray-700 bg-gray-800'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50 bg-white'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate">
+                    {selectedOrganization.name}
+                  </span>
+                  <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {organizations.map((org) => (
+                  <DropdownMenuItem
+                    key={org.slug}
+                    onClick={() => setSelectedOrganization(org)}
+                    className={selectedOrganization.slug === org.slug ? 'font-medium' : ''}
+                  >
+                    <div className="flex flex-col">
+                      <span>{org.name}</span>
+                      <span className="text-xs text-muted-foreground">{org.slug}</span>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
           {/* Quick Actions Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

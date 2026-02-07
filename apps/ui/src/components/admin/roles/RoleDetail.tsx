@@ -7,7 +7,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Gravatar } from '@/components/ui/gravatar'
 import { getRole, getAdminSettings, getRoleUsers, getRoleGroups, grantPermission, revokePermission } from '@/api/endpoints'
-import type { Permission, RoleUser, Group } from '@/types'
+import type { Permission, RoleUser } from '@/types'
 
 interface RoleDetailProps {
   slug: string
@@ -483,7 +483,7 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
               isDarkMode ? 'text-blue-400' : 'text-blue-600'
             }`} />
             <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-blue-700'}`}>
-              Role assignments to groups are managed via Group Management. All members of a group inherit the group's roles.
+              Role assignments to teams are managed via Team Management. All members of a team inherit the team's roles.
             </div>
           </div>
 
@@ -510,7 +510,7 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
             <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               <UsersRound className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <div>No groups assigned this role</div>
-              <div className="text-sm mt-1">Assign this role to groups via Group Management</div>
+              <div className="text-sm mt-1">Assign this role to teams via Team Management</div>
             </div>
           ) : (
             <div className={`rounded-lg border overflow-hidden ${
@@ -523,7 +523,7 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
                 <div>Description</div>
               </div>
               <div className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
-                {roleGroups.map((group: Group) => (
+                {roleGroups.map((group: { name: string; slug: string; description?: string | null }) => (
                   <div key={group.slug} className="grid grid-cols-[1fr_1fr] gap-4 items-center px-4 py-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`p-1.5 rounded ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>

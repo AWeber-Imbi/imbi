@@ -46,6 +46,7 @@
     "@radix-ui/react-tooltip": "^1.1.6",
     "@tanstack/react-query": "^5.66.1",
     "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "axios": "^1.7.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

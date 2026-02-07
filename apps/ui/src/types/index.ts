@@ -156,7 +156,7 @@ export interface UserResponse extends User {
 }
 
 export interface UseAuthReturn {
-  user: User | null
+  user: UserResponse | null
   isAuthenticated: boolean
   isLoading: boolean
   error: Error | null
@@ -228,33 +228,6 @@ export interface RoleUser {
   avatar_url?: string | null
 }
 
-export interface Group {
-  name: string
-  slug: string
-  description?: string | null
-  icon_url?: string | null
-  parent?: Group | null
-  roles: Role[]
-}
-
-export interface GroupCreate {
-  name: string
-  slug: string
-  description?: string | null
-  icon?: string | null
-}
-
-export interface GroupMember {
-  email: string
-  display_name: string
-  is_active: boolean
-  is_admin: boolean
-  is_service_account: boolean
-  created_at: string
-  last_login?: string | null
-  avatar_url?: string | null
-}
-
 export interface AdminUser {
   email: string
   display_name: string
@@ -264,7 +237,7 @@ export interface AdminUser {
   created_at: string
   last_login?: string | null
   avatar_url?: string | null
-  groups: Group[]
+  groups: { name: string; slug: string; description?: string | null; roles: Role[] }[]
   roles: Role[]
 }
 
@@ -275,6 +248,83 @@ export interface AdminUserCreate {
   is_active?: boolean
   is_admin?: boolean
   is_service_account?: boolean
+}
+
+// Organization types
+export interface Organization {
+  name: string
+  slug: string
+  description?: string | null
+  icon_url?: string | null
+  created_at: string
+  last_modified_at?: string | null
+}
+
+export interface OrganizationCreate {
+  name: string
+  slug: string
+  description?: string | null
+  icon_url?: string | null
+}
+
+// Team types
+export interface Team {
+  name: string
+  slug: string
+  description?: string | null
+  icon_url?: string | null
+  organization: {
+    name: string
+    slug: string
+  }
+  created_at: string
+  last_modified_at?: string | null
+  [key: string]: unknown
+}
+
+export interface TeamCreate {
+  name: string
+  slug: string
+  description?: string | null
+  icon_url?: string | null
+  organization_slug: string
+  [key: string]: unknown
+}
+
+export interface TeamMember {
+  email: string
+  display_name: string
+  is_active: boolean
+  is_admin: boolean
+  is_service_account: boolean
+  created_at: string
+  last_login?: string | null
+  avatar_url?: string | null
+}
+
+// Upload types
+export interface Upload {
+  id: string
+  filename: string
+  content_type: string
+  size: number
+  has_thumbnail: boolean
+  uploaded_by: string
+  created_at: string
+}
+
+// API Key types
+export interface ApiKey {
+  id: string
+  name: string
+  prefix: string
+  created_at: string
+  last_used_at?: string | null
+  expires_at?: string | null
+}
+
+export interface ApiKeyCreated extends ApiKey {
+  token: string
 }
 
 // Blueprint types

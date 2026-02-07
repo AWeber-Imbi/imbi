@@ -4,7 +4,7 @@ import { Save, X, AlertTriangle, Eye, EyeOff, Check, X as XIcon, AlertCircle } f
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { Gravatar } from '../../ui/gravatar'
-import { getGroups, getRoles } from '@/api/endpoints'
+import { getRoles } from '@/api/endpoints'
 import type { AdminUser, AdminUserCreate } from '@/types'
 
 interface UserFormProps {
@@ -34,20 +34,12 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
   const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false)
   const [isServiceAccount, setIsServiceAccount] = useState(user?.is_service_account ?? false)
 
-  // Groups and roles - store slugs
-  const [selectedGroupSlugs, setSelectedGroupSlugs] = useState<string[]>(
-    user?.groups.map(g => g.slug) || []
-  )
+  // Roles - store slugs
   const [selectedRoleSlugs, setSelectedRoleSlugs] = useState<string[]>(
     user?.roles.map(r => r.slug) || []
   )
 
-  // Fetch available groups and roles
-  const { data: availableGroups = [], isLoading: groupsLoading } = useQuery({
-    queryKey: ['groups'],
-    queryFn: getGroups
-  })
-
+  // Fetch available roles
   const { data: availableRoles = [], isLoading: rolesLoading } = useQuery({
     queryKey: ['roles'],
     queryFn: getRoles
@@ -559,59 +551,7 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
         </div>
       </div>
 
-      {/* Section 3: Group Membership */}
-      <div className={`p-6 rounded-lg border ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
-        <h3 className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          Group Membership
-        </h3>
-
-        {groupsLoading ? (
-          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Loading groups...
-          </p>
-        ) : availableGroups.length === 0 ? (
-          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            No groups available
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {availableGroups.map((group) => (
-              <label key={group.slug} className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedGroupSlugs.includes(group.slug)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedGroupSlugs([...selectedGroupSlugs, group.slug])
-                    } else {
-                      setSelectedGroupSlugs(selectedGroupSlugs.filter(s => s !== group.slug))
-                    }
-                  }}
-                  disabled={isLoading}
-                  className="rounded mt-0.5"
-                />
-                <div className="flex-1">
-                  <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
-                    {group.name}
-                  </span>
-                  {group.description && (
-                    <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                      {group.description}
-                    </p>
-                  )}
-                </div>
-              </label>
-            ))}
-          </div>
-        )}
-        <p className={`text-xs mt-3 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-          Note: Group assignments may need to be configured separately after user creation, depending on backend implementation.
-        </p>
-      </div>
-
-      {/* Section 4: Role Assignments */}
+      {/* Section 3: Role Assignments */}
       <div className={`p-6 rounded-lg border ${
         isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
       }`}>

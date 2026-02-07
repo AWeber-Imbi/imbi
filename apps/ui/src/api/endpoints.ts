@@ -15,15 +15,20 @@ import type {
   AdminUser,
   AdminUserCreate,
   AdminSettings,
-  Group,
-  GroupCreate,
-  GroupMember,
   Role,
   RoleDetail,
   RoleCreate,
   RoleUser,
   Blueprint,
-  BlueprintCreate
+  BlueprintCreate,
+  Organization,
+  OrganizationCreate,
+  Team,
+  TeamCreate,
+  TeamMember,
+  Upload,
+  ApiKey,
+  ApiKeyCreated
 } from '@/types'
 
 // Status/Health
@@ -123,47 +128,6 @@ export const updateAdminUser = (email: string, user: AdminUserCreate) =>
 export const deleteAdminUser = (email: string) =>
   apiClient.delete<void>(`/users/${encodeURIComponent(email)}`)
 
-// Admin - Groups Management
-export const getGroups = async (): Promise<Group[]> => {
-  try {
-    const response = await apiClient.get<Group[]>('/groups/')
-    console.log('[API] getGroups response:', response)
-    return Array.isArray(response) ? response : []
-  } catch (error) {
-    console.error('[API] getGroups error:', error)
-    return []
-  }
-}
-
-export const getGroup = (slug: string) =>
-  apiClient.get<Group>(`/groups/${encodeURIComponent(slug)}`)
-
-export const createGroup = (group: GroupCreate) =>
-  apiClient.post<Group>('/groups/', group)
-
-export const updateGroup = (slug: string, group: GroupCreate) =>
-  apiClient.put<Group>(`/groups/${encodeURIComponent(slug)}`, group)
-
-export const deleteGroup = (slug: string) =>
-  apiClient.delete<void>(`/groups/${encodeURIComponent(slug)}`)
-
-export const getGroupMembers = async (slug: string): Promise<GroupMember[]> => {
-  const response = await apiClient.get<GroupMember[]>(
-    `/groups/${encodeURIComponent(slug)}/members`
-  )
-  return Array.isArray(response) ? response : []
-}
-
-export const assignGroupRole = (slug: string, roleSlug: string) =>
-  apiClient.post<void>(`/groups/${encodeURIComponent(slug)}/roles`, {
-    role_slug: roleSlug
-  })
-
-export const unassignGroupRole = (slug: string, roleSlug: string) =>
-  apiClient.delete<void>(
-    `/groups/${encodeURIComponent(slug)}/roles/${encodeURIComponent(roleSlug)}`
-  )
-
 // Admin - Roles Management
 export const getRoles = async (): Promise<Role[]> => {
   try {
@@ -205,8 +169,8 @@ export const getRoleUsers = async (slug: string): Promise<RoleUser[]> => {
   return Array.isArray(response) ? response : []
 }
 
-export const getRoleGroups = async (slug: string): Promise<Group[]> => {
-  const response = await apiClient.get<Group[]>(
+export const getRoleGroups = async (slug: string): Promise<{ name: string; slug: string }[]> => {
+  const response = await apiClient.get<{ name: string; slug: string }[]>(
     `/roles/${encodeURIComponent(slug)}/groups`
   )
   return Array.isArray(response) ? response : []
@@ -260,3 +224,171 @@ export const deleteBlueprint = (type: string, slug: string) =>
 
 export const refreshBlueprintSchemas = () =>
   apiClient.post<{ refreshed_models: number }>('/schema/refresh', {})
+
+// Admin - Organizations
+export const listOrganizations = async (): Promise<Organization[]> => {
+  const response = await apiClient.get<Organization[]>('/organizations/')
+  return Array.isArray(response) ? response : []
+}
+
+export const getOrganization = (slug: string) =>
+  apiClient.get<Organization>(`/organizations/${encodeURIComponent(slug)}`)
+
+export const createOrganization = (org: OrganizationCreate) =>
+  apiClient.post<Organization>('/organizations/', org)
+
+export const updateOrganization = (slug: string, org: OrganizationCreate) =>
+  apiClient.put<Organization>(`/organizations/${encodeURIComponent(slug)}`, org)
+
+export const deleteOrganization = (slug: string) =>
+  apiClient.delete<void>(`/organizations/${encodeURIComponent(slug)}`)
+
+// Dynamic blueprint schema extraction from OpenAPI spec
+
+export interface DynamicFieldSchema {
+  type?: string
+  format?: string
+  title?: string
+  description?: string
+  enum?: string[]
+  default?: unknown
+  minLength?: number
+  maxLength?: number
+  minimum?: number
+  maximum?: number
+}
+
+export interface DynamicSchema {
+  properties: Record<string, DynamicFieldSchema>
+  required?: string[]
+}
+
+// Flatten Pydantic/OpenAPI 3.1 anyOf nullable patterns.
+// e.g. { anyOf: [{type:"string",format:"email"},{type:"null"}] } → {type:"string",format:"email"}
+function flattenNullableAnyOf(prop: Record<string, unknown>): DynamicFieldSchema {
+  const anyOf = prop.anyOf as Record<string, unknown>[] | undefined
+  if (!Array.isArray(anyOf)) return prop as DynamicFieldSchema
+  const nonNull = anyOf.filter((v) => v.type !== 'null')
+  if (nonNull.length === 1) {
+    const { anyOf: _, ...rest } = prop
+    return { ...rest, ...nonNull[0] } as DynamicFieldSchema
+  }
+  return prop as DynamicFieldSchema
+}
+
+interface OpenApiResponse {
+  components?: {
+    schemas?: Record<string, {
+      properties?: Record<string, Record<string, unknown>>
+      required?: string[]
+    }>
+  }
+}
+
+/**
+ * Fetch the dynamic (blueprint) fields for a given OpenAPI schema name,
+ * filtering out the provided base fields.
+ */
+export const getDynamicSchema = async (
+  schemaName: string,
+  baseFields: string[]
+): Promise<DynamicSchema | null> => {
+  const response = await apiClient.get<OpenApiResponse>('/openapi.json')
+  const schema = response.components?.schemas?.[schemaName]
+  if (!schema?.properties) return null
+  const baseSet = new Set(baseFields)
+  const dynamicProperties: Record<string, DynamicFieldSchema> = {}
+  for (const [key, value] of Object.entries(schema.properties)) {
+    if (!baseSet.has(key)) {
+      dynamicProperties[key] = flattenNullableAnyOf(value)
+    }
+  }
+  if (Object.keys(dynamicProperties).length === 0) return null
+  const dynamicRequired = Array.isArray(schema.required)
+    ? schema.required.filter((key) => !baseSet.has(key))
+    : []
+  return {
+    properties: dynamicProperties,
+    ...(dynamicRequired.length > 0 ? { required: dynamicRequired } : {}),
+  }
+}
+
+const TEAM_BASE_FIELDS = [
+  'name', 'slug', 'description', 'icon', 'icon_url',
+  'organization', 'organization_slug', 'created_at', 'last_modified_at',
+]
+
+export const getTeamSchema = () =>
+  getDynamicSchema('TeamWithBlueprints', TEAM_BASE_FIELDS)
+
+// Admin - Teams
+export const listTeams = async (): Promise<Team[]> => {
+  const response = await apiClient.get<Team[]>('/teams/')
+  return Array.isArray(response) ? response : []
+}
+
+export const getTeam = (slug: string) =>
+  apiClient.get<Team>(`/teams/${encodeURIComponent(slug)}`)
+
+export const createTeam = (team: TeamCreate) =>
+  apiClient.post<Team>('/teams/', team)
+
+export const updateTeam = (slug: string, team: TeamCreate) =>
+  apiClient.put<Team>(`/teams/${encodeURIComponent(slug)}`, team)
+
+export const deleteTeam = (slug: string) =>
+  apiClient.delete<void>(`/teams/${encodeURIComponent(slug)}`)
+
+export const getTeamMembers = async (slug: string): Promise<TeamMember[]> => {
+  const response = await apiClient.get<TeamMember[]>(
+    `/teams/${encodeURIComponent(slug)}/members`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const addTeamMember = (slug: string, email: string) =>
+  apiClient.post<void>(`/teams/${encodeURIComponent(slug)}/members`, { email })
+
+export const removeTeamMember = (slug: string, email: string) =>
+  apiClient.delete<void>(
+    `/teams/${encodeURIComponent(slug)}/members/${encodeURIComponent(email)}`
+  )
+
+// Uploads
+export const uploadFile = (file: File): Promise<Upload> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiClient.postFormData<Upload>('/uploads/', formData)
+}
+
+export const getUploadUrl = (id: string): string => {
+  const baseUrl = import.meta.env.VITE_API_URL || '/api'
+  return `${baseUrl}/uploads/${encodeURIComponent(id)}`
+}
+
+export const getUploadThumbnailUrl = (id: string): string => {
+  const baseUrl = import.meta.env.VITE_API_URL || '/api'
+  return `${baseUrl}/uploads/${encodeURIComponent(id)}/thumbnail`
+}
+
+export const deleteUpload = (id: string) =>
+  apiClient.delete<void>(`/uploads/${encodeURIComponent(id)}`)
+
+// API Keys
+export const listApiKeys = async (email: string): Promise<ApiKey[]> => {
+  const response = await apiClient.get<ApiKey[]>(
+    `/users/${encodeURIComponent(email)}/api-keys`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createApiKey = (email: string, name?: string) =>
+  apiClient.post<ApiKeyCreated>(
+    `/users/${encodeURIComponent(email)}/api-keys`,
+    { name: name || 'default' }
+  )
+
+export const deleteApiKey = (email: string, keyId: string) =>
+  apiClient.delete<void>(
+    `/users/${encodeURIComponent(email)}/api-keys/${encodeURIComponent(keyId)}`
+  )

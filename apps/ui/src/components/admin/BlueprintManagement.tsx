@@ -398,6 +398,11 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
               <th
                 className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
               >
+                Slug
+              </th>
+              <th
+                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Type
               </th>
               <th
@@ -431,7 +436,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
           >
             {filteredBlueprints.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center">
+                <td colSpan={7} className="px-4 py-12 text-center">
                   <div
                     className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                   >
@@ -474,6 +479,9 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
                         )}
                       </div>
                     </div>
+                  </td>
+                  <td className={`px-4 py-3 text-sm font-mono ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {bp.slug}
                   </td>
                   <td className="px-4 py-3">
                     <span

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Filter, Edit2, Trash2, Power, Crown, Bot, AlertCircle } from 'lucide-react'
+import { Plus, Search, Filter, Edit2, Trash2, Power, Crown, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Gravatar } from '../ui/gravatar'
@@ -14,7 +14,7 @@ interface UserManagementProps {
 }
 
 type ViewMode = 'list' | 'create' | 'edit' | 'detail'
-type UserFilter = 'all' | 'users' | 'service' | 'admins'
+type UserFilter = 'all' | 'users' | 'admins'
 type StatusFilter = 'all' | 'active' | 'inactive'
 
 export function UserManagement({ isDarkMode }: UserManagementProps) {
@@ -84,8 +84,11 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     }
   })
 
-  // Filter users locally (since API only supports is_active and is_admin filters)
+  // Filter users locally - exclude service accounts (managed separately)
   const filteredUsers = users.filter(user => {
+    // Exclude service accounts - they have their own management section
+    if (user.is_service_account) return false
+
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
@@ -97,8 +100,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
 
     // Type filter
     if (userFilter === 'admins' && !user.is_admin) return false
-    if (userFilter === 'service' && !user.is_service_account) return false
-    if (userFilter === 'users' && (user.is_admin || user.is_service_account)) return false
+    if (userFilter === 'users' && user.is_admin) return false
 
     // Status filter
     if (statusFilter === 'active' && !user.is_active) return false
@@ -263,7 +265,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
             Users
           </h2>
           <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Manage user accounts, service accounts, and administrators
+            Manage user accounts and administrators
           </p>
         </div>
         <Button
@@ -306,7 +308,6 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
           >
             <option value="all">All Types</option>
             <option value="users">Regular Users</option>
-            <option value="service">Service Accounts</option>
             <option value="admins">Administrators</option>
           </select>
 
@@ -452,23 +453,14 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      {user.is_admin && (
+                      {user.is_admin ? (
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
                           isDarkMode ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'
                         }`}>
                           <Crown className="w-3 h-3" />
                           Admin
                         </span>
-                      )}
-                      {user.is_service_account && (
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                          isDarkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-100 text-purple-700'
-                        }`}>
-                          <Bot className="w-3 h-3" />
-                          Service
-                        </span>
-                      )}
-                      {!user.is_admin && !user.is_service_account && (
+                      ) : (
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
                           isDarkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700'
                         }`}>
@@ -540,7 +532,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       {/* Summary */}
       {filteredUsers.length > 0 && (
         <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          Showing {filteredUsers.length} of {users.length} user(s)
+          Showing {filteredUsers.length} of {users.filter(u => !u.is_service_account).length} user(s)
         </div>
       )}
     </div>
