@@ -32,8 +32,9 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
 
     setError('')
 
-    if (!file.type.startsWith('image/')) {
-      setError('Please upload an image file')
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/svg+xml']
+    if (!allowedTypes.includes(file.type)) {
+      setError('Please upload a PNG, JPG, or SVG image')
       input.value = ''
       return
     }
@@ -113,7 +114,7 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept=".png,.jpg,.jpeg,.svg"
             onChange={handleFileChange}
             className="hidden"
           />
