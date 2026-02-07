@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Save, X, Eye, EyeOff, Check, X as XIcon, AlertCircle } from 'lucide-react'
-import { Button } from '../../ui/button'
-import { Input } from '../../ui/input'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import type { AdminUser, AdminUserCreate } from '@/types'
 
 interface ServiceAccountFormProps {
@@ -19,7 +19,6 @@ export function ServiceAccountForm({ account, onSave, onCancel, isDarkMode, isLo
   // Basic info
   const [email, setEmail] = useState(account?.email || '')
   const [displayName, setDisplayName] = useState(account?.display_name || '')
-  const [description, setDescription] = useState('')
 
   // Password
   const [changePassword, setChangePassword] = useState(!isEditing)
@@ -263,24 +262,6 @@ export function ServiceAccountForm({ account, onSave, onCancel, isDarkMode, isLo
             )}
           </div>
 
-          {/* Description */}
-          <div className="col-span-2">
-            <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              Description
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={isLoading}
-              placeholder="Purpose and usage of this service account..."
-              rows={3}
-              className={`w-full px-3 py-2 rounded-lg border ${
-                isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder:text-gray-400'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-500'
-              }`}
-            />
-          </div>
         </div>
       </div>
 

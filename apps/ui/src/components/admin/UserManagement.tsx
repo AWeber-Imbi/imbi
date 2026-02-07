@@ -532,7 +532,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       {/* Summary */}
       {filteredUsers.length > 0 && (
         <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          Showing {filteredUsers.length} of {users.length} user(s)
+          Showing {filteredUsers.length} of {users.filter(u => !u.is_service_account).length} user(s)
         </div>
       )}
     </div>

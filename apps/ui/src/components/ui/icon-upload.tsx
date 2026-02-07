@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { Upload, X, AlertCircle } from 'lucide-react'
-import { Button } from './button'
-import { uploadFile, getUploadThumbnailUrl } from '@/api/endpoints'
+import { Button } from '@/components/ui/button'
+import { uploadFile, getUploadThumbnailUrl, deleteUpload } from '@/api/endpoints'
 
 interface IconUploadProps {
   value?: string
@@ -47,6 +47,15 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
   }
 
   const handleRemove = () => {
+    // Best-effort cleanup: delete the uploaded file from storage
+    if (value) {
+      const match = value.match(/\/uploads\/(.+)$/)
+      if (match) {
+        deleteUpload(match[1]).catch(() => {
+          // Ignore delete errors - the file may already be gone
+        })
+      }
+    }
     onChange('')
     setError('')
     if (fileInputRef.current) {

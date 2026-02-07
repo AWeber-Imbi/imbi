@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Edit2, Power, Clock, Mail, Calendar, Key, Copy, Plus, Trash2, AlertCircle } from 'lucide-react'
-import { Button } from '../../ui/button'
+import { Button } from '@/components/ui/button'
 import { listApiKeys, createApiKey, deleteApiKey } from '@/api/endpoints'
 import type { AdminUser, ApiKey, ApiKeyCreated } from '@/types'
 
@@ -52,7 +52,7 @@ export function ServiceAccountDetail({ account, onEdit, onBack, isDarkMode }: Se
 
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return 'Never'
-    return new Date(dateString).toLocaleString('en-US', {
+    return new Date(dateString).toLocaleString(undefined, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',

@@ -483,7 +483,7 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
               isDarkMode ? 'text-blue-400' : 'text-blue-600'
             }`} />
             <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-blue-700'}`}>
-              Role assignments to groups are managed via Group Management. All members of a group inherit the group's roles.
+              Role assignments to teams are managed via Team Management. All members of a team inherit the team's roles.
             </div>
           </div>
 
@@ -510,7 +510,7 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
             <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               <UsersRound className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <div>No groups assigned this role</div>
-              <div className="text-sm mt-1">Assign this role to groups via Group Management</div>
+              <div className="text-sm mt-1">Assign this role to teams via Team Management</div>
             </div>
           ) : (
             <div className={`rounded-lg border overflow-hidden ${

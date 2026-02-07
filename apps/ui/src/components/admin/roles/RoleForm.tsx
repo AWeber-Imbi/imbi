@@ -359,9 +359,11 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
                 const err = validateSlug(slug)
                 if (err) setValidationErrors({ ...validationErrors, slug: err })
               }}
-              disabled={isLoading}
+              disabled={isLoading || isSystemRole}
               placeholder="e.g. project-manager"
-              className={`font-mono ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`font-mono ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} ${
+                isSystemRole ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             />
             {!isEditing && !slugManuallyEdited && name && (
               <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>

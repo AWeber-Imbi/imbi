@@ -60,7 +60,7 @@ function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   // Check if user has admin privileges
-  const isAdmin = (user as any)?.is_admin === true
+  const isAdmin = user?.is_admin === true
   if (!isAdmin) {
     return <Navigate to="/dashboard" replace />
   }

@@ -1,7 +1,7 @@
 import Ajv from 'ajv'
 import addFormats from 'ajv-formats'
 import { AlertCircle } from 'lucide-react'
-import { Input } from './input'
+import { Input } from '@/components/ui/input'
 import type { DynamicFieldSchema, DynamicSchema } from '@/api/endpoints'
 
 const ajv = new Ajv({ allErrors: true })
@@ -147,7 +147,13 @@ export function DynamicFormFields({
             <Input
               type={getInputType(field)}
               value={value}
-              onChange={(e) => onChange(key, e.target.value || undefined)}
+              onChange={(e) => {
+                const raw = e.target.value
+                if (raw === '') return onChange(key, undefined)
+                if (field.type === 'integer') return onChange(key, Number.parseInt(raw, 10))
+                if (field.type === 'number') return onChange(key, Number.parseFloat(raw))
+                return onChange(key, raw)
+              }}
               disabled={isLoading}
               min={field.minimum}
               max={field.maximum}

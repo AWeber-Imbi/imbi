@@ -16,7 +16,7 @@ const OrganizationContext = createContext<OrganizationContextValue | null>(null)
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(() =>
-    sessionStorage.getItem(ORG_STORAGE_KEY)
+    localStorage.getItem(ORG_STORAGE_KEY)
   )
 
   const { data: organizations = [], isLoading } = useQuery({
@@ -28,7 +28,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (organizations.length > 0 && !organizations.find(o => o.slug === selectedSlug)) {
       const firstOrg = organizations[0]
-      sessionStorage.setItem(ORG_STORAGE_KEY, firstOrg.slug)
+      localStorage.setItem(ORG_STORAGE_KEY, firstOrg.slug)
       setSelectedSlug(firstOrg.slug)
     }
   }, [organizations, selectedSlug])
@@ -36,7 +36,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   const selectedOrganization = organizations.find(o => o.slug === selectedSlug) || null
 
   const setSelectedOrganization = useCallback((org: Organization) => {
-    sessionStorage.setItem(ORG_STORAGE_KEY, org.slug)
+    localStorage.setItem(ORG_STORAGE_KEY, org.slug)
     setSelectedSlug(org.slug)
   }, [])
 

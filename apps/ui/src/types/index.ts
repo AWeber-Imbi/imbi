@@ -156,7 +156,7 @@ export interface UserResponse extends User {
 }
 
 export interface UseAuthReturn {
-  user: User | null
+  user: UserResponse | null
   isAuthenticated: boolean
   isLoading: boolean
   error: Error | null
