@@ -100,6 +100,7 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
             variant="ghost"
             size="sm"
             onClick={handleRemove}
+            aria-label="Remove uploaded icon"
             className={isDarkMode ? 'text-red-400 hover:text-red-300 hover:bg-red-900/20' : 'text-red-600'}
           >
             <X className="w-4 h-4" />
