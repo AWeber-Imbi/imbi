@@ -359,17 +359,10 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
                 const err = validateSlug(slug)
                 if (err) setValidationErrors({ ...validationErrors, slug: err })
               }}
-              disabled={isLoading || isEditing}
+              disabled={isLoading}
               placeholder="e.g. project-manager"
-              className={`font-mono ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} ${
-                isEditing ? 'opacity-60 cursor-not-allowed' : ''
-              }`}
+              className={`font-mono ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
-            {isEditing && (
-              <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                Slug cannot be changed after creation
-              </p>
-            )}
             {!isEditing && !slugManuallyEdited && name && (
               <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 Auto-generated from name

@@ -7,7 +7,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Gravatar } from '@/components/ui/gravatar'
 import { getRole, getAdminSettings, getRoleUsers, getRoleGroups, grantPermission, revokePermission } from '@/api/endpoints'
-import type { Permission, RoleUser, Group } from '@/types'
+import type { Permission, RoleUser } from '@/types'
 
 interface RoleDetailProps {
   slug: string
@@ -523,7 +523,7 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
                 <div>Description</div>
               </div>
               <div className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
-                {roleGroups.map((group: Group) => (
+                {roleGroups.map((group: { name: string; slug: string; description?: string | null }) => (
                   <div key={group.slug} className="grid grid-cols-[1fr_1fr] gap-4 items-center px-4 py-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`p-1.5 rounded ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
