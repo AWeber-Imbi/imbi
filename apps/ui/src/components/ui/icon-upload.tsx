@@ -26,19 +26,22 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
   const isImageUrl = value && value.length > 0
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+    const input = e.target
+    const file = input.files?.[0]
     if (!file) return
 
     setError('')
 
     if (!file.type.startsWith('image/')) {
       setError('Please upload an image file')
+      input.value = ''
       return
     }
 
     const fileSizeKB = file.size / 1024
     if (fileSizeKB > maxSizeKB) {
       setError(`File size must be under ${maxSizeKB}KB (current: ${Math.round(fileSizeKB)}KB)`)
+      input.value = ''
       return
     }
 
@@ -47,6 +50,8 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
       onChange(`/uploads/${upload.id}`)
     } catch {
       setError('Failed to upload image')
+    } finally {
+      input.value = ''
     }
   }
 
@@ -80,7 +85,7 @@ export function IconUpload({ value, onChange, isDarkMode, maxSizeKB = 500 }: Ico
 
   return (
     <div className="space-y-3">
-      {isImageUrl && (
+      {isImageUrl && value && (
         <div className={`inline-flex items-center gap-3 p-3 rounded-lg border ${
           isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
         }`}>
