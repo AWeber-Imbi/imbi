@@ -8,13 +8,31 @@ serve *ARGS:
 
 [default]
 [private]
-ci: lint test
+ci: setup lint test
 
 [doc("Set up your development environment")]
 [group("Environment")]
-setup:
+setup: docker
     uv sync --all-groups --all-extras --frozen
     uv run pre-commit install --install-hooks --overwrite
+
+docker:
+    #!/usr/bin/env sh
+    set -e
+    get_port() {
+        if port="$(docker compose port "$@")"; then
+            echo "${port##*:}"
+            return 0
+        fi
+        echo "docker compose port $@ failed" >&2
+        return 1
+    }
+    docker compose up -d --wait || (docker compose logs && false)
+    pg_port=$(get_port postgres 5432)
+    test_host="${TEST_HOST:-127.0.0.1}"
+    cat>".env"<<-EOF
+    POSTGRES_URL="postgresql://postgres:secret@$test_host:$pg_port"
+    EOF
 
 [doc("Run tests")]
 [group("Testing")]
