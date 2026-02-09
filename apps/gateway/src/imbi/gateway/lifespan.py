@@ -168,6 +168,7 @@ class Lifespan(dict[LifespanHook, object | None]):
             - Uses AsyncExitStack to ensure proper cleanup even if hooks
               raise exceptions
         """
+
         @contextlib.asynccontextmanager
         async def cm() -> abc.AsyncIterator[dict[str, 'Lifespan']]:
             async with contextlib.AsyncExitStack() as stack:
