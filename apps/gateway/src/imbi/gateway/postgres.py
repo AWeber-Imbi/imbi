@@ -43,7 +43,7 @@ import psycopg_pool
 import pydantic
 import pydantic_settings
 
-from imbi_gateway import lifespan
+from imbi_gateway import helpers, lifespan
 
 type RowType = psycopg.rows.DictRow
 type ConnectionType = psycopg.AsyncConnection[RowType]
@@ -84,7 +84,7 @@ async def postgres_lifespan() -> abc.AsyncIterator[PoolType]:
     See Also:
         Settings: Configuration from environment variables
     """
-    settings = Settings()  # type: ignore[call-arg]
+    settings = helpers.settings_from_environment(Settings)
     async with psycopg_pool.AsyncConnectionPool(
         conninfo=str(settings.url),
         configure=_configure_connection,
