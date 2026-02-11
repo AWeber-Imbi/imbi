@@ -13,7 +13,6 @@ authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
 dependencies = [
   "fastapi>=0.128.0",
   "imbi-common[server]",
-  "pathlib>=1.0.1",
   "psycopg[binary,pool]~=3.3.2",
   "pydantic~=2.12",
 ]
