@@ -193,4 +193,30 @@ Key runtime dependencies (from `pyproject.toml`):
 - `fastapi>=0.128.0`
 - `imbi-common[server]` (git dependency, main branch)
 
-The project uses `uv` for package management with `--frozen` flag in CI to ensure reproducible builds.
+The project uses `uv` for package management with `--frozen` flag in
+CI to ensure reproducible builds.
+
+### Managing Dependencies
+
+**CRITICAL:** When working with project dependencies, follow these rules:
+
+1. **Do not add unnecessary dependencies**
+   - Only add packages that are truly required for the implementation
+   - Check if functionality is available in Python's standard library
+     before adding a third-party package
+   - Example: `pathlib` is part of the standard library (Python ≥3.4)
+     and should not be added as a dependency
+
+2. **Ask when uncertain**
+   - If you cannot determine whether a package is necessary, ask the
+     human in the loop before adding it
+   - Consider whether the functionality could be implemented without an
+     additional dependency
+
+3. **NEVER edit pyproject.toml directly**
+   - Always use `uv` commands to manage dependencies
+   - To add a dependency: `uv add package-name`
+   - To remove a dependency: `uv remove package-name`
+   - To add a dev dependency: `uv add --dev package-name`
+   - Direct edits to `pyproject.toml` bypass `uv`'s dependency
+     resolution and lock file management
