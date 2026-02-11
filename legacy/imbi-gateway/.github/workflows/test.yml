@@ -12,18 +12,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+      - name: Install just
+        uses: extractions/setup-just@v2
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - name: Install dependencies
-        run: uv sync --all-groups --all-extras --frozen
-      - name: Run pre-commit checks
-        run: uv run pre-commit run --all-files
-      - name: Check types
-        run: |
-          uv run basedpyright
-          uv run mypy
+      - name: Run lint checks
+        run: just lint
 
   test:
     name: "Automated Tests"
@@ -35,6 +31,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+      - name: Install just
+        uses: extractions/setup-just@v2
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -43,4 +41,4 @@ jobs:
       - name: Run tests
         env:
           UV_FROZEN: "1"
-        run: uv run pytest
+        run: just test

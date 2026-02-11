@@ -1,18 +1,15 @@
 [doc("Bootstrap the environment and run the service in the foreground")]
 [group("Testing")]
-serve *ARGS:
-    -uv run imbi-gateway serve {{ARGS}}
-
-# I would use [no-exit-message] here instead but it doesn't prevent a message
-# when I Ctrl+C the process (https://github.com/casey/just/issues/2895)
+serve *ARGS: setup docker
+    -uv run --env-file=.env imbi-gateway serve {{ARGS}}
 
 [default]
 [private]
-ci: setup lint test
+ci: lint test
 
 [doc("Set up your development environment")]
 [group("Environment")]
-setup: docker
+setup:
     uv sync --all-groups --all-extras --frozen
     uv run pre-commit install --install-hooks --overwrite
 
@@ -36,12 +33,12 @@ docker:
 
 [doc("Run tests")]
 [group("Testing")]
-test:
+test: setup docker
     uv run pytest
 
 [doc("Run linters")]
 [group("Testing")]
-lint:
+lint: setup
     uv run pre-commit run --all-files
     uv run basedpyright
     uv run mypy
@@ -51,6 +48,7 @@ lint:
 clean:
     rm -f .coverage .env
     rm -fR build
+    docker compose down --remove-orphans --volumes
 
 [confirm]
 [doc("Remove caches, virtual env, and output files")]
