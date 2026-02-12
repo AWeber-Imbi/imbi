@@ -1,7 +1,7 @@
 [doc("Bootstrap the environment and run the service in the foreground")]
 [group("Testing")]
 serve *ARGS: setup docker
-    -uv run --env-file=.env imbi-gateway serve {{ARGS}}
+    -uv run --env-file=.env imbi-gateway serve {{ ARGS }}
 
 [default]
 [private]
@@ -42,6 +42,19 @@ lint: setup
     uv run pre-commit run --all-files
     uv run basedpyright
     uv run mypy
+
+[doc("Reformat code (optionally pass specific files)")]
+[group("Development")]
+format *FILES: setup
+    #!/usr/bin/env sh
+    set -x
+    if [ "{{FILES}}" = '' ]; then
+        args='--all-files'
+    else
+        args='--files {{FILES}}'
+    fi
+    uv run pre-commit run ruff-format $args
+    uv run pre-commit run tombi-format $args
 
 [doc("Remove runtime artifacts")]
 [group("Environment")]

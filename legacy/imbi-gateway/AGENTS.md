@@ -39,6 +39,13 @@ just test               # Run all tests with coverage
 just lint               # Run all linters (pre-commit, basedpyright, mypy)
 ```
 
+### Formatting
+
+```bash
+just format             # Format all files using ruff and tombi
+just format <file>      # Format a specific file (useful for editor hooks)
+```
+
 ### Cleanup
 
 ```bash
@@ -140,13 +147,30 @@ The project depends heavily on the `imbi-common` library (from https://github.co
 
 When adding server features, check `imbi-common` first to reuse existing patterns.
 
-### Code Style
+### Code Style and Formatting
 
-- **Line length**: 79 characters (strict)
-- **Quotes**: Single quotes for strings
+**CRITICAL:** Do not attempt to manually apply formatting rules. The automated formatting tools (ruff, tombi) are the sole authority on code formatting. Their rules are complex and nuanced - what may appear as a formatting error to a human or AI agent may be intentionally allowed by the tools.
+
+**Formatting workflow:**
+1. Write code without worrying about formatting details
+2. Run `just format` to apply automated formatting
+3. If linting fails, run `just lint` to see errors
+4. The tools will auto-fix what they can; manually fix only what they flag as errors
+
+**Formatting tools and configuration:**
+- **Ruff**: Python code formatting and linting (configured in `pyproject.toml`)
+  - Enforces line length (79 characters with nuanced exceptions)
+  - Enforces single quotes for strings
+  - Auto-fixes many linting issues with `ruff-check --fix`
+- **Tombi**: TOML file formatting (configured in `.pre-commit-config.yaml`)
+- **Pre-commit hooks**: Automatically run formatters on commit (installed via `just setup`)
+
+**Other style requirements:**
 - **Type checking**: Strict mode enabled for both basedpyright and mypy
 - **Coverage requirement**: 90% minimum
 - Use type hints on all functions (enforced by strict type checking)
+
+**For AI agents:** Never suggest formatting changes or apply manual formatting corrections. Instead, direct users to run `just format` to apply automated formatting, or `just lint` to check for errors.
 
 ### Pre-commit Hooks
 
