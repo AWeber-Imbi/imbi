@@ -13,6 +13,7 @@ authors = [{ name = "Dave Shawley", email = "daves@aweber.com" }]
 dependencies = [
   "fastapi>=0.128.0",
   "imbi-common[server]",
+  "psycopg[binary,pool]~=3.3.2",
   "pydantic~=2.12",
 ]
 
@@ -49,6 +50,15 @@ packages = ["imbi_gateway", "tests"]
 deprecateTypingAliases = true
 reportMissingSuperCall = "hint"
 typeCheckingMode = "strict"
+
+[[tool.pyright.executionEnvironments]]
+root = "src"
+reportUnusedFunction = "warning"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportUnusedFunction = "none"  # flags decorated local functions used as request handlers
+extraPaths = ["src", "."]  # '.' allows imports from `tests` to work
 
 [tool.ruff]
 line-length = 79

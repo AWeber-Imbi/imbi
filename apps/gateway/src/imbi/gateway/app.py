@@ -8,6 +8,7 @@ import typer
 from imbi_common import server
 
 import imbi_gateway
+from imbi_gateway import lifespan, postgres
 
 
 class Status(pydantic.BaseModel):
@@ -26,23 +27,40 @@ class Status(pydantic.BaseModel):
         pydantic.Field(description='Application version', examples=['0.0.0']),
     ]
     started_at: datetime.datetime
+    postgres: t.Annotated[
+        dict[str, int],
+        pydantic.Field(
+            description='PostgreSQL connection pool statistics',
+            examples=[
+                {
+                    'pool_size': 5,
+                    'pool_available': 3,
+                    'requests_waiting': 0,
+                }
+            ],
+        ),
+    ]
 
 
 def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(
         version=imbi_gateway.version,
         started_at=datetime.datetime.now(datetime.UTC),
+        lifespan=lifespan.Lifespan(postgres.postgres_lifespan),
     )
     app.add_api_route('/status', status_endpoint, summary='Operational status')
     return app
 
 
-def status_endpoint(*, request: fastapi.Request) -> Status:
+def status_endpoint(
+    *, request: fastapi.Request, pool: postgres.PostgresPool
+) -> Status:
     return Status(
         environment=os.environ.get('ENVIRONMENT', 'development'),
         status='ok',
         version=request.app.version,
         started_at=request.app.extra['started_at'],
+        postgres=pool.get_stats(),
     )
 
 
