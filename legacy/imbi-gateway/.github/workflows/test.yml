@@ -42,3 +42,9 @@ jobs:
         env:
           UV_FROZEN: "1"
         run: just test
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: "build/coverage.xml"
+          flags: unittests
