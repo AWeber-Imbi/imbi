@@ -15,6 +15,7 @@ dependencies = [
   "imbi-common[server]",
   "psycopg[binary,pool]~=3.3.2",
   "pydantic~=2.12",
+  "yarl~=1.22.0",
 ]
 
 [project.scripts]

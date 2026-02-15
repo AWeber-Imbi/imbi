@@ -1,6 +1,7 @@
 import datetime
 
 import fastapi.testclient
+import yarl
 
 import imbi_gateway.app
 from tests import helpers
@@ -53,16 +54,27 @@ class AppTests(helpers.TestCase):
             body = response.json()
             self.assertIn('postgres', body)
 
+            postgres_status = body['postgres']
+            self.assertIsInstance(postgres_status, dict)
+
+            # Verify top-level keys
+            self.assertIn('url', postgres_status)
+            url = yarl.URL(postgres_status['url'])
+            self.assertEqual('***', url.password)
+
             # Verify postgres stats structure
-            postgres_stats = body['postgres']
-            self.assertIsInstance(postgres_stats, dict)
-
-            # Verify expected keys are present
-            self.assertIn('pool_size', postgres_stats)
-            self.assertIn('pool_available', postgres_stats)
-            self.assertIn('requests_waiting', postgres_stats)
-
-            # Verify values are integers
-            self.assertIsInstance(postgres_stats['pool_size'], int)
-            self.assertIsInstance(postgres_stats['pool_available'], int)
-            self.assertIsInstance(postgres_stats['requests_waiting'], int)
+            self.assertIn('pool_stats', postgres_status)
+            stats = postgres_status['pool_stats']
+            expected_stat_keys = {
+                'connections_num',
+                'connections_ms',
+                'pool_max',
+                'pool_min',
+                'pool_size',
+                'pool_available',
+                'requests_waiting',
+            }
+            self.assertIsInstance(stats, dict)
+            for key in expected_stat_keys:
+                self.assertIn(key, stats)
+                self.assertIsInstance(stats[key], int)

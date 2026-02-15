@@ -42,6 +42,7 @@ import psycopg.rows
 import psycopg_pool
 import pydantic
 import pydantic_settings
+import yarl
 
 from imbi_gateway import helpers, lifespan
 
@@ -64,6 +65,33 @@ class Settings(pydantic_settings.BaseSettings):
     model_config = pydantic_settings.SettingsConfigDict(env_prefix='POSTGRES_')
 
     url: pydantic.PostgresDsn
+
+
+class Status(pydantic.BaseModel):
+    url: t.Annotated[
+        str,
+        pydantic.Field(
+            title='Connection DSN',
+            examples=['postgresql://user:***@localhost/db'],
+        ),
+    ]
+    pool_stats: t.Annotated[
+        dict[str, int],
+        pydantic.Field(
+            title='Current postgres pool statistics',
+            examples=[
+                {
+                    'connections_num': 4,
+                    'connections_ms': 50,
+                    'pool_min': 4,
+                    'pool_max': 4,
+                    'pool_size': 4,
+                    'pool_available': 4,
+                    'requests_waiting': 0,
+                }
+            ],
+        ),
+    ]
 
 
 @contextlib.asynccontextmanager
@@ -156,6 +184,12 @@ def _get_pool(context: lifespan.InjectLifespan) -> PoolType:
     return context.get_state(postgres_lifespan)
 
 
+def _get_pool_status(*, pool: 'PostgresPool') -> Status:
+    settings = helpers.settings_from_environment(Settings)
+    dsn = yarl.URL(settings.url.encoded_string()).with_password('***')
+    return Status(url=str(dsn), pool_stats=pool.get_stats())
+
+
 PostgresPool = t.Annotated[PoolType, fastapi.Depends(_get_pool)]
 """Type alias for injecting PostgreSQL connection pool.
 
@@ -168,4 +202,20 @@ Example:
         @app.get('/stats')
         async def handler(*, pool: postgres.PostgresPool) -> dict:
             return pool.get_stats()
+"""
+
+PoolStatus = t.Annotated[Status, fastapi.Depends(_get_pool_status)]
+"""Type alias for injecting PostgreSQL pool status.
+
+Use this in route handler parameters to inject the current pool status,
+including the connection URL (with password redacted) and pool statistics
+like connection counts. The status reflects the live state of the
+connection pool.
+
+Example:
+    ::
+
+        @app.get('/health/postgres')
+        async def handler(*, status: postgres.PoolStatus) -> dict:
+            return status.model_dump()
 """

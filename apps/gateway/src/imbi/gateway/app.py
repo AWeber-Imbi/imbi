@@ -1,45 +1,11 @@
 import datetime
-import os
-import typing as t
 
 import fastapi
-import pydantic
 import typer
 from imbi_common import server
 
 import imbi_gateway
-from imbi_gateway import lifespan, postgres
-
-
-class Status(pydantic.BaseModel):
-    environment: t.Annotated[
-        str,
-        pydantic.Field(
-            description='Operating environment', examples=['production']
-        ),
-    ]
-    service: t.Annotated[
-        str, pydantic.Field(description='Service instance name')
-    ] = 'imbi-gateway'
-    status: t.Literal['ok', 'failing']
-    version: t.Annotated[
-        str,
-        pydantic.Field(description='Application version', examples=['0.0.0']),
-    ]
-    started_at: datetime.datetime
-    postgres: t.Annotated[
-        dict[str, int],
-        pydantic.Field(
-            description='PostgreSQL connection pool statistics',
-            examples=[
-                {
-                    'pool_size': 5,
-                    'pool_available': 3,
-                    'requests_waiting': 0,
-                }
-            ],
-        ),
-    ]
+from imbi_gateway import app_status, lifespan, postgres
 
 
 def create_app() -> fastapi.FastAPI:
@@ -48,20 +14,8 @@ def create_app() -> fastapi.FastAPI:
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(postgres.postgres_lifespan),
     )
-    app.add_api_route('/status', status_endpoint, summary='Operational status')
+    app.include_router(app_status.router)
     return app
-
-
-def status_endpoint(
-    *, request: fastapi.Request, pool: postgres.PostgresPool
-) -> Status:
-    return Status(
-        environment=os.environ.get('ENVIRONMENT', 'development'),
-        status='ok',
-        version=request.app.version,
-        started_at=request.app.extra['started_at'],
-        postgres=pool.get_stats(),
-    )
 
 
 cli = typer.Typer(no_args_is_help=True)
