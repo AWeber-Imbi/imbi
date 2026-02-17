@@ -1,6 +1,8 @@
 import datetime
+import os
 
 import fastapi.testclient
+import imbi_common.helpers
 import yarl
 
 import imbi_gateway.app
@@ -78,3 +80,20 @@ class AppTests(helpers.TestCase):
             for key in expected_stat_keys:
                 self.assertIn(key, stats)
                 self.assertIsInstance(stats[key], int)
+
+    def test_status_endpoint_postgres_password_redaction(self) -> None:
+        url = yarl.URL(os.environ['POSTGRES_URL'])
+        password = imbi_common.helpers.unwrap_as(str, url.password)
+        url = url.update_query({'password': password}).with_password(None)
+        with (
+            self.override_environment(POSTGRES_URL=str(url)),
+            fastapi.testclient.TestClient(
+                imbi_gateway.app.create_app()
+            ) as client,
+        ):
+            response = client.get('/status')
+            self.assertEqual(200, response.status_code)
+            body = response.json()
+            parsed = yarl.URL(body['postgres']['url'])
+            self.assertIsNone(parsed.password)
+            self.assertEqual('***', parsed.query.get('password'))

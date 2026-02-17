@@ -186,7 +186,11 @@ def _get_pool(context: lifespan.InjectLifespan) -> PoolType:
 
 def _get_pool_status(*, pool: 'PostgresPool') -> Status:
     settings = helpers.settings_from_environment(Settings)
-    dsn = yarl.URL(settings.url.encoded_string()).with_password('***')
+    dsn = yarl.URL(settings.url.encoded_string())
+    if dsn.password:
+        dsn = dsn.with_password('***')
+    if dsn.query.get('password'):
+        dsn = dsn.update_query(password='***')  # noqa: S106
     return Status(url=str(dsn), pool_stats=pool.get_stats())
 
 
