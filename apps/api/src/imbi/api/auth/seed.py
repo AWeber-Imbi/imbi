@@ -37,6 +37,16 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('project:read', 'project', 'read', 'View projects'),
     ('project:write', 'project', 'write', 'Create/update projects'),
     ('project:delete', 'project', 'delete', 'Delete projects'),
+    # Environment management
+    ('environment:create', 'environment', 'create', 'Create environments'),
+    ('environment:read', 'environment', 'read', 'View environments'),
+    ('environment:update', 'environment', 'update', 'Update environments'),
+    ('environment:delete', 'environment', 'delete', 'Delete environments'),
+    # Project type management
+    ('project_type:create', 'project_type', 'create', 'Create project types'),
+    ('project_type:read', 'project_type', 'read', 'View project types'),
+    ('project_type:update', 'project_type', 'update', 'Update project types'),
+    ('project_type:delete', 'project_type', 'delete', 'Delete project types'),
     # Upload management
     ('upload:create', 'upload', 'create', 'Upload files'),
     ('upload:read', 'upload', 'read', 'View and download uploads'),
@@ -62,8 +72,10 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'blueprint:write',
             'project:read',
             'project:write',
+            'environment:read',
             'organization:read',
             'organization:update',
+            'project_type:read',
             'team:read',
             'team:update',
             'user:read',
@@ -78,7 +90,9 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
         100,
         [
             'blueprint:read',
+            'environment:read',
             'project:read',
+            'project_type:read',
             'organization:read',
             'team:read',
             'user:read',
