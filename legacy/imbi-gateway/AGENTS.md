@@ -160,7 +160,7 @@ When adding server features, check `imbi-common` first to reuse existing pattern
 **Formatting tools and configuration:**
 - **Ruff**: Python code formatting and linting (configured in `pyproject.toml`)
   - Enforces line length (79 characters with nuanced exceptions)
-  - Enforces single quotes for strings
+  - Enforces single quotes for most strings, triple double quotes for docstrings
   - Auto-fixes many linting issues with `ruff-check --fix`
 - **Tombi**: TOML file formatting (configured in `.pre-commit-config.yaml`)
 - **Pre-commit hooks**: Automatically run formatters on commit (installed via `just setup`)
