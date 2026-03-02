@@ -100,8 +100,28 @@ class Neo4jAbstrationsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('ON MATCH SET', query)
         self.assertIn('RETURN elementId(node) AS nodeId', query)
 
-        # Verify constraint was used in query
-        self.assertIn('id: $id', query)
+        # Verify constraint was used in query (namespaced params)
+        self.assertIn('id: $_c_id', query)
+
+        # Verify namespaced constraint param was passed
+        params = call_args[1]
+        self.assertEqual(params['_c_id'], '123')
+
+    async def test_upsert_node_param_collision(self) -> None:
+        """Test upsert raises on _c_ namespace collision."""
+        import pydantic
+
+        class BadNode(pydantic.BaseModel):
+            id: str
+            collision: str = pydantic.Field(alias='_c_id')
+
+        self.mock_session.run.return_value = self.mock_result
+
+        bad_node = BadNode(id='123', _c_id='oops')
+        with self.assertRaises(ValueError) as ctx:
+            await neo4j.upsert(bad_node, {'id': '123'})
+        self.assertIn('_c_id', str(ctx.exception))
+        self.mock_session.run.assert_not_called()
 
     async def test_delete_node_found(self) -> None:
         """Test deleting a node that exists."""

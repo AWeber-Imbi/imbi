@@ -390,18 +390,20 @@ async def upsert(
         else:
             assignment.append(f'node.{key} = ${key}')
 
-    parameters = {}
-    parameters.update(constraint)
-    # Exclude auto_increment fields from parameters
-    parameters.update(
-        {
-            k: v
-            for k, v in properties.items()
-            if k not in auto_increment_aliases
-        }
-    )
+    # Namespace constraint params to avoid collisions with
+    # model properties (e.g. when renaming a slug)
+    constraint_params = {f'_c_{k}': v for k, v in constraint.items()}
+    model_params = {
+        k: v for k, v in properties.items() if k not in auto_increment_aliases
+    }
+    collisions = set(constraint_params).intersection(model_params)
+    if collisions:
+        raise ValueError(
+            f'Parameter namespace collision in upsert: {sorted(collisions)}'
+        )
+    parameters = {**constraint_params, **model_params}
 
-    where_props = _cypher_property_params(constraint)
+    where_props = ', '.join(f'{k}: $_c_{k}' for k in constraint)
 
     return_fields = 'elementId(node) AS nodeId'
     if auto_increment_aliases:
