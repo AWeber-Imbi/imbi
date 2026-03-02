@@ -56,4 +56,16 @@ INDEXES: list[str] = [
     # Uploads
     'CREATE CONSTRAINT upload_id_unique IF NOT EXISTS '
     'FOR (n:Upload) REQUIRE n.id IS UNIQUE;',
+    # AI Assistant Conversations
+    'CREATE CONSTRAINT conversation_id_unique IF NOT EXISTS '
+    'FOR (n:Conversation) REQUIRE n.id IS UNIQUE;',
+    'CREATE INDEX conversation_user_email IF NOT EXISTS '
+    'FOR (n:Conversation) ON (n.user_email);',
+    'CREATE INDEX conversation_updated_at IF NOT EXISTS '
+    'FOR (n:Conversation) ON (n.updated_at);',
+    # AI Assistant Messages
+    'CREATE CONSTRAINT message_id_unique IF NOT EXISTS '
+    'FOR (n:Message) REQUIRE n.id IS UNIQUE;',
+    'CREATE INDEX message_conversation_id IF NOT EXISTS '
+    'FOR (n:Message) ON (n.conversation_id);',
 ]
