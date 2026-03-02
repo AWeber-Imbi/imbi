@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import { TEAM_BASE_FIELDS } from '@/lib/constants'
 import type {
   ApiStatus,
   User,
@@ -312,11 +313,6 @@ export const getDynamicSchema = async (
     ...(dynamicRequired.length > 0 ? { required: dynamicRequired } : {}),
   }
 }
-
-const TEAM_BASE_FIELDS = [
-  'name', 'slug', 'description', 'icon', 'icon_url',
-  'organization', 'organization_slug', 'created_at', 'last_modified_at',
-]
 
 export const getTeamSchema = () =>
   getDynamicSchema('TeamWithBlueprints', TEAM_BASE_FIELDS)

@@ -27,7 +27,7 @@ export function OrganizationForm({
   const [name, setName] = useState(organization?.name || '')
   const [slug, setSlug] = useState(organization?.slug || '')
   const [description, setDescription] = useState(organization?.description || '')
-  const [icon, setIcon] = useState(organization?.icon_url || '')
+  const [icon, setIcon] = useState(organization?.icon || '')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const validate = () => {
@@ -49,7 +49,7 @@ export function OrganizationForm({
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim() || null,
-      icon_url: icon.trim() || null,
+      icon: icon.trim() || null,
     })
   }
 

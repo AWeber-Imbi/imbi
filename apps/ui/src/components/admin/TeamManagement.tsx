@@ -258,8 +258,8 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                         isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'
                       }`}>
-                        {team.icon_url ? (
-                          <img src={team.icon_url} alt="" className="w-5 h-5 rounded object-cover" />
+                        {team.icon ? (
+                          <img src={team.icon} alt="" className="w-5 h-5 rounded object-cover" />
                         ) : (
                           <Users className={`w-4 h-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
                         )}

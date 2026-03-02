@@ -255,7 +255,7 @@ export interface Organization {
   name: string
   slug: string
   description?: string | null
-  icon_url?: string | null
+  icon?: string | null
   created_at: string
   last_modified_at?: string | null
 }
@@ -264,7 +264,7 @@ export interface OrganizationCreate {
   name: string
   slug: string
   description?: string | null
-  icon_url?: string | null
+  icon?: string | null
 }
 
 // Team types
@@ -272,7 +272,7 @@ export interface Team {
   name: string
   slug: string
   description?: string | null
-  icon_url?: string | null
+  icon?: string | null
   organization: {
     name: string
     slug: string
@@ -286,7 +286,7 @@ export interface TeamCreate {
   name: string
   slug: string
   description?: string | null
-  icon_url?: string | null
+  icon?: string | null
   organization_slug: string
   [key: string]: unknown
 }

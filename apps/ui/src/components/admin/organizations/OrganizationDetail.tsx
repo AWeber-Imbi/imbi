@@ -28,8 +28,8 @@ export function OrganizationDetail({ organization, onEdit, onBack, isDarkMode }:
             Back
           </Button>
           <div className="flex items-center gap-3">
-            {organization.icon_url ? (
-              <img src={organization.icon_url} alt="" className="w-8 h-8 rounded object-cover" />
+            {organization.icon ? (
+              <img src={organization.icon} alt="" className="w-8 h-8 rounded object-cover" />
             ) : (
               <Building2 className={`w-6 h-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
             )}

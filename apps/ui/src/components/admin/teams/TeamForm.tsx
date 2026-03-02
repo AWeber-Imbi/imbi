@@ -7,17 +7,13 @@ import { IconUpload } from '../../ui/icon-upload'
 import { DynamicFormFields, validateDynamicFields } from '../../ui/dynamic-fields'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { getTeamSchema } from '@/api/endpoints'
+import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
 import type { Team, TeamCreate } from '@/types'
-
-const BASE_TEAM_FIELDS = new Set([
-  'name', 'slug', 'description', 'icon', 'icon_url',
-  'organization', 'organization_slug', 'created_at', 'last_modified_at',
-])
 
 function extractDynamicFields(team: Team): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(team)) {
-    if (!BASE_TEAM_FIELDS.has(key)) {
+    if (!TEAM_BASE_FIELDS_SET.has(key)) {
       result[key] = value
     }
   }
@@ -47,7 +43,7 @@ export function TeamForm({
   const [name, setName] = useState(team?.name || '')
   const [slug, setSlug] = useState(team?.slug || '')
   const [description, setDescription] = useState(team?.description || '')
-  const [icon, setIcon] = useState(team?.icon_url || '')
+  const [icon, setIcon] = useState(team?.icon || '')
   const [orgSlug, setOrgSlug] = useState(
     team?.organization.slug || selectedOrganization?.slug || ''
   )
@@ -88,7 +84,7 @@ export function TeamForm({
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim() || null,
-      icon_url: icon.trim() || null,
+      icon: icon.trim() || null,
       organization_slug: orgSlug,
       ...dynamicFormData,
     })
