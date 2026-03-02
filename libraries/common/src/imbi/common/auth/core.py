@@ -1,61 +1,12 @@
-"""Core authentication functions for password hashing and JWT tokens."""
+"""Core authentication functions for JWT tokens."""
 
 import datetime
 import secrets
 import typing
 
-import argon2
 import jwt
 
 from imbi_common import settings
-
-# Password hashing
-password_hasher = argon2.PasswordHasher()
-
-
-def hash_password(password: str) -> str:
-    """Hash a password using Argon2id.
-
-    Args:
-        password: Plain text password to hash
-
-    Returns:
-        Hashed password string
-
-    """
-    hashed: str = password_hasher.hash(password)
-    return hashed
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    """Verify a password against an Argon2 hash.
-
-    Args:
-        password: Plain text password to verify
-        password_hash: Hashed password to check against
-
-    Returns:
-        True if password matches, False otherwise
-
-    """
-    try:
-        password_hasher.verify(password_hash, password)
-        return True
-    except argon2.exceptions.VerifyMismatchError:
-        return False
-
-
-def needs_rehash(password_hash: str) -> bool:
-    """Check if a password hash needs to be rehashed with updated parameters.
-
-    Args:
-        password_hash: Hashed password to check
-
-    Returns:
-        True if password should be rehashed, False otherwise
-
-    """
-    return password_hasher.check_needs_rehash(password_hash)
 
 
 def create_access_token(

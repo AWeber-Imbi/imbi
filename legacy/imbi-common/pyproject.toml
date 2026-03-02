@@ -21,7 +21,6 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "argon2-cffi>=25.1.0",
   "clickhouse-connect",
   "cryptography>=42.0.4",
   "cypherantic",

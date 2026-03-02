@@ -95,7 +95,12 @@ class ServerConfig(pydantic_settings.BaseSettings):
 
 
 class Auth(pydantic_settings.BaseSettings):
-    """Authentication and authorization settings."""
+    """Authentication settings shared across Imbi services.
+
+    Contains only JWT and encryption configuration needed by any
+    service that verifies tokens or handles encrypted data.
+
+    """
 
     model_config = base_settings_config(env_prefix='IMBI_AUTH_')
 
@@ -108,64 +113,11 @@ class Auth(pydantic_settings.BaseSettings):
     access_token_expire_seconds: int = 3600  # 1 hour
     refresh_token_expire_seconds: int = 2592000  # 30 days
 
-    # Password Policy
-    password_min_length: int = 12
-    password_require_uppercase: bool = True
-    password_require_lowercase: bool = True
-    password_require_digit: bool = True
-    password_require_special: bool = True
-
-    # Session Configuration
-    session_timeout_seconds: int = 86400  # 24 hours
-    max_concurrent_sessions: int = 5
-
-    # API Key Configuration
-    api_key_max_lifetime_days: int = 365
-
     # Encryption Configuration (Phase 5)
     encryption_key: str | None = pydantic.Field(
         default=None,
         description='Base64-encoded Fernet key for token encryption',
     )
-
-    # MFA Configuration (Phase 5)
-    mfa_issuer_name: str = 'Imbi'
-    mfa_totp_period: int = 30  # seconds
-    mfa_totp_digits: int = 6
-
-    # Rate Limiting Configuration (Phase 5)
-    rate_limit_login: str = '5/minute'
-    rate_limit_token_refresh: str = '10/minute'
-    rate_limit_oauth_init: str = '3/minute'
-    rate_limit_api_key: str = '100/minute'
-
-    # OAuth Provider Configurations
-    oauth_google_enabled: bool = False
-    oauth_google_client_id: str | None = None
-    oauth_google_client_secret: str | None = None
-    oauth_google_allowed_domains: list[str] = []
-
-    oauth_github_enabled: bool = False
-    oauth_github_client_id: str | None = None
-    oauth_github_client_secret: str | None = None
-
-    oauth_oidc_enabled: bool = False
-    oauth_oidc_client_id: str | None = None
-    oauth_oidc_client_secret: str | None = None
-    oauth_oidc_issuer_url: str | None = None
-    oauth_oidc_name: str = 'OIDC'  # Display name for generic OIDC
-
-    # OAuth Behavior
-    oauth_auto_link_by_email: bool = (
-        False  # Auto-link OAuth to existing user by email
-    )
-    oauth_auto_create_users: bool = True  # Create user if doesn't exist
-    oauth_callback_base_url: str = (
-        'http://localhost:8000'  # Base URL for callbacks
-    )
-
-    # Local password authentication
-    local_auth_enabled: bool = True
 
     @pydantic.model_validator(mode='after')
     def generate_encryption_key_if_missing(self) -> 'Auth':
@@ -189,88 +141,8 @@ class Auth(pydantic_settings.BaseSettings):
         return self
 
 
-class Email(pydantic_settings.BaseSettings):
-    """Email sending configuration."""
-
-    model_config = base_settings_config(env_prefix='IMBI_EMAIL_')
-
-    # Feature flags
-    enabled: bool = True
-    dry_run: bool = False
-
-    # SMTP Configuration
-    smtp_host: str = 'localhost'
-    smtp_port: int = 587
-    smtp_use_tls: bool = True
-    smtp_use_ssl: bool = False
-    smtp_username: str | None = None
-    smtp_password: str | None = None
-    smtp_timeout: int = 30
-
-    # Sender Configuration
-    from_email: pydantic.EmailStr = 'noreply@imbi.example.com'
-    from_name: str = 'Imbi'
-    reply_to: pydantic.EmailStr | None = None
-
-    # Retry Configuration
-    max_retries: int = 3
-    initial_retry_delay: float = 1.0
-    max_retry_delay: float = 60.0
-    retry_backoff_factor: float = 2.0
-
-    @pydantic.model_validator(mode='after')
-    def configure_mailpit_defaults(self) -> 'Email':
-        """Auto-configure for Mailpit in development.
-
-        If running in development mode and SMTP is localhost:587 (defaults),
-        check for MAILPIT_SMTP_PORT environment variable and use it if present.
-        This allows automatic integration with Mailpit from bootstrap script.
-
-        """
-        import os
-
-        if os.getenv('IMBI_ENVIRONMENT', 'development') == 'development':
-            if self.smtp_host == 'localhost' and self.smtp_port == 587:
-                # Check if Mailpit service is available
-                mailpit_port = os.getenv('MAILPIT_SMTP_PORT')
-                if mailpit_port:
-                    self.smtp_port = int(mailpit_port)
-                    # Only override TLS if not explicitly set
-                    if not os.getenv('IMBI_EMAIL_SMTP_USE_TLS'):
-                        self.smtp_use_tls = False
-        return self
-
-
-class Storage(pydantic_settings.BaseSettings):
-    """S3-compatible object storage configuration."""
-
-    model_config = base_settings_config(env_prefix='S3_')
-
-    endpoint_url: str | None = None  # None = real AWS S3
-    access_key: str | None = None
-    secret_key: str | None = None
-    bucket: str = 'imbi-uploads'
-    region: str = 'us-east-1'
-    create_bucket_on_init: bool = True
-
-    # Upload constraints
-    max_file_size: int = 50 * 1024 * 1024  # 50 MB
-    allowed_content_types: list[str] = [
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'image/svg+xml',
-        'application/pdf',
-    ]
-
-    # Thumbnail settings
-    thumbnail_max_size: int = 256
-    thumbnail_quality: int = 85
-
-
 class Configuration(pydantic.BaseModel):
-    """Root configuration combining all settings sections.
+    """Root configuration combining all shared settings sections.
 
     Supports loading from config.toml files with environment variable
     overrides. Config files are checked in this priority order:
@@ -318,8 +190,6 @@ class Configuration(pydantic.BaseModel):
             'neo4j': Neo4j,
             'server': ServerConfig,
             'auth': Auth,
-            'email': Email,
-            'storage': Storage,
         }
         for field, settings_cls in settings_fields.items():
             if field in data and data[field] is not None:
@@ -333,8 +203,6 @@ class Configuration(pydantic.BaseModel):
     neo4j: Neo4j = pydantic.Field(default_factory=Neo4j)
     server: ServerConfig = pydantic.Field(default_factory=ServerConfig)
     auth: Auth = pydantic.Field(default_factory=Auth)
-    email: Email = pydantic.Field(default_factory=Email)
-    storage: Storage = pydantic.Field(default_factory=Storage)
 
 
 def load_config() -> Configuration:

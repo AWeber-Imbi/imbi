@@ -8,52 +8,6 @@ import jwt
 from imbi_common.auth import core
 
 
-class TestPasswordHashing(unittest.TestCase):
-    """Test password hashing and verification."""
-
-    def test_hash_password_returns_string(self):
-        """Test that hash_password returns a string."""
-        hashed = core.hash_password('test_password')
-        self.assertIsInstance(hashed, str)
-
-    def test_hash_password_not_plaintext(self):
-        """Test that hash is not the plaintext password."""
-        password = 'test_password'
-        hashed = core.hash_password(password)
-        self.assertNotEqual(hashed, password)
-
-    def test_verify_password_correct(self):
-        """Test verifying correct password."""
-        password = 'secure_password_123'
-        hashed = core.hash_password(password)
-        self.assertTrue(core.verify_password(password, hashed))
-
-    def test_verify_password_incorrect(self):
-        """Test verifying incorrect password."""
-        password = 'secure_password_123'
-        hashed = core.hash_password(password)
-        self.assertFalse(core.verify_password('wrong_password', hashed))
-
-    def test_verify_password_empty(self):
-        """Test verifying empty password."""
-        hashed = core.hash_password('test')
-        self.assertFalse(core.verify_password('', hashed))
-
-    def test_different_hashes_for_same_password(self):
-        """Test that same password produces different hashes (salt)."""
-        password = 'test_password'
-        hash1 = core.hash_password(password)
-        hash2 = core.hash_password(password)
-        self.assertNotEqual(hash1, hash2)
-
-    def test_needs_rehash(self):
-        """Test needs_rehash function."""
-        password = 'test_password'
-        hashed = core.hash_password(password)
-        # Should not need rehash immediately after creation
-        self.assertFalse(core.needs_rehash(hashed))
-
-
 class TestJWTTokens(unittest.TestCase):
     """Test JWT token creation and verification."""
 

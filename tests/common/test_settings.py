@@ -172,94 +172,6 @@ class ClickhouseSettingsTestCase(unittest.TestCase):
                 os.environ['CLICKHOUSE_URL'] = original_url
 
 
-class EmailSettingsTestCase(unittest.TestCase):
-    """Test cases for Email settings."""
-
-    def test_mailpit_detection_in_development(self) -> None:
-        """Test Mailpit port detection in development environment."""
-        # Set environment variables for Mailpit detection
-        os.environ['IMBI_ENVIRONMENT'] = 'development'
-        os.environ['MAILPIT_SMTP_PORT'] = '1025'
-
-        try:
-            email = settings.Email(smtp_host='localhost', smtp_port=587)
-
-            # Should have detected Mailpit port
-            self.assertEqual(email.smtp_port, 1025)
-            self.assertFalse(email.smtp_use_tls)
-        finally:
-            # Clean up environment variables
-            os.environ.pop('IMBI_ENVIRONMENT', None)
-            os.environ.pop('MAILPIT_SMTP_PORT', None)
-
-    def test_mailpit_detection_with_explicit_tls(self) -> None:
-        """Test that explicit TLS setting is not overridden."""
-        os.environ['IMBI_ENVIRONMENT'] = 'development'
-        os.environ['MAILPIT_SMTP_PORT'] = '1025'
-        os.environ['IMBI_EMAIL_SMTP_USE_TLS'] = 'true'
-
-        try:
-            email = settings.Email(
-                smtp_host='localhost', smtp_port=587, smtp_use_tls=True
-            )
-
-            # Port should be updated but TLS should remain
-            self.assertEqual(email.smtp_port, 1025)
-            self.assertTrue(email.smtp_use_tls)
-        finally:
-            os.environ.pop('IMBI_ENVIRONMENT', None)
-            os.environ.pop('MAILPIT_SMTP_PORT', None)
-            os.environ.pop('IMBI_EMAIL_SMTP_USE_TLS', None)
-
-    def test_no_mailpit_detection_in_production(self) -> None:
-        """Test that Mailpit detection is skipped in production."""
-        os.environ['IMBI_ENVIRONMENT'] = 'production'
-        os.environ['MAILPIT_SMTP_PORT'] = '1025'
-
-        try:
-            email = settings.Email(
-                smtp_host='localhost', smtp_port=587, smtp_use_tls=True
-            )
-
-            # Should not have detected Mailpit in production
-            self.assertEqual(email.smtp_port, 587)
-            self.assertTrue(email.smtp_use_tls)
-        finally:
-            os.environ.pop('IMBI_ENVIRONMENT', None)
-            os.environ.pop('MAILPIT_SMTP_PORT', None)
-
-    def test_no_mailpit_detection_non_localhost(self) -> None:
-        """Test that Mailpit detection only applies to localhost."""
-        os.environ['IMBI_ENVIRONMENT'] = 'development'
-        os.environ['MAILPIT_SMTP_PORT'] = '1025'
-
-        try:
-            email = settings.Email(
-                smtp_host='smtp.example.com', smtp_port=587, smtp_use_tls=True
-            )
-
-            # Should not detect Mailpit for non-localhost
-            self.assertEqual(email.smtp_port, 587)
-            self.assertTrue(email.smtp_use_tls)
-        finally:
-            os.environ.pop('IMBI_ENVIRONMENT', None)
-            os.environ.pop('MAILPIT_SMTP_PORT', None)
-
-    def test_no_mailpit_detection_different_port(self) -> None:
-        """Test that Mailpit detection only applies to default port 587."""
-        os.environ['IMBI_ENVIRONMENT'] = 'development'
-        os.environ['MAILPIT_SMTP_PORT'] = '1025'
-
-        try:
-            email = settings.Email(smtp_host='localhost', smtp_port=2525)
-
-            # Should not detect Mailpit for non-default port
-            self.assertEqual(email.smtp_port, 2525)
-        finally:
-            os.environ.pop('IMBI_ENVIRONMENT', None)
-            os.environ.pop('MAILPIT_SMTP_PORT', None)
-
-
 class AuthSettingsTestCase(unittest.TestCase):
     """Test authentication settings configuration."""
 
@@ -277,19 +189,6 @@ class AuthSettingsTestCase(unittest.TestCase):
         """Test default refresh token expiration."""
         config = settings.Auth()
         self.assertEqual(config.refresh_token_expire_seconds, 2592000)
-
-    def test_default_password_min_length(self) -> None:
-        """Test default minimum password length."""
-        config = settings.Auth()
-        self.assertEqual(config.password_min_length, 12)
-
-    def test_default_password_requirements(self) -> None:
-        """Test default password requirements."""
-        config = settings.Auth()
-        self.assertTrue(config.password_require_uppercase)
-        self.assertTrue(config.password_require_lowercase)
-        self.assertTrue(config.password_require_digit)
-        self.assertTrue(config.password_require_special)
 
     def test_auto_generated_jwt_secret(self) -> None:
         """Test JWT secret is auto-generated if not provided."""
@@ -335,7 +234,6 @@ class ConfigurationTestCase(unittest.TestCase):
         self.assertIsInstance(config.neo4j, settings.Neo4j)
         self.assertIsInstance(config.server, settings.ServerConfig)
         self.assertIsInstance(config.auth, settings.Auth)
-        self.assertIsInstance(config.email, settings.Email)
 
     def test_configuration_from_dict(self) -> None:
         """Test Configuration from dictionary data."""
@@ -402,17 +300,7 @@ access_token_expire_seconds = 7200
             os.chdir(original_cwd)
 
     def test_configuration_toml_values_used(self) -> None:
-        """Test that config.toml values are loaded correctly.
-
-        Note: Environment variables DO override TOML values in
-        pydantic-settings, but only if they're set BEFORE the BaseSettings
-        class is instantiated. When we pass TOML data as constructor kwargs
-        (as done in the model_validator), those kwargs take precedence per
-        pydantic-settings design.
-
-        For production use, set environment variables before starting the app
-        and they will properly override config.toml values.
-        """
+        """Test that config.toml values are loaded correctly."""
         original_cwd = os.getcwd()
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
