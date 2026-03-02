@@ -1,5 +1,9 @@
 import { apiClient } from './client'
-import { TEAM_BASE_FIELDS } from '@/lib/constants'
+import {
+  TEAM_BASE_FIELDS,
+  ENVIRONMENT_BASE_FIELDS,
+  PROJECT_TYPE_BASE_FIELDS,
+} from '@/lib/constants'
 import type {
   ApiStatus,
   User,
@@ -7,7 +11,9 @@ import type {
   ActivityFeedEntry,
   Namespace,
   Environment,
+  EnvironmentCreate,
   ProjectType,
+  ProjectTypeCreate,
   CollectionResponse,
   AuthProvider,
   TokenResponse,
@@ -100,6 +106,48 @@ export const getProjectTypes = async (): Promise<ProjectType[]> => {
   const response = await apiClient.get<CollectionResponse<ProjectType>>('/project-types')
   return response.data
 }
+
+// Admin - Environments
+export const listEnvironments = async (): Promise<Environment[]> => {
+  const response = await apiClient.get<Environment[]>('/environments/')
+  return Array.isArray(response) ? response : []
+}
+
+export const getEnvironment = (slug: string) =>
+  apiClient.get<Environment>(`/environments/${encodeURIComponent(slug)}`)
+
+export const createEnvironment = (env: EnvironmentCreate) =>
+  apiClient.post<Environment>('/environments/', env)
+
+export const updateEnvironment = (slug: string, env: EnvironmentCreate) =>
+  apiClient.put<Environment>(`/environments/${encodeURIComponent(slug)}`, env)
+
+export const deleteEnvironment = (slug: string) =>
+  apiClient.delete<void>(`/environments/${encodeURIComponent(slug)}`)
+
+export const getEnvironmentSchema = () =>
+  getDynamicSchema('EnvironmentWithBlueprints', ENVIRONMENT_BASE_FIELDS)
+
+// Admin - Project Types
+export const listProjectTypes = async (): Promise<ProjectType[]> => {
+  const response = await apiClient.get<ProjectType[]>('/project-types/')
+  return Array.isArray(response) ? response : []
+}
+
+export const getProjectType = (slug: string) =>
+  apiClient.get<ProjectType>(`/project-types/${encodeURIComponent(slug)}`)
+
+export const createProjectType = (pt: ProjectTypeCreate) =>
+  apiClient.post<ProjectType>('/project-types/', pt)
+
+export const updateProjectType = (slug: string, pt: ProjectTypeCreate) =>
+  apiClient.put<ProjectType>(`/project-types/${encodeURIComponent(slug)}`, pt)
+
+export const deleteProjectType = (slug: string) =>
+  apiClient.delete<void>(`/project-types/${encodeURIComponent(slug)}`)
+
+export const getProjectTypeSchema = () =>
+  getDynamicSchema('ProjectTypeWithBlueprints', PROJECT_TYPE_BASE_FIELDS)
 
 // Admin - User Management
 export const listAdminUsers = async (params?: {

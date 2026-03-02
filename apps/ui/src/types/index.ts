@@ -55,18 +55,44 @@ export interface Namespace {
 
 export interface Environment {
   name: string
-  description?: string
-  icon_class?: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  organization: {
+    name: string
+    slug: string
+  }
+  [key: string]: unknown
+}
+
+export interface EnvironmentCreate {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  organization_slug: string
+  [key: string]: unknown
 }
 
 export interface ProjectType {
-  id: number
   name: string
-  plural_name: string
   slug: string
-  description?: string
-  icon_class?: string
-  environment_urls?: boolean
+  description?: string | null
+  icon?: string | null
+  organization: {
+    name: string
+    slug: string
+  }
+  [key: string]: unknown
+}
+
+export interface ProjectTypeCreate {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  organization_slug: string
+  [key: string]: unknown
 }
 
 export interface ProjectFeedEntry {

@@ -7,17 +7,8 @@ import { Gravatar } from '../../ui/gravatar'
 import { DynamicDetailFields } from '../../ui/dynamic-fields'
 import { getTeamMembers, addTeamMember, removeTeamMember, getTeamSchema } from '@/api/endpoints'
 import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
+import { extractDynamicFields } from '@/lib/utils'
 import type { Team } from '@/types'
-
-function extractDynamicFields(team: Team): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(team)) {
-    if (!TEAM_BASE_FIELDS_SET.has(key)) {
-      result[key] = value
-    }
-  }
-  return result
-}
 
 interface TeamDetailProps {
   team: Team
@@ -133,7 +124,7 @@ export function TeamDetail({ team, onEdit, onBack, isDarkMode }: TeamDetailProps
           {teamSchema && (
             <DynamicDetailFields
               schema={teamSchema}
-              data={extractDynamicFields(team)}
+              data={extractDynamicFields(team, TEAM_BASE_FIELDS_SET)}
               isDarkMode={isDarkMode}
             />
           )}

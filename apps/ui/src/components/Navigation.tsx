@@ -121,7 +121,11 @@ export function Navigation({
                       : 'border-gray-300 text-gray-700 hover:bg-gray-50 bg-white'
                   }`}
                 >
-                  <Building2 className="w-4 h-4 flex-shrink-0" />
+                  {selectedOrganization.icon ? (
+                    <img src={selectedOrganization.icon} alt="" className="w-4 h-4 flex-shrink-0 rounded object-cover" />
+                  ) : (
+                    <Building2 className="w-4 h-4 flex-shrink-0" />
+                  )}
                   <span className="truncate">
                     {selectedOrganization.name}
                   </span>
@@ -135,9 +139,16 @@ export function Navigation({
                     onClick={() => setSelectedOrganization(org)}
                     className={selectedOrganization.slug === org.slug ? 'font-medium' : ''}
                   >
-                    <div className="flex flex-col">
-                      <span>{org.name}</span>
-                      <span className="text-xs text-muted-foreground">{org.slug}</span>
+                    <div className="flex items-center gap-2">
+                      {org.icon ? (
+                        <img src={org.icon} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
+                      ) : (
+                        <Building2 className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                      )}
+                      <div className="flex flex-col">
+                        <span>{org.name}</span>
+                        <span className="text-xs text-muted-foreground">{org.slug}</span>
+                      </div>
                     </div>
                   </DropdownMenuItem>
                 ))}
