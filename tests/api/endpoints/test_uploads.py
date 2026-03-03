@@ -5,9 +5,8 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import models
 
-from imbi_api import app
+from imbi_api import app, models
 
 
 class UploadEndpointsTestCase(unittest.TestCase):

@@ -4,9 +4,10 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import models, neo4j
+from imbi_common import neo4j
 from neo4j import exceptions
 
+from imbi_api import models
 from imbi_api.auth import permissions
 
 LOGGER = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ async def create_role(
             already exists.
     """
     try:
-        return await neo4j.create_node(role)
+        return await neo4j.create_node(role)  # type: ignore[no-any-return]
     except exceptions.ConstraintError as e:
         raise fastapi.HTTPException(
             status_code=409,
@@ -117,7 +118,7 @@ async def get_role(
                 **neo4j.convert_neo4j_types(records[0]['parent'])
             )
 
-    return role
+    return role  # type: ignore[no-any-return]
 
 
 @roles_router.get('/{slug}/users', response_model=list[models.UserResponse])

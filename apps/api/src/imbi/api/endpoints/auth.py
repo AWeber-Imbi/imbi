@@ -10,11 +10,13 @@ import httpx
 import jwt
 import pydantic
 import pyotp
-from imbi_common import models, neo4j, settings
+from imbi_common import neo4j
 from imbi_common.auth import core, encryption
 
+from imbi_api import models, settings
 from imbi_api.auth import models as auth_models
 from imbi_api.auth import oauth, permissions
+from imbi_api.auth import password as password_auth
 from imbi_api.middleware import rate_limit
 
 LOGGER = logging.getLogger(__name__)
@@ -146,7 +148,7 @@ async def login(
         )
 
     # Verify password
-    if not core.verify_password(password, user.password_hash):
+    if not password_auth.verify_password(password, user.password_hash):
         LOGGER.warning('Login failed for email %s: invalid password', email)
         raise fastapi.HTTPException(
             status_code=401,
@@ -154,8 +156,8 @@ async def login(
         )
 
     # Check if password needs rehashing
-    if core.needs_rehash(user.password_hash):
-        user.password_hash = core.hash_password(password)
+    if password_auth.needs_rehash(user.password_hash):
+        user.password_hash = password_auth.hash_password(password)
         await neo4j.upsert(user, {'email': user.email})
         LOGGER.info('Rehashed password for user %s', user.email)
 
@@ -216,7 +218,7 @@ async def login(
                 valid_backup = False
 
                 for i, hashed_code in enumerate(backup_codes):
-                    if core.verify_password(mfa_code, hashed_code):
+                    if password_auth.verify_password(mfa_code, hashed_code):
                         # Remove used backup code
                         backup_codes.pop(i)
                         update_query = """
@@ -801,7 +803,7 @@ async def find_or_create_oauth_identity(
             identity, {'provider': provider, 'provider_user_id': profile['id']}
         )
 
-        return identity
+        return identity  # type: ignore[no-any-return]
 
     # OAuth identity doesn't exist - need to create it
 

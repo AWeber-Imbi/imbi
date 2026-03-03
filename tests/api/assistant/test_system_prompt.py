@@ -5,8 +5,7 @@ import os
 import unittest
 from unittest import mock
 
-from imbi_common import models
-
+from imbi_api import models
 from imbi_api.assistant import settings, system_prompt
 from imbi_api.auth import permissions
 

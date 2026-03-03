@@ -5,8 +5,9 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import models, neo4j
+from imbi_common import neo4j
 
+from imbi_api import models
 from imbi_api.auth import permissions
 
 LOGGER = logging.getLogger(__name__)

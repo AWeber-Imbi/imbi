@@ -6,7 +6,8 @@ import typing
 
 import aioboto3
 from botocore import exceptions as botocore_exceptions
-from imbi_common import settings
+
+from imbi_api import settings
 
 LOGGER = logging.getLogger(__name__)
 

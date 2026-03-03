@@ -6,10 +6,10 @@ from unittest import mock
 
 import jwt
 from fastapi import testclient
-from imbi_common import settings
 from imbi_common.auth import core
 
-from imbi_api import app, models
+from imbi_api import app, models, settings
+from imbi_api.auth import password
 from imbi_api.middleware import rate_limit
 
 
@@ -18,26 +18,30 @@ class PasswordHashingTestCase(unittest.TestCase):
 
     def test_hash_password(self) -> None:
         """Test password hashing."""
-        password = 'TestPassword123!'
-        password_hash = core.hash_password(password)
+        plaintext = 'TestPassword123!'
+        password_hash = password.hash_password(plaintext)
 
         self.assertIsInstance(password_hash, str)
-        self.assertNotEqual(password, password_hash)
+        self.assertNotEqual(plaintext, password_hash)
         self.assertIn('$argon2', password_hash)
 
     def test_verify_password_success(self) -> None:
         """Test successful password verification."""
-        password = 'TestPassword123!'
-        password_hash = core.hash_password(password)
+        plaintext = 'TestPassword123!'
+        password_hash = password.hash_password(plaintext)
 
-        self.assertTrue(core.verify_password(password, password_hash))
+        self.assertTrue(
+            password.verify_password(plaintext, password_hash),
+        )
 
     def test_verify_password_failure(self) -> None:
         """Test failed password verification."""
-        password = 'TestPassword123!'
-        password_hash = core.hash_password(password)
+        plaintext = 'TestPassword123!'
+        password_hash = password.hash_password(plaintext)
 
-        self.assertFalse(core.verify_password('WrongPassword', password_hash))
+        self.assertFalse(
+            password.verify_password('WrongPassword', password_hash),
+        )
 
 
 class JWTTokenTestCase(unittest.TestCase):
@@ -155,7 +159,7 @@ class LoginEndpointTestCase(unittest.TestCase):
         self.test_user = models.User(
             email='test@example.com',
             display_name='Test User',
-            password_hash=core.hash_password('TestPassword123!'),
+            password_hash=password.hash_password('TestPassword123!'),
             is_active=True,
             is_admin=False,
             is_service_account=False,
@@ -231,7 +235,7 @@ class LoginEndpointTestCase(unittest.TestCase):
         inactive_user = models.User(
             email='inactive@example.com',
             display_name='Inactive User',
-            password_hash=core.hash_password('password'),
+            password_hash=password.hash_password('password'),
             is_active=False,
             is_admin=False,
             is_service_account=False,
@@ -326,9 +330,7 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch,
             mock.patch('imbi_common.neo4j.create_node'),
             mock.patch('imbi_common.neo4j.upsert'),
@@ -364,7 +366,7 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         )
 
         with mock.patch(
-            'imbi_common.settings.get_auth_settings'
+            'imbi_api.settings.get_auth_settings'
         ) as mock_settings:
             # Mock settings to use our test JWT secret
             mock_settings.return_value = expired_settings
@@ -394,7 +396,7 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         )
 
         with mock.patch(
-            'imbi_common.settings.get_auth_settings'
+            'imbi_api.settings.get_auth_settings'
         ) as mock_settings:
             # Mock settings to use our test JWT secret
             mock_settings.return_value = self.auth_settings
@@ -431,9 +433,7 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch,
         ):
             # Mock settings to use our test JWT secret
@@ -506,9 +506,7 @@ class LogoutEndpointTestCase(unittest.TestCase):
             return mock_result
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run', side_effect=mock_run_side_effect
             ),

@@ -12,10 +12,10 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import models, neo4j, settings
-from imbi_common.auth import core
+from imbi_common import neo4j
 
-from imbi_api.auth import permissions
+from imbi_api import models, settings
+from imbi_api.auth import password, permissions
 
 LOGGER = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ async def create_api_key(
     # Generate key: format ik_<16chars>_<32chars>
     key_id = f'ik_{secrets.token_urlsafe(16)}'
     key_secret = secrets.token_urlsafe(32)
-    key_hash = core.hash_password(key_secret)
+    key_hash = password.hash_password(key_secret)
 
     # Validate expiration
     expires_at = None
@@ -315,7 +315,7 @@ async def rotate_api_key(
 
     # Generate new secret
     new_secret = secrets.token_urlsafe(32)
-    new_key_hash = core.hash_password(new_secret)
+    new_key_hash = password.hash_password(new_secret)
 
     # Update key in Neo4j
     query = """

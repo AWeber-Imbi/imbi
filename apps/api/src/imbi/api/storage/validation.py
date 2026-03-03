@@ -3,7 +3,8 @@
 import logging
 
 import filetype
-from imbi_common import settings
+
+from imbi_api import settings
 
 LOGGER = logging.getLogger(__name__)
 

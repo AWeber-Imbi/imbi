@@ -6,11 +6,11 @@ import typing
 from urllib import parse as urlparse
 
 import fastapi
-from imbi_common import models, neo4j
-from imbi_common.auth import core
+from imbi_common import neo4j
 from neo4j import exceptions
 
-from imbi_api.auth import permissions
+from imbi_api import models
+from imbi_api.auth import password, permissions
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ async def create_user(
     # Hash password if provided
     password_hash = None
     if user_create.password:
-        password_hash = core.hash_password(user_create.password)
+        password_hash = password.hash_password(user_create.password)
 
     # Prevent non-admins from creating admin users
     if user_create.is_admin and not auth.user.is_admin:
@@ -258,7 +258,7 @@ async def update_user(
     # Update password hash if password provided
     password_hash = existing_user.password_hash
     if user_update.password:
-        password_hash = core.hash_password(user_update.password)
+        password_hash = password.hash_password(user_update.password)
 
     # Create updated user model
     updated_user = models.User(
@@ -372,7 +372,7 @@ async def change_password(
                 status_code=400,
                 detail='Current password is required',
             )
-        if not user.password_hash or not core.verify_password(
+        if not user.password_hash or not password.verify_password(
             password_change.current_password, user.password_hash
         ):
             raise fastapi.HTTPException(
@@ -381,7 +381,7 @@ async def change_password(
             )
 
     # Update password
-    user.password_hash = core.hash_password(password_change.new_password)
+    user.password_hash = password.hash_password(password_change.new_password)
     await neo4j.upsert(user, {'email': email})
 
 

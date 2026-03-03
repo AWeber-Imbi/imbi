@@ -3,9 +3,8 @@ from unittest import mock
 
 import jwt
 from fastapi import testclient
-from imbi_common import settings
 
-from imbi_api import app
+from imbi_api import app, settings
 from imbi_api.auth import models as auth_models
 from imbi_api.middleware import rate_limit
 
@@ -350,14 +349,14 @@ class LoginPasswordRehashTestCase(unittest.TestCase):
             mock.patch('imbi_common.neo4j.create_node'),
             mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
             mock.patch(
-                'imbi_common.auth.core.verify_password', return_value=True
+                'imbi_api.auth.password.verify_password', return_value=True
             ),
             mock.patch(
-                'imbi_common.auth.core.needs_rehash',
+                'imbi_api.auth.password.needs_rehash',
                 return_value=True,
             ) as mock_needs_rehash,
             mock.patch(
-                'imbi_common.auth.core.hash_password',
+                'imbi_api.auth.password.hash_password',
                 return_value='new-hashed-password',
             ) as mock_hash,
         ):
@@ -412,15 +411,14 @@ class LoginMFATestCase(unittest.TestCase):
         """Test login with MFA enabled but no code provided."""
         import datetime
 
-        from imbi_common.auth import core
-
         from imbi_api import models
+        from imbi_api.auth import password
 
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
             is_active=True,
-            password_hash=core.hash_password('password123'),
+            password_hash=password.hash_password('password123'),
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
@@ -465,15 +463,15 @@ class LoginMFATestCase(unittest.TestCase):
         import datetime
 
         import pyotp
-        from imbi_common.auth import core
 
         from imbi_api import models
+        from imbi_api.auth import password
 
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
             is_active=True,
-            password_hash=core.hash_password('password123'),
+            password_hash=password.hash_password('password123'),
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
@@ -537,20 +535,19 @@ class LoginMFATestCase(unittest.TestCase):
         """Test login with valid backup code."""
         import datetime
 
-        from imbi_common.auth import core
-
         from imbi_api import models
+        from imbi_api.auth import password
 
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
             is_active=True,
-            password_hash=core.hash_password('password123'),
+            password_hash=password.hash_password('password123'),
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
         backup_code = 'backup123'
-        hashed_backup = core.hash_password(backup_code)
+        hashed_backup = password.hash_password(backup_code)
 
         def mock_run_side_effect(query: str, **params):
             mock_result = mock.AsyncMock()
@@ -607,15 +604,14 @@ class LoginMFATestCase(unittest.TestCase):
         """Test login with invalid MFA code."""
         import datetime
 
-        from imbi_common.auth import core
-
         from imbi_api import models
+        from imbi_api.auth import password
 
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
             is_active=True,
-            password_hash=core.hash_password('password123'),
+            password_hash=password.hash_password('password123'),
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
@@ -666,7 +662,7 @@ class LoginMFATestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_common.settings.get_auth_settings',
+                'imbi_api.settings.get_auth_settings',
                 return_value=auth_settings,
             ),
             mock.patch('imbi_common.neo4j.fetch_node', return_value=None),
@@ -703,7 +699,7 @@ class LoginMFATestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_common.settings.get_auth_settings',
+                'imbi_api.settings.get_auth_settings',
                 return_value=auth_settings,
             ),
             mock.patch(
@@ -725,15 +721,14 @@ class LoginMFATestCase(unittest.TestCase):
         """Test login with invalid password."""
         import datetime
 
-        from imbi_common.auth import core
-
         from imbi_api import models
+        from imbi_api.auth import password
 
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
             is_active=True,
-            password_hash=core.hash_password('correctpassword'),
+            password_hash=password.hash_password('correctpassword'),
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
@@ -743,7 +738,7 @@ class LoginMFATestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_common.settings.get_auth_settings',
+                'imbi_api.settings.get_auth_settings',
                 return_value=auth_settings,
             ),
             mock.patch('imbi_common.neo4j.fetch_node', return_value=test_user),
@@ -1335,7 +1330,7 @@ class TokenRefreshTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_common.settings.get_auth_settings',
+                'imbi_api.settings.get_auth_settings',
                 return_value=auth_settings,
             ),
             mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch_node,
@@ -1384,7 +1379,7 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
 
         with mock.patch(
-            'imbi_common.settings.get_auth_settings',
+            'imbi_api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1402,7 +1397,7 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
 
         with mock.patch(
-            'imbi_common.settings.get_auth_settings',
+            'imbi_api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1439,7 +1434,7 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
 
         with mock.patch(
-            'imbi_common.settings.get_auth_settings',
+            'imbi_api.settings.get_auth_settings',
             return_value=auth_settings,
         ):
             response = self.client.post(
@@ -1496,7 +1491,7 @@ class TokenRefreshTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_common.settings.get_auth_settings',
+                'imbi_api.settings.get_auth_settings',
                 return_value=auth_settings,
             ),
             mock.patch(
@@ -1557,7 +1552,7 @@ class TokenRefreshTestCase(unittest.TestCase):
 
         with (
             mock.patch(
-                'imbi_common.settings.get_auth_settings',
+                'imbi_api.settings.get_auth_settings',
                 return_value=auth_settings,
             ),
             mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch_node,
@@ -1661,7 +1656,7 @@ class LogoutTestCase(unittest.TestCase):
         try:
             with (
                 mock.patch(
-                    'imbi_common.settings.get_auth_settings',
+                    'imbi_api.settings.get_auth_settings',
                     return_value=auth_settings,
                 ),
                 mock.patch(
@@ -1751,7 +1746,7 @@ class LogoutTestCase(unittest.TestCase):
         try:
             with (
                 mock.patch(
-                    'imbi_common.settings.get_auth_settings',
+                    'imbi_api.settings.get_auth_settings',
                     return_value=auth_settings,
                 ),
                 mock.patch(

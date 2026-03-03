@@ -5,11 +5,10 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common import settings
 from imbi_common.auth import core
 
-from imbi_api import app, models
-from imbi_api.auth import permissions
+from imbi_api import app, models, settings
+from imbi_api.auth import password, permissions
 
 
 class PermissionLoadingTestCase(unittest.IsolatedAsyncioTestCase):
@@ -63,7 +62,7 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
         self.test_user = models.User(
             email='test@example.com',
             display_name='Test User',
-            password_hash=core.hash_password('TestPassword123!'),
+            password_hash=password.hash_password('TestPassword123!'),
             is_active=True,
             is_admin=False,
             is_service_account=False,
@@ -198,7 +197,7 @@ class AuthenticateJWTTestCase(unittest.IsolatedAsyncioTestCase):
         inactive_user = models.User(
             email='test@example.com',
             display_name='Test User',
-            password_hash=core.hash_password('TestPassword123!'),
+            password_hash=password.hash_password('TestPassword123!'),
             is_active=False,  # Inactive
             is_admin=False,
             is_service_account=False,
@@ -355,7 +354,7 @@ class ProtectedEndpointTestCase(unittest.TestCase):
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
-            password_hash=core.hash_password('TestPassword123!'),
+            password_hash=password.hash_password('TestPassword123!'),
             is_active=True,
             is_admin=False,
             is_service_account=False,
@@ -409,9 +408,7 @@ class ProtectedEndpointTestCase(unittest.TestCase):
             )
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=[
@@ -443,7 +440,7 @@ class ProtectedEndpointTestCase(unittest.TestCase):
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
-            password_hash=core.hash_password('TestPassword123!'),
+            password_hash=password.hash_password('TestPassword123!'),
             is_active=True,
             is_admin=False,
             is_service_account=False,
@@ -480,9 +477,7 @@ class ProtectedEndpointTestCase(unittest.TestCase):
         mock_perm_result.__aexit__.return_value = None
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=[

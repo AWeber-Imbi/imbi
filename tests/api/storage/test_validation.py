@@ -3,8 +3,7 @@
 import unittest
 from unittest import mock
 
-from imbi_common import settings
-
+from imbi_api import settings
 from imbi_api.storage import validation
 
 

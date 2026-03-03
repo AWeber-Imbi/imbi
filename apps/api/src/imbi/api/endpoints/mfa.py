@@ -16,10 +16,11 @@ import fastapi
 import pydantic
 import pyotp
 import qrcode
-from imbi_common import models, neo4j, settings
-from imbi_common.auth import core, encryption
+from imbi_common import neo4j
+from imbi_common.auth import encryption
 
-from imbi_api.auth import permissions
+from imbi_api import models, settings
+from imbi_api.auth import password, permissions
 
 LOGGER = logging.getLogger(__name__)
 
@@ -145,7 +146,9 @@ async def setup_mfa(
 
     # Generate 10 backup codes (8-character hex strings)
     backup_codes = [secrets.token_hex(4) for _ in range(10)]
-    hashed_backup_codes = [core.hash_password(code) for code in backup_codes]
+    hashed_backup_codes = [
+        password.hash_password(code) for code in backup_codes
+    ]
 
     # Store TOTP secret in Neo4j (encrypted, not enabled yet)
     # First, delete any existing TOTP secret
@@ -249,7 +252,7 @@ async def verify_and_enable_mfa(
         # Try backup codes
         backup_codes = totp_data.get('backup_codes', [])
         for backup_hash in backup_codes:
-            if core.verify_password(verify_request.code, backup_hash):
+            if password.verify_password(verify_request.code, backup_hash):
                 is_valid = True
                 used_backup_code = True
                 # Remove used backup code
@@ -321,7 +324,10 @@ async def disable_mfa(
                 status_code=401,
                 detail='Password required to disable MFA',
             )
-        if not core.verify_password(current_password, auth.user.password_hash):
+        if not password.verify_password(
+            current_password,
+            auth.user.password_hash,
+        ):
             raise fastapi.HTTPException(
                 status_code=401, detail='Invalid password'
             )
@@ -376,7 +382,7 @@ async def disable_mfa(
             # Try backup codes
             backup_codes = totp_data.get('backup_codes', [])
             for backup_hash in backup_codes:
-                if core.verify_password(mfa_code, backup_hash):
+                if password.verify_password(mfa_code, backup_hash):
                     is_valid = True
                     break
 

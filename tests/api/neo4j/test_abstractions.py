@@ -100,8 +100,8 @@ class Neo4jAbstrationsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('ON MATCH SET', query)
         self.assertIn('RETURN elementId(node) AS nodeId', query)
 
-        # Verify constraint was used in query
-        self.assertIn('id: $id', query)
+        # Verify constraint was used in query (prefixed with _c_)
+        self.assertIn('id: $_c_id', query)
 
     async def test_delete_node_found(self) -> None:
         """Test deleting a node that exists."""

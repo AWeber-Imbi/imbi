@@ -8,7 +8,7 @@ import ssl
 import typing
 from email.mime import multipart, text
 
-from imbi_common import settings
+from imbi_api import settings
 
 from . import models
 

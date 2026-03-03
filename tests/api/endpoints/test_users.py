@@ -66,7 +66,7 @@ class UserEndpointsTestCase(unittest.TestCase):
         """Test successful user creation with password."""
         with (
             mock.patch(
-                'imbi_common.auth.core.hash_password',
+                'imbi_api.auth.password.hash_password',
             ) as mock_hash,
             mock.patch('imbi_common.neo4j.create_node') as mock_create,
         ):
@@ -456,11 +456,11 @@ class UserEndpointsTestCase(unittest.TestCase):
                 return_value=mock_user,
             ),
             mock.patch(
-                'imbi_common.auth.core.verify_password',
+                'imbi_api.auth.password.verify_password',
                 return_value=True,
             ),
             mock.patch(
-                'imbi_common.auth.core.hash_password',
+                'imbi_api.auth.password.hash_password',
             ) as mock_hash,
             mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
         ):
@@ -499,7 +499,7 @@ class UserEndpointsTestCase(unittest.TestCase):
                 return_value=mock_user,
             ),
             mock.patch(
-                'imbi_common.auth.core.hash_password',
+                'imbi_api.auth.password.hash_password',
             ) as mock_hash,
             mock.patch('imbi_common.neo4j.upsert'),
         ):
@@ -536,7 +536,7 @@ class UserEndpointsTestCase(unittest.TestCase):
                 return_value=mock_user,
             ),
             mock.patch(
-                'imbi_common.auth.core.verify_password',
+                'imbi_api.auth.password.verify_password',
                 return_value=False,
             ),
         ):

@@ -1,7 +1,8 @@
 import unittest
 
 import pydantic
-from imbi_common import settings
+
+from imbi_api import settings
 
 
 class Neo4jSettingsTestCase(unittest.TestCase):
@@ -270,7 +271,7 @@ class ConfigurationTestCase(unittest.TestCase):
 
     def test_configuration_defaults(self) -> None:
         """Test Configuration with default values."""
-        config = settings.Configuration()
+        config = settings.APIConfiguration()
 
         self.assertIsInstance(config.clickhouse, settings.Clickhouse)
         self.assertIsInstance(config.neo4j, settings.Neo4j)

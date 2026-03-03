@@ -5,7 +5,8 @@ import io
 import logging
 
 import PIL.Image
-from imbi_common import settings
+
+from imbi_api import settings
 
 LOGGER = logging.getLogger(__name__)
 

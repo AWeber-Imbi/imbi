@@ -1,46 +1,49 @@
-"""Re-export models from imbi_common for convenience.
+"""Re-export all models for convenient access.
 
-This module provides a convenient import path for models:
+Combines shared models from imbi_common and API-specific models
+from imbi_api.domain for a single import path:
     from imbi_api import models
     models.Organization(...)
-
-Instead of:
-    from imbi_common import models
-    models.Organization(...)
+    models.User(...)
 """
 
-import imbi_common.models
+from imbi_common import models as _common
 
-# Re-export all public names from imbi_common.models
-__all__ = imbi_common.models.__all__
+from imbi_api.domain import models as _domain
 
-# Re-export all models as explicit aliases for type-checker support.
-# NOTE: When imbi_common.models adds new exports, add them here too.
-APIKey = imbi_common.models.APIKey
-Blueprint = imbi_common.models.Blueprint
-BlueprintAssignment = imbi_common.models.BlueprintAssignment
-BlueprintEdge = imbi_common.models.BlueprintEdge
-EmptyRelationship = imbi_common.models.EmptyRelationship
-Environment = imbi_common.models.Environment
-MembershipProperties = imbi_common.models.MembershipProperties
-MODEL_TYPES = imbi_common.models.MODEL_TYPES
-Node = imbi_common.models.Node
-OAuthIdentity = imbi_common.models.OAuthIdentity
-OrgMembership = imbi_common.models.OrgMembership
-Organization = imbi_common.models.Organization
-OrganizationEdge = imbi_common.models.OrganizationEdge
-PasswordChangeRequest = imbi_common.models.PasswordChangeRequest
-Permission = imbi_common.models.Permission
-Project = imbi_common.models.Project
-ProjectType = imbi_common.models.ProjectType
-ResourcePermission = imbi_common.models.ResourcePermission
-Role = imbi_common.models.Role
-Schema = imbi_common.models.Schema
-Session = imbi_common.models.Session
-TOTPSecret = imbi_common.models.TOTPSecret
-Team = imbi_common.models.Team
-TokenMetadata = imbi_common.models.TokenMetadata
-Upload = imbi_common.models.Upload
-User = imbi_common.models.User
-UserCreate = imbi_common.models.UserCreate
-UserResponse = imbi_common.models.UserResponse
+__all__ = [
+    *_common.__all__,
+    *_domain.__all__,
+]
+
+# Shared domain models from imbi-common
+Blueprint = _common.Blueprint
+BlueprintAssignment = _common.BlueprintAssignment
+BlueprintEdge = _common.BlueprintEdge
+Environment = _common.Environment
+MODEL_TYPES = _common.MODEL_TYPES
+Node = _common.Node
+Organization = _common.Organization
+Project = _common.Project
+ProjectType = _common.ProjectType
+Schema = _common.Schema
+Team = _common.Team
+
+# API-specific models from imbi_api.domain
+APIKey = _domain.APIKey
+EmptyRelationship = _domain.EmptyRelationship
+MembershipProperties = _domain.MembershipProperties
+OAuthIdentity = _domain.OAuthIdentity
+OrgMembership = _domain.OrgMembership
+OrganizationEdge = _domain.OrganizationEdge
+PasswordChangeRequest = _domain.PasswordChangeRequest
+Permission = _domain.Permission
+ResourcePermission = _domain.ResourcePermission
+Role = _domain.Role
+Session = _domain.Session
+TOTPSecret = _domain.TOTPSecret
+TokenMetadata = _domain.TokenMetadata
+Upload = _domain.Upload
+User = _domain.User
+UserCreate = _domain.UserCreate
+UserResponse = _domain.UserResponse

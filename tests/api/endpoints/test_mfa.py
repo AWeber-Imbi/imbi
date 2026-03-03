@@ -7,10 +7,10 @@ from unittest import mock
 
 import pyotp
 from fastapi import testclient
-from imbi_common import settings
 from imbi_common.auth import core
 
-from imbi_api import app, models
+from imbi_api import app, models, settings
+from imbi_api.auth import password
 
 
 class MFAEndpointsTestCase(unittest.TestCase):
@@ -26,7 +26,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
             email='test@example.com',
             display_name='Test User',
             is_active=True,
-            password_hash=core.hash_password('testpassword123'),
+            password_hash=password.hash_password('testpassword123'),
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
@@ -108,9 +108,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(None),
@@ -142,9 +140,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         }
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(totp_data),
@@ -176,9 +172,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         }
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(totp_data),
@@ -214,9 +208,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         mock_img.save = mock_save
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(None, include_consume=True),
@@ -281,9 +273,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         }
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(
@@ -315,9 +305,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         }
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(totp_data),
@@ -341,9 +329,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(None),
@@ -369,9 +355,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(None, include_consume=True),
@@ -395,9 +379,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(None),
@@ -454,9 +436,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
             return mock_result
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch('imbi_common.neo4j.run', side_effect=mock_run_oauth),
         ):
             mock_settings.return_value = self.auth_settings
@@ -494,9 +474,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(totp_data),
@@ -537,9 +515,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         mock_encryptor.decrypt = mock.Mock(return_value=None)
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(totp_data),
@@ -570,7 +546,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
         secret = 'JBSWY3DPEHPK3PXP'
         backup_code_plain = 'backup12'
-        backup_code_hash = core.hash_password(backup_code_plain)
+        backup_code_hash = password.hash_password(backup_code_plain)
 
         totp_data = {
             'secret': secret,
@@ -580,9 +556,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         }
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(
@@ -607,9 +581,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
         )
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
                 side_effect=self._create_mock_run(None),
@@ -686,9 +658,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
             return mock_result
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run', side_effect=mock_run_oauth_with_mfa
             ),
@@ -721,7 +691,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
 
         secret = 'JBSWY3DPEHPK3PXP'
         backup_code_plain = 'backup99'
-        backup_code_hash = core.hash_password(backup_code_plain)
+        backup_code_hash = password.hash_password(backup_code_plain)
 
         totp_data = {
             'secret': secret,
@@ -759,9 +729,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
             return mock_result
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run', side_effect=mock_run_oauth_with_mfa
             ),
@@ -829,9 +797,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
             return mock_result
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run', side_effect=mock_run_oauth_with_mfa
             ),
@@ -889,9 +855,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
             return mock_result
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run', side_effect=mock_run_oauth_no_mfa
             ),
@@ -964,9 +928,7 @@ class MFAEndpointsTestCase(unittest.TestCase):
             return mock_result
 
         with (
-            mock.patch(
-                'imbi_common.settings.get_auth_settings'
-            ) as mock_settings,
+            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run', side_effect=mock_run_oauth_with_mfa
             ),

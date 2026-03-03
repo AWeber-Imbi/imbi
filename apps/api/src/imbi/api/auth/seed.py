@@ -3,7 +3,9 @@
 import logging
 import typing
 
-from imbi_common import models, neo4j
+from imbi_common import neo4j
+
+from imbi_api import models
 
 LOGGER = logging.getLogger(__name__)
 

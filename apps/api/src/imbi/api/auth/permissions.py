@@ -8,8 +8,11 @@ import fastapi
 import jwt
 import pydantic
 from fastapi import security
-from imbi_common import models, neo4j, settings
+from imbi_common import neo4j
 from imbi_common.auth import core
+
+from imbi_api import models, settings
+from imbi_api.auth import password
 
 LOGGER = logging.getLogger(__name__)
 
@@ -213,7 +216,7 @@ async def authenticate_api_key(
         raise fastapi.HTTPException(status_code=401, detail='API key expired')
 
     # Verify key secret (hashed)
-    if not core.verify_password(key_secret, api_key_data['key_hash']):
+    if not password.verify_password(key_secret, api_key_data['key_hash']):
         raise fastapi.HTTPException(
             status_code=401, detail='Invalid or revoked API key'
         )

@@ -5,8 +5,8 @@ import unittest
 from unittest import mock
 
 import fastapi
-from imbi_common import models
 
+from imbi_api import models
 from imbi_api.assistant import (
     client,
     endpoints,

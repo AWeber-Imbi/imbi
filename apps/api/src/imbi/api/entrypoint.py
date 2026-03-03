@@ -6,10 +6,10 @@ import typing
 
 import typer
 import uvicorn
-from imbi_common import clickhouse, logging, models, neo4j, settings
-from imbi_common.auth import core
+from imbi_common import clickhouse, logging, neo4j
 
-from imbi_api import version
+from imbi_api import models, settings, version
+from imbi_api.auth import password as password_auth
 from imbi_api.auth import seed
 
 main = typer.Typer()
@@ -227,7 +227,7 @@ async def _create_admin_user(
         Exception: If user creation fails
     """
     # Hash the password
-    password_hash = core.hash_password(password)
+    password_hash = password_auth.hash_password(password)
 
     # Create user model
     user = models.User(
