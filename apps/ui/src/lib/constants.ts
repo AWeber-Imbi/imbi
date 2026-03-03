@@ -3,7 +3,7 @@
  * ProjectType) and should not be treated as dynamic/blueprint fields.
  */
 export const NODE_BASE_FIELDS = [
-  'name', 'slug', 'description', 'icon',
+  'name', 'slug', 'description', 'icon', 'label_color',
   'organization', 'organization_slug', 'created_at', 'last_modified_at',
 ]
 
