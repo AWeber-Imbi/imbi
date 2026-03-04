@@ -254,7 +254,9 @@ export function ServiceAccountDetail({
       description: credentialDescription.trim() || null,
       scopes: scopes.length > 0 ? scopes : undefined,
       expires_in_days: credentialExpiresDays
-        ? parseInt(credentialExpiresDays, 10)
+        ? (Number.isNaN(parseInt(credentialExpiresDays, 10))
+            ? null
+            : parseInt(credentialExpiresDays, 10))
         : null,
     }
     createCredentialMutation.mutate(data)

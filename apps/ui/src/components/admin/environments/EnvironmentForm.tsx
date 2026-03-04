@@ -36,7 +36,7 @@ export function EnvironmentForm({
   const [slug, setSlug] = useState(environment?.slug || '')
   const [description, setDescription] = useState(environment?.description || '')
   const [icon, setIcon] = useState(environment?.icon || '')
-  const [labelColor, setLabelColor] = useState(environment?.label_color || '#3B82F6')
+  const [labelColor, setLabelColor] = useState(environment?.label_color ?? '')
   const [orgSlug, setOrgSlug] = useState(
     environment?.organization.slug || selectedOrganization?.slug || ''
   )
@@ -78,7 +78,7 @@ export function EnvironmentForm({
       slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
-      label_color: labelColor || null,
+      label_color: /^#[0-9A-Fa-f]{6}$/.test(labelColor) ? labelColor.toUpperCase() : null,
       organization_slug: orgSlug,
       ...dynamicFormData,
     })

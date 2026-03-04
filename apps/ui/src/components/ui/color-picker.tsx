@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const PRESET_COLORS = [
   '#EF4444', '#F59E0B', '#EAB308', '#22C55E',
@@ -13,6 +13,11 @@ interface ColorPickerProps {
 
 export function ColorPicker({ value, onChange, isDarkMode }: ColorPickerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const [hexInput, setHexInput] = useState(value)
+
+  useEffect(() => {
+    setHexInput(value)
+  }, [value])
 
   const handleSwatchClick = () => {
     inputRef.current?.click()
@@ -60,11 +65,13 @@ export function ColorPicker({ value, onChange, isDarkMode }: ColorPickerProps) {
         />
         <input
           type="text"
-          value={value}
+          value={hexInput}
           onChange={(e) => {
-            const v = e.target.value
-            if (/^#[0-9A-Fa-f]{0,6}$/.test(v)) {
-              onChange(v.toUpperCase())
+            const v = e.target.value.toUpperCase()
+            if (!/^$|^#[0-9A-F]{0,6}$/.test(v)) return
+            setHexInput(v)
+            if (v === '' || /^#[0-9A-F]{6}$/.test(v)) {
+              onChange(v)
             }
           }}
           placeholder="#3B82F6"
