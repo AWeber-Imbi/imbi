@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   useQuery,
   useMutation,
@@ -70,6 +70,20 @@ export function ServiceAccountDetail({
   const [credentialExpiresDays, setCredentialExpiresDays] = useState('')
   const [newlyCreatedCredential, setNewlyCreatedCredential] =
     useState<ClientCredentialCreated | null>(null)
+
+  // Reset all sensitive/form state when the viewed account changes
+  useEffect(() => {
+    setNewKeyName('')
+    setShowCreateKey(false)
+    setNewlyCreatedKey(null)
+    setShowCreateCredential(false)
+    setCredentialName('')
+    setCredentialDescription('')
+    setCredentialScopes('')
+    setCredentialExpiresDays('')
+    setNewlyCreatedCredential(null)
+    setCopiedId(null)
+  }, [account.slug])
 
   // Fetch API keys
   const {
@@ -249,15 +263,24 @@ export function ServiceAccountDetail({
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
+    const expiresInDays =
+      credentialExpiresDays.trim() === ''
+        ? null
+        : Number(credentialExpiresDays)
+
+    if (
+      expiresInDays !== null &&
+      (!Number.isInteger(expiresInDays) || expiresInDays < 1)
+    ) {
+      alert('Expiration must be a positive whole number of days.')
+      return
+    }
+
     const data: ClientCredentialCreate = {
       name: credentialName.trim(),
       description: credentialDescription.trim() || null,
       scopes: scopes.length > 0 ? scopes : undefined,
-      expires_in_days: credentialExpiresDays
-        ? (Number.isNaN(parseInt(credentialExpiresDays, 10))
-            ? null
-            : parseInt(credentialExpiresDays, 10))
-        : null,
+      expires_in_days: expiresInDays,
     }
     createCredentialMutation.mutate(data)
   }
