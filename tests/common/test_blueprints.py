@@ -1,4 +1,5 @@
 import datetime
+import typing
 import unittest
 from unittest import mock
 
@@ -19,15 +20,49 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_fetch_nodes = self.fetch_nodes_patcher.start()
         self.addCleanup(self.fetch_nodes_patcher.stop)
 
+    def _make_blueprint(
+        self,
+        *,
+        properties: dict[str, typing.Any],
+        required: list[str] | None = None,
+        name: str = 'test',
+        priority: int = 0,
+    ) -> models.Blueprint:
+        schema: dict[str, typing.Any] = {
+            'type': 'object',
+            'properties': properties,
+        }
+        if required:
+            schema['required'] = required
+        return models.Blueprint(
+            name=name,
+            type='Environment',
+            priority=priority,
+            json_schema=models.Schema.model_validate(schema),
+        )
+
+    def _set_blueprints(self, *bps: models.Blueprint) -> None:
+        async def iterator():
+            for bp in bps:
+                yield bp
+
+        self.mock_fetch_nodes.return_value = iterator()
+
+    async def test_model_is_subclass_of_input(self) -> None:
+        """Verify the returned model is a true subclass, not just cast."""
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={'domain': {'type': 'string'}},
+            )
+        )
+
+        result_model = await blueprints.get_model(models.Environment)
+
+        self.assertTrue(issubclass(result_model, models.Environment))
+
     async def test_get_model_no_blueprints(self) -> None:
         """Test get_model with no blueprints returns base model."""
-
-        # Mock empty blueprint list
-        async def empty_iterator():
-            return
-            yield  # Make it a generator
-
-        self.mock_fetch_nodes.return_value = empty_iterator()
+        self._set_blueprints()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -39,28 +74,18 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_string_fields(self) -> None:
         """Test get_model with basic string fields from blueprints."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'domain': {
-                            'type': 'string',
-                            'description': 'Base domain',
-                        },
-                        'region': {'type': 'string'},
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'domain': {
+                        'type': 'string',
+                        'description': 'Base domain',
                     },
-                    'required': ['domain'],
-                }
-            ),
+                    'region': {'type': 'string'},
+                },
+                required=['domain'],
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -90,25 +115,15 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_integer_and_number_fields(self) -> None:
         """Test get_model with integer and number fields."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'max_instances': {'type': 'integer'},
-                        'cpu_threshold': {'type': 'number'},
-                    },
-                    'required': ['max_instances'],
-                }
-            ),
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'max_instances': {'type': 'integer'},
+                    'cpu_threshold': {'type': 'number'},
+                },
+                required=['max_instances'],
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -134,21 +149,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_boolean_field(self) -> None:
         """Test get_model with boolean field."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {'is_production': {'type': 'boolean'}},
-                }
-            ),
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={'is_production': {'type': 'boolean'}}
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -162,28 +167,15 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_array_fields(self) -> None:
         """Test get_model with array fields."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'tags': {'type': 'array', 'items': {'type': 'string'}},
-                        'ports': {
-                            'type': 'array',
-                            'items': {'type': 'integer'},
-                        },
-                        'generic_list': {'type': 'array'},
-                    },
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'tags': {'type': 'array', 'items': {'type': 'string'}},
+                    'ports': {'type': 'array', 'items': {'type': 'integer'}},
+                    'generic_list': {'type': 'array'},
                 }
-            ),
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -201,21 +193,9 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_object_field(self) -> None:
         """Test get_model with object field."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {'metadata': {'type': 'object'}},
-                }
-            ),
+        self._set_blueprints(
+            self._make_blueprint(properties={'metadata': {'type': 'object'}})
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -229,23 +209,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_email_format(self) -> None:
         """Test get_model with email format string."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'contact': {'type': 'string', 'format': 'email'}
-                    },
-                }
-            ),
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={'contact': {'type': 'string', 'format': 'email'}}
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -268,23 +236,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_uri_format(self) -> None:
         """Test get_model with uri/url format string."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'homepage': {'type': 'string', 'format': 'uri'}
-                    },
-                }
-            ),
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={'homepage': {'type': 'string', 'format': 'uri'}}
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -298,31 +254,15 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_datetime_formats(self) -> None:
         """Test get_model with date-time, date, and time formats."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'created_at': {
-                            'type': 'string',
-                            'format': 'date-time',
-                        },
-                        'launch_date': {'type': 'string', 'format': 'date'},
-                        'maintenance_window': {
-                            'type': 'string',
-                            'format': 'time',
-                        },
-                    },
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'created_at': {'type': 'string', 'format': 'date-time'},
+                    'launch_date': {'type': 'string', 'format': 'date'},
+                    'maintenance_window': {'type': 'string', 'format': 'time'},
                 }
-            ),
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -344,26 +284,16 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_enum(self) -> None:
         """Test get_model with enum constraint."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'tier': {
-                            'type': 'string',
-                            'enum': ['dev', 'staging', 'production'],
-                        }
-                    },
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'tier': {
+                        'type': 'string',
+                        'enum': ['dev', 'staging', 'production'],
+                    }
                 }
-            ),
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -386,27 +316,14 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_default_values(self) -> None:
         """Test get_model with default values from schema."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'region': {
-                            'type': 'string',
-                            'default': 'us-east-1',
-                        },
-                        'replicas': {'type': 'integer', 'default': 3},
-                    },
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'region': {'type': 'string', 'default': 'us-east-1'},
+                    'replicas': {'type': 'integer', 'default': 3},
                 }
-            ),
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -430,26 +347,16 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_with_descriptions(self) -> None:
         """Test get_model preserves field descriptions."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'domain': {
-                            'type': 'string',
-                            'description': 'Base domain name',
-                        }
-                    },
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'domain': {
+                        'type': 'string',
+                        'description': 'Base domain name',
+                    }
                 }
-            ),
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -459,34 +366,18 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_multiple_blueprints_priority(self) -> None:
         """Test get_model with multiple blueprints respects priority."""
-        blueprint1 = models.Blueprint(
-            name='base',
-            type='Environment',
-            priority=0,
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {'field1': {'type': 'string'}},
-                }
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={'field1': {'type': 'string'}},
+                name='base',
+                priority=0,
+            ),
+            self._make_blueprint(
+                properties={'field2': {'type': 'integer'}},
+                name='extended',
+                priority=1,
             ),
         )
-        blueprint2 = models.Blueprint(
-            name='extended',
-            type='Environment',
-            priority=1,
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {'field2': {'type': 'integer'}},
-                }
-            ),
-        )
-
-        async def blueprint_iterator():
-            yield blueprint1
-            yield blueprint2
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -506,31 +397,21 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_json_schema_round_trip(self) -> None:
         """Test get_model creates valid Pydantic model with JSON schema."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'domain': {
-                            'type': 'string',
-                            'description': 'Base domain name',
-                        },
-                        'region': {
-                            'type': 'string',
-                            'description': 'AWS region',
-                        },
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'domain': {
+                        'type': 'string',
+                        'description': 'Base domain name',
                     },
-                    'required': ['domain', 'region'],
-                }
-            ),
+                    'region': {
+                        'type': 'string',
+                        'description': 'AWS region',
+                    },
+                },
+                required=['domain', 'region'],
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
@@ -547,25 +428,15 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_model_validates_instances(self) -> None:
         """Test that instances of returned model validate correctly."""
-        blueprint = models.Blueprint(
-            name='test',
-            type='Environment',
-            json_schema=models.Schema.model_validate(
-                {
-                    'type': 'object',
-                    'properties': {
-                        'domain': {'type': 'string'},
-                        'max_instances': {'type': 'integer'},
-                    },
-                    'required': ['domain'],
-                }
-            ),
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'domain': {'type': 'string'},
+                    'max_instances': {'type': 'integer'},
+                },
+                required=['domain'],
+            )
         )
-
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
 
         result_model = await blueprints.get_model(models.Environment)
 
