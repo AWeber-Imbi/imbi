@@ -108,6 +108,15 @@ class Team(Node):
 
 
 class Environment(Node):
+    label_color: typing.Annotated[
+        str | None,
+        pydantic.Field(
+            default=None,
+            pattern=r'^#[0-9A-Fa-f]{6}$',
+            description='Hex color for environment labels (e.g. #3B82F6)',
+        ),
+    ]
+
     organization: typing.Annotated[
         Organization,
         cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),

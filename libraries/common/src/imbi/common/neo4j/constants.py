@@ -26,4 +26,11 @@ INDEXES: list[str] = [
     'FOR (n:Message) REQUIRE n.id IS UNIQUE;',
     'CREATE INDEX message_conversation_id IF NOT EXISTS '
     'FOR (n:Message) ON (n.conversation_id);',
+    # Service Accounts
+    'CREATE CONSTRAINT service_account_slug_unique IF NOT EXISTS '
+    'FOR (n:ServiceAccount) REQUIRE n.slug IS UNIQUE;',
+    # Client Credentials
+    'CREATE CONSTRAINT client_credential_client_id_unique '
+    'IF NOT EXISTS '
+    'FOR (n:ClientCredential) REQUIRE n.client_id IS UNIQUE;',
 ]
