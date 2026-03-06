@@ -74,6 +74,8 @@ Environment prefix: `CLICKHOUSE_`
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `url` | HttpUrl | `http://localhost:8123` | ClickHouse HTTP interface URL |
+| `connect_timeout` | float | 10.0 | Connection timeout (seconds) |
+| `max_connect_attempts` | int | 10 | Maximum connection retry attempts |
 
 ### Example
 
@@ -121,72 +123,16 @@ Environment prefix: `IMBI_AUTH_`
 | `access_token_expire_seconds` | int | 3600 | Access token TTL (1 hour) |
 | `refresh_token_expire_seconds` | int | 2592000 | Refresh token TTL (30 days) |
 
-### Password Policy
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `password_min_length` | int | 12 | Minimum password length |
-| `password_require_uppercase` | bool | True | Require uppercase letter |
-| `password_require_lowercase` | bool | True | Require lowercase letter |
-| `password_require_digit` | bool | True | Require digit |
-| `password_require_special` | bool | True | Require special character |
-
-### Session Configuration
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `session_timeout_seconds` | int | 86400 | Session timeout (24 hours) |
-| `max_concurrent_sessions` | int | 5 | Max sessions per user |
-
-### API Keys
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `api_key_max_lifetime_days` | int | 365 | Max API key lifetime |
-
 ### Encryption
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `encryption_key` | str | auto-generated | Fernet encryption key |
 
-**⚠️ Warning:** Auto-generated keys are not suitable for production! Always set explicitly.
-
-### MFA Configuration
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `mfa_issuer_name` | str | `Imbi` | TOTP issuer name |
-| `mfa_totp_period` | int | 30 | TOTP period (seconds) |
-| `mfa_totp_digits` | int | 6 | TOTP digits |
-| `mfa_backup_code_count` | int | 10 | Number of backup codes |
-
-### Rate Limiting
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `rate_limit_login` | str | `5/minute` | Login endpoint rate limit |
-| `rate_limit_api_key` | str | `100/minute` | API key rate limit |
-| `rate_limit_default` | str | `60/minute` | Default rate limit |
-
-### OAuth Configuration
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `oauth_google_enabled` | bool | False | Enable Google OAuth |
-| `oauth_google_client_id` | str | None | Google client ID |
-| `oauth_google_client_secret` | str | None | Google client secret |
-| `oauth_google_allowed_domains` | list | [] | Allowed email domains |
-| `oauth_github_enabled` | bool | False | Enable GitHub OAuth |
-| `oauth_github_client_id` | str | None | GitHub client ID |
-| `oauth_github_client_secret` | str | None | GitHub client secret |
-| `oauth_oidc_enabled` | bool | False | Enable generic OIDC |
-| `oauth_oidc_discovery_url` | str | None | OIDC discovery URL |
-| `oauth_oidc_client_id` | str | None | OIDC client ID |
-| `oauth_oidc_client_secret` | str | None | OIDC client secret |
-| `oauth_auto_create_users` | bool | True | Auto-create users on OAuth login |
-| `oauth_auto_link_by_email` | bool | True | Auto-link OAuth by email |
-| `oauth_callback_url` | str | None | OAuth callback URL |
+!!! warning
+    Auto-generated keys change on each restart. Always set `IMBI_AUTH_JWT_SECRET`
+    and `IMBI_AUTH_ENCRYPTION_KEY` explicitly in production for stable keys
+    across restarts.
 
 ### Example Auth Configuration
 
@@ -195,39 +141,14 @@ Environment prefix: `IMBI_AUTH_`
 [auth]
 jwt_secret = "your-secret-key-change-in-production"
 access_token_expire_seconds = 7200
-password_min_length = 16
-session_timeout_seconds = 43200
-mfa_issuer_name = "My Company Imbi"
-
-[auth.oauth]
-google_enabled = true
-google_client_id = "your-google-client-id"
-google_client_secret = "your-google-client-secret"
-google_allowed_domains = ["example.com", "company.com"]
+encryption_key = "your-fernet-key-here"
 ```
 
-## Email Settings
-
-Environment prefix: `IMBI_EMAIL_`
-
-| Setting | Type | Default | Description |
-|---------|------|---------|-------------|
-| `enabled` | bool | True | Enable email sending |
-| `dry_run` | bool | False | Log emails instead of sending |
-| `smtp_host` | str | `localhost` | SMTP server hostname |
-| `smtp_port` | int | 25 | SMTP server port |
-| `smtp_use_tls` | bool | False | Use TLS |
-| `smtp_use_ssl` | bool | False | Use SSL |
-| `smtp_username` | str | None | SMTP username |
-| `smtp_password` | str | None | SMTP password |
-| `from_email` | str | `noreply@example.com` | Sender email |
-| `from_name` | str | `Imbi` | Sender name |
-| `reply_to` | str | None | Reply-to address |
-| `max_retries` | int | 3 | Max send retries |
-
-### Mailpit Auto-Configuration
-
-In development mode, if `smtp_host` is `localhost:1025`, Mailpit settings are auto-configured.
+**Environment:**
+```bash
+export IMBI_AUTH_JWT_SECRET="your-secret-key-here"
+export IMBI_AUTH_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+```
 
 ## Complete Example
 
@@ -250,19 +171,7 @@ url = "http://clickhouse-prod:8123"
 [auth]
 jwt_secret = "change-this-in-production"
 access_token_expire_seconds = 7200
-password_min_length = 16
 encryption_key = "your-fernet-key-here"
-mfa_issuer_name = "My Company"
-
-[email]
-enabled = true
-smtp_host = "smtp.example.com"
-smtp_port = 587
-smtp_use_tls = true
-smtp_username = "noreply@example.com"
-smtp_password = "smtp-password"
-from_email = "noreply@example.com"
-from_name = "Imbi Notifications"
 ```
 
 ## Validation

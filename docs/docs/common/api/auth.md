@@ -1,32 +1,14 @@
 # Authentication
 
-Authentication primitives for password hashing, JWT tokens, and encryption.
+Authentication primitives for JWT tokens and encryption.
 
 ## Overview
 
 The auth module provides core authentication functionality that can be used
 by any service in the Imbi ecosystem:
 
-- **Password Hashing**: Argon2id with automatic rehashing
 - **JWT Tokens**: Access and refresh token creation/verification
 - **Token Encryption**: Fernet encryption for sensitive data at rest
-
-## Password Security
-
-```python
-from imbi_common.auth import core
-
-# Hash a password (Argon2id)
-password_hash = core.hash_password("secure_password_123")
-
-# Verify a password
-is_valid = core.verify_password("secure_password_123", password_hash)
-
-# Check if hash needs rehashing (automatically updates to latest params)
-if core.needs_rehash(password_hash):
-    new_hash = core.hash_password("secure_password_123")
-    # Update in database
-```
 
 ## JWT Tokens
 
@@ -69,12 +51,6 @@ decrypted = encryption.decrypt_token(encrypted)
 
 ### Core Functions
 
-::: imbi_common.auth.core.hash_password
-
-::: imbi_common.auth.core.verify_password
-
-::: imbi_common.auth.core.needs_rehash
-
 ::: imbi_common.auth.core.create_access_token
 
 ::: imbi_common.auth.core.create_refresh_token
@@ -82,6 +58,8 @@ decrypted = encryption.decrypt_token(encrypted)
 ::: imbi_common.auth.core.verify_token
 
 ### Encryption Functions
+
+::: imbi_common.auth.encryption.TokenEncryption
 
 ::: imbi_common.auth.encryption.get_fernet
 

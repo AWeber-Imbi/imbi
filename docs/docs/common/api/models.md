@@ -1,15 +1,12 @@
 # Models
 
-Core domain and authentication models for the Imbi ecosystem.
+Core domain models for the Imbi ecosystem.
 
 ## Overview
 
 The models module provides Pydantic models for all core domain entities
-(projects, organizations, teams) and authentication entities (users, groups,
-roles, permissions).
-
-All models inherit from cypherantic's `Node` base class and support
-serialization to/from Neo4j.
+(projects, organizations, teams) and the blueprint system for dynamic
+schema extension.
 
 ## Model Categories
 
@@ -20,16 +17,6 @@ serialization to/from Neo4j.
 - **ProjectType**: Project categorization and templates
 - **Project**: Services and applications
 
-### Auth Models
-- **User**: User accounts with authentication
-- **Group**: User grouping and organization
-- **Role**: Permission grouping with inheritance
-- **Permission**: Granular access control
-- **Session**: User session tracking
-- **APIKey**: Programmatic access tokens
-- **OAuthIdentity**: OAuth provider linkage
-- **TOTPSecret**: MFA/2FA secrets
-
 ### Blueprint Models
 - **Blueprint**: Dynamic schema definitions
 - **BlueprintAssignment**: Blueprint-to-entity relationships
@@ -39,30 +26,22 @@ serialization to/from Neo4j.
 ```python
 from imbi_common import models, neo4j
 
-# Create a project
-project = models.Project(
-    name="API Gateway",
-    slug="api-gateway",
-    description="Main API gateway service"
+# Create an organization
+org = models.Organization(
+    name="My Company",
+    slug="my-company",
+    description="Our organization"
 )
-await neo4j.create_node(project)
+await neo4j.create_node(org)
 
-# Create a user
-user = models.User(
-    email="admin@example.com",
-    display_name="Admin User",
-    password_hash="...",  # Use auth.core.hash_password()
-    is_active=True,
-    is_admin=True
+# Create a team linked to an organization
+team = models.Team(
+    name="Platform Team",
+    slug="platform-team",
+    description="Infrastructure and platform",
+    organization=org
 )
-await neo4j.create_node(user)
-
-# Create relationships
-await neo4j.create_relationship(
-    from_node=project,
-    to_node=team,
-    rel_type="OWNED_BY"
-)
+await neo4j.create_node(team)
 ```
 
 ## API Reference
@@ -70,8 +49,6 @@ await neo4j.create_relationship(
 ### Base Classes
 
 ::: imbi_common.models.Node
-
-::: imbi_common.models.EmptyRelationship
 
 ### Domain Models
 
@@ -85,34 +62,6 @@ await neo4j.create_relationship(
 
 ::: imbi_common.models.Project
 
-### Auth Models
-
-::: imbi_common.models.User
-
-::: imbi_common.models.UserCreate
-
-::: imbi_common.models.UserResponse
-
-::: imbi_common.models.PasswordChangeRequest
-
-::: imbi_common.models.Group
-
-::: imbi_common.models.Role
-
-::: imbi_common.models.Permission
-
-::: imbi_common.models.ResourcePermission
-
-::: imbi_common.models.Session
-
-::: imbi_common.models.TokenMetadata
-
-::: imbi_common.models.APIKey
-
-::: imbi_common.models.OAuthIdentity
-
-::: imbi_common.models.TOTPSecret
-
 ### Blueprint Models
 
 ::: imbi_common.models.Blueprint
@@ -120,9 +69,3 @@ await neo4j.create_relationship(
 ::: imbi_common.models.BlueprintAssignment
 
 ::: imbi_common.models.BlueprintEdge
-
-### Edge Types
-
-::: imbi_common.models.GroupEdge
-
-::: imbi_common.models.RoleEdge

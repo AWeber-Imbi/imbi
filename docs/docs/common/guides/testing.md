@@ -51,16 +51,18 @@ class TestNeo4jOperations(unittest.IsolatedAsyncioTestCase):
         await neo4j.aclose()
 
     async def test_create_node(self):
-        project = models.Project(
-            name="Test Project",
-            slug="test-project",
+        org = models.Organization(
+            name="Test Org",
+            slug="test-org",
             description="Test"
         )
-        created = await neo4j.create_node(project)
-        self.assertEqual(created.name, "Test Project")
+        created = await neo4j.create_node(org)
+        self.assertEqual(created.name, "Test Org")
 
         # Cleanup
-        await neo4j.delete_node(created)
+        await neo4j.delete_node(
+            models.Organization, {"slug": "test-org"}
+        )
 ```
 
 ## Unit Tests
@@ -82,7 +84,7 @@ class TestSettings(unittest.TestCase):
 
     def test_clickhouse_defaults(self):
         config = settings.Clickhouse()
-        self.assertEqual(str(config.url), "http://localhost:8123")
+        self.assertEqual(str(config.url), "http://localhost:8123/")
 ```
 
 ### Testing Models
@@ -92,20 +94,13 @@ import unittest
 from imbi_common import models
 
 class TestModels(unittest.TestCase):
-    def test_project_creation(self):
-        project = models.Project(
-            name="Test Project",
-            slug="test-project",
-            description="Test description"
+    def test_blueprint_slug_generation(self):
+        blueprint = models.Blueprint(
+            name="Cloud Provider",
+            type="Project",
+            json_schema={"type": "object", "properties": {}}
         )
-        self.assertEqual(project.name, "Test Project")
-        self.assertEqual(project.slug, "test-project")
-
-    def test_slug_generation(self):
-        project = models.Project(
-            name="My Test Project"
-        )
-        self.assertEqual(project.slug, "my-test-project")
+        self.assertEqual(blueprint.slug, "cloud-provider")
 ```
 
 ### Testing Auth Functions
@@ -115,18 +110,6 @@ import unittest
 from imbi_common.auth import core
 
 class TestAuth(unittest.TestCase):
-    def test_password_hashing(self):
-        password = "secure_password_123"
-        hashed = core.hash_password(password)
-
-        # Verify password
-        self.assertTrue(core.verify_password(password, hashed))
-
-        # Wrong password should fail
-        self.assertFalse(
-            core.verify_password("wrong_password", hashed)
-        )
-
     def test_jwt_creation_and_verification(self):
         token = core.create_access_token(
             subject="user@example.com",
@@ -137,6 +120,14 @@ class TestAuth(unittest.TestCase):
         payload = core.verify_token(token)
         self.assertEqual(payload["sub"], "user@example.com")
         self.assertEqual(payload["role"], "admin")
+
+    def test_refresh_token(self):
+        token = core.create_refresh_token(
+            subject="user@example.com"
+        )
+        payload = core.verify_token(token)
+        self.assertEqual(payload["sub"], "user@example.com")
+        self.assertEqual(payload["type"], "refresh")
 ```
 
 ### Testing Logging
@@ -148,9 +139,7 @@ from imbi_common import logging
 class TestLogging(unittest.TestCase):
     def test_get_log_config(self):
         config = logging.get_log_config()
-        self.assertIn("version", config)
-        self.assertIn("formatters", config)
-        self.assertIn("handlers", config)
+        self.assertIsInstance(config, dict)
 
     def test_configure_logging_dev_mode(self):
         # Should not raise
@@ -182,10 +171,11 @@ class TestNeo4jIntegration(unittest.IsolatedAsyncioTestCase):
         await neo4j.aclose()
 
     async def test_database_connection(self):
-        result = await neo4j.execute_read(
+        async with neo4j.run(
             "RETURN 'connected' as status"
-        )
-        self.assertEqual(result[0]['status'], 'connected')
+        ) as result:
+            record = await result.single()
+            self.assertEqual(record['status'], 'connected')
 ```
 
 ### Docker Compose for Tests
@@ -218,7 +208,7 @@ Start test databases:
 docker-compose -f docker-compose.test.yml up -d
 ```
 
-Run integration tests:
+Run tests:
 
 ```bash
 # Run all tests
@@ -226,72 +216,6 @@ python -m unittest discover tests
 
 # Skip integration tests
 SKIP_INTEGRATION_TESTS=1 python -m unittest discover tests
-```
-
-### Base Test Classes
-
-Create reusable base classes for integration tests:
-
-```python
-# tests/__init__.py
-
-import os
-import unittest
-from imbi_common import neo4j, clickhouse
-
-class Neo4jTestCase(unittest.IsolatedAsyncioTestCase):
-    """Base class for tests requiring Neo4j."""
-
-    @classmethod
-    def setUpClass(cls):
-        if os.environ.get('SKIP_INTEGRATION_TESTS'):
-            raise unittest.SkipTest("Integration tests disabled")
-
-    async def asyncSetUp(self):
-        await neo4j.initialize()
-
-    async def asyncTearDown(self):
-        # Clean up test data
-        await neo4j.execute_write("MATCH (n) DETACH DELETE n")
-        await neo4j.aclose()
-
-class ClickHouseTestCase(unittest.IsolatedAsyncioTestCase):
-    """Base class for tests requiring ClickHouse."""
-
-    @classmethod
-    def setUpClass(cls):
-        if os.environ.get('SKIP_INTEGRATION_TESTS'):
-            raise unittest.SkipTest("Integration tests disabled")
-
-    async def asyncSetUp(self):
-        await clickhouse.initialize()
-        await clickhouse.setup_schema()
-```
-
-Use base classes:
-
-```python
-from tests import Neo4jTestCase
-from imbi_common import models, neo4j
-
-class TestProjectCRUD(Neo4jTestCase):
-    async def test_create_and_fetch_project(self):
-        # Create
-        project = models.Project(
-            name="Integration Test Project",
-            slug="integration-test-project",
-            description="Test"
-        )
-        created = await neo4j.create_node(project)
-
-        # Fetch
-        fetched = await neo4j.fetch_node(
-            models.Project,
-            {"slug": "integration-test-project"}
-        )
-
-        self.assertEqual(fetched.name, "Integration Test Project")
-        self.assertEqual(fetched.slug, created.slug)
 ```
 
 ## Mocking
@@ -307,25 +231,25 @@ from imbi_common import models
 
 class TestServiceLogic(unittest.IsolatedAsyncioTestCase):
     @patch('imbi_common.neo4j.fetch_node')
-    async def test_get_project(self, mock_fetch):
+    async def test_get_organization(self, mock_fetch):
         # Setup mock
-        mock_project = models.Project(
-            name="Mocked Project",
-            slug="mocked-project",
+        mock_org = models.Organization(
+            name="Mocked Org",
+            slug="mocked-org",
             description="Test"
         )
-        mock_fetch.return_value = mock_project
+        mock_fetch.return_value = mock_org
 
         # Import after patching
         from imbi_common import neo4j
 
         # Test
-        project = await neo4j.fetch_node(
-            models.Project,
-            {"slug": "mocked-project"}
+        org = await neo4j.fetch_node(
+            models.Organization,
+            {"slug": "mocked-org"}
         )
 
-        self.assertEqual(project.name, "Mocked Project")
+        self.assertEqual(org.name, "Mocked Org")
         mock_fetch.assert_called_once()
 ```
 

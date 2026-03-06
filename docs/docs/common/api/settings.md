@@ -40,5 +40,3 @@ auth_config = settings.Auth()
 ::: imbi_common.settings.ServerConfig
 
 ::: imbi_common.settings.Auth
-
-::: imbi_common.settings.Email

@@ -39,15 +39,23 @@ pip install git+https://github.com/aweber/imbi-common.git@main
 ```python
 import imbi_common
 
-print(f"imbi-common version: {imbi_common.__version__}")
+print(f"imbi-common version: {imbi_common.version}")
 
 # Test basic imports
 from imbi_common import settings, models, neo4j, clickhouse, auth
 
-print("✓ All modules imported successfully")
+print("All modules imported successfully")
 ```
 
 ## Optional Dependencies
+
+### Server
+
+To use the `serve` command for running uvicorn:
+
+```bash
+pip install imbi-common[server]
+```
 
 ### Documentation
 

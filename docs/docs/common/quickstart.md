@@ -25,71 +25,64 @@ asyncio.run(setup())
 
 ## Working with Models
 
-### Create a Project
+### Create an Organization and Team
 
 ```python
 from imbi_common import models, neo4j
 
-# Create a project
-project = models.Project(
-    name="My Service",
-    slug="my-service",
-    description="A sample microservice"
+# Create an organization
+org = models.Organization(
+    name="My Company",
+    slug="my-company",
+    description="Our organization"
 )
+await neo4j.create_node(org)
 
-# Save to Neo4j
-await neo4j.create_node(project)
-print(f"Created project: {project.name}")
+# Create a team linked to the organization
+team = models.Team(
+    name="Platform Team",
+    slug="platform-team",
+    description="Infrastructure and platform",
+    organization=org
+)
+await neo4j.create_node(team)
 ```
 
-### Query Projects
+### Query Nodes
 
 ```python
-# Fetch a single project
-project = await neo4j.fetch_node(
-    models.Project,
-    {"slug": "my-service"}
+# Fetch a single node
+org = await neo4j.fetch_node(
+    models.Organization,
+    {"slug": "my-company"}
 )
 
-# Fetch all projects
-async for project in neo4j.fetch_nodes(
-    models.Project,
+# Fetch all teams
+async for team in neo4j.fetch_nodes(
+    models.Team,
     order_by="name"
 ):
-    print(f"Project: {project.name}")
+    print(f"Team: {team.name}")
 ```
 
-### Update a Project
+### Update a Node
 
 ```python
 # Fetch and modify
-project = await neo4j.fetch_node(
-    models.Project,
-    {"slug": "my-service"}
+org = await neo4j.fetch_node(
+    models.Organization,
+    {"slug": "my-company"}
 )
-project.description = "Updated description"
+org.description = "Updated description"
 
 # Update in database
 await neo4j.upsert(
-    project,
-    constraint={"slug": project.slug}
+    org,
+    constraint={"slug": org.slug}
 )
 ```
 
 ## Authentication
-
-### Password Hashing
-
-```python
-from imbi_common.auth import core
-
-# Hash a password
-password_hash = core.hash_password("secure_password_123")
-
-# Verify a password
-is_valid = core.verify_password("secure_password_123", password_hash)
-print(f"Password valid: {is_valid}")
-```
 
 ### JWT Tokens
 
@@ -108,6 +101,18 @@ try:
     print(f"Token valid for: {payload['sub']}")
 except Exception as e:
     print(f"Token invalid: {e}")
+```
+
+### Token Encryption
+
+```python
+from imbi_common.auth import encryption
+
+# Encrypt sensitive data
+encrypted = encryption.encrypt_token("sensitive_token_value")
+
+# Decrypt
+decrypted = encryption.decrypt_token(encrypted)
 ```
 
 ## Configuration
@@ -146,20 +151,6 @@ print(f"JWT Algorithm: {auth_config.jwt_algorithm}")
 ```python
 from imbi_common import clickhouse
 
-# Insert session activity
-activity_data = {
-    "timestamp": datetime.now(),
-    "session_id": "abc123",
-    "user_id": "user@example.com",
-    "activity_type": "login",
-    "ip_subnet": "192.168.1.0",
-    "user_agent_family": "Chrome",
-    "user_agent_version": "120.0",
-    "metadata": "/api/auth/login"
-}
-
-await clickhouse.insert("session_activity", [activity_data])
-
 # Query data
 results = await clickhouse.query(
     "SELECT user_id, COUNT(*) as login_count "
@@ -177,99 +168,14 @@ for row in results:
 The blueprint system allows dynamic schema extension:
 
 ```python
-from imbi_common import blueprints, models, neo4j
+from imbi_common import blueprints, models
 
-# Fetch a project with blueprint-extended fields
-project = await neo4j.fetch_node(
-    models.Project,
-    {"slug": "my-service"}
-)
-
-# Get the dynamically extended model
+# Get a dynamically extended model class
+# Blueprints defined in Neo4j add extra fields to the model
 ProjectModel = await blueprints.get_model(models.Project)
 
-# Now ProjectModel includes additional fields from blueprints
-# defined for this project type
-```
-
-## Complete Example
-
-```python
-import asyncio
-from datetime import datetime
-from imbi_common import (
-    logging,
-    settings,
-    models,
-    neo4j,
-    clickhouse,
-    auth,
-)
-
-async def main():
-    # Setup
-    logging.configure_logging(dev=True)
-    config = settings.load_config()
-
-    await neo4j.initialize()
-    await clickhouse.initialize()
-
-    # Create a user
-    password_hash = auth.core.hash_password("secure_password")
-    user = models.User(
-        email="admin@example.com",
-        display_name="Admin User",
-        password_hash=password_hash,
-        is_active=True,
-        is_admin=True
-    )
-    await neo4j.create_node(user)
-
-    # Create an organization
-    org = models.Organization(
-        name="My Company",
-        slug="my-company",
-        description="Our organization"
-    )
-    await neo4j.create_node(org)
-
-    # Create a team
-    team = models.Team(
-        name="Platform Team",
-        slug="platform-team",
-        description="Infrastructure and platform"
-    )
-    await neo4j.create_node(team)
-
-    # Link team to organization
-    await neo4j.create_relationship(
-        from_node=team,
-        to_node=org,
-        rel_type="MANAGED_BY"
-    )
-
-    # Create a project
-    project = models.Project(
-        name="API Gateway",
-        slug="api-gateway",
-        description="Main API gateway service"
-    )
-    await neo4j.create_node(project)
-
-    # Link project to team
-    await neo4j.create_relationship(
-        from_node=project,
-        to_node=team,
-        rel_type="OWNED_BY"
-    )
-
-    print("✓ Setup complete!")
-
-    # Cleanup
-    await neo4j.aclose()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# ProjectModel now includes additional fields from blueprints
+# defined for the Project type
 ```
 
 ## Next Steps
@@ -277,4 +183,4 @@ if __name__ == "__main__":
 - [Configuration Reference](configuration.md)
 - [API Documentation](api/settings.md)
 - [Database Setup Guide](guides/database-setup.md)
-- [Authentication Guide](guides/authentication.md)
+- [Deployment Guide](guides/deployment.md)

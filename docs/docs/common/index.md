@@ -12,35 +12,37 @@ Shared library for the Imbi ecosystem providing core data access, authentication
 
 ## Key Features
 
-### 🗄️ Database Clients
+### Database Clients
 
 - **Neo4j**: Graph database client with connection pooling and cypherantic integration
 - **ClickHouse**: Analytics database client with GDPR-compliant schema management
 
-### 🔐 Authentication
+### Authentication
 
-- **Password Security**: Argon2id hashing with automatic rehashing
 - **JWT Tokens**: Access and refresh token creation/verification
 - **Token Encryption**: Fernet encryption for sensitive data at rest
-- **API Keys**: Programmatic access with scoped permissions
 
-### 📊 Data Models
+### Data Models
 
 - **Domain Models**: Projects, Organizations, Teams, Environments, ProjectTypes
-- **Auth Models**: Users, Groups, Roles, Permissions, Sessions, API Keys
 - **Dynamic Schemas**: Blueprint system for runtime model extension
 
-### ⚙️ Configuration
+### Configuration
 
 - **Pydantic Settings**: Type-safe configuration with validation
 - **TOML Support**: Load configuration from files or environment variables
 - **Flexible Sources**: Priority-based config loading (env > local > user > system)
 
-### 📝 Logging
+### Logging
 
 - **Consistent Format**: Unified logging across all services
 - **dictConfig Support**: Standard library logging configuration
 - **Development Mode**: Easy DEBUG level activation
+
+### Server
+
+- **Uvicorn Integration**: Reusable `serve` command for Typer-based CLIs
+- **Development Mode**: Auto-reload with debug logging
 
 ## Quick Links
 
@@ -61,7 +63,8 @@ imbi_common/
 ├── clickhouse/      # Analytics database client
 ├── auth/            # Authentication primitives
 ├── blueprints.py    # Dynamic schema system
-└── logging.py       # Logging configuration
+├── logging.py       # Logging configuration
+└── server.py        # Uvicorn serve command
 ```
 
 ## Services Using imbi-common

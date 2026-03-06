@@ -58,16 +58,10 @@ await neo4j.initialize()
 
 Required indexes and constraints:
 
-- **User**: Unique constraint on `email`
-- **Group**: Unique constraint on `slug`
-- **Role**: Unique constraint on `slug`
-- **Permission**: Unique constraint on `slug`
-- **Organization**: Unique constraint on `slug`
+- **Blueprint**: Unique constraint on `(name, type)`
 - **Team**: Unique constraint on `slug`
-- **Project**: Unique constraint on `slug`
-- **ProjectType**: Unique constraint on `slug`
-- **Environment**: Unique constraint on `slug`
-- **Blueprint**: Unique constraint on `slug`
+- **Conversation**: Unique constraint on `id`, indexes on `user_email` and `updated_at`
+- **Message**: Unique constraint on `id`, index on `conversation_id`
 
 ## ClickHouse Setup
 
@@ -102,7 +96,7 @@ url = "https://clickhouse-prod.example.com:8443"
 
 ### Schema Initialization
 
-Initialize ClickHouse schemas with base tables:
+Initialize ClickHouse schemas from the bundled `schemata.toml`:
 
 ```python
 from imbi_common import clickhouse
@@ -110,85 +104,8 @@ from imbi_common import clickhouse
 # Initialize client
 await clickhouse.initialize()
 
-# Create base schemas
+# Create schemas from schemata.toml
 await clickhouse.setup_schema()
-
-# Add service-specific schemas (optional)
-from pathlib import Path
-service_schema = Path(__file__).parent / "service-schemata.toml"
-await clickhouse.setup_schema([service_schema])
-```
-
-### Base Tables
-
-The common library creates these base tables:
-
-#### session_activity
-
-Tracks user session activity across all services:
-
-```sql
-CREATE TABLE IF NOT EXISTS session_activity (
-    timestamp DateTime64(3),
-    session_id String,
-    user_id String,
-    activity_type String,
-    ip_subnet String,
-    user_agent_family String,
-    user_agent_version String,
-    metadata String
-) ENGINE = MergeTree()
-PARTITION BY toYYYYMM(timestamp)
-ORDER BY (user_id, timestamp)
-TTL timestamp + INTERVAL 30 DAY
-```
-
-**TTL**: 30 days (GDPR compliance)
-
-#### mfa_events
-
-Tracks MFA enrollment and verification events:
-
-```sql
-CREATE TABLE IF NOT EXISTS mfa_events (
-    timestamp DateTime64(3),
-    user_id String,
-    event_type String,
-    success Bool,
-    ip_subnet String,
-    metadata String
-) ENGINE = MergeTree()
-PARTITION BY toYYYYMM(timestamp)
-ORDER BY (user_id, timestamp)
-TTL timestamp + INTERVAL 90 DAY
-```
-
-**TTL**: 90 days (audit retention)
-
-### Service-Specific Tables
-
-Services should add their own tables in separate schema files:
-
-```toml
-# service-schemata.toml
-
-[[query]]
-name = "api_key_usage"
-description = "API key usage tracking"
-enabled = true
-query = """
-CREATE TABLE IF NOT EXISTS api_key_usage (
-    timestamp DateTime64(3),
-    api_key_id String,
-    endpoint String,
-    method String,
-    status_code UInt16,
-    response_time_ms UInt32
-) ENGINE = MergeTree()
-PARTITION BY toYYYYMM(timestamp)
-ORDER BY (api_key_id, timestamp)
-TTL timestamp + INTERVAL 90 DAY
-"""
 ```
 
 ## Database Credentials
@@ -223,7 +140,8 @@ database = "imbi"
 url = "http://localhost:8123"
 ```
 
-**⚠️ Never commit config files with credentials to version control!**
+!!! warning
+    Never commit config files with credentials to version control!
 
 ### Secrets Management
 
@@ -278,10 +196,9 @@ async def test_connections():
 
     # Test Neo4j
     await neo4j.initialize()
-    result = await neo4j.execute_read(
-        "RETURN 'Neo4j connected!' as message"
-    )
-    print(result[0]['message'])
+    async with neo4j.run("RETURN 'Neo4j connected!' as message") as result:
+        record = await result.single()
+        print(record['message'])
     await neo4j.aclose()
 
     # Test ClickHouse
