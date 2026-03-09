@@ -31,8 +31,13 @@ Team = _common.Team
 
 # API-specific models from imbi_api.domain
 APIKey = _domain.APIKey
+ClientCredential = _domain.ClientCredential
+ClientCredentialCreate = _domain.ClientCredentialCreate
+ClientCredentialCreateResponse = _domain.ClientCredentialCreateResponse
+ClientCredentialResponse = _domain.ClientCredentialResponse
 EmptyRelationship = _domain.EmptyRelationship
 MembershipProperties = _domain.MembershipProperties
+OAuth2TokenResponse = _domain.OAuth2TokenResponse
 OAuthIdentity = _domain.OAuthIdentity
 OrgMembership = _domain.OrgMembership
 OrganizationEdge = _domain.OrganizationEdge
@@ -40,6 +45,9 @@ PasswordChangeRequest = _domain.PasswordChangeRequest
 Permission = _domain.Permission
 ResourcePermission = _domain.ResourcePermission
 Role = _domain.Role
+ServiceAccount = _domain.ServiceAccount
+ServiceAccountCreate = _domain.ServiceAccountCreate
+ServiceAccountResponse = _domain.ServiceAccountResponse
 Session = _domain.Session
 TOTPSecret = _domain.TOTPSecret
 TokenMetadata = _domain.TokenMetadata

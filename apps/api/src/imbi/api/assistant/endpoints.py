@@ -59,7 +59,7 @@ async def create_conversation(
     assistant_settings = settings.get_assistant_settings()
     model = body.model if body and body.model else assistant_settings.model
     conv = await neo4j_ops.create_conversation(
-        user_email=auth.user.email, model=model
+        user_email=auth.require_user.email, model=model
     )
     return assistant_models.conversation_to_response(conv)
 
@@ -78,7 +78,7 @@ async def list_conversations(
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
     convs = await neo4j_ops.list_conversations(
-        user_email=auth.user.email,
+        user_email=auth.require_user.email,
         limit=limit,
         offset=offset,
         include_archived=include_archived,
@@ -95,7 +95,9 @@ async def get_conversation(
     auth: AuthDep,
 ) -> assistant_models.ConversationWithMessagesResponse:
     """Get a conversation with its messages."""
-    conv = await neo4j_ops.get_conversation(conversation_id, auth.user.email)
+    conv = await neo4j_ops.get_conversation(
+        conversation_id, auth.require_user.email
+    )
     if not conv:
         raise fastapi.HTTPException(
             status_code=404, detail='Conversation not found'
@@ -118,7 +120,7 @@ async def delete_conversation(
 ) -> None:
     """Delete a conversation and its messages."""
     deleted = await neo4j_ops.delete_conversation(
-        conversation_id, auth.user.email
+        conversation_id, auth.require_user.email
     )
     if not deleted:
         raise fastapi.HTTPException(
@@ -138,12 +140,16 @@ async def update_conversation(
     """Update a conversation's title or archive status."""
     if body.title is not None:
         await neo4j_ops.update_conversation_title(
-            conversation_id, auth.user.email, body.title
+            conversation_id, auth.require_user.email, body.title
         )
     if body.is_archived is True:
-        await neo4j_ops.archive_conversation(conversation_id, auth.user.email)
+        await neo4j_ops.archive_conversation(
+            conversation_id, auth.require_user.email
+        )
 
-    conv = await neo4j_ops.get_conversation(conversation_id, auth.user.email)
+    conv = await neo4j_ops.get_conversation(
+        conversation_id, auth.require_user.email
+    )
     if not conv:
         raise fastapi.HTTPException(
             status_code=404, detail='Conversation not found'
@@ -391,7 +397,7 @@ async def _stream_response(
                 model,
             )
             await neo4j_ops.update_conversation_title(
-                conversation_id, auth.user.email, title
+                conversation_id, auth.require_user.email, title
             )
             yield _sse_event('title_updated', {'title': title})
         return
@@ -466,7 +472,9 @@ async def send_message(
     _require_assistant()
 
     # Verify conversation ownership
-    conv = await neo4j_ops.get_conversation(conversation_id, auth.user.email)
+    conv = await neo4j_ops.get_conversation(
+        conversation_id, auth.require_user.email
+    )
     if not conv:
         raise fastapi.HTTPException(
             status_code=404, detail='Conversation not found'
@@ -502,7 +510,7 @@ async def send_message(
 
     # Build tools and system prompt (single pass)
     user_tools, tool_names = tools.get_tools_for_user(
-        auth.permissions, auth.user.is_admin
+        auth.permissions, auth.require_user.is_admin
     )
     system = system_prompt.build_system_prompt(auth, tool_names)
 

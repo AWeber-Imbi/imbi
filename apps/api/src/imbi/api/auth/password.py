@@ -55,6 +55,4 @@ def needs_rehash(password_hash: str) -> bool:
         True if password should be rehashed, False otherwise
 
     """
-    return password_hasher.check_needs_rehash(  # type: ignore[no-any-return]
-        password_hash
-    )
+    return bool(password_hasher.check_needs_rehash(password_hash))

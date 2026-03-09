@@ -7,6 +7,7 @@ import fastapi
 from imbi_common import models, neo4j
 from neo4j import exceptions
 
+from imbi_api import openapi
 from imbi_api.auth import permissions
 
 LOGGER = logging.getLogger(__name__)
@@ -38,13 +39,18 @@ async def create_blueprint(
         409: Blueprint with the same name and type already exists.
     """
     try:
-        return await neo4j.create_node(blueprint)
+        result = await neo4j.create_node(blueprint)
     except exceptions.ConstraintError as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=f'Blueprint with name {blueprint.name!r} and type '
             f'{blueprint.type!r} already exists',
         ) from e
+    try:
+        await openapi.refresh_blueprint_models()
+    except Exception:
+        LOGGER.exception('Failed to refresh blueprint models')
+    return result
 
 
 @blueprint_router.get('/', response_model=list[models.Blueprint])
@@ -188,6 +194,10 @@ async def update_blueprint(
         {'slug': slug, 'type': blueprint_type},
         auto_increment=['version'],
     )
+    try:
+        await openapi.refresh_blueprint_models()
+    except Exception:
+        LOGGER.exception('Failed to refresh blueprint models')
     return blueprint
 
 
@@ -223,3 +233,7 @@ async def delete_blueprint(
             detail=f'Blueprint with slug {slug!r} and type '
             f'{blueprint_type!r} not found',
         )
+    try:
+        await openapi.refresh_blueprint_models()
+    except Exception:
+        LOGGER.exception('Failed to refresh blueprint models')

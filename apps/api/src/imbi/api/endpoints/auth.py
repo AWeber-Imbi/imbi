@@ -97,6 +97,194 @@ async def get_auth_providers() -> auth_models.AuthProvidersResponse:
     )
 
 
+@auth_router.post('/token', response_model=models.OAuth2TokenResponse)
+@rate_limit.limiter.limit('10/minute')  # type: ignore[untyped-decorator]
+async def token(
+    request: fastapi.Request,
+    grant_type: typing.Annotated[str, fastapi.Form()],
+    client_id: typing.Annotated[str, fastapi.Form()],
+    client_secret: typing.Annotated[str, fastapi.Form()],
+    scope: typing.Annotated[str | None, fastapi.Form()] = None,
+) -> models.OAuth2TokenResponse:
+    """OAuth2 token endpoint for client credentials grant.
+
+    Accepts form-encoded parameters per RFC 6749.
+
+    Args:
+        grant_type: Must be 'client_credentials'
+        client_id: Client credential ID (cc_...)
+        client_secret: Client secret
+        scope: Optional space-separated scopes
+
+    Returns:
+        OAuth2TokenResponse with access and refresh tokens
+
+    """
+    if grant_type != 'client_credentials':
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Unsupported grant_type; use client_credentials',
+        )
+
+    # Fetch credential with owning service account
+    query = """
+    MATCH (c:ClientCredential {client_id: $client_id})
+          -[:OWNED_BY]->(s:ServiceAccount)
+    RETURN c, s
+    """
+    async with neo4j.run(query, client_id=client_id) as result:
+        records = await result.data()
+
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Invalid client credentials',
+        )
+
+    cred_data = neo4j.convert_neo4j_types(records[0]['c'])
+    sa_data = neo4j.convert_neo4j_types(records[0]['s'])
+
+    # Check revoked
+    if cred_data.get('revoked', False):
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Client credential has been revoked',
+        )
+
+    # Check expired
+    expires_at = cred_data.get('expires_at')
+    if expires_at and expires_at < datetime.datetime.now(datetime.UTC):
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Client credential has expired',
+        )
+
+    # Verify secret
+    if not password_auth.verify_password(
+        client_secret, cred_data['client_secret_hash']
+    ):
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Invalid client credentials',
+        )
+
+    # Check service account is active
+    sa = models.ServiceAccount(**sa_data)
+    if not sa.is_active:
+        raise fastapi.HTTPException(
+            status_code=401,
+            detail='Service account is inactive',
+        )
+
+    # Resolve scopes
+    cred_scopes = set(cred_data.get('scopes', []))
+    requested_scopes = set(scope.split()) if scope else set()
+    if requested_scopes and cred_scopes:
+        granted_scopes = requested_scopes & cred_scopes
+    elif cred_scopes:
+        granted_scopes = cred_scopes
+    else:
+        granted_scopes = requested_scopes
+
+    # Create tokens
+    auth_settings = settings.get_auth_settings()
+    extra_claims: dict[str, typing.Any] = {
+        'auth_method': 'client_credentials',
+    }
+    if granted_scopes:
+        extra_claims['scope'] = ' '.join(sorted(granted_scopes))
+    access_token = core.create_access_token(
+        sa.slug,
+        extra_claims=extra_claims,
+        auth_settings=auth_settings,
+    )
+    access_claims = core.verify_token(access_token, auth_settings)
+
+    refresh_token = core.create_refresh_token(
+        sa.slug,
+        extra_claims=extra_claims,
+        auth_settings=auth_settings,
+    )
+    refresh_claims = core.verify_token(refresh_token, auth_settings)
+
+    # Store token metadata (link to ServiceAccount)
+    now = datetime.datetime.now(datetime.UTC)
+
+    access_meta_query = """
+    MATCH (s:ServiceAccount {slug: $slug})
+    CREATE (t:TokenMetadata {
+        jti: $jti,
+        token_type: 'access',
+        issued_at: datetime(),
+        expires_at: datetime($expires_at),
+        revoked: false
+    })-[:ISSUED_TO]->(s)
+    """
+    async with neo4j.run(
+        access_meta_query,
+        jti=access_claims['jti'],
+        expires_at=(
+            now
+            + datetime.timedelta(
+                seconds=(auth_settings.access_token_expire_seconds)
+            )
+        ).isoformat(),
+        slug=sa.slug,
+    ) as result:
+        await result.consume()
+
+    refresh_meta_query = """
+    MATCH (s:ServiceAccount {slug: $slug})
+    CREATE (t:TokenMetadata {
+        jti: $jti,
+        token_type: 'refresh',
+        issued_at: datetime(),
+        expires_at: datetime($expires_at),
+        revoked: false
+    })-[:ISSUED_TO]->(s)
+    """
+    async with neo4j.run(
+        refresh_meta_query,
+        jti=refresh_claims['jti'],
+        expires_at=(
+            now
+            + datetime.timedelta(
+                seconds=(auth_settings.refresh_token_expire_seconds)
+            )
+        ).isoformat(),
+        slug=sa.slug,
+    ) as result:
+        await result.consume()
+
+    # Update last_used on credential, last_authenticated on SA
+    update_query = """
+    MATCH (c:ClientCredential {client_id: $client_id})
+    SET c.last_used = datetime()
+    WITH c
+    MATCH (c)-[:OWNED_BY]->(s:ServiceAccount)
+    SET s.last_authenticated = datetime()
+    """
+    async with neo4j.run(update_query, client_id=client_id) as result:
+        await result.consume()
+
+    LOGGER.info(
+        'Client credentials token issued for service '
+        'account %s (client_id=%s)',
+        sa.slug,
+        client_id,
+    )
+
+    scope_str = ' '.join(sorted(granted_scopes)) if granted_scopes else None
+
+    return models.OAuth2TokenResponse(
+        access_token=access_token,
+        token_type='bearer',
+        expires_in=auth_settings.access_token_expire_seconds,
+        scope=scope_str,
+        refresh_token=refresh_token,
+    )
+
+
 @auth_router.post('/login', response_model=auth_models.TokenResponse)
 @rate_limit.limiter.limit('5/minute')  # type: ignore[untyped-decorator]
 async def login(
@@ -134,6 +322,17 @@ async def login(
         raise fastapi.HTTPException(
             status_code=401,
             detail='Invalid credentials',
+        )
+
+    if user.is_service_account:
+        LOGGER.warning(
+            'Login failed for email %s: service accounts '
+            'cannot use password login',
+            email,
+        )
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Service accounts cannot use password login',
         )
 
     # Check if user has password authentication enabled
@@ -365,60 +564,123 @@ async def refresh_token(
     token_meta.revoked_at = datetime.datetime.now(datetime.UTC)
     await neo4j.upsert(token_meta, {'jti': payload['jti']})
 
-    # Fetch user
-    user = await neo4j.fetch_node(models.User, {'email': payload['sub']})
-    if not user or not user.is_active:
-        LOGGER.warning(
-            'Token refresh failed: user not found or inactive (%s)',
-            payload['sub'],
-        )
-        raise fastapi.HTTPException(
-            status_code=401, detail='User not found or inactive'
-        )
+    # Resolve principal (user or service account)
+    subject = payload['sub']
+    auth_method = payload.get('auth_method')
+    extra_claims: dict[str, typing.Any] = {}
+
+    if auth_method == 'client_credentials':
+        sa = await neo4j.fetch_node(models.ServiceAccount, {'slug': subject})
+        if not sa or not sa.is_active:
+            LOGGER.warning(
+                'Token refresh failed: service account '
+                'not found or inactive (%s)',
+                subject,
+            )
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail='Service account not found or inactive',
+            )
+        principal_id = sa.slug
+        extra_claims = {'auth_method': 'client_credentials'}
+    else:
+        user = await neo4j.fetch_node(models.User, {'email': subject})
+        if not user or not user.is_active:
+            LOGGER.warning(
+                'Token refresh failed: user not found or inactive (%s)',
+                subject,
+            )
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail='User not found or inactive',
+            )
+        principal_id = user.email
 
     # Create new access token
     access_token = core.create_access_token(
-        user.email, auth_settings=auth_settings
+        principal_id,
+        extra_claims=extra_claims or None,
+        auth_settings=auth_settings,
     )
     access_claims = core.verify_token(access_token, auth_settings)
     access_jti = access_claims['jti']
 
-    # Phase 5: Create NEW refresh token (token rotation)
+    # Create NEW refresh token (token rotation)
     new_refresh_token = core.create_refresh_token(
-        user.email, auth_settings=auth_settings
+        principal_id,
+        extra_claims=extra_claims or None,
+        auth_settings=auth_settings,
     )
     new_refresh_claims = core.verify_token(new_refresh_token, auth_settings)
     new_refresh_jti = new_refresh_claims['jti']
 
-    # Store new access token metadata
+    # Store new token metadata via Cypher (handles both
+    # User and ServiceAccount via ISSUED_TO)
     now = datetime.datetime.now(datetime.UTC)
-    access_token_meta = models.TokenMetadata(
-        jti=access_jti,
-        token_type='access',
-        issued_at=now,
-        expires_at=now
-        + datetime.timedelta(
-            seconds=auth_settings.access_token_expire_seconds
-        ),
-        user=user,
-    )
-    await neo4j.create_node(access_token_meta)
 
-    # Phase 5: Store new refresh token metadata
-    new_refresh_token_meta = models.TokenMetadata(
-        jti=new_refresh_jti,
-        token_type='refresh',
-        issued_at=now,
-        expires_at=now
+    if auth_method == 'client_credentials':
+        # Link to ServiceAccount
+        meta_query = """
+        MATCH (s:ServiceAccount {slug: $subject})
+        CREATE (at:TokenMetadata {
+            jti: $access_jti,
+            token_type: 'access',
+            issued_at: datetime(),
+            expires_at: datetime($access_exp),
+            revoked: false
+        })-[:ISSUED_TO]->(s)
+        CREATE (rt:TokenMetadata {
+            jti: $refresh_jti,
+            token_type: 'refresh',
+            issued_at: datetime(),
+            expires_at: datetime($refresh_exp),
+            revoked: false
+        })-[:ISSUED_TO]->(s)
+        """
+    else:
+        # Link to User
+        meta_query = """
+        MATCH (u:User {email: $subject})
+        CREATE (at:TokenMetadata {
+            jti: $access_jti,
+            token_type: 'access',
+            issued_at: datetime(),
+            expires_at: datetime($access_exp),
+            revoked: false
+        })-[:ISSUED_TO]->(u)
+        CREATE (rt:TokenMetadata {
+            jti: $refresh_jti,
+            token_type: 'refresh',
+            issued_at: datetime(),
+            expires_at: datetime($refresh_exp),
+            revoked: false
+        })-[:ISSUED_TO]->(u)
+        """
+
+    access_exp = (
+        now
+        + datetime.timedelta(seconds=auth_settings.access_token_expire_seconds)
+    ).isoformat()
+    refresh_exp = (
+        now
         + datetime.timedelta(
             seconds=auth_settings.refresh_token_expire_seconds
-        ),
-        user=user,
-    )
-    await neo4j.create_node(new_refresh_token_meta)
+        )
+    ).isoformat()
+
+    async with neo4j.run(
+        meta_query,
+        subject=subject,
+        access_jti=access_jti,
+        access_exp=access_exp,
+        refresh_jti=new_refresh_jti,
+        refresh_exp=refresh_exp,
+    ) as result:
+        await result.consume()
 
     LOGGER.info(
-        'Token refreshed for user %s (rotated refresh token)', user.email
+        'Token refreshed for %s (rotated refresh token)',
+        principal_id,
     )
 
     return auth_models.TokenResponse(
@@ -453,24 +715,41 @@ async def logout(
         await result.consume()
 
     if revoke_all_sessions:
-        # Revoke all user tokens
-        query = """
-        MATCH (u:User {email: $email})<-[:ISSUED_TO]-(t:TokenMetadata)
-        WHERE t.revoked = false
-        SET t.revoked = true, t.revoked_at = datetime()
-        """
-        async with neo4j.run(query, email=auth.user.email) as result:
-            await result.consume()
+        if auth.service_account:
+            # Revoke all service account tokens
+            query = """
+            MATCH (s:ServiceAccount {slug: $slug})
+                  <-[:ISSUED_TO]-(t:TokenMetadata)
+            WHERE t.revoked = false
+            SET t.revoked = true,
+                t.revoked_at = datetime()
+            """
+            async with neo4j.run(
+                query, slug=auth.service_account.slug
+            ) as result:
+                await result.consume()
+        elif auth.user:
+            # Revoke all user tokens
+            query = """
+            MATCH (u:User {email: $email})
+                  <-[:ISSUED_TO]-(t:TokenMetadata)
+            WHERE t.revoked = false
+            SET t.revoked = true,
+                t.revoked_at = datetime()
+            """
+            async with neo4j.run(query, email=auth.user.email) as result:
+                await result.consume()
 
-        # Delete all sessions
-        query = """
-        MATCH (u:User {email: $email})<-[:SESSION_FOR]-(s:Session)
-        DETACH DELETE s
-        """
-        async with neo4j.run(query, email=auth.user.email) as result:
-            await result.consume()
+            # Delete all sessions
+            query = """
+            MATCH (u:User {email: $email})
+                  <-[:SESSION_FOR]-(s:Session)
+            DETACH DELETE s
+            """
+            async with neo4j.run(query, email=auth.user.email) as result:
+                await result.consume()
     else:
-        # Revoke only associated refresh token (issued within 5 seconds)
+        # Revoke only associated refresh token
         query = """
         MATCH (t:TokenMetadata {jti: $jti})
         RETURN t.issued_at as issued_at
@@ -480,22 +759,30 @@ async def logout(
 
         if records:
             issued_at = records[0]['issued_at']
-            query = """
-            MATCH (u:User {email: $email})
-                  <-[:ISSUED_TO]-(t:TokenMetadata)
-            WHERE t.token_type = 'refresh'
-              AND t.revoked = false
-              AND abs(duration.inSeconds(t.issued_at, $issued_at).seconds) < 5
-            SET t.revoked = true, t.revoked_at = datetime()
+            # Use generic ISSUED_TO traversal
+            revoke_query = """
+            MATCH (t:TokenMetadata {jti: $jti})
+                  -[:ISSUED_TO]->(principal)
+            MATCH (principal)
+                  <-[:ISSUED_TO]-(rt:TokenMetadata)
+            WHERE rt.token_type = 'refresh'
+              AND rt.revoked = false
+              AND abs(duration.inSeconds(
+                  rt.issued_at, $issued_at
+              ).seconds) < 5
+            SET rt.revoked = true,
+                rt.revoked_at = datetime()
             """
             async with neo4j.run(
-                query, email=auth.user.email, issued_at=issued_at
+                revoke_query,
+                jti=auth.session_id,
+                issued_at=issued_at,
             ) as result:
                 await result.consume()
 
     LOGGER.info(
-        'User %s logged out (revoke_all=%s)',
-        auth.user.email,
+        '%s logged out (revoke_all=%s)',
+        auth.principal_name,
         revoke_all_sessions,
     )
 
@@ -658,6 +945,11 @@ async def oauth_callback(
         # Get associated user
         await neo4j.refresh_relationship(oauth_identity, 'user')
         user = oauth_identity.user
+
+        if user.is_service_account:
+            raise ValueError(
+                'Service accounts cannot use OAuth authentication'
+            )
 
         # Create JWT tokens (reusing existing token creation logic)
         access_token = core.create_access_token(

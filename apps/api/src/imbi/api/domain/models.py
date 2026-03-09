@@ -15,8 +15,13 @@ from imbi_common import models
 
 __all__ = [
     'APIKey',
+    'ClientCredential',
+    'ClientCredentialCreate',
+    'ClientCredentialCreateResponse',
+    'ClientCredentialResponse',
     'EmptyRelationship',
     'MembershipProperties',
+    'OAuth2TokenResponse',
     'OAuthIdentity',
     'OrgMembership',
     'OrganizationEdge',
@@ -24,6 +29,9 @@ __all__ = [
     'Permission',
     'ResourcePermission',
     'Role',
+    'ServiceAccount',
+    'ServiceAccountCreate',
+    'ServiceAccountResponse',
     'Session',
     'TOTPSecret',
     'TokenMetadata',
@@ -422,3 +430,130 @@ class PasswordChangeRequest(pydantic.BaseModel):
         if not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in value):
             raise ValueError('Password must contain at least one special')
         return value
+
+
+class ServiceAccount(pydantic.BaseModel):
+    """Service account for machine-to-machine authentication."""
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+    slug: str
+    display_name: str
+    description: str | None = None
+    is_active: bool = True
+    created_at: datetime.datetime
+    last_authenticated: datetime.datetime | None = None
+
+    organizations: typing.Annotated[
+        list['OrganizationEdge'],
+        cypherantic.Relationship(rel_type='MEMBER_OF', direction='OUTGOING'),
+    ] = []
+
+
+class ServiceAccountCreate(pydantic.BaseModel):
+    """Request model for creating service accounts."""
+
+    slug: str = pydantic.Field(
+        ...,
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+        description='Unique slug identifier (lowercase, hyphens)',
+    )
+    display_name: str = pydantic.Field(..., min_length=1, max_length=128)
+    description: str | None = None
+    is_active: bool = True
+
+
+class ServiceAccountResponse(pydantic.BaseModel):
+    """Response model for service accounts."""
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+    slug: str
+    display_name: str
+    description: str | None = None
+    is_active: bool
+    created_at: datetime.datetime
+    last_authenticated: datetime.datetime | None = None
+    organizations: list[OrgMembership] = []
+
+
+class ClientCredential(pydantic.BaseModel):
+    """OAuth2 client credential for service accounts."""
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+    client_id: str
+    client_secret_hash: str
+    name: str
+    description: str | None = None
+    scopes: list[str] = []
+    created_at: datetime.datetime
+    expires_at: datetime.datetime | None = None
+    last_used: datetime.datetime | None = None
+    last_rotated: datetime.datetime | None = None
+    revoked: bool = False
+    revoked_at: datetime.datetime | None = None
+
+    service_account: typing.Annotated[
+        ServiceAccount | None,
+        cypherantic.Relationship(rel_type='OWNED_BY', direction='OUTGOING'),
+    ] = None
+
+
+class ClientCredentialCreate(pydantic.BaseModel):
+    """Request model for creating client credentials."""
+
+    name: str = pydantic.Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        description='Human-readable name',
+    )
+    description: str | None = None
+    scopes: list[str] = pydantic.Field(
+        default_factory=list,
+        description='Permission scopes (empty = all)',
+    )
+    expires_in_days: int | None = pydantic.Field(
+        default=None,
+        description='Days until expiration (None = never)',
+        ge=1,
+    )
+
+
+class ClientCredentialResponse(pydantic.BaseModel):
+    """Response model for client credentials (without secret)."""
+
+    client_id: str
+    name: str
+    description: str | None = None
+    scopes: list[str] = []
+    created_at: datetime.datetime
+    expires_at: datetime.datetime | None = None
+    last_used: datetime.datetime | None = None
+    last_rotated: datetime.datetime | None = None
+    revoked: bool
+    revoked_at: datetime.datetime | None = None
+
+
+class ClientCredentialCreateResponse(pydantic.BaseModel):
+    """Response model for client credential creation (secret shown once)."""
+
+    client_id: str
+    client_secret: str
+    name: str
+    description: str | None = None
+    scopes: list[str] = []
+    expires_at: datetime.datetime | None = None
+
+
+class OAuth2TokenResponse(pydantic.BaseModel):
+    """OAuth2 token response per RFC 6749."""
+
+    access_token: str
+    token_type: str = 'bearer'
+    expires_in: int
+    scope: str | None = None
+    refresh_token: str | None = None

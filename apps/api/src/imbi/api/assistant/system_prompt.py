@@ -50,7 +50,7 @@ def build_system_prompt(
         The system prompt string.
 
     """
-    user = auth.user
+    user = auth.require_user
     perms = sorted(auth.permissions)
 
     tools_section = ''

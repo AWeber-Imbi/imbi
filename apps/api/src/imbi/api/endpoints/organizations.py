@@ -39,8 +39,7 @@ async def create_organization(
 
     """
     try:
-        created = await neo4j.create_node(org)
-        return typing.cast(models.Organization, created)
+        return await neo4j.create_node(org)
     except exceptions.ConstraintError as e:
         raise fastapi.HTTPException(
             status_code=409,

@@ -81,7 +81,7 @@ async def get_mfa_status(
     MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
     RETURN t
     """
-    async with neo4j.run(query, email=auth.user.email) as result:
+    async with neo4j.run(query, email=auth.require_user.email) as result:
         records = await result.data()
 
     if not records:
@@ -130,7 +130,7 @@ async def setup_mfa(
 
     # Generate provisioning URI for authenticator apps
     provisioning_uri = totp.provisioning_uri(
-        name=auth.user.email,
+        name=auth.require_user.email,
         issuer_name=auth_settings.mfa_issuer_name,
     )
 
@@ -156,7 +156,9 @@ async def setup_mfa(
     MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
     DETACH DELETE t
     """
-    async with neo4j.run(delete_query, email=auth.user.email) as result:
+    async with neo4j.run(
+        delete_query, email=auth.require_user.email
+    ) as result:
         await result.consume()
 
     # Encrypt TOTP secret before storage
@@ -167,14 +169,14 @@ async def setup_mfa(
         backup_codes=hashed_backup_codes,
         created_at=datetime.datetime.now(datetime.UTC),
         last_used=None,
-        user=auth.user,
+        user=auth.require_user,
     )
     totp_secret.set_encrypted_secret(secret, encryptor)
 
     await neo4j.create_node(totp_secret)
     # Relationship created automatically by create_node via model annotation
 
-    LOGGER.info('MFA setup initiated for user %s', auth.user.email)
+    LOGGER.info('MFA setup initiated for user %s', auth.require_user.email)
 
     return MFASetupResponse(
         secret=secret,
@@ -212,7 +214,7 @@ async def verify_and_enable_mfa(
     MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
     RETURN t
     """
-    async with neo4j.run(query, email=auth.user.email) as result:
+    async with neo4j.run(query, email=auth.require_user.email) as result:
         records = await result.data()
 
     if not records:
@@ -272,21 +274,24 @@ async def verify_and_enable_mfa(
         """
         async with neo4j.run(
             update_query,
-            email=auth.user.email,
+            email=auth.require_user.email,
             backup_codes=backup_codes,
         ) as result:
             await result.consume()
         LOGGER.info(
-            'MFA enabled for user %s (used backup code)', auth.user.email
+            'MFA enabled for user %s (used backup code)',
+            auth.require_user.email,
         )
     else:
         update_query = """
         MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
         SET t.enabled = true, t.last_used = datetime()
         """
-        async with neo4j.run(update_query, email=auth.user.email) as result:
+        async with neo4j.run(
+            update_query, email=auth.require_user.email
+        ) as result:
             await result.consume()
-        LOGGER.info('MFA enabled for user %s', auth.user.email)
+        LOGGER.info('MFA enabled for user %s', auth.require_user.email)
 
 
 @mfa_router.delete('/disable', status_code=204)
@@ -317,7 +322,7 @@ async def disable_mfa(
     auth_settings = settings.get_auth_settings()
 
     # Verify identity based on account type
-    if auth.user.password_hash:
+    if auth.require_user.password_hash:
         # Password-based user - require password
         if not current_password:
             raise fastapi.HTTPException(
@@ -326,7 +331,7 @@ async def disable_mfa(
             )
         if not password.verify_password(
             current_password,
-            auth.user.password_hash,
+            auth.require_user.password_hash,
         ):
             raise fastapi.HTTPException(
                 status_code=401, detail='Invalid password'
@@ -344,7 +349,9 @@ async def disable_mfa(
         MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
         RETURN t
         """
-        async with neo4j.run(totp_query, email=auth.user.email) as result:
+        async with neo4j.run(
+            totp_query, email=auth.require_user.email
+        ) as result:
             totp_records = await result.data()
 
         if not totp_records:
@@ -396,7 +403,7 @@ async def disable_mfa(
     MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
     DETACH DELETE t
     """
-    async with neo4j.run(query, email=auth.user.email) as result:
+    async with neo4j.run(query, email=auth.require_user.email) as result:
         await result.consume()
 
-    LOGGER.info('MFA disabled for user %s', auth.user.email)
+    LOGGER.info('MFA disabled for user %s', auth.require_user.email)

@@ -45,10 +45,24 @@ async def create_user(
         password_hash = password.hash_password(user_create.password)
 
     # Prevent non-admins from creating admin users
-    if user_create.is_admin and not auth.user.is_admin:
+    if user_create.is_admin and not auth.require_user.is_admin:
         raise fastapi.HTTPException(
             status_code=403,
             detail='Only admins can create admin users',
+        )
+
+    # Prevent service accounts from having passwords
+    if user_create.is_service_account and user_create.password:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Service accounts cannot have passwords',
+        )
+
+    # Prevent service accounts from being admins
+    if user_create.is_service_account and user_create.is_admin:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Service accounts cannot be admins',
         )
 
     # Create user model
@@ -235,29 +249,50 @@ async def update_user(
         )
 
     # Prevent non-admins from modifying admin users
-    if existing_user.is_admin and not auth.user.is_admin:
+    if existing_user.is_admin and not auth.require_user.is_admin:
         raise fastapi.HTTPException(
             status_code=403,
             detail='Only admins can modify admin users',
         )
 
     # Prevent non-admins from setting is_admin
-    if user_update.is_admin and not auth.user.is_admin:
+    if user_update.is_admin and not auth.require_user.is_admin:
         raise fastapi.HTTPException(
             status_code=403,
             detail='Only admins can grant admin privileges',
         )
 
     # Prevent users from deactivating themselves
-    if email == auth.user.email and not user_update.is_active:
+    if email == auth.require_user.email and not user_update.is_active:
         raise fastapi.HTTPException(
             status_code=400,
             detail='Cannot deactivate your own account',
         )
 
-    # Update password hash if password provided
+    # Prevent service accounts from having passwords
+    will_be_sa = (
+        user_update.is_service_account
+        if user_update.is_service_account is not None
+        else existing_user.is_service_account
+    )
+    if will_be_sa and user_update.password:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Service accounts cannot have passwords',
+        )
+
+    # Prevent service accounts from being admins
+    if will_be_sa and user_update.is_admin:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Service accounts cannot be admins',
+        )
+
+    # Update password hash if password provided, clear if becoming SA
     password_hash = existing_user.password_hash
-    if user_update.password:
+    if will_be_sa:
+        password_hash = None
+    elif user_update.password:
         password_hash = password.hash_password(user_update.password)
 
     # Create updated user model
@@ -309,7 +344,7 @@ async def delete_user(
     email = urlparse.unquote(email)
 
     # Prevent self-deletion
-    if email == auth.user.email:
+    if email == auth.require_user.email:
         raise fastapi.HTTPException(
             status_code=400,
             detail='Cannot delete your own account',
@@ -348,8 +383,10 @@ async def change_password(
     email = urlparse.unquote(email)
 
     # Check permission: must be self or have user:update permission
-    is_self = email == auth.user.email
-    has_permission = 'user:update' in auth.permissions or auth.user.is_admin
+    is_self = email == auth.require_user.email
+    has_permission = (
+        'user:update' in auth.permissions or auth.require_user.is_admin
+    )
 
     if not is_self and not has_permission:
         raise fastapi.HTTPException(
@@ -363,6 +400,13 @@ async def change_password(
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'User with email {email!r} not found',
+        )
+
+    # Prevent password changes for service accounts
+    if user.is_service_account:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Service accounts cannot have passwords',
         )
 
     # Verify current password if user is changing their own password

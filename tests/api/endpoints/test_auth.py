@@ -1779,3 +1779,414 @@ class LogoutTestCase(unittest.TestCase):
         finally:
             # Clean up dependency override
             self.client.app.dependency_overrides.clear()
+
+
+class ServiceAccountAuthTestCase(unittest.TestCase):
+    """Test service account authentication guardrails."""
+
+    def setUp(self) -> None:
+        """Set up test client and reset singletons."""
+        import datetime
+
+        from imbi_api import models
+
+        settings._auth_settings = None
+        self.client = testclient.TestClient(app.create_app())
+        rate_limit.limiter.reset()
+
+        self.sa_user = models.User(
+            email='sa@example.com',
+            display_name='Service Account User',
+            is_active=True,
+            is_admin=False,
+            is_service_account=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.sa = models.ServiceAccount(
+            slug='my-service',
+            display_name='My Service',
+            is_active=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+    def tearDown(self) -> None:
+        """Reset settings singleton after tests."""
+        settings._auth_settings = None
+
+    def test_service_account_blocked_from_password_login(
+        self,
+    ) -> None:
+        """POST /auth/login with service account returns 403."""
+        with mock.patch(
+            'imbi_common.neo4j.fetch_node',
+            return_value=self.sa_user,
+        ):
+            response = self.client.post(
+                '/auth/login',
+                json={
+                    'email': 'sa@example.com',
+                    'password': 'SomePass123!@#',
+                },
+            )
+
+            self.assertEqual(response.status_code, 403)
+            self.assertIn(
+                'Service accounts cannot use password login',
+                response.json()['detail'],
+            )
+
+    def test_client_credentials_token_success(self) -> None:
+        """POST /auth/token with valid credentials returns tokens."""
+        import datetime
+
+        cred_data = {
+            'client_id': 'cc_test123',
+            'client_secret_hash': '$argon2id$hashed',
+            'revoked': False,
+            'expires_at': None,
+            'scopes': ['project:read', 'project:write'],
+        }
+        sa_data = {
+            'slug': 'my-service',
+            'display_name': 'My Service',
+            'is_active': True,
+            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+        }
+
+        def mock_run_side_effect(query, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+            mock_result.consume = mock.AsyncMock()
+
+            if 'ClientCredential' in query and 'RETURN c, s' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'c': cred_data, 's': sa_data}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=mock_run_side_effect,
+            ),
+            mock.patch(
+                'imbi_common.neo4j.convert_neo4j_types',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.auth.password.verify_password',
+                return_value=True,
+            ),
+        ):
+            response = self.client.post(
+                '/auth/token',
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': 'cc_test123',
+                    'client_secret': 'secret123',
+                    'scope': 'project:read',
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertIn('access_token', data)
+            self.assertIn('refresh_token', data)
+            self.assertEqual(data['token_type'], 'bearer')
+            self.assertIn('expires_in', data)
+            self.assertEqual(data['scope'], 'project:read')
+
+    def test_client_credentials_bad_grant_type(self) -> None:
+        """POST /auth/token with wrong grant_type returns 400."""
+        response = self.client.post(
+            '/auth/token',
+            data={
+                'grant_type': 'authorization_code',
+                'client_id': 'cc_test123',
+                'client_secret': 'secret123',
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'Unsupported grant_type',
+            response.json()['detail'],
+        )
+
+    def test_client_credentials_invalid_client(self) -> None:
+        """POST /auth/token with bad client_id returns 401."""
+
+        def mock_run_side_effect(query, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+            mock_result.data = mock.AsyncMock(return_value=[])
+            return mock_result
+
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            side_effect=mock_run_side_effect,
+        ):
+            response = self.client.post(
+                '/auth/token',
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': 'cc_nonexistent',
+                    'client_secret': 'secret123',
+                },
+            )
+
+            self.assertEqual(response.status_code, 401)
+            self.assertIn(
+                'Invalid client credentials',
+                response.json()['detail'],
+            )
+
+    def test_client_credentials_revoked(self) -> None:
+        """POST /auth/token with revoked credential returns 401."""
+        import datetime
+
+        cred_data = {
+            'client_id': 'cc_revoked',
+            'client_secret_hash': '$argon2id$hashed',
+            'revoked': True,
+            'expires_at': None,
+            'scopes': [],
+        }
+        sa_data = {
+            'slug': 'my-service',
+            'display_name': 'My Service',
+            'is_active': True,
+            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+        }
+
+        def mock_run_side_effect(query, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+
+            if 'ClientCredential' in query and 'RETURN c, s' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'c': cred_data, 's': sa_data}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=mock_run_side_effect,
+            ),
+            mock.patch(
+                'imbi_common.neo4j.convert_neo4j_types',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.post(
+                '/auth/token',
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': 'cc_revoked',
+                    'client_secret': 'secret123',
+                },
+            )
+
+            self.assertEqual(response.status_code, 401)
+            self.assertIn(
+                'revoked',
+                response.json()['detail'].lower(),
+            )
+
+    def test_client_credentials_expired(self) -> None:
+        """POST /auth/token with expired credential returns 401."""
+        import datetime
+
+        cred_data = {
+            'client_id': 'cc_expired',
+            'client_secret_hash': '$argon2id$hashed',
+            'revoked': False,
+            'expires_at': datetime.datetime(2020, 1, 1, tzinfo=datetime.UTC),
+            'scopes': [],
+        }
+        sa_data = {
+            'slug': 'my-service',
+            'display_name': 'My Service',
+            'is_active': True,
+            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+        }
+
+        def mock_run_side_effect(query, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+
+            if 'ClientCredential' in query and 'RETURN c, s' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'c': cred_data, 's': sa_data}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=mock_run_side_effect,
+            ),
+            mock.patch(
+                'imbi_common.neo4j.convert_neo4j_types',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.post(
+                '/auth/token',
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': 'cc_expired',
+                    'client_secret': 'secret123',
+                },
+            )
+
+            self.assertEqual(response.status_code, 401)
+            self.assertIn(
+                'expired',
+                response.json()['detail'].lower(),
+            )
+
+    def test_client_credentials_inactive_sa(self) -> None:
+        """POST /auth/token with inactive SA returns 401."""
+        import datetime
+
+        cred_data = {
+            'client_id': 'cc_inactive',
+            'client_secret_hash': '$argon2id$hashed',
+            'revoked': False,
+            'expires_at': None,
+            'scopes': [],
+        }
+        sa_data = {
+            'slug': 'inactive-sa',
+            'display_name': 'Inactive SA',
+            'is_active': False,
+            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+        }
+
+        def mock_run_side_effect(query, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+
+            if 'ClientCredential' in query and 'RETURN c, s' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'c': cred_data, 's': sa_data}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=mock_run_side_effect,
+            ),
+            mock.patch(
+                'imbi_common.neo4j.convert_neo4j_types',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.auth.password.verify_password',
+                return_value=True,
+            ),
+        ):
+            response = self.client.post(
+                '/auth/token',
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': 'cc_inactive',
+                    'client_secret': 'secret123',
+                },
+            )
+
+            self.assertEqual(response.status_code, 401)
+            self.assertIn(
+                'inactive',
+                response.json()['detail'].lower(),
+            )
+
+    def test_client_credentials_scope_intersection(self) -> None:
+        """Requested scopes intersected with credential scopes."""
+        import datetime
+
+        cred_data = {
+            'client_id': 'cc_scoped',
+            'client_secret_hash': '$argon2id$hashed',
+            'revoked': False,
+            'expires_at': None,
+            'scopes': [
+                'project:read',
+                'project:write',
+                'user:read',
+            ],
+        }
+        sa_data = {
+            'slug': 'scoped-sa',
+            'display_name': 'Scoped SA',
+            'is_active': True,
+            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+        }
+
+        def mock_run_side_effect(query, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+            mock_result.consume = mock.AsyncMock()
+
+            if 'ClientCredential' in query and 'RETURN c, s' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'c': cred_data, 's': sa_data}]
+                )
+            else:
+                mock_result.data = mock.AsyncMock(return_value=[])
+
+            return mock_result
+
+        with (
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=mock_run_side_effect,
+            ),
+            mock.patch(
+                'imbi_common.neo4j.convert_neo4j_types',
+                side_effect=lambda x: x,
+            ),
+            mock.patch(
+                'imbi_api.auth.password.verify_password',
+                return_value=True,
+            ),
+        ):
+            # Request project:read and blueprint:read;
+            # only project:read is in credential scopes
+            response = self.client.post(
+                '/auth/token',
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': 'cc_scoped',
+                    'client_secret': 'secret123',
+                    'scope': 'project:read blueprint:read',
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            # Only project:read is in both requested
+            # and credential scopes
+            self.assertEqual(data['scope'], 'project:read')

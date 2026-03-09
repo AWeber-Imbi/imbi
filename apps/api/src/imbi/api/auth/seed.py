@@ -53,6 +53,31 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('upload:create', 'upload', 'create', 'Upload files'),
     ('upload:read', 'upload', 'read', 'View and download uploads'),
     ('upload:delete', 'upload', 'delete', 'Delete uploads'),
+    # Service account management
+    (
+        'service_account:create',
+        'service_account',
+        'create',
+        'Create service accounts',
+    ),
+    (
+        'service_account:read',
+        'service_account',
+        'read',
+        'View service accounts',
+    ),
+    (
+        'service_account:update',
+        'service_account',
+        'update',
+        'Update service accounts',
+    ),
+    (
+        'service_account:delete',
+        'service_account',
+        'delete',
+        'Delete service accounts',
+    ),
 ]
 
 # Default role definitions

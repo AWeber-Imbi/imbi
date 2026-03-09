@@ -23,10 +23,38 @@ oauth2_scheme = security.HTTPBearer(auto_error=False)
 class AuthContext(pydantic.BaseModel):
     """Authentication context for the current request."""
 
-    user: models.User
+    user: models.User | None = None
+    service_account: models.ServiceAccount | None = None
     session_id: str | None = None
-    auth_method: typing.Literal['jwt', 'api_key']
+    auth_method: typing.Literal['jwt', 'api_key', 'client_credentials']
     permissions: set[str] = pydantic.Field(default_factory=set)
+
+    @property
+    def principal_name(self) -> str:
+        """Return the name of the authenticated principal."""
+        if self.user:
+            return self.user.email
+        if self.service_account:
+            return self.service_account.slug
+        return 'unknown'
+
+    @property
+    def is_admin(self) -> bool:
+        """Return whether the principal is an admin."""
+        return self.user.is_admin if self.user else False
+
+    @property
+    def require_user(self) -> 'models.User':
+        """Return the authenticated user, raising 403 if absent.
+
+        Use this in endpoints that require a human user (not a
+        service account).
+        """
+        if self.user is None:
+            raise fastapi.HTTPException(
+                403, 'This endpoint requires user authentication'
+            )
+        return self.user
 
 
 async def load_user_permissions(email: str) -> set[str]:
@@ -53,6 +81,38 @@ async def load_user_permissions(email: str) -> set[str]:
     RETURN collect(DISTINCT perm.name) AS permissions
     """
     async with neo4j.run(query, email=email) as result:
+        records = await result.data()
+        if not records:
+            return set()
+        permission_list: list[str] = records[0].get('permissions', [])
+        return set(permission_list)
+
+
+async def load_service_account_permissions(
+    slug: str,
+) -> set[str]:
+    """Get permissions granted to a service account.
+
+    Collects permissions from the service account's organization
+    memberships, following role inheritance.
+
+    Parameters:
+        slug: Slug of the service account.
+
+    Returns:
+        Set of permission names.
+
+    """
+    query = """
+    MATCH (s:ServiceAccount {slug: $slug})
+          -[m:MEMBER_OF]->(o:Organization)
+    MATCH (r:Role {slug: m.role})
+    OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role)
+    WITH DISTINCT parent
+    OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission)
+    RETURN collect(DISTINCT perm.name) AS permissions
+    """
+    async with neo4j.run(query, slug=slug) as result:
         records = await result.data()
         if not records:
             return set()
@@ -113,18 +173,51 @@ async def authenticate_jwt(
                 status_code=401, detail='Token revoked'
             )
 
-    # Load user
-    email = claims.get('sub')
-    if not email:
+    # Load principal (user or service account)
+    subject = claims.get('sub')
+    if not subject:
         raise fastapi.HTTPException(
             status_code=401, detail='Token missing subject'
         )
 
+    auth_method = claims.get('auth_method', 'jwt')
+
+    if auth_method == 'client_credentials':
+        # Service account token
+        sa_query = """
+        MATCH (s:ServiceAccount {slug: $slug})
+        RETURN s
+        """
+        async with neo4j.run(sa_query, slug=subject) as result:
+            records = await result.data()
+            if not records:
+                raise fastapi.HTTPException(
+                    status_code=401,
+                    detail='Service account not found',
+                )
+            sa_data = neo4j.convert_neo4j_types(records[0]['s'])
+            sa = models.ServiceAccount(**sa_data)
+
+        if not sa.is_active:
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail='Service account is inactive',
+            )
+
+        perms = await load_service_account_permissions(subject)
+        return AuthContext(
+            service_account=sa,
+            session_id=jti,
+            auth_method='client_credentials',
+            permissions=perms,
+        )
+
+    # Standard user token
     user_query = """
     MATCH (u:User {email: $email})
     RETURN u
     """
-    async with neo4j.run(user_query, email=email) as result:
+    async with neo4j.run(user_query, email=subject) as result:
         records = await result.data()
         if not records:
             raise fastapi.HTTPException(
@@ -140,13 +233,13 @@ async def authenticate_jwt(
         )
 
     # Load permissions
-    permissions = await load_user_permissions(email)
+    perms = await load_user_permissions(subject)
 
     return AuthContext(
         user=user,
         session_id=jti,
         auth_method='jwt',
-        permissions=permissions,
+        permissions=perms,
     )
 
 
@@ -182,11 +275,12 @@ async def authenticate_api_key(
     key_id = f'ik_{parts[1]}'
     key_secret = parts[2]
 
-    # Fetch API key from Neo4j
+    # Fetch API key and owner (User or ServiceAccount)
     query = """
     MATCH (k:APIKey {key_id: $key_id})
     OPTIONAL MATCH (k)-[:OWNED_BY]->(u:User)
-    RETURN k, u
+    OPTIONAL MATCH (k)-[:OWNED_BY]->(s:ServiceAccount)
+    RETURN k, u, s
     """
     async with neo4j.run(query, key_id=key_id) as result:
         records = await result.data()
@@ -198,10 +292,11 @@ async def authenticate_api_key(
 
     api_key_data = neo4j.convert_neo4j_types(records[0]['k'])
     user_data = neo4j.convert_neo4j_types(records[0]['u'])
+    sa_data = neo4j.convert_neo4j_types(records[0]['s'])
 
-    if not user_data:
+    if not user_data and not sa_data:
         raise fastapi.HTTPException(
-            status_code=401, detail='API key user not found'
+            status_code=401, detail='API key owner not found'
         )
 
     # Check if key is revoked
@@ -221,15 +316,6 @@ async def authenticate_api_key(
             status_code=401, detail='Invalid or revoked API key'
         )
 
-    # Create user model
-    user = models.User(**user_data)
-
-    # Check if user is active
-    if not user.is_active:
-        raise fastapi.HTTPException(
-            status_code=401, detail='User account is inactive'
-        )
-
     # Update last_used timestamp
     update_query = """
     MATCH (k:APIKey {key_id: $key_id})
@@ -238,21 +324,39 @@ async def authenticate_api_key(
     async with neo4j.run(update_query, key_id=key_id) as result:
         await result.consume()
 
-    # Load user permissions
-    all_permissions = await load_user_permissions(user.email)
-
-    # Filter by API key scopes (empty scopes = all permissions)
+    # Resolve owner and permissions
     scopes = api_key_data.get('scopes', [])
-    if scopes:
-        filtered_permissions = all_permissions.intersection(set(scopes))
-    else:
-        filtered_permissions = all_permissions
+
+    if sa_data:
+        sa = models.ServiceAccount(**sa_data)
+        if not sa.is_active:
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail='Service account is inactive',
+            )
+        all_perms = await load_service_account_permissions(sa.slug)
+        filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+        return AuthContext(
+            service_account=sa,
+            session_id=key_id,
+            auth_method='api_key',
+            permissions=filtered,
+        )
+
+    user = models.User(**user_data)
+    if not user.is_active:
+        raise fastapi.HTTPException(
+            status_code=401, detail='User account is inactive'
+        )
+
+    all_perms = await load_user_permissions(user.email)
+    filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
 
     return AuthContext(
         user=user,
         session_id=key_id,
         auth_method='api_key',
-        permissions=filtered_permissions,
+        permissions=filtered,
     )
 
 
@@ -320,22 +424,21 @@ def require_permission(
     async def check_permission(
         auth: typing.Annotated[AuthContext, fastapi.Depends(get_current_user)],
     ) -> AuthContext:
-        # Admin users automatically have all permissions
-        """
-        Enforces that the current user possesses the required
-        permission; admin users bypass checks.
+        """Enforce that the principal has the required permission.
+
+        Admin users bypass checks. Service accounts never bypass.
 
         Returns:
-            AuthContext: The unchanged authentication context when the
-                permission is granted.
+            AuthContext when the permission is granted.
+
         """
-        if auth.user.is_admin:
+        if auth.is_admin:
             return auth
 
         if permission not in auth.permissions:
             LOGGER.warning(
-                'Permission denied: user=%s permission=%s',
-                auth.user.email,
+                'Permission denied: principal=%s permission=%s',
+                auth.principal_name,
                 permission,
             )
             raise fastapi.HTTPException(
@@ -416,26 +519,17 @@ def require_resource_access(
         slug: str,
         auth: typing.Annotated[AuthContext, fastapi.Depends(get_current_user)],
     ) -> AuthContext:
-        # Admin users automatically have all permissions
-        """
-        Enforces that the current user has access to the specified
-        resource and returns the unchanged AuthContext on success.
+        """Enforce access to a specific resource.
 
         Parameters:
-            slug (str): The resource identifier (slug) to check access
-                for.
-            auth (AuthContext): The authentication context for the
-                current request.
+            slug: The resource identifier to check.
+            auth: The authentication context.
 
         Returns:
-            AuthContext: The provided auth context when access is
-                granted.
+            AuthContext when access is granted.
 
-        Raises:
-            fastapi.HTTPException: With status 403 if the user is not
-                authorized to access the resource.
         """
-        if auth.user.is_admin:
+        if auth.is_admin:
             return auth
 
         # First check global permission
@@ -443,18 +537,20 @@ def require_resource_access(
         if global_permission in auth.permissions:
             return auth
 
-        # Check resource-level permission
-        # Convert snake_case to PascalCase for Neo4j labels
-        label = ''.join(word.capitalize() for word in resource_type.split('_'))
-        has_access = await check_resource_permission(
-            auth.user.email, label, slug, action
-        )
-        if has_access:
-            return auth
+        # Check resource-level permission (users only)
+        if auth.user:
+            label = ''.join(
+                word.capitalize() for word in resource_type.split('_')
+            )
+            has_access = await check_resource_permission(
+                auth.user.email, label, slug, action
+            )
+            if has_access:
+                return auth
 
         LOGGER.warning(
-            'Resource access denied: user=%s resource=%s:%s action=%s',
-            auth.user.email,
+            'Resource access denied: principal=%s resource=%s:%s action=%s',
+            auth.principal_name,
             resource_type,
             slug,
             action,

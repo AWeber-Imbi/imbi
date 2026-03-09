@@ -747,3 +747,152 @@ class OrgMembershipEndpointsTestCase(unittest.TestCase):
                 'not a member',
                 response.json()['detail'],
             )
+
+
+class ServiceAccountGuardRailsTestCase(unittest.TestCase):
+    """Test guardrails preventing invalid service account operations."""
+
+    def setUp(self) -> None:
+        """Set up test app with admin authentication context."""
+        from imbi_api.auth import permissions
+
+        self.test_app = app.create_app()
+
+        self.admin_user = models.User(
+            email='admin@example.com',
+            display_name='Admin User',
+            password_hash='$argon2id$hashed',
+            is_active=True,
+            is_admin=True,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.auth_context = permissions.AuthContext(
+            user=self.admin_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={
+                'user:create',
+                'user:read',
+                'user:update',
+                'user:delete',
+            },
+        )
+
+        async def mock_get_current_user():
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+        self.client = testclient.TestClient(self.test_app)
+
+    def test_create_service_account_with_password_blocked(
+        self,
+    ) -> None:
+        """POST /users with is_service_account and password returns 400."""
+        response = self.client.post(
+            '/users/',
+            json={
+                'email': 'sa@example.com',
+                'display_name': 'SA With Password',
+                'password': 'SecurePass123!@#',
+                'is_active': True,
+                'is_admin': False,
+                'is_service_account': True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'Service accounts cannot have passwords',
+            response.json()['detail'],
+        )
+
+    def test_create_service_account_as_admin_blocked(
+        self,
+    ) -> None:
+        """POST /users with is_service_account and is_admin returns 400."""
+        response = self.client.post(
+            '/users/',
+            json={
+                'email': 'sa-admin@example.com',
+                'display_name': 'SA Admin',
+                'is_active': True,
+                'is_admin': True,
+                'is_service_account': True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'Service accounts cannot be admins',
+            response.json()['detail'],
+        )
+
+    def test_update_service_account_password_blocked(
+        self,
+    ) -> None:
+        """PUT /users/{email} for SA with password returns 400."""
+        existing_sa = models.User(
+            email='sa@example.com',
+            display_name='Existing SA',
+            is_active=True,
+            is_admin=False,
+            is_service_account=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        with mock.patch(
+            'imbi_common.neo4j.fetch_node',
+            return_value=existing_sa,
+        ):
+            response = self.client.put(
+                '/users/sa@example.com',
+                json={
+                    'email': 'sa@example.com',
+                    'display_name': 'Updated SA',
+                    'password': 'NewPass123!@#',
+                    'is_active': True,
+                    'is_admin': False,
+                    'is_service_account': True,
+                },
+            )
+
+            self.assertEqual(response.status_code, 400)
+            self.assertIn(
+                'Service accounts cannot have passwords',
+                response.json()['detail'],
+            )
+
+    def test_change_password_for_service_account_blocked(
+        self,
+    ) -> None:
+        """POST /users/{email}/password for SA returns 400."""
+        sa_user = models.User(
+            email='sa@example.com',
+            display_name='SA User',
+            is_active=True,
+            is_admin=False,
+            is_service_account=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        with mock.patch(
+            'imbi_common.neo4j.fetch_node',
+            return_value=sa_user,
+        ):
+            response = self.client.post(
+                '/users/sa@example.com/password',
+                json={
+                    'new_password': 'NewSecure123!@#',
+                },
+            )
+
+            self.assertEqual(response.status_code, 400)
+            self.assertIn(
+                'Service accounts cannot have passwords',
+                response.json()['detail'],
+            )

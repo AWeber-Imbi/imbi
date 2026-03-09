@@ -124,7 +124,7 @@ async def create_upload(
         s3_key=s3_key,
         has_thumbnail=has_thumbnail,
         thumbnail_s3_key=thumbnail_s3_key,
-        uploaded_by=auth.user.email,
+        uploaded_by=auth.require_user.email,
         created_at=datetime.datetime.now(datetime.UTC),
     )
 
@@ -143,7 +143,7 @@ async def create_upload(
     LOGGER.info(
         'Upload %s created by %s (%s, %d bytes)',
         upload_id,
-        auth.user.email,
+        auth.require_user.email,
         content_type,
         len(data),
     )
@@ -330,4 +330,4 @@ async def delete_upload(
     if upload.thumbnail_s3_key:
         await storage.delete(upload.thumbnail_s3_key)
 
-    LOGGER.info('Upload %s deleted by %s', upload_id, auth.user.email)
+    LOGGER.info('Upload %s deleted by %s', upload_id, auth.require_user.email)

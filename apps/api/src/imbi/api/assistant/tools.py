@@ -359,7 +359,7 @@ async def execute_tool(
 
     # Permission check
     if (
-        not auth.user.is_admin
+        not auth.is_admin
         and tool_def.required_permission not in auth.permissions
     ):
         return f'Permission denied for tool: {tool_name}'

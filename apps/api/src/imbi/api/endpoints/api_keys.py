@@ -147,17 +147,19 @@ async def create_api_key(
         last_rotated=None,
         revoked=False,
         revoked_at=None,
-        user=auth.user,
+        user=auth.require_user,
     )
 
     # Store in Neo4j
     await neo4j.create_node(api_key)
-    await neo4j.create_relationship(api_key, auth.user, rel_type='OWNED_BY')
+    await neo4j.create_relationship(
+        api_key, auth.require_user, rel_type='OWNED_BY'
+    )
 
     LOGGER.info(
         'API key %s created for user %s (expires: %s)',
         key_id,
-        auth.user.email,
+        auth.require_user.email,
         expires_at or 'never',
     )
 
@@ -193,7 +195,7 @@ async def list_api_keys(
     MATCH (u:User {email: $email})<-[:OWNED_BY]-(k:APIKey)
     RETURN k ORDER BY k.created_at DESC
     """
-    async with neo4j.run(query, email=auth.user.email) as result:
+    async with neo4j.run(query, email=auth.require_user.email) as result:
         records = await result.data()
 
     api_keys = [
@@ -212,7 +214,9 @@ async def list_api_keys(
     ]
 
     LOGGER.debug(
-        'Listed %d API keys for user %s', len(api_keys), auth.user.email
+        'Listed %d API keys for user %s',
+        len(api_keys),
+        auth.require_user.email,
     )
 
     return api_keys
@@ -245,7 +249,7 @@ async def revoke_api_key(
     RETURN k
     """
     async with neo4j.run(
-        query, username=auth.user.email, key_id=key_id
+        query, username=auth.require_user.email, key_id=key_id
     ) as result:
         records = await result.data()
 
@@ -262,7 +266,9 @@ async def revoke_api_key(
     async with neo4j.run(query, key_id=key_id) as result:
         await result.consume()
 
-    LOGGER.info('API key %s revoked by user %s', key_id, auth.user.email)
+    LOGGER.info(
+        'API key %s revoked by user %s', key_id, auth.require_user.email
+    )
 
 
 @api_keys_router.post('/{key_id}/rotate', response_model=APIKeyCreateResponse)
@@ -297,7 +303,7 @@ async def rotate_api_key(
     RETURN k
     """
     async with neo4j.run(
-        query, username=auth.user.email, key_id=key_id
+        query, username=auth.require_user.email, key_id=key_id
     ) as result:
         records = await result.data()
 
@@ -328,7 +334,9 @@ async def rotate_api_key(
     ) as result:
         await result.consume()
 
-    LOGGER.info('API key %s rotated by user %s', key_id, auth.user.email)
+    LOGGER.info(
+        'API key %s rotated by user %s', key_id, auth.require_user.email
+    )
 
     return APIKeyCreateResponse(
         key_id=key_id,
