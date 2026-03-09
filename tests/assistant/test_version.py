@@ -1,28 +1,27 @@
 import importlib
+import importlib.metadata
 import sys
+import types
 import unittest
 from unittest import mock
 
 
 class VersionTests(unittest.TestCase):
-    def _reimport(self) -> None:
+    def _reimport(self) -> types.ModuleType:
         sys.modules.pop('imbi_assistant', None)
-        importlib.import_module('imbi_assistant')
+        return importlib.import_module('imbi_assistant')
 
     def test_version_is_string(self) -> None:
-        import imbi_assistant
-
-        self.assertIsInstance(imbi_assistant.version, str)
+        mod = self._reimport()
+        self.assertIsInstance(mod.version, str)
 
     def test_version_info_is_list(self) -> None:
-        import imbi_assistant
-
-        self.assertIsInstance(imbi_assistant.version_info, list)
+        mod = self._reimport()
+        self.assertIsInstance(mod.version_info, list)
 
     def test_version_info_has_integers(self) -> None:
-        import imbi_assistant
-
-        for part in imbi_assistant.version_info[:3]:
+        mod = self._reimport()
+        for part in mod.version_info[:3]:
             self.assertIsInstance(part, int)
 
     def test_fallback_when_package_not_found(self) -> None:
@@ -32,21 +31,17 @@ class VersionTests(unittest.TestCase):
                 'imbi-assistant'
             ),
         ):
-            self._reimport()
+            mod = self._reimport()
 
-        import imbi_assistant
-
-        self.assertEqual('0.0.0', imbi_assistant.version)
-        self.assertEqual([0, 0, 0], imbi_assistant.version_info)
+        self.assertEqual('0.0.0', mod.version)
+        self.assertEqual([0, 0, 0], mod.version_info)
 
     def test_prerelease_version_parsing(self) -> None:
         with mock.patch(
             'importlib.metadata.version',
             return_value='1.2.3rc1',
         ):
-            self._reimport()
+            mod = self._reimport()
 
-        import imbi_assistant
-
-        self.assertEqual('1.2.3rc1', imbi_assistant.version)
-        self.assertEqual([1, 2, 3, 'rc1'], imbi_assistant.version_info)
+        self.assertEqual('1.2.3rc1', mod.version)
+        self.assertEqual([1, 2, 3, 'rc1'], mod.version_info)
