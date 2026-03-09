@@ -1,7 +1,7 @@
 [doc("Bootstrap the environment and run the service in the foreground")]
 [group("Testing")]
 serve *ARGS: setup
-    -uv run --env-file=.env imbi-assistant serve {{ ARGS }}
+    uv run --env-file=.env imbi-assistant serve {{ ARGS }}
 
 [default]
 [private]
@@ -29,7 +29,7 @@ lint: setup
 [group("Development")]
 format *FILES: setup
     #!/usr/bin/env sh
-    set -x
+    set -ex
     if [ "{{FILES}}" = '' ]; then
         args='--all-files'
     else

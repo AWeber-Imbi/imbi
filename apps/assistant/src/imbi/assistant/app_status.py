@@ -22,9 +22,7 @@ class Status(pydantic.BaseModel):
     status: t.Literal['ok', 'failing']
     version: t.Annotated[
         str,
-        pydantic.Field(
-            description='Application version', examples=['0.0.0']
-        ),
+        pydantic.Field(description='Application version', examples=['0.0.0']),
     ]
     started_at: datetime.datetime
 

@@ -2,10 +2,10 @@ import datetime
 
 import fastapi
 import typer
+from imbi_common import lifespan, server
 
 import imbi_assistant
 from imbi_assistant import app_status
-from imbi_common import lifespan, server
 
 
 def create_app() -> fastapi.FastAPI:
@@ -21,9 +21,7 @@ def create_app() -> fastapi.FastAPI:
 
 cli = typer.Typer(no_args_is_help=True)
 cli.command('serve')(
-    server.bind_entrypoint(
-        'imbi_assistant.app:create_app', default_port=8002
-    )
+    server.bind_entrypoint('imbi_assistant.app:create_app', default_port=8002)
 )
 
 

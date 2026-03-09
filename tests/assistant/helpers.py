@@ -11,6 +11,8 @@ class TestCase(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
+        # Load .env for local development; the file is not committed
+        # and load_dotenv silently does nothing when it is absent.
         my_dir = pathlib.Path(__file__).parent
         env_path = my_dir.parent / '.env'
         dotenv.load_dotenv(str(env_path))
