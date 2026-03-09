@@ -25,6 +25,11 @@ Full documentation is available at: [https://aweber-imbi.github.io/imbi-common/]
 
 ## Development
 
+### Prerequisites
+
+- [just](https://just.systems/man/en/packages.html) — task runner
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) — Python package manager
+
 ### Setup
 
 ```bash
@@ -32,20 +37,22 @@ Full documentation is available at: [https://aweber-imbi.github.io/imbi-common/]
 git clone https://github.com/AWeber-Imbi/imbi-common.git
 cd imbi-common
 
-# Install with development dependencies
-./bootstrap
+# Install dependencies and pre-commit hooks
+just setup
 ```
 
 ### Running Tests
 
 ```bash
-uv run pytest
+just test           # Full test suite with coverage (requires Docker)
+just test <file>    # Run specific test file(s)
 ```
 
 ### Code Quality
 
 ```bash
-pre-commit run --all-files
+just lint    # Run all linters
+just format  # Reformat code
 ```
 
 ## License
@@ -54,6 +61,7 @@ BSD-3-Clause - See [LICENSE](LICENSE) file for details.
 
 ## Authors
 
+- Dave Shawley <daves@aweber.com>
 - Gavin M. Roy <gavinr@aweber.com>
 
 ## Contributing

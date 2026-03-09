@@ -1,7 +1,3 @@
-[build-system]
-requires = ["build", "hatchling", "wheel"]
-build-backend = "hatchling.build"
-
 [project]
 name = "imbi-common"
 version = "0.1.0"
@@ -40,6 +36,34 @@ server = [
   "uvicorn[standard]>=0.40.0",
 ]
 
+[dependency-groups]
+dev = [
+  "basedpyright",
+  "build",
+  "click~=8.2.1",  # 8.3+ breaks mkdocs serve (https://github.com/mkdocs/mkdocs/issues/4032)
+  "coverage[toml]",
+  "httpx",
+  "mypy~=1.19.1",
+  "pre-commit",
+  "pytest",
+  "ruff~=0.14.6",
+  "sentry-sdk>=2.48.0",
+  "tomli-w~=1.2",
+  "uvicorn[standard]>=0.40.0",
+]
+dist = ["build", "twine", "wheel"]
+docs = [
+  "griffe-pydantic",
+  "mkdocs>=1.5,<2",
+  "mkdocs-material>9.5,<10",
+  "mkdocstrings-python-xref>=1.6,<2",
+  "mkdocstrings[python]"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.coverage.report]
 exclude_also = ["typing.TYPE_CHECKING"]
 fail_under = 90
@@ -70,15 +94,6 @@ typeCheckingMode = "strict"
 executionEnvironments = [
   { root = "src" },
   { root = "tests", reportPrivateUsage = false },
-]
-
-[tool.pytest.ini_options]
-pythonpath = ["src"]
-testpaths = ["tests"]
-addopts = [
-  "--cov=src/imbi_common",
-  "--cov-report=xml:build/coverage.xml",
-  "--cov-report=term",
 ]
 
 [tool.ruff]
@@ -124,31 +139,6 @@ max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S"]
-
-[dependency-groups]
-dev = [
-  "basedpyright",
-  "build",
-  "click~=8.2.1",  # 8.3+ breaks mkdocs serve (https://github.com/mkdocs/mkdocs/issues/4032)
-  "coverage[toml]",
-  "httpx",
-  "mypy~=1.19.1",
-  "pre-commit",
-  "pytest",
-  "pytest-cov",
-  "ruff~=0.14.6",
-  "sentry-sdk>=2.48.0",
-  "tomli-w~=1.2",
-  "uvicorn[standard]>=0.40.0",
-]
-dist = ["build", "twine", "wheel"]
-docs = [
-  "griffe-pydantic",
-  "mkdocs>=1.5,<2",
-  "mkdocs-material>9.5,<10",
-  "mkdocstrings-python-xref>=1.6,<2",
-  "mkdocstrings[python]"
-]
 
 [tool.uv]
 # dependency groups that are installed by `uv run`
