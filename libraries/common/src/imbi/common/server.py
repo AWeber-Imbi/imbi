@@ -131,7 +131,11 @@ def serve(
     uvicorn.run(entrypoint, **args)
 
 
-def bind_entrypoint(entrypoint: str) -> typing.Callable[..., None]:
+def bind_entrypoint(
+    entrypoint: str,
+    *,
+    default_port: int = 8000,
+) -> typing.Callable[..., None]:
     """Create a wrapper for serve() with a pre-bound entrypoint.
 
     This helper function creates a new function that calls serve() with
@@ -143,6 +147,7 @@ def bind_entrypoint(entrypoint: str) -> typing.Callable[..., None]:
 
     Args:
         entrypoint: The Python import string (e.g., 'package.module:func')
+        default_port: Default port for the ``--port`` option
 
     Returns:
         A callable that wraps serve() with the entrypoint pre-bound
@@ -152,12 +157,19 @@ def bind_entrypoint(entrypoint: str) -> typing.Callable[..., None]:
         >>> from imbi_common import server
         >>> cli = typer.Typer()
         >>> cli.command('serve')(
-        ...     server.bind_entrypoint('my_package.api:create_app')
+        ...     server.bind_entrypoint('my_package.api:create_app',
+        ...                            default_port=8002)
         ... )
     """
     sig = inspect.signature(serve)
-    # Remove the entrypoint parameter from the signature
-    new_params = [p for p in sig.parameters.values() if p.name != 'entrypoint']
+    # Remove the entrypoint parameter and override the port default
+    new_params = []
+    for p in sig.parameters.values():
+        if p.name == 'entrypoint':
+            continue
+        if p.name == 'port' and default_port != 8000:
+            p = p.replace(default=default_port)
+        new_params.append(p)
     new_sig = sig.replace(parameters=new_params)
 
     @functools.wraps(serve)

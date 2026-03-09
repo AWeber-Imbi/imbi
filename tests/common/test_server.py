@@ -166,3 +166,29 @@ class ServerCliTests(unittest.TestCase):
         self.uvicorn_run.assert_called_once_with(
             'package.module:func', **self.standard_kwargs
         )
+
+    def test_rebinding_entrypoint_with_default_port(self) -> None:
+        cli = typer.Typer()
+        cli.command('serve')(
+            server.bind_entrypoint('package.module:func', default_port=8002)
+        )
+        result = typer.testing.CliRunner().invoke(cli)
+        self.assertEqual(0, result.exit_code, result.output)
+        self.uvicorn_run.assert_called_once_with(
+            'package.module:func',
+            **{**self.standard_kwargs, 'port': 8002},
+        )
+
+    def test_rebinding_entrypoint_default_port_overridden_by_flag(
+        self,
+    ) -> None:
+        cli = typer.Typer()
+        cli.command('serve')(
+            server.bind_entrypoint('package.module:func', default_port=8002)
+        )
+        result = typer.testing.CliRunner().invoke(cli, ['--port', '9000'])
+        self.assertEqual(0, result.exit_code, result.output)
+        self.uvicorn_run.assert_called_once_with(
+            'package.module:func',
+            **{**self.standard_kwargs, 'port': 9000},
+        )
