@@ -13,6 +13,11 @@ from imbi_common import (
 )
 
 try:
+    from imbi_common import lifespan  # requires [server] extra
+except ImportError:
+    lifespan = None  # type: ignore[assignment]
+
+try:
     version = metadata.version('imbi-common')
 except metadata.PackageNotFoundError:
     version = '0.0.0'
@@ -27,3 +32,5 @@ __all__ = [
     'settings',
     'version',
 ]
+if lifespan is not None:
+    __all__.append('lifespan')
