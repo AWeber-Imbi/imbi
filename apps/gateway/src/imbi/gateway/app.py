@@ -5,7 +5,8 @@ import typer
 from imbi_common import server
 
 import imbi_gateway
-from imbi_gateway import app_status, lifespan, postgres
+from imbi_common import lifespan
+from imbi_gateway import app_status, postgres
 
 
 def create_app() -> fastapi.FastAPI:

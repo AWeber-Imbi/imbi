@@ -7,7 +7,7 @@ from collections import abc
 
 import fastapi.testclient
 
-from imbi_gateway import lifespan
+from imbi_common import lifespan
 
 
 class LifespanTests(unittest.IsolatedAsyncioTestCase):

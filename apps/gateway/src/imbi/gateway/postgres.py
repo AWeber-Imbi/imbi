@@ -44,7 +44,8 @@ import pydantic
 import pydantic_settings
 import yarl
 
-from imbi_gateway import helpers, lifespan
+from imbi_common import lifespan
+from imbi_gateway import helpers
 
 type RowType = psycopg.rows.DictRow
 type ConnectionType = psycopg.AsyncConnection[RowType]
