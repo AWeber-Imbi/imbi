@@ -157,7 +157,7 @@ dev = [
   "httpx",
   "mypy",
   "pre-commit",
-  "pyright",
+  "basedpyright",
   "pytest",
   "pytest-cov",
   "ruff",

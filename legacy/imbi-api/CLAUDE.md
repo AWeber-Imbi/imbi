@@ -16,19 +16,16 @@ This project uses [uv](https://docs.astral.sh/uv/) for fast, reliable Python pac
 
 ### Initial Setup
 ```bash
-# Step 1: Bootstrap development environment
-./bootstrap
+# Step 1: Set up development environment
+just setup
 
 # Step 2: Initialize Imbi (first time only)
 uv run imbi-api setup
 ```
 
-The `bootstrap` script:
-- Syncs dependencies using `uv sync --all-extras --all-groups --locked`
-- Installs pre-commit hooks via `uv run pre-commit install`
-- Starts Docker Compose services (Neo4j, ClickHouse, Jaeger)
-- Waits for services to be healthy (120s timeout)
-- Generates `.env` file with service URLs and OpenTelemetry configuration
+`just setup`:
+- Syncs dependencies using `uv sync --all-extras --all-groups --frozen`
+- Installs pre-commit hooks via `uv run pre-commit install --install-hooks --overwrite`
 
 The `imbi-api setup` command (run once per instance):
 - Seeds permissions and default roles (admin, developer, readonly)
@@ -42,7 +39,7 @@ The `imbi-api setup` command (run once per instance):
 - **ClickHouse**: ports 8123 (HTTP), 9000 (Native) - default/password
 - **Jaeger**: ports 4317 (OTLP), 16686 (UI) - for OpenTelemetry tracing
 
-The bootstrap script automatically generates a `.env` file with dynamically assigned ports and OpenTelemetry configuration. You can override settings via environment variables:
+The `docker` recipe (run automatically by `just serve` and `just test`) starts Docker Compose services, creates the ClickHouse database, and generates a `.env` file with dynamically assigned ports and OpenTelemetry configuration. You can override settings via environment variables:
 
 ```bash
 NEO4J_URL=neo4j://localhost:7687
@@ -53,44 +50,26 @@ NEO4J_PASSWORD=password
 **Neo4j URL credential extraction**: The settings model automatically extracts credentials from URLs like `neo4j://user:pass@host:7687`, URL-decodes them, and strips them from the connection URL for security. Explicit `NEO4J_USER`/`NEO4J_PASSWORD` take precedence over URL credentials.
 
 
-## Common Development Commands
+## Development Commands
 
-### Running the Application
+This project uses [just](https://github.com/casey/just) as a command runner:
+
 ```bash
-# Run development server with auto-reload
-uv run imbi-api serve --dev
-
-# Run production server (uses IMBI_ENVIRONMENT setting)
-uv run imbi-api serve
-
-# Access the API
-curl http://localhost:8000/status
-
-# View Jaeger tracing UI
-open http://localhost:16686
+just setup              # Set up development environment (install deps + pre-commit hooks)
+just serve              # Setup + docker + run the API server
+just serve --dev        # Run with auto-reload
+just test               # Setup + docker + run all tests with coverage
+just lint               # Setup + run pre-commit, basedpyright, mypy
+just format             # Setup + reformat all files
+just format <file>      # Reformat a specific file
+just clean              # Remove runtime artifacts + tear down docker
+just real-clean         # Remove everything including .venv and caches (with confirmation)
 ```
 
-The server starts on `localhost:8000` by default (configurable via `IMBI_HOST` and `IMBI_PORT`). Development mode enables auto-reload when source files change.
+The server starts on `localhost:8000` by default (configurable via `IMBI_HOST` and `IMBI_PORT`).
 
-### Code Quality
+### Running Tests Directly
 ```bash
-# Run all pre-commit checks (includes ruff linting + formatting)
-uv run pre-commit run --all-files
-
-# Run ruff directly
-uv run ruff check .                    # Lint
-uv run ruff check --fix .             # Lint with auto-fix
-uv run ruff format .                   # Format code
-
-# Run mypy type checking
-uv run mypy
-```
-
-### Testing
-```bash
-# Run all tests with coverage (uses pytest-cov via pyproject.toml)
-uv run pytest
-
 # Run specific test file
 uv run pytest tests/neo4j/test_client.py
 
@@ -108,22 +87,6 @@ uv run pytest -v
 - Automatic coverage collection via `pytest --cov` (configured in `tool.pytest.ini_options.addopts`)
 - XML output: `build/coverage.xml` (for Codecov)
 - HTML report: `build/coverage/` (for local review)
-
-### Docker Services
-```bash
-# Start services
-docker compose up --wait
-
-# Stop and clean
-docker compose down --remove-orphans --volumes
-
-# Check service status
-docker compose ps
-
-# View logs
-docker compose logs -f neo4j
-docker compose logs -f clickhouse
-```
 
 ## Code Architecture
 
@@ -384,8 +347,9 @@ mock_session.__aexit__.return_value = None
 - `UP047`: Allow non-PEP 695 generic functions (TypeVars for cypherantic compatibility)
 
 **Type checking**:
-- **mypy**: Configured for strict type checking of `src/imbi_api` (run with `uv run mypy`)
-- **pyright**: Configured to check `src/` and `tests/` with strict mode
+- **mypy**: Configured for strict type checking of `src/imbi_api`
+- **basedpyright**: Configured to check `src/` and `tests/` with strict mode
+- Run both via `just lint`
 
 ## CI/CD
 
@@ -481,7 +445,7 @@ gh pr create --base main --title "Add new feature" --body "..."
 - Email notification system
 - Docker Compose development environment (Neo4j, ClickHouse, Jaeger, Mailpit)
 - Pre-commit hooks with Ruff linting and formatting
-- Bootstrap script for automated setup
+- Justfile for consistent developer workflow (matching imbi-common and imbi-gateway)
 - Test suite (coverage being expanded to 90%+)
 
 🚧 **In Progress**:

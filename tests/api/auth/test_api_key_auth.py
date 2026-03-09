@@ -54,7 +54,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             if 'APIKey' in query and 'OWNED_BY' in query:
                 user_dict = self.test_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': self.api_key_data, 'u': user_dict}]
+                    return_value=[
+                        {'k': self.api_key_data, 'u': user_dict, 's': None}
+                    ]
                 )
             # Update last_used query
             elif 'last_used' in query:
@@ -123,7 +125,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
             if 'APIKey' in query and 'OWNED_BY' in query:
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': self.api_key_data, 'u': None}]
+                    return_value=[
+                        {'k': self.api_key_data, 'u': None, 's': None}
+                    ]
                 )
             else:
                 mock_result.data = mock.AsyncMock(return_value=[])
@@ -139,7 +143,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(cm.exception.status_code, 401)
-        self.assertEqual(cm.exception.detail, 'API key user not found')
+        self.assertEqual(cm.exception.detail, 'API key owner not found')
 
     async def test_authenticate_api_key_revoked(self) -> None:
         """Test authentication with revoked API key."""
@@ -154,7 +158,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             if 'APIKey' in query and 'OWNED_BY' in query:
                 user_dict = self.test_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': revoked_key_data, 'u': user_dict}]
+                    return_value=[
+                        {'k': revoked_key_data, 'u': user_dict, 's': None}
+                    ]
                 )
             else:
                 mock_result.data = mock.AsyncMock(return_value=[])
@@ -187,7 +193,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             if 'APIKey' in query and 'OWNED_BY' in query:
                 user_dict = self.test_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': expired_key_data, 'u': user_dict}]
+                    return_value=[
+                        {'k': expired_key_data, 'u': user_dict, 's': None}
+                    ]
                 )
             else:
                 mock_result.data = mock.AsyncMock(return_value=[])
@@ -217,7 +225,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             if 'APIKey' in query and 'OWNED_BY' in query:
                 user_dict = self.test_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': self.api_key_data, 'u': user_dict}]
+                    return_value=[
+                        {'k': self.api_key_data, 'u': user_dict, 's': None}
+                    ]
                 )
             else:
                 mock_result.data = mock.AsyncMock(return_value=[])
@@ -252,7 +262,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             if 'APIKey' in query and 'OWNED_BY' in query:
                 user_dict = inactive_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': self.api_key_data, 'u': user_dict}]
+                    return_value=[
+                        {'k': self.api_key_data, 'u': user_dict, 's': None}
+                    ]
                 )
             else:
                 mock_result.data = mock.AsyncMock(return_value=[])
@@ -284,7 +296,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             if 'APIKey' in query and 'OWNED_BY' in query:
                 user_dict = self.test_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': scoped_key_data, 'u': user_dict}]
+                    return_value=[
+                        {'k': scoped_key_data, 'u': user_dict, 's': None}
+                    ]
                 )
             elif 'last_used' in query:
                 mock_result.data = mock.AsyncMock(return_value=[])
@@ -332,7 +346,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             if 'APIKey' in query and 'OWNED_BY' in query:
                 user_dict = self.test_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': expired_key_data, 'u': user_dict}]
+                    return_value=[
+                        {'k': expired_key_data, 'u': user_dict, 's': None}
+                    ]
                 )
             else:
                 mock_result.data = mock.AsyncMock(return_value=[])
@@ -374,7 +390,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
             if 'APIKey' in query and 'OWNED_BY' in query:
                 user_dict = self.test_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': valid_key_data, 'u': user_dict}]
+                    return_value=[
+                        {'k': valid_key_data, 'u': user_dict, 's': None}
+                    ]
                 )
             elif 'last_used' in query:
                 mock_result.data = mock.AsyncMock(return_value=[])
@@ -436,7 +454,9 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
                 }
                 user_dict = self.test_user.model_dump(mode='json')
                 mock_result.data = mock.AsyncMock(
-                    return_value=[{'k': api_key_data, 'u': user_dict}]
+                    return_value=[
+                        {'k': api_key_data, 'u': user_dict, 's': None}
+                    ]
                 )
             elif 'last_used' in query:
                 mock_result.data = mock.AsyncMock(return_value=[])

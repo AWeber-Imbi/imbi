@@ -88,7 +88,9 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
                     )
             # Cleanup query for delete
             elif 'DETACH DELETE' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'deleted': 1}],
+                )
             # Auth: token revocation check
             elif 'TokenMetadata' in query and 'revoked' in query:
                 mock_result.data = mock.AsyncMock(
@@ -447,17 +449,47 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
             auth_settings=self.auth_settings,
         )
 
+        def mock_run_not_found(query: str, **params):
+            mock_result = mock.AsyncMock()
+            mock_result.__aenter__ = mock.AsyncMock(
+                return_value=mock_result,
+            )
+            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+            mock_result.consume = mock.AsyncMock()
+
+            if 'DETACH DELETE' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'deleted': 0}],
+                )
+            elif 'TokenMetadata' in query and 'revoked' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'revoked': False}],
+                )
+            elif 'User' in query and 'email' in query:
+                user_dict = self.test_user.model_dump(
+                    mode='json',
+                )
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'u': user_dict}],
+                )
+            elif 'Permission' in query or 'GRANTS' in query:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[{'permissions': []}],
+                )
+            else:
+                mock_result.data = mock.AsyncMock(
+                    return_value=[],
+                )
+
+            return mock_result
+
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-            mock.patch(
-                'imbi_common.neo4j.delete_node',
-                return_value=False,
+                side_effect=mock_run_not_found,
             ),
         ):
             mock_settings.return_value = self.auth_settings
