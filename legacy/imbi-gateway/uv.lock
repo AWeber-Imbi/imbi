@@ -515,7 +515,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.128.0" },
+    { name = "fastapi", specifier = ">=0.135.1" },
     { name = "imbi-common", extras = ["server"], git = "https://github.com/AWeber-Imbi/imbi-common?rev=main" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "~=3.3.2" },
     { name = "pydantic", specifier = "~=2.12" },
