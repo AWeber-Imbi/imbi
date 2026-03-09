@@ -1,8 +1,7 @@
 """Imbi MCP server.
 
-Exposes Imbi API functionality as MCP tools, forwarding the
-client's JWT for authorization so that the MCP server can only
-perform actions the authenticated user is permitted to do.
+Exposes Imbi API functionality as MCP tools. JWT forwarding
+and authorization are planned for a future iteration.
 """
 
 import fastmcp

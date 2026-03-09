@@ -4,6 +4,8 @@ import typer
 
 from imbi_mcp.server import mcp
 
+Transport = t.Literal['stdio', 'http', 'sse', 'streamable-http']
+
 cli = typer.Typer(no_args_is_help=True)
 
 
@@ -11,7 +13,7 @@ cli = typer.Typer(no_args_is_help=True)
 def serve(
     *,
     transport: t.Annotated[
-        str,
+        Transport,
         typer.Option(help='MCP transport type'),
     ] = 'streamable-http',
     host: t.Annotated[

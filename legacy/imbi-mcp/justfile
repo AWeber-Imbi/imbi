@@ -41,7 +41,7 @@ format *FILES: setup
 [doc("Remove runtime artifacts")]
 [group("Environment")]
 clean:
-    rm -f .coverage .env
+    rm -f .coverage
     rm -fR build
 
 [confirm]

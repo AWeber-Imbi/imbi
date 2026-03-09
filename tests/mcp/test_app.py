@@ -1,7 +1,15 @@
+import re
+
 import typer.testing
 
 from imbi_mcp import app
 from tests import helpers
+
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub('', text)
 
 
 class CLITests(helpers.TestCase):
@@ -11,18 +19,19 @@ class CLITests(helpers.TestCase):
     def test_cli_no_args_shows_help(self) -> None:
         runner = typer.testing.CliRunner()
         result = runner.invoke(app.cli, [])
-        self.assertIn('Usage', result.output)
+        self.assertIn('Usage', _strip_ansi(result.output))
 
     def test_cli_help(self) -> None:
         runner = typer.testing.CliRunner()
         result = runner.invoke(app.cli, ['--help'])
         self.assertEqual(0, result.exit_code)
-        self.assertIn('serve', result.output)
+        self.assertIn('serve', _strip_ansi(result.output))
 
     def test_serve_help(self) -> None:
         runner = typer.testing.CliRunner()
         result = runner.invoke(app.cli, ['serve', '--help'])
         self.assertEqual(0, result.exit_code)
-        self.assertIn('--transport', result.output)
-        self.assertIn('--host', result.output)
-        self.assertIn('--port', result.output)
+        output = _strip_ansi(result.output)
+        self.assertIn('--transport', output)
+        self.assertIn('--host', output)
+        self.assertIn('--port', output)

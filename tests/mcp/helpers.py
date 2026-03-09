@@ -12,8 +12,9 @@ class TestCase(unittest.IsolatedAsyncioTestCase):
     def setUpClass(cls) -> None:
         super().setUpClass()
         my_dir = pathlib.Path(__file__).parent
-        env_path = my_dir.parent / '.env'
-        dotenv.load_dotenv(str(env_path))
+        env_path = my_dir.parent / '.env.test'
+        if env_path.exists():
+            dotenv.load_dotenv(str(env_path), override=False)
 
     @contextlib.contextmanager
     def override_environment(
