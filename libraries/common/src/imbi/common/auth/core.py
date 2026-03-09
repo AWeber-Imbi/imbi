@@ -52,12 +52,14 @@ def create_access_token(
 
 def create_refresh_token(
     subject: str,
+    extra_claims: dict[str, typing.Any] | None = None,
     auth_settings: settings.Auth | None = None,
 ) -> str:
     """Create JWT refresh token.
 
     Args:
         subject: Subject (user identifier) to encode in token
+        extra_claims: Optional additional claims to include
         auth_settings: Optional auth settings for JWT configuration
             (uses singleton if not provided)
 
@@ -80,6 +82,7 @@ def create_refresh_token(
         'type': 'refresh',
         'iat': now,
         'exp': expires,
+        **(extra_claims or {}),
     }
 
     token: str = jwt.encode(
