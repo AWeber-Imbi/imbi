@@ -347,8 +347,8 @@ async def _stream_response(
         conversation_id=conversation_id,
         role='assistant',
         content=state['text'],
-        tool_use=(tool_use_blocks if tool_use_blocks else None),
-        token_usage=(state['usage'] if state['usage'] else None),
+        tool_use=(tool_use_blocks or None),
+        token_usage=(state['usage'] or None),
     )
 
     yield _sse_event(
