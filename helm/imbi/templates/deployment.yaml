@@ -20,7 +20,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: {{ include "imbi.containerPort" . | trim }}
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -53,7 +53,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}
                   key: postgres-url
-            {{- if .Values.assistant.enabled }}
+            {{- if and .Values.assistant.enabled .Values.assistant.anthropicApiKey }}
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
@@ -72,6 +72,7 @@ spec:
                   name: {{ include "imbi.secretName" . }}
                   key: s3-secret-key
             {{- end }}
+          {{- if eq .Values.service.mode "all" }}
           livenessProbe:
             httpGet:
               path: /api/status
@@ -84,5 +85,30 @@ spec:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+          {{- else if eq .Values.service.mode "api" }}
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- else }}
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

@@ -12,6 +12,7 @@ By default, the container starts all services behind a Caddy reverse proxy:
 docker run -p 8080:8080 \
   -e NEO4J_URL=bolt://neo4j:7687 \
   -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
+  -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
   ghcr.io/aweber-imbi/imbi:latest

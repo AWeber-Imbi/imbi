@@ -50,7 +50,7 @@ neo4j:
   neo4j:
     edition: community
     acceptLicenseAgreement: "yes"
-    password: ""
+    password: ""  # REQUIRED: must be overridden with a secure password
 
 # External Neo4j (when neo4j.enabled is false)
 externalNeo4j:

@@ -41,7 +41,7 @@ docs:
 [doc("Serve documentation locally for development")]
 [group("Docs")]
 docs-serve:
-    docker run --rm -p 8000:8000 -v {{ justfile_directory() }}/docs:/docs squidfunk/mkdocs-material
+    docker run --rm -p 8088:8000 -v {{ justfile_directory() }}/docs:/docs squidfunk/mkdocs-material
 
 [doc("Remove build artifacts")]
 [group("Build")]

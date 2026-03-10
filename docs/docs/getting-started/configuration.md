@@ -5,14 +5,34 @@ own set of variables from the shared environment.
 
 ## Required Variables
 
-These must be set for Imbi to start:
+Which variables are required depends on the service being run
+(see `IMBI_SERVICE` below). When running `IMBI_SERVICE=all` (the default),
+all service-specific variables are required.
+
+### Core (all services)
+
+| Variable | Description |
+|----------|-------------|
+| `IMBI_AUTH_JWT_SECRET` | Secret key for signing JWT tokens. Use a random string of at least 32 characters. |
+| `IMBI_AUTH_ENCRYPTION_KEY` | Fernet encryption key for encrypting sensitive data at rest. |
+
+### API and Assistant
 
 | Variable | Description |
 |----------|-------------|
 | `NEO4J_URL` | Neo4j Bolt connection URL (e.g. `bolt://neo4j:7687`) |
+
+### API only
+
+| Variable | Description |
+|----------|-------------|
 | `CLICKHOUSE_URL` | ClickHouse HTTP connection URL (e.g. `http://default:password@clickhouse:8123/imbi`) |
-| `IMBI_AUTH_JWT_SECRET` | Secret key for signing JWT tokens. Use a random string of at least 32 characters. |
-| `IMBI_AUTH_ENCRYPTION_KEY` | Fernet encryption key for encrypting sensitive data at rest. |
+
+### Gateway
+
+| Variable | Description |
+|----------|-------------|
+| `POSTGRES_URL` | PostgreSQL connection URL (e.g. `postgresql://user:pass@host/db`) |
 
 ## Neo4j
 
@@ -104,4 +124,4 @@ When running the Docker image, you can select which service to run:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `IMBI_SERVICE` | Service to run: `all`, `api`, `assistant`, `gateway`, `mcp` | `all` |
+| `IMBI_SERVICE` | Service to run: `all`, `api`, `assistant`, `gateway`, `mcp`, `ui` | `all` |

@@ -39,7 +39,7 @@ require_gateway_vars() {
 check_errors() {
     if [ -n "$errors" ]; then
         echo "ERROR: Missing required environment variables for $1:" >&2
-        printf "$errors" >&2
+        printf '%b' "$errors" >&2
         echo "" >&2
         echo "Set the variables above and try again." >&2
         exit 1

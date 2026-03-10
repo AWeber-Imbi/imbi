@@ -11,7 +11,7 @@ project's metadata is validated against the blueprint's schema.
 
 ## Creating a Blueprint
 
-```
+```json
 POST /api/blueprints
 {
   "name": "Microservice",
@@ -40,7 +40,7 @@ POST /api/blueprints
 
 When creating a project, specify the blueprint to apply its schema:
 
-```
+```json
 POST /api/projects
 {
   "name": "my-service",
@@ -60,5 +60,5 @@ are invalid.
 ## Updating Blueprints
 
 Blueprint schemas can be updated over time. Existing projects are not
-retroactively validated against updated schemas, but new creates and
-updates will use the current schema.
+retroactively validated against updated schemas, but new project
+creations and updates will use the current schema.

@@ -37,7 +37,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- define "imbi.neo4jUrl" -}}
 {{- if .Values.neo4j.enabled }}
-{{- printf "bolt://%s-neo4j:7687" .Release.Name }}
+{{- printf "bolt://%s:7687" .Release.Name }}
 {{- else }}
 {{- .Values.externalNeo4j.url }}
 {{- end }}
@@ -48,6 +48,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "http://%s:%s@%s-clickhouse:8123/imbi" .Values.clickhouse.auth.username .Values.clickhouse.auth.password .Release.Name }}
 {{- else }}
 {{- .Values.externalClickhouse.url }}
+{{- end }}
+{{- end }}
+
+{{- define "imbi.containerPort" -}}
+{{- if eq .Values.service.mode "api" }}8000
+{{- else if eq .Values.service.mode "mcp" }}8001
+{{- else if eq .Values.service.mode "assistant" }}8002
+{{- else if eq .Values.service.mode "gateway" }}8003
+{{- else }}8080
 {{- end }}
 {{- end }}
 

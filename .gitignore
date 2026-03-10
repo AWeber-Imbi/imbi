@@ -7,4 +7,3 @@ build/
 dist/
 docs/site/
 helm/imbi/charts/
-helm/imbi/Chart.lock
