@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "imbi.fullname" . }}
+  labels:
+    {{- include "imbi.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "imbi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "imbi.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "imbi.fullname" . }}
+          env:
+            - name: IMBI_SERVICE
+              value: {{ .Values.service.mode | quote }}
+            - name: IMBI_AUTH_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: jwt-secret
+            - name: IMBI_AUTH_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: encryption-key
+            - name: NEO4J_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: neo4j-url
+            - name: CLICKHOUSE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: clickhouse-url
+            - name: POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: postgres-url
+            {{- if .Values.assistant.enabled }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: anthropic-api-key
+            {{- end }}
+            {{- if .Values.storage.accessKey }}
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: s3-access-key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imbi.secretName" . }}
+                  key: s3-secret-key
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

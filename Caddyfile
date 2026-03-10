@@ -1,0 +1,28 @@
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle_path /assistant/* {
+		reverse_proxy 127.0.0.1:8002
+	}
+
+	handle_path /gateway/* {
+		reverse_proxy 127.0.0.1:8003
+	}
+
+	handle_path /mcp/* {
+		reverse_proxy 127.0.0.1:8001
+	}
+
+	handle {
+		root * /srv/ui
+		try_files {path} /index.html
+		file_server
+	}
+}

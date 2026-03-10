@@ -1,0 +1,58 @@
+services:
+  imbi:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      NEO4J_URL: bolt://neo4j:7687
+      CLICKHOUSE_URL: http://default:password@clickhouse:8123/imbi
+      POSTGRES_URL: postgresql://postgres:secret@postgres/imbi
+      IMBI_AUTH_JWT_SECRET: dev-jwt-secret-change-in-production
+      IMBI_AUTH_ENCRYPTION_KEY: dev-encryption-key-change-in-prod
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  neo4j:
+    image: neo4j:latest
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: none
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "8123:8123"
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: password
+      CLICKHOUSE_DB: imbi
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse client -q 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: imbi
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

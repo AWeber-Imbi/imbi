@@ -1,18 +1,98 @@
-FROM python:3.9-alpine3.22
+ARG PYTHON_VERSION=3.14
+ARG CADDY_VERSION=2
+ARG NODE_VERSION=22
 
-ARG VERSION=0.0.0
+# ---------------------------------------------------------------------------
+# Stage 1: Build the UI
+# ---------------------------------------------------------------------------
+FROM node:${NODE_VERSION}-slim AS ui-builder
 
-ENV PORT=8000
+WORKDIR /tmp/build
+COPY imbi-ui/package.json imbi-ui/package-lock.json ./
+RUN npm ci
+COPY imbi-ui/ ./
+RUN npm run build
 
-COPY api/dist/imbi-${VERSION}.tar.gz /tmp/
-COPY api/example.yaml /etc/imbi/imbi.yaml
+# ---------------------------------------------------------------------------
+# Stage 2: Build all Python services
+# ---------------------------------------------------------------------------
+FROM python:${PYTHON_VERSION}-slim AS python-builder
 
-RUN apk add --no-cache --virtual install-deps cargo curl-dev gcc g++ git libffi-dev linux-headers musl-dev postgresql-dev py3-pybind11-dev re2-dev abseil-cpp-dev rust \
- && apk add --no-cache abseil-cpp libcurl libpq re2 \
- && pip3 install --no-cache-dir /tmp/imbi-${VERSION}.tar.gz \
- && apk del --purge install-deps \
- && rm /tmp/imbi-${VERSION}.tar.gz
+WORKDIR /tmp/build
 
-EXPOSE 8000
+RUN pip install uv \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/*
 
-CMD /usr/local/bin/imbi /etc/imbi/imbi.yaml
+# Build imbi-common first (dependency of other services)
+COPY imbi-common/pyproject.toml imbi-common/uv.lock imbi-common/
+COPY imbi-common/src/ imbi-common/src/
+RUN cd imbi-common && uv build --wheel --out-dir /tmp/wheels/
+
+# Build imbi-api
+COPY imbi-api/pyproject.toml imbi-api/uv.lock imbi-api/
+COPY imbi-api/src/ imbi-api/src/
+RUN cd imbi-api && uv build --wheel --out-dir /tmp/wheels/
+
+# Build imbi-assistant
+COPY imbi-assistant/pyproject.toml imbi-assistant/uv.lock imbi-assistant/
+COPY imbi-assistant/src/ imbi-assistant/src/
+RUN cd imbi-assistant && uv build --wheel --out-dir /tmp/wheels/
+
+# Build imbi-gateway
+COPY imbi-gateway/pyproject.toml imbi-gateway/uv.lock imbi-gateway/
+COPY imbi-gateway/src/ imbi-gateway/src/
+RUN cd imbi-gateway && uv build --wheel --out-dir /tmp/wheels/
+
+# Build imbi-mcp
+COPY imbi-mcp/pyproject.toml imbi-mcp/uv.lock imbi-mcp/
+COPY imbi-mcp/src/ imbi-mcp/src/
+RUN cd imbi-mcp && uv build --wheel --out-dir /tmp/wheels/
+
+# Install all services into a venv
+RUN uv venv /app \
+ && . /app/bin/activate \
+ && uv pip install /tmp/wheels/*.whl
+
+# ---------------------------------------------------------------------------
+# Stage 3: Caddy binary
+# ---------------------------------------------------------------------------
+FROM caddy:${CADDY_VERSION} AS caddy
+
+# ---------------------------------------------------------------------------
+# Stage 4: Final runtime image
+# ---------------------------------------------------------------------------
+FROM python:${PYTHON_VERSION}-slim AS runtime
+
+# Install runtime dependencies
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini \
+ && rm -rf /var/lib/apt/lists/*
+
+# Create imbi user
+RUN useradd -r -g users -d /app imbi
+
+# Copy Python venv with all services installed
+COPY --from=python-builder /app/ /app/
+
+# Copy Caddy binary
+COPY --from=caddy /usr/bin/caddy /usr/local/bin/caddy
+
+# Copy Caddyfile
+COPY Caddyfile /etc/caddy/Caddyfile
+
+# Copy UI static files
+COPY --from=ui-builder /tmp/build/dist/ /srv/ui/
+
+# Copy entrypoint
+COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
+
+ENV PATH="/app/bin:$PATH"
+
+EXPOSE 8080
+
+USER imbi
+WORKDIR /app
+
+ENTRYPOINT ["tini", "--", "/usr/local/bin/entrypoint.sh"]

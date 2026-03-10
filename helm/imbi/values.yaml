@@ -1,0 +1,111 @@
+image:
+  repository: ghcr.io/aweber-imbi/imbi
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Service mode: "all" runs everything in one pod, "individual" allows
+# scaling each service separately.
+service:
+  mode: all
+  api:
+    replicas: 1
+  assistant:
+    replicas: 1
+  gateway:
+    replicas: 1
+  mcp:
+    replicas: 1
+
+# Required authentication settings
+auth:
+  jwtSecret: ""
+  encryptionKey: ""
+
+# Optional: reference an existing secret instead of specifying values above.
+# The secret must contain keys: jwt-secret, encryption-key
+existingSecret: ""
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: imbi.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# Neo4j subchart configuration
+neo4j:
+  enabled: true
+  neo4j:
+    edition: community
+    acceptLicenseAgreement: "yes"
+    password: ""
+
+# External Neo4j (when neo4j.enabled is false)
+externalNeo4j:
+  url: ""
+
+# ClickHouse subchart configuration
+clickhouse:
+  enabled: true
+  auth:
+    username: default
+    password: password
+  defaultConfigurationOverrides: |
+    <clickhouse>
+      <profiles>
+        <default>
+          <allow_experimental_lightweight_delete>1</allow_experimental_lightweight_delete>
+        </default>
+      </profiles>
+    </clickhouse>
+
+# External ClickHouse (when clickhouse.enabled is false)
+externalClickhouse:
+  url: ""
+
+# PostgreSQL subchart configuration
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: secret
+    database: imbi
+
+# External PostgreSQL (when postgresql.enabled is false)
+externalPostgresql:
+  url: ""
+
+# AI Assistant configuration
+assistant:
+  enabled: false
+  anthropicApiKey: ""
+
+# Email configuration
+email:
+  enabled: false
+  smtp:
+    host: ""
+    port: 587
+    useTls: true
+  from:
+    email: ""
+    name: "Imbi"
+
+# S3-compatible storage
+storage:
+  endpointUrl: ""
+  accessKey: ""
+  secretKey: ""
+  bucket: imbi-uploads
+  region: us-east-1

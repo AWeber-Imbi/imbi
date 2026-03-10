@@ -1,0 +1,175 @@
+# Imbi
+
+Imbi is a DevOps Service Management Platform for managing large environments
+containing many services and applications. It provides a centralized service
+catalog with metadata management, dependency tracking, ownership hierarchy,
+and AI-powered features.
+
+## Features
+
+- **Service Catalog**: Centralized inventory of all services and applications
+- **Dependency Tracking**: Graph-based dependency visualization using Neo4j
+- **Blueprint System**: Customizable metadata schemas for extending project fields
+- **Ownership Hierarchy**: Organization, team, and user-based ownership model
+- **AI Assistant**: Conversational AI powered by Claude for service queries
+- **MCP Server**: Model Context Protocol server for AI agent access
+- **Webhook Gateway**: Inbound event processing from GitHub, PagerDuty, etc.
+- **Analytics**: Operations logs and time-series data via ClickHouse
+- **Authentication**: OAuth2/OIDC (Google, GitHub, Keycloak) + local auth
+
+## Architecture
+
+```
+                              +-----------------+
+                              |    imbi-ui      |
+                              |  React / Vite   |
+                              +-----------------+
+                                      |
+                            +-------------------+
+                            |      Caddy        |
+                            |  reverse proxy    |
+                            +-------------------+
+                              |   |   |   |
+          +----------+--------+---+---+---+--------+----------+
+          |          |            |            |               |
+     imbi-api   imbi-assistant  imbi-gateway  imbi-mcp
+     (FastAPI)   (FastAPI)      (FastAPI)     (FastMCP)
+          |          |            |               |
+          +----------+------------+---------------+
+                              |
+                        imbi-common
+                    (shared Python library)
+                              |
+                    +---------+---------+
+                    |                   |
+                 Neo4j             ClickHouse
+```
+
+All services run behind [Caddy](https://caddyserver.com/), a powerful and
+extensible reverse proxy with automatic HTTPS. The Docker image packages
+everything into a single deployable unit that can run all services together
+or scale out individual components.
+
+## Quick Start
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/)
+- [just](https://github.com/casey/just) (command runner)
+
+### Running with Docker Compose
+
+```bash
+# Pull and start everything
+docker compose up -d
+```
+
+### Running the Docker Image
+
+```bash
+# Run all services (default)
+docker run -p 8080:8080 \
+  -e NEO4J_URL=bolt://neo4j:7687 \
+  -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
+  -e IMBI_AUTH_JWT_SECRET=your-secret-here \
+  -e IMBI_AUTH_ENCRYPTION_KEY=your-encryption-key \
+  ghcr.io/aweber-imbi/imbi:latest
+
+# Run a specific service only
+docker run -e IMBI_SERVICE=api ...
+docker run -e IMBI_SERVICE=assistant ...
+docker run -e IMBI_SERVICE=gateway ...
+docker run -e IMBI_SERVICE=mcp ...
+
+# Run initial setup (create admin user, seed permissions)
+docker run -it \
+  -e NEO4J_URL=bolt://neo4j:7687 \
+  -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
+  -e IMBI_AUTH_JWT_SECRET=your-secret-here \
+  -e IMBI_AUTH_ENCRYPTION_KEY=your-encryption-key \
+  ghcr.io/aweber-imbi/imbi:latest setup
+```
+
+### Deploying with Helm
+
+```bash
+helm install imbi helm/imbi \
+  --set auth.jwtSecret=your-secret \
+  --set auth.encryptionKey=your-key
+```
+
+See [Helm chart documentation](helm/imbi/README.md) for full configuration.
+
+## Building
+
+### Prerequisites
+
+- [just](https://github.com/casey/just)
+- [Docker](https://docs.docker.com/get-docker/)
+
+### Build Commands
+
+```bash
+# Build the Docker image
+just build
+
+# Build with a specific tag
+just build v1.0.0
+
+# Update all submodules to latest main
+just update-submodules
+
+# Update all submodules to a specific tag
+just update-submodules-tag v1.0.0
+```
+
+## Environment Variables
+
+### Required
+
+| Variable | Description | Services |
+|----------|-------------|----------|
+| `NEO4J_URL` | Neo4j connection URL | api, assistant |
+| `CLICKHOUSE_URL` | ClickHouse connection URL | api |
+| `IMBI_AUTH_JWT_SECRET` | JWT signing secret | api, assistant |
+| `IMBI_AUTH_ENCRYPTION_KEY` | Fernet encryption key | api |
+
+### Optional
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `IMBI_SERVICE` | Service to run (`all`, `api`, `assistant`, `gateway`, `mcp`) | `all` |
+| `POSTGRES_URL` | PostgreSQL URL for gateway | - |
+| `ANTHROPIC_API_KEY` | Anthropic API key for assistant | - |
+| `IMBI_ASSISTANT_ENABLED` | Enable the AI assistant | `false` |
+| `IMBI_EMAIL_ENABLED` | Enable email notifications | `false` |
+| `IMBI_EMAIL_SMTP_HOST` | SMTP server host | - |
+| `IMBI_EMAIL_SMTP_PORT` | SMTP server port | `587` |
+
+## Project Structure
+
+```
+imbi/
+├── imbi-api/          # Core REST API (git submodule)
+├── imbi-assistant/    # AI assistant service (git submodule)
+├── imbi-common/       # Shared Python library (git submodule)
+├── imbi-gateway/      # Webhook gateway (git submodule)
+├── imbi-mcp/          # MCP server (git submodule)
+├── imbi-ui/           # React frontend (git submodule)
+├── Caddyfile          # Reverse proxy configuration
+├── docs/              # Administration and usage documentation
+├── helm/imbi/         # Helm chart for Kubernetes deployment
+├── Dockerfile         # Multi-stage Docker build
+├── entrypoint.sh      # Container entrypoint with service dispatch
+└── justfile           # Build and development commands
+```
+
+## Documentation
+
+Full documentation is available at
+[aweber-imbi.github.io/imbi](https://aweber-imbi.github.io/imbi/) and
+covers installation, configuration, administration, and usage.
+
+## License
+
+BSD 3-Clause License. See [LICENSE](LICENSE) for details.

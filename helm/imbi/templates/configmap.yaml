@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "imbi.fullname" . }}
+  labels:
+    {{- include "imbi.labels" . | nindent 4 }}
+data:
+  IMBI_ASSISTANT_ENABLED: {{ .Values.assistant.enabled | quote }}
+  IMBI_EMAIL_ENABLED: {{ .Values.email.enabled | quote }}
+  {{- if .Values.email.enabled }}
+  IMBI_EMAIL_SMTP_HOST: {{ .Values.email.smtp.host | quote }}
+  IMBI_EMAIL_SMTP_PORT: {{ .Values.email.smtp.port | quote }}
+  IMBI_EMAIL_SMTP_USE_TLS: {{ .Values.email.smtp.useTls | quote }}
+  IMBI_EMAIL_FROM_EMAIL: {{ .Values.email.from.email | quote }}
+  IMBI_EMAIL_FROM_NAME: {{ .Values.email.from.name | quote }}
+  {{- end }}
+  {{- if .Values.storage.endpointUrl }}
+  S3_ENDPOINT_URL: {{ .Values.storage.endpointUrl | quote }}
+  {{- end }}
+  S3_BUCKET: {{ .Values.storage.bucket | quote }}
+  S3_REGION: {{ .Values.storage.region | quote }}
