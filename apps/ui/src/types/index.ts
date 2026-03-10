@@ -58,6 +58,7 @@ export interface Environment {
   slug: string
   description?: string | null
   icon?: string | null
+  label_color?: string | null
   organization: {
     name: string
     slug: string
@@ -70,6 +71,7 @@ export interface EnvironmentCreate {
   slug: string
   description?: string | null
   icon?: string | null
+  label_color?: string | null
   organization_slug: string
   [key: string]: unknown
 }
@@ -339,18 +341,74 @@ export interface Upload {
   created_at: string
 }
 
-// API Key types
-export interface ApiKey {
-  id: string
-  name: string
-  prefix: string
+// Service Account types
+export interface ServiceAccount {
+  slug: string
+  display_name: string
+  description?: string | null
+  is_active: boolean
   created_at: string
-  last_used_at?: string | null
-  expires_at?: string | null
+  last_authenticated?: string | null
+  organizations?: OrgMembership[]
 }
 
-export interface ApiKeyCreated extends ApiKey {
-  token: string
+export interface ServiceAccountCreate {
+  slug: string
+  display_name: string
+  description?: string | null
+  is_active?: boolean
+}
+
+export interface OrgMembership {
+  organization_name: string
+  organization_slug: string
+  role: string
+}
+
+export interface ClientCredential {
+  client_id: string
+  name: string
+  description?: string | null
+  scopes: string[]
+  created_at: string
+  expires_at?: string | null
+  last_used?: string | null
+  last_rotated?: string | null
+  revoked: boolean
+  revoked_at?: string | null
+}
+
+export interface ClientCredentialCreated extends ClientCredential {
+  client_secret: string
+}
+
+export interface ClientCredentialCreate {
+  name: string
+  description?: string | null
+  scopes?: string[]
+  expires_in_days?: number | null
+}
+
+// API Key types
+export interface ApiKey {
+  key_id: string
+  name: string
+  description?: string | null
+  scopes: string[]
+  created_at: string
+  expires_at?: string | null
+  last_used?: string | null
+  last_rotated?: string | null
+  revoked: boolean
+}
+
+export interface ApiKeyCreated {
+  key_id: string
+  key_secret: string
+  name: string
+  description?: string | null
+  scopes: string[]
+  expires_at?: string | null
 }
 
 // Blueprint types

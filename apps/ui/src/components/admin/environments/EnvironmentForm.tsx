@@ -4,6 +4,7 @@ import { Save, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IconUpload } from '@/components/ui/icon-upload'
+import { ColorPicker } from '@/components/ui/color-picker'
 import { DynamicFormFields, validateDynamicFields } from '@/components/ui/dynamic-fields'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { getEnvironmentSchema } from '@/api/endpoints'
@@ -35,6 +36,7 @@ export function EnvironmentForm({
   const [slug, setSlug] = useState(environment?.slug || '')
   const [description, setDescription] = useState(environment?.description || '')
   const [icon, setIcon] = useState(environment?.icon || '')
+  const [labelColor, setLabelColor] = useState(environment?.label_color ?? '')
   const [orgSlug, setOrgSlug] = useState(
     environment?.organization.slug || selectedOrganization?.slug || ''
   )
@@ -76,6 +78,7 @@ export function EnvironmentForm({
       slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
+      label_color: /^#[0-9A-Fa-f]{6}$/.test(labelColor) ? labelColor.toUpperCase() : null,
       organization_slug: orgSlug,
       ...dynamicFormData,
     })
@@ -266,6 +269,12 @@ export function EnvironmentForm({
               </label>
               <IconUpload value={icon} onChange={setIcon} isDarkMode={isDarkMode} />
             </div>
+
+            <ColorPicker
+              value={labelColor}
+              onChange={setLabelColor}
+              isDarkMode={isDarkMode}
+            />
 
             {/* Dynamic Blueprint Fields */}
             {envSchema && (

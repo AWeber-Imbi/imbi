@@ -11,7 +11,6 @@ import { BlueprintDetail } from './blueprints/BlueprintDetail'
 import { useOpenApiSpec, getSchemaEnum } from '@/api/openapi'
 import {
   listBlueprints, deleteBlueprint, createBlueprint, updateBlueprint,
-  refreshBlueprintSchemas
 } from '@/api/endpoints'
 import type { Blueprint, BlueprintCreate } from '@/types'
 
@@ -100,17 +99,15 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     ? getSchemaEnum(openApiSpec, 'Blueprint', 'type')
     : []
 
-  // Refresh backend schema cache and frontend queries after mutations
-  const invalidateAfterMutation = async () => {
+  // Refresh frontend queries after mutations
+  // The backend auto-refreshes its OpenAPI schema cache on blueprint CRUD
+  const invalidateAfterMutation = () => {
     queryClient.invalidateQueries({ queryKey: ['blueprints'] })
     queryClient.invalidateQueries({ queryKey: ['blueprint'] })
-    // Refresh the backend's cached blueprint-enhanced OpenAPI models
-    try {
-      await refreshBlueprintSchemas()
-    } catch {
-      // Non-critical — the schema cache will be stale until next restart
-    }
     queryClient.invalidateQueries({ queryKey: ['openapi-spec'] })
+    queryClient.invalidateQueries({ queryKey: ['teamSchema'] })
+    queryClient.invalidateQueries({ queryKey: ['environmentSchema'] })
+    queryClient.invalidateQueries({ queryKey: ['projectTypeSchema'] })
   }
 
   // Delete mutation

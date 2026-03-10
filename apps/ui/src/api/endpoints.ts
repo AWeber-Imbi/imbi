@@ -35,7 +35,12 @@ import type {
   TeamMember,
   Upload,
   ApiKey,
-  ApiKeyCreated
+  ApiKeyCreated,
+  ServiceAccount,
+  ServiceAccountCreate,
+  ClientCredential,
+  ClientCredentialCreated,
+  ClientCredentialCreate,
 } from '@/types'
 
 // Status/Health
@@ -271,9 +276,6 @@ export const deleteBlueprint = (type: string, slug: string) =>
     `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`
   )
 
-export const refreshBlueprintSchemas = () =>
-  apiClient.post<{ refreshed_models: number }>('/schema/refresh', {})
-
 // Admin - Organizations
 export const listOrganizations = async (): Promise<Organization[]> => {
   const response = await apiClient.get<Organization[]>('/organizations/')
@@ -435,4 +437,89 @@ export const createApiKey = (email: string, name?: string) =>
 export const deleteApiKey = (email: string, keyId: string) =>
   apiClient.delete<void>(
     `/users/${encodeURIComponent(email)}/api-keys/${encodeURIComponent(keyId)}`
+  )
+
+// Service Accounts
+export const listServiceAccounts = (params?: { is_active?: boolean }) =>
+  apiClient.get<ServiceAccount[]>('/service-accounts', params)
+
+export const getServiceAccount = (slug: string) =>
+  apiClient.get<ServiceAccount>(`/service-accounts/${encodeURIComponent(slug)}`)
+
+export const createServiceAccount = (data: ServiceAccountCreate) =>
+  apiClient.post<ServiceAccount>('/service-accounts', data)
+
+export const updateServiceAccount = (slug: string, data: ServiceAccountCreate) =>
+  apiClient.put<ServiceAccount>(`/service-accounts/${encodeURIComponent(slug)}`, data)
+
+export const deleteServiceAccount = (slug: string) =>
+  apiClient.delete(`/service-accounts/${encodeURIComponent(slug)}`)
+
+export const addServiceAccountToOrg = (
+  slug: string,
+  data: { organization_slug: string; role_slug: string }
+) =>
+  apiClient.post(
+    `/service-accounts/${encodeURIComponent(slug)}/organizations`,
+    data
+  )
+
+export const removeServiceAccountFromOrg = (slug: string, orgSlug: string) =>
+  apiClient.delete(
+    `/service-accounts/${encodeURIComponent(slug)}/organizations/${encodeURIComponent(orgSlug)}`
+  )
+
+// Service Account Client Credentials
+export const listClientCredentials = (slug: string) =>
+  apiClient.get<ClientCredential[]>(
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials`
+  )
+
+export const createClientCredential = (
+  slug: string,
+  data: ClientCredentialCreate
+) =>
+  apiClient.post<ClientCredentialCreated>(
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials`,
+    data
+  )
+
+export const revokeClientCredential = (slug: string, clientId: string) =>
+  apiClient.delete(
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials/${encodeURIComponent(clientId)}`
+  )
+
+export const rotateClientCredential = (slug: string, clientId: string) =>
+  apiClient.post<ClientCredentialCreated>(
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials/${encodeURIComponent(clientId)}/rotate`
+  )
+
+// Service Account API Keys
+export const listServiceAccountApiKeys = (slug: string) =>
+  apiClient.get<ApiKey[]>(
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys`
+  )
+
+export const createServiceAccountApiKey = (
+  slug: string,
+  data: {
+    name: string
+    description?: string
+    scopes?: string[]
+    expires_in_days?: number
+  }
+) =>
+  apiClient.post<ApiKeyCreated>(
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys`,
+    data
+  )
+
+export const revokeServiceAccountApiKey = (slug: string, keyId: string) =>
+  apiClient.delete(
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}`
+  )
+
+export const rotateServiceAccountApiKey = (slug: string, keyId: string) =>
+  apiClient.post<ApiKeyCreated>(
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}/rotate`
   )

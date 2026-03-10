@@ -227,6 +227,11 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
                 <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
+                  Label Color
+                </th>
+                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                }`}>
                   Organization
                 </th>
                 <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
@@ -285,6 +290,23 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
                     }`}>
                       {env.slug}
                     </code>
+                  </td>
+                  <td className="px-6 py-4">
+                    {env.label_color ? (
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-5 h-5 rounded flex-shrink-0"
+                          style={{ backgroundColor: env.label_color }}
+                        />
+                        <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                          {env.label_color}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        None
+                      </span>
+                    )}
                   </td>
                   <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     {env.organization.name}

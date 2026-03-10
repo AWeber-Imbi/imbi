@@ -76,6 +76,26 @@ export function EnvironmentDetail({ environment, onEdit, onBack, isDarkMode }: E
               {environment.organization.name}
             </div>
           </div>
+          <div>
+            <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Label Color</div>
+            <div className="mt-1 flex items-center gap-2">
+              {environment.label_color ? (
+                <>
+                  <div
+                    className="w-6 h-6 rounded border"
+                    style={{ backgroundColor: environment.label_color }}
+                  />
+                  <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                    {environment.label_color}
+                  </span>
+                </>
+              ) : (
+                <span className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}>
+                  Not set
+                </span>
+              )}
+            </div>
+          </div>
           {envSchema && (
             <DynamicDetailFields
               schema={envSchema}
