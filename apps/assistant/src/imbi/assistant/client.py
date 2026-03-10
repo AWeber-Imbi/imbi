@@ -19,6 +19,12 @@ async def initialize() -> None:
 
     """
     global _client
+
+    if _client is not None:
+        existing_client = _client
+        _client = None
+        await existing_client.close()
+
     assistant_settings = settings.get_assistant_settings()
 
     if not assistant_settings.enabled:

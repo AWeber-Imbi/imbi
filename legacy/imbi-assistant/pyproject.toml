@@ -135,7 +135,6 @@ ignore = [
   "ARG002",
   "PLR0913",
   "PLR2004",
-  "PLW0603",
   "TRY003",
   "TRY400",
 ]
@@ -145,6 +144,9 @@ flake8-quotes = { inline-quotes = "single" }
 max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
+"src/imbi_assistant/client.py" = ["PLW0603"]
+"src/imbi_assistant/settings.py" = ["PLW0603"]
+"src/imbi_assistant/system_prompt.py" = ["PLW0603"]
 "tests/**/*.py" = ["ANN", "ARG005", "B018", "PLC0415", "S"]
 
 [tool.pytest.ini_options]
