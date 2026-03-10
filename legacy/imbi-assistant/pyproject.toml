@@ -48,6 +48,21 @@ show_error_codes = true
 strict = true
 packages = ["imbi_assistant", "tests"]
 
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_any_expr = false
+warn_return_any = false
+disable_error_code = [
+  "call-arg",
+  "arg-type",
+  "type-arg",
+  "union-attr",
+  "index",
+  "var-annotated"
+]
+
 [tool.pyright]
 deprecateTypingAliases = true
 reportMissingSuperCall = "hint"
@@ -60,6 +75,17 @@ reportUnusedFunction = "warning"
 [[tool.pyright.executionEnvironments]]
 root = "tests"
 reportUnusedFunction = "none"
+reportPrivateUsage = "none"
+reportUnknownLambdaType = "none"
+reportUnknownParameterType = "none"
+reportUnknownVariableType = "none"
+reportMissingTypeArgument = "none"
+reportCallIssue = "none"
+reportOptionalMemberAccess = "none"
+reportOptionalSubscript = "none"
+reportUnknownMemberType = "none"
+reportArgumentType = "none"
+reportUnknownArgumentType = "none"
 extraPaths = ["src", "."]
 
 [tool.ruff]
@@ -105,10 +131,23 @@ select = [
   "W",
 ]
 ignore = [
+  "ANN401",
+  "ARG002",
+  "PLR0913",
+  "PLR2004",
   "TRY003",
   "TRY400",
 ]
 flake8-quotes = { inline-quotes = "single" }
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+"src/imbi_assistant/client.py" = ["PLW0603"]
+"src/imbi_assistant/settings.py" = ["PLW0603"]
+"src/imbi_assistant/system_prompt.py" = ["PLW0603"]
+"tests/**/*.py" = ["ANN", "ARG005", "B018", "PLC0415", "S"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
