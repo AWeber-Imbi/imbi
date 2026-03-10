@@ -2,12 +2,13 @@
 
 This module provides PostgreSQL connectivity using psycopg's
 AsyncConnectionPool with FastAPI lifespan management. It follows the
-lifespan pattern from src/imbi_gateway/lifespan.py for type-safe
+lifespan pattern from imbi-common's lifespan.py for type-safe
 dependency injection.
 
 Usage Example:
     ::
 
+        from imbi_common import lifespan
         from imbi_gateway import postgres
 
         # In app creation
@@ -29,7 +30,7 @@ Type Aliases:
     - PostgresPool: Annotated type for injecting pool
 
 See Also:
-    - src/imbi_gateway/lifespan.py for the lifespan pattern
+    - AWeber-Imbi/imbi-common for the lifespan implementation
     - docs/lifespan-pattern.md for comprehensive tutorial
 """
 
@@ -43,8 +44,9 @@ import psycopg_pool
 import pydantic
 import pydantic_settings
 import yarl
+from imbi_common import lifespan
 
-from imbi_gateway import helpers, lifespan
+from imbi_gateway import helpers
 
 type RowType = psycopg.rows.DictRow
 type ConnectionType = psycopg.AsyncConnection[RowType]

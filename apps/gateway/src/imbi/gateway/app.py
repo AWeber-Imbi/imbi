@@ -2,10 +2,10 @@ import datetime
 
 import fastapi
 import typer
-from imbi_common import server
+from imbi_common import lifespan, server
 
 import imbi_gateway
-from imbi_gateway import app_status, lifespan, postgres
+from imbi_gateway import app_status, postgres
 
 
 def create_app() -> fastapi.FastAPI:
