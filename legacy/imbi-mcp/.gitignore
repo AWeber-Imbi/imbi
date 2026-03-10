@@ -1,0 +1,8 @@
+.*
+!/.coderabbit.yaml
+!/.github
+!/.gitignore
+!/.pre-commit-config.yaml
+!/.python-version
+/build
+/dist
