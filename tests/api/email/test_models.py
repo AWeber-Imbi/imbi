@@ -92,6 +92,7 @@ class PasswordResetTokenTestCase(unittest.TestCase):
 
         self.assertTrue(token.used)
         self.assertIsNotNone(token.used_at)
+        assert token.used_at is not None
         self.assertGreaterEqual(token.used_at, before)
         self.assertLessEqual(token.used_at, after)
 

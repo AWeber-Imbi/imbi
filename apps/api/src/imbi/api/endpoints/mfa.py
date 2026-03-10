@@ -141,7 +141,7 @@ async def setup_mfa(
 
     img = qr.make_image(fill_color='black', back_color='white')
     buffer = io.BytesIO()
-    img.save(buffer, format='PNG')
+    img.save(buffer, format='PNG')  # pyright: ignore[reportCallIssue]
     qr_code_base64 = base64.b64encode(buffer.getvalue()).decode('ascii')
 
     # Generate 10 backup codes (8-character hex strings)
@@ -246,13 +246,13 @@ async def verify_and_enable_mfa(
 
     is_valid = False
     used_backup_code = False
+    backup_codes = typing.cast(list[str], totp_data.get('backup_codes', []))
 
     # First try TOTP verification (allow 1 time step before/after for skew)
     if totp.verify(verify_request.code, valid_window=1):
         is_valid = True
     else:
         # Try backup codes
-        backup_codes = totp_data.get('backup_codes', [])
         for backup_hash in backup_codes:
             if password.verify_password(verify_request.code, backup_hash):
                 is_valid = True

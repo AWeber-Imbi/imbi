@@ -71,11 +71,11 @@ async def list_blueprints(
     Returns:
         list[Blueprint]: List of Blueprint models matching the query.
     """
-    parameters = {}
+    parameters: dict[str, typing.Any] = {}
     if enabled is not None:
         parameters['enabled'] = enabled
 
-    blueprints = []
+    blueprints: list[models.Blueprint] = []
     async for blueprint in neo4j.fetch_nodes(
         models.Blueprint,
         parameters if parameters else None,
@@ -114,7 +114,7 @@ async def list_blueprints_by_type(
     if enabled is not None:
         parameters['enabled'] = enabled
 
-    blueprints = []
+    blueprints: list[models.Blueprint] = []
     async for blueprint in neo4j.fetch_nodes(
         models.Blueprint, parameters, order_by='name'
     ):

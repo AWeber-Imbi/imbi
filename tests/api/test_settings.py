@@ -1,3 +1,4 @@
+import typing
 import unittest
 
 import pydantic
@@ -395,7 +396,10 @@ class BaseSettingsConfigTestCase(unittest.TestCase):
 
     def test_base_settings_config_defaults(self) -> None:
         """Test base_settings_config returns correct defaults."""
-        config = settings.base_settings_config()
+        config = typing.cast(
+            dict[str, typing.Any],
+            settings.base_settings_config(),
+        )
 
         self.assertEqual(config['case_sensitive'], False)
         self.assertEqual(config['env_file'], '.env')
@@ -404,7 +408,10 @@ class BaseSettingsConfigTestCase(unittest.TestCase):
 
     def test_base_settings_config_with_prefix(self) -> None:
         """Test base_settings_config with additional kwargs."""
-        config = settings.base_settings_config(env_prefix='TEST_')
+        config = typing.cast(
+            dict[str, typing.Any],
+            settings.base_settings_config(env_prefix='TEST_'),
+        )
 
         self.assertEqual(config['case_sensitive'], False)
         self.assertEqual(config['env_file'], '.env')

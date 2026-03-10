@@ -404,7 +404,7 @@ class ProtectedEndpointTestCase(unittest.TestCase):
             yield models.Blueprint(
                 name='Test Blueprint',
                 type='Team',
-                json_schema={'type': 'object'},
+                json_schema={'type': 'object'},  # type: ignore[arg-type]
             )
 
         with (

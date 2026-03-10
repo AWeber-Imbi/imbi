@@ -1,5 +1,6 @@
 """Permission checking and authorization dependencies."""
 
+import collections.abc
 import datetime
 import logging
 import typing
@@ -398,7 +399,7 @@ async def get_current_user(
 
 def require_permission(
     permission: str,
-) -> typing.Callable[[AuthContext], typing.Awaitable[AuthContext]]:
+) -> typing.Callable[[AuthContext], collections.abc.Awaitable[AuthContext]]:
     """
     Create a FastAPI dependency that enforces a specific permission.
 
@@ -492,7 +493,9 @@ async def check_resource_permission(
 
 def require_resource_access(
     resource_type: str, action: str
-) -> typing.Callable[[str, AuthContext], typing.Awaitable[AuthContext]]:
+) -> typing.Callable[
+    [str, AuthContext], collections.abc.Awaitable[AuthContext]
+]:
     """
     Create a FastAPI dependency that enforces access for a specific
     resource and action.

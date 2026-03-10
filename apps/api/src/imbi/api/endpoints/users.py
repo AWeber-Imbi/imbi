@@ -117,13 +117,13 @@ async def list_users(
         list[models.UserResponse]: Users ordered by email, without
             password hashes.
     """
-    parameters = {}
+    parameters: dict[str, typing.Any] = {}
     if is_active is not None:
         parameters['is_active'] = is_active
     if is_admin is not None:
         parameters['is_admin'] = is_admin
 
-    users = []
+    users: list[models.UserResponse] = []
     async for user in neo4j.fetch_nodes(
         models.User,
         parameters if parameters else None,
@@ -270,11 +270,7 @@ async def update_user(
         )
 
     # Prevent service accounts from having passwords
-    will_be_sa = (
-        user_update.is_service_account
-        if user_update.is_service_account is not None
-        else existing_user.is_service_account
-    )
+    will_be_sa = user_update.is_service_account
     if will_be_sa and user_update.password:
         raise fastapi.HTTPException(
             status_code=400,

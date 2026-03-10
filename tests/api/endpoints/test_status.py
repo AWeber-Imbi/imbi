@@ -1,9 +1,12 @@
+import typing
 import unittest
 
 from fastapi import testclient
 
 from imbi_api import app, version
 from imbi_api.endpoints import status
+
+_StatusLiteral = typing.Literal['ok', 'initializing', 'error']
 
 
 class StatusResponseModelTestCase(unittest.TestCase):
@@ -18,8 +21,15 @@ class StatusResponseModelTestCase(unittest.TestCase):
 
     def test_status_response_with_different_status(self) -> None:
         """Test StatusResponse with different status values."""
-        for status_value in ['ok', 'initializing', 'error']:
-            response = status.StatusResponse(status=status_value)
+        values: list[_StatusLiteral] = [
+            'ok',
+            'initializing',
+            'error',
+        ]
+        for status_value in values:
+            response = status.StatusResponse(
+                status=status_value,
+            )
             self.assertEqual(response.status, status_value)
 
 

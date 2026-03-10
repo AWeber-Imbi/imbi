@@ -68,7 +68,12 @@ class Neo4jAbstrationsTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Test empty params
         self.assertEqual(neo4j.cypher_property_params({}), '')
-        self.assertEqual(neo4j.cypher_property_params(None), '')
+        self.assertEqual(
+            neo4j.cypher_property_params(
+                None  # type: ignore[arg-type]
+            ),
+            '',
+        )
 
     async def test_upsert_node(self) -> None:
         """Test upserting a node."""

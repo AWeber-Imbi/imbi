@@ -1,4 +1,5 @@
 import enum
+import typing
 import unittest
 from unittest import mock
 
@@ -205,7 +206,10 @@ class InsertTestCase(unittest.IsolatedAsyncioTestCase):
             'get_instance',
             return_value=mock_ch,
         ):
-            result = await clickhouse.insert('test_table', data)
+            result = await clickhouse.insert(
+                'test_table',
+                typing.cast(list[pydantic.BaseModel], data),
+            )
 
         self.assertEqual(result, mock_summary)
         mock_ch.insert.assert_called_once()
@@ -246,7 +250,10 @@ class InsertTestCase(unittest.IsolatedAsyncioTestCase):
             return_value=mock_ch,
         ):
             with self.assertRaises(ValueError) as cm:
-                await clickhouse.insert('test_table', data)
+                await clickhouse.insert(
+                    'test_table',
+                    typing.cast(list[pydantic.BaseModel], data),
+                )
 
         self.assertIn('same type', str(cm.exception))
         self.assertIn('SampleModel', str(cm.exception))
@@ -264,7 +271,10 @@ class InsertTestCase(unittest.IsolatedAsyncioTestCase):
             'get_instance',
             return_value=mock_ch,
         ):
-            result = await clickhouse.insert('test_table', data)
+            result = await clickhouse.insert(
+                'test_table',
+                typing.cast(list[pydantic.BaseModel], data),
+            )
 
         self.assertEqual(result, mock_summary)
         call_args = mock_ch.insert.call_args

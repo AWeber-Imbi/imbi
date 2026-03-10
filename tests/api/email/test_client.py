@@ -174,6 +174,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         audit = await email_client.send_email(message)
 
         self.assertEqual(audit.status, 'failed')
+        assert audit.error_message is not None
         self.assertIn('SMTP error', audit.error_message)
         # Should retry 3 times (max_retries=3) plus initial attempt = 4 total
         self.assertEqual(self.mock_smtp.send_message.call_count, 4)
@@ -342,6 +343,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         audit = await email_client.send_email(message)
 
         self.assertEqual(audit.status, 'failed')
+        assert audit.error_message is not None
         self.assertIn('after 3 attempts', audit.error_message)
         self.assertIn('Persistent error', audit.error_message)
         self.assertEqual(self.mock_smtp.send_message.call_count, 3)

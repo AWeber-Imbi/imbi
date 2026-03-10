@@ -181,9 +181,9 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_authenticate_api_key_expired(self) -> None:
         """Test authentication with expired API key."""
         expired_key_data = self.api_key_data.copy()
-        expired_key_data['expires_at'] = datetime.datetime.now(
-            datetime.UTC
-        ) - datetime.timedelta(days=1)
+        expired_key_data['expires_at'] = (  # type: ignore[assignment]
+            datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=1)
+        )
 
         def mock_run(query: str, **params):
             mock_result = mock.AsyncMock()
@@ -336,7 +336,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 ) - datetime.timedelta(days=1)
 
         expired_key_data = self.api_key_data.copy()
-        expired_key_data['expires_at'] = MockNeo4jDateTime()
+        expired_key_data['expires_at'] = MockNeo4jDateTime()  # type: ignore[assignment]
 
         def mock_run(query: str, **params):
             mock_result = mock.AsyncMock()
@@ -379,7 +379,7 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
                 ) + datetime.timedelta(days=30)
 
         valid_key_data = self.api_key_data.copy()
-        valid_key_data['expires_at'] = MockNeo4jDateTime()
+        valid_key_data['expires_at'] = MockNeo4jDateTime()  # type: ignore[assignment]
 
         def mock_run(query: str, **params):
             mock_result = mock.AsyncMock()

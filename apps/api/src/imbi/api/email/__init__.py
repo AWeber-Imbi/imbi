@@ -56,10 +56,10 @@ async def aclose() -> None:
     LOGGER.info('Closing email module')
 
     # Close and reset singletons
-    if client.EmailClient._instance is not None:
-        await client.EmailClient._instance.aclose()
-    client.EmailClient._instance = None
-    templates.TemplateManager._instance = None
+    if client.EmailClient._instance is not None:  # pyright: ignore[reportPrivateUsage]
+        await client.EmailClient._instance.aclose()  # pyright: ignore[reportPrivateUsage]
+    client.EmailClient._instance = None  # pyright: ignore[reportPrivateUsage]
+    templates.TemplateManager._instance = None  # pyright: ignore[reportPrivateUsage]
 
     LOGGER.info('Email module closed')
 

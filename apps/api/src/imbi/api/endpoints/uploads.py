@@ -6,7 +6,9 @@ import typing
 import uuid
 
 import fastapi
-from botocore import exceptions as botocore_exceptions
+from botocore import (  # pyright: ignore[reportMissingTypeStubs]
+    exceptions as botocore_exceptions,
+)
 from imbi_common import neo4j
 
 from imbi_api import models, settings, storage
@@ -176,7 +178,7 @@ async def list_uploads(
     if uploaded_by is not None:
         parameters['uploaded_by'] = uploaded_by
 
-    uploads = []
+    uploads: list[UploadResponse] = []
     async for upload in neo4j.fetch_nodes(
         models.Upload,
         parameters if parameters else None,
@@ -213,8 +215,13 @@ async def get_upload(
 
     try:
         data = await storage.download(upload.s3_key)
-    except botocore_exceptions.ClientError as err:
-        if err.response.get('Error', {}).get('Code') == 'NoSuchKey':
+    except botocore_exceptions.ClientError as err:  # pyright: ignore[reportMissingTypeStubs]
+        resp = typing.cast(
+            dict[str, typing.Any],
+            err.response,  # pyright: ignore[reportUnknownMemberType]
+        )
+        error_code = resp.get('Error', {}).get('Code')
+        if error_code == 'NoSuchKey':
             raise fastapi.HTTPException(
                 status_code=404,
                 detail=f'Upload {upload_id!r} content not found',
@@ -281,8 +288,13 @@ async def get_upload_thumbnail(
 
     try:
         data = await storage.download(upload.thumbnail_s3_key)
-    except botocore_exceptions.ClientError as err:
-        if err.response.get('Error', {}).get('Code') == 'NoSuchKey':
+    except botocore_exceptions.ClientError as err:  # pyright: ignore[reportMissingTypeStubs]
+        resp = typing.cast(
+            dict[str, typing.Any],
+            err.response,  # pyright: ignore[reportUnknownMemberType]
+        )
+        error_code = resp.get('Error', {}).get('Code')
+        if error_code == 'NoSuchKey':
             raise fastapi.HTTPException(
                 status_code=404,
                 detail=(f'Upload {upload_id!r} thumbnail not found'),

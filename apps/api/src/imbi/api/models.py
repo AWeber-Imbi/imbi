@@ -11,7 +11,7 @@ from imbi_common import models as _common
 
 from imbi_api.domain import models as _domain
 
-__all__ = [
+__all__ = [  # pyright: ignore[reportUnsupportedDunderAll]
     *_common.__all__,
     *_domain.__all__,
 ]

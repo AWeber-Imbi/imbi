@@ -58,7 +58,7 @@ async def list_roles(
     Returns:
         list[models.Role]: Roles ordered by priority (descending) then name.
     """
-    roles = []
+    roles: list[models.Role] = []
     async for role in neo4j.fetch_nodes(
         models.Role, order_by=['priority DESC', 'name']
     ):

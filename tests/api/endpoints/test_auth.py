@@ -1,6 +1,8 @@
+import typing
 import unittest
 from unittest import mock
 
+import fastapi
 import jwt
 from fastapi import testclient
 
@@ -783,6 +785,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
         """Test OAuth callback with existing identity."""
         import datetime
 
+        import pydantic
         from imbi_common.auth import encryption
 
         from imbi_api import models
@@ -806,7 +809,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             provider_user_id='google-123',
             email='test@example.com',
             display_name='Test User',
-            avatar_url='https://example.com/avatar.jpg',
+            avatar_url=pydantic.HttpUrl('https://example.com/avatar.jpg'),
             access_token='encrypted-access-token',
             refresh_token='encrypted-refresh-token',
             token_expires_at=datetime.datetime.now(datetime.UTC)
@@ -1649,9 +1652,9 @@ class LogoutTestCase(unittest.TestCase):
         async def override_get_current_user():
             return mock_auth
 
-        self.client.app.dependency_overrides[permissions.get_current_user] = (
-            override_get_current_user
-        )
+        typing.cast(fastapi.FastAPI, self.client.app).dependency_overrides[
+            permissions.get_current_user
+        ] = override_get_current_user
 
         try:
             with (
@@ -1680,7 +1683,9 @@ class LogoutTestCase(unittest.TestCase):
                 self.assertIn('jti', queries_executed[0][1])
         finally:
             # Clean up dependency override
-            self.client.app.dependency_overrides.clear()
+            typing.cast(
+                fastapi.FastAPI, self.client.app
+            ).dependency_overrides.clear()
 
     def test_logout_all_sessions(self) -> None:
         """Test logout with revoke_all_sessions=True."""
@@ -1739,9 +1744,9 @@ class LogoutTestCase(unittest.TestCase):
         async def override_get_current_user():
             return mock_auth
 
-        self.client.app.dependency_overrides[permissions.get_current_user] = (
-            override_get_current_user
-        )
+        typing.cast(fastapi.FastAPI, self.client.app).dependency_overrides[
+            permissions.get_current_user
+        ] = override_get_current_user
 
         try:
             with (
@@ -1778,7 +1783,9 @@ class LogoutTestCase(unittest.TestCase):
                 self.assertIn('Session', queries_executed[2][0])
         finally:
             # Clean up dependency override
-            self.client.app.dependency_overrides.clear()
+            typing.cast(
+                fastapi.FastAPI, self.client.app
+            ).dependency_overrides.clear()
 
 
 class ServiceAccountAuthTestCase(unittest.TestCase):

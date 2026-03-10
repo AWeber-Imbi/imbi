@@ -82,6 +82,7 @@ class TokenEncryptionTestCase(unittest.TestCase):
         self.assertIsInstance(ciphertext, str)
         self.assertNotEqual(plaintext, ciphertext)
         # Fernet output is base64
+        assert ciphertext is not None
         self.assertTrue(len(ciphertext) > len(plaintext))
 
     def test_encrypt_decrypt_round_trip(self) -> None:

@@ -182,7 +182,7 @@ def _rewrite_path_schemas(openapi_schema: dict[str, typing.Any]) -> None:
     Args:
         openapi_schema: The OpenAPI schema dictionary to modify.
     """
-    paths = openapi_schema.get('paths', {})
+    paths: dict[str, typing.Any] = openapi_schema.get('paths', {})
 
     for path, model_type in PATH_MODEL_MAPPING.items():
         if path not in paths:
@@ -190,20 +190,24 @@ def _rewrite_path_schemas(openapi_schema: dict[str, typing.Any]) -> None:
 
         schema_name = f'{model_type}WithBlueprints'
         single_ref = {'$ref': f'#/components/schemas/{schema_name}'}
-        array_ref = {'type': 'array', 'items': single_ref}
+        array_ref: dict[str, typing.Any] = {
+            'type': 'array',
+            'items': single_ref,
+        }
 
-        for method, operation in paths[path].items():
+        path_ops: dict[str, typing.Any] = paths[path]
+        for method, operation in path_ops.items():
             if not isinstance(operation, dict):
                 continue
 
+            op = typing.cast(dict[str, typing.Any], operation)
+
             # Rewrite request body schema (for post/put/patch)
             if method in ('post', 'put', 'patch'):
-                _rewrite_request_body(operation, single_ref)
+                _rewrite_request_body(op, single_ref)
 
             # Rewrite response schemas
-            _rewrite_response_schemas(
-                operation, path, method, single_ref, array_ref
-            )
+            _rewrite_response_schemas(op, path, method, single_ref, array_ref)
 
 
 def _rewrite_request_body(
@@ -219,12 +223,14 @@ def _rewrite_request_body(
     request_body = operation.get('requestBody')
     if not isinstance(request_body, dict):
         return
+    rb = typing.cast(dict[str, typing.Any], request_body)
 
-    content = request_body.get('content')
+    content = rb.get('content')
     if not isinstance(content, dict):
         return
+    ct = typing.cast(dict[str, typing.Any], content)
 
-    json_content = content.get('application/json')
+    json_content = ct.get('application/json')
     if isinstance(json_content, dict):
         json_content['schema'] = schema_ref
 
@@ -248,17 +254,20 @@ def _rewrite_response_schemas(
     responses = operation.get('responses')
     if not isinstance(responses, dict):
         return
+    resp_map = typing.cast(dict[str, typing.Any], responses)
 
     for status in ('200', '201'):
-        response = responses.get(status)
+        response = resp_map.get(status)
         if not isinstance(response, dict):
             continue
+        resp = typing.cast(dict[str, typing.Any], response)
 
-        content = response.get('content')
+        content = resp.get('content')
         if not isinstance(content, dict):
             continue
+        ct = typing.cast(dict[str, typing.Any], content)
 
-        json_content = content.get('application/json')
+        json_content = ct.get('application/json')
         if not isinstance(json_content, dict):
             continue
 

@@ -36,9 +36,9 @@ async def initialize() -> None:
 async def aclose() -> None:
     """Clean up storage module resources."""
     LOGGER.info('Closing storage module')
-    if client.StorageClient._instance is not None:
-        await client.StorageClient._instance.aclose()
-    client.StorageClient._instance = None
+    if client.StorageClient._instance is not None:  # pyright: ignore[reportPrivateUsage]
+        await client.StorageClient._instance.aclose()  # pyright: ignore[reportPrivateUsage]
+    client.StorageClient._instance = None  # pyright: ignore[reportPrivateUsage]
     LOGGER.info('Storage module closed')
 
 

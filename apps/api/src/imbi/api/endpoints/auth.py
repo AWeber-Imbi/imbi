@@ -38,7 +38,7 @@ async def get_auth_providers() -> auth_models.AuthProvidersResponse:
 
     """
     auth_settings = settings.get_auth_settings()
-    providers = []
+    providers: list[auth_models.AuthProvider] = []
 
     # Local password authentication
     if auth_settings.local_auth_enabled:
@@ -177,10 +177,10 @@ async def token(
         )
 
     # Resolve scopes
-    cred_scopes = set(cred_data.get('scopes', []))
-    requested_scopes = set(scope.split()) if scope else set()
+    cred_scopes: set[str] = set(cred_data.get('scopes', []))
+    requested_scopes: set[str] = set(scope.split()) if scope else set()
     if requested_scopes and cred_scopes:
-        granted_scopes = requested_scopes & cred_scopes
+        granted_scopes: set[str] = requested_scopes & cred_scopes
     elif cred_scopes:
         granted_scopes = cred_scopes
     else:
@@ -274,7 +274,9 @@ async def token(
         client_id,
     )
 
-    scope_str = ' '.join(sorted(granted_scopes)) if granted_scopes else None
+    scope_str: str | None = (
+        ' '.join(sorted(granted_scopes)) if granted_scopes else None
+    )
 
     return models.OAuth2TokenResponse(
         access_token=access_token,
@@ -838,6 +840,7 @@ async def oauth_login(
     callback_url = f'{base_url}/auth/oauth/{provider}/callback'
 
     # Build authorization URL based on provider with proper URL encoding
+    auth_url = ''
     if provider == 'google':
         params = {
             'client_id': auth_settings.oauth_google_client_id or '',

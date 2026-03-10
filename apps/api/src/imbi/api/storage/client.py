@@ -4,8 +4,10 @@ import asyncio
 import logging
 import typing
 
-import aioboto3
-from botocore import exceptions as botocore_exceptions
+import aioboto3  # pyright: ignore[reportMissingTypeStubs]
+from botocore import (  # pyright: ignore[reportMissingTypeStubs]
+    exceptions as botocore_exceptions,
+)
 
 from imbi_api import settings
 
@@ -152,7 +154,7 @@ class StorageClient:
             )
         return url
 
-    def _s3_client(self) -> typing.Any:
+    def _s3_client(self) -> typing.Any:  # pyright: ignore[reportUnknownMemberType]
         """Create an S3 client context manager.
 
         Returns:
@@ -162,7 +164,9 @@ class StorageClient:
         kwargs: dict[str, typing.Any] = {}
         if self._settings.endpoint_url:
             kwargs['endpoint_url'] = self._settings.endpoint_url
-        return self._session.client('s3', **kwargs)
+        return self._session.client(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+            's3', **kwargs
+        )
 
     async def _ensure_bucket(self) -> None:
         """Create the S3 bucket if it does not exist."""

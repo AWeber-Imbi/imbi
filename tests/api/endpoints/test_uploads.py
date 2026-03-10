@@ -238,7 +238,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
     @mock.patch('imbi_api.endpoints.uploads.storage')
     def test_get_upload_s3_missing(self, mock_storage) -> None:
         """Test getting upload when S3 object is missing returns 404."""
-        from botocore import exceptions as botocore_exceptions
+        from botocore import (  # pyright: ignore[reportMissingTypeStubs]
+            exceptions as botocore_exceptions,
+        )
 
         mock_storage.download = mock.AsyncMock(
             side_effect=botocore_exceptions.ClientError(
@@ -319,7 +321,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
     @mock.patch('imbi_api.endpoints.uploads.storage')
     def test_get_thumbnail_s3_missing(self, mock_storage) -> None:
         """Test getting thumbnail when S3 object is missing."""
-        from botocore import exceptions as botocore_exceptions
+        from botocore import (  # pyright: ignore[reportMissingTypeStubs]
+            exceptions as botocore_exceptions,
+        )
 
         mock_storage.download = mock.AsyncMock(
             side_effect=botocore_exceptions.ClientError(

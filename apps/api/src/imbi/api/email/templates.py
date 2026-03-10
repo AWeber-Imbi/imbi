@@ -23,7 +23,7 @@ class TemplateManager:
 
     """
 
-    _instance: typing.ClassVar[typing.Optional['TemplateManager']] = None
+    _instance: typing.ClassVar['TemplateManager | None'] = None
 
     def __init__(self) -> None:
         template_dir = pathlib.Path(__file__).parent / 'templates'

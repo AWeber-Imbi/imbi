@@ -2,7 +2,7 @@
 
 import logging
 
-import filetype
+import filetype  # pyright: ignore[reportMissingTypeStubs]
 
 from imbi_api import settings
 
@@ -93,7 +93,7 @@ def _validate_magic_bytes(
     if not data:
         raise UploadValidationError('File is empty')
 
-    detected = filetype.guess(data)
+    detected = filetype.guess(data)  # pyright: ignore[reportUnknownMemberType]
     if detected is None:
         raise UploadValidationError(
             f'Unable to detect file type from content; '

@@ -46,7 +46,7 @@ def serve(
         'factory': True,
         'host': config.host,
         'port': config.port,
-        'log_config': log_config,
+        'log_config': typing.cast('dict[str, typing.Any]', log_config),
         'proxy_headers': True,
         'headers': [('Server', f'imbi/{version}')],
         'date_header': True,

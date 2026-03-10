@@ -24,7 +24,7 @@ class EmailClient:
 
     """
 
-    _instance: typing.ClassVar[typing.Optional['EmailClient']] = None
+    _instance: typing.ClassVar['EmailClient | None'] = None
     _lock: typing.ClassVar[asyncio.Lock] = asyncio.Lock()
 
     def __init__(self) -> None:

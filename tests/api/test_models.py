@@ -29,6 +29,7 @@ class BlueprintModelTestCase(unittest.TestCase):
         self.assertIsInstance(blueprint.json_schema, jsonschema_models.Schema)
         # Verify the schema properties are preserved
         self.assertEqual(blueprint.json_schema.type, 'object')
+        assert blueprint.json_schema.properties is not None
         self.assertIn('foo', blueprint.json_schema.properties)
 
     def test_blueprint_validation(self) -> None:
@@ -174,7 +175,7 @@ class ProjectModelTestCase(unittest.TestCase):
                 slug='test',
                 team=team,
                 project_type=project_type,
-                links={'repo': 'not-a-url'},  # Invalid URL
+                links={'repo': 'not-a-url'},  # type: ignore[arg-type]
                 urls={},
                 identifiers={},
             )

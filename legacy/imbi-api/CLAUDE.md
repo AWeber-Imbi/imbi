@@ -369,12 +369,12 @@ mock_session.__aexit__.return_value = None
    - Builds with `mkdocs build --strict`
    - Deploys to GitHub Pages
 
-3. **`deploy.yaml`**: Publishes releases to PyPI
-   - Triggers on GitHub release creation
-   - Uses Python 3.14
-   - Builds wheel with `python -m build`
-   - Validates with `twine check`
-   - Publishes via trusted publisher (OIDC)
+3. **`deploy.yaml`**: Builds and publishes Docker image
+   - Triggers on GitHub release publication
+   - Builds Python package with `uv build` and attaches distributions to the GitHub release
+   - Builds multi-platform Docker image (linux/amd64, linux/arm64)
+   - Publishes to `ghcr.io` with semver tags
+   - Attests build provenance via `actions/attest-build-provenance`
 
 **Pre-commit hooks** (`.pre-commit-config.yaml`):
 - Standard checks: trailing whitespace, EOF, YAML/TOML validation, merge conflicts

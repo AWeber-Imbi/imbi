@@ -201,7 +201,7 @@ class APIConfiguration(settings.Configuration):  # type: ignore[misc]
                 data[field] = settings_cls(**data[field])
         return data
 
-    auth: Auth = pydantic.Field(default_factory=Auth)
+    auth: Auth = pydantic.Field(default_factory=Auth)  # pyright: ignore[reportIncompatibleVariableOverride]
     email: Email = pydantic.Field(default_factory=Email)
     storage: Storage = pydantic.Field(default_factory=Storage)
 
