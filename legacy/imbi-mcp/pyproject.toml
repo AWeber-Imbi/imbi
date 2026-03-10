@@ -57,6 +57,7 @@ reportUnusedFunction = "warning"
 
 [[tool.pyright.executionEnvironments]]
 root = "tests"
+reportPrivateUsage = "none"
 reportUnusedFunction = "none"
 extraPaths = ["src", "."]
 

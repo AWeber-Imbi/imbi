@@ -2,7 +2,7 @@ import typing as t
 
 import typer
 
-from imbi_mcp.server import mcp
+from imbi_mcp import server
 
 Transport = t.Literal['stdio', 'http', 'sse', 'streamable-http']
 
@@ -12,6 +12,13 @@ cli = typer.Typer(no_args_is_help=True)
 @cli.command()
 def serve(
     *,
+    api_url: t.Annotated[
+        str,
+        typer.Option(
+            help='Base URL of the Imbi API',
+            envvar='IMBI_API_URL',
+        ),
+    ] = 'http://localhost:8000',
     transport: t.Annotated[
         Transport,
         typer.Option(help='MCP transport type'),
@@ -26,6 +33,13 @@ def serve(
     ] = 8001,
 ) -> None:
     """Run the Imbi MCP server."""
+    try:
+        mcp = server.create_server(api_url)
+    except Exception as err:
+        raise typer.BadParameter(
+            f'Failed to connect to Imbi API at {api_url}: {err}',
+            param_hint='--api-url',
+        ) from err
     mcp.run(transport=transport, host=host, port=port)
 
 
