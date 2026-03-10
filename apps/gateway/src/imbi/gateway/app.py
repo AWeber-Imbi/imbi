@@ -2,10 +2,9 @@ import datetime
 
 import fastapi
 import typer
-from imbi_common import server
+from imbi_common import lifespan, server
 
 import imbi_gateway
-from imbi_common import lifespan
 from imbi_gateway import app_status, postgres
 
 

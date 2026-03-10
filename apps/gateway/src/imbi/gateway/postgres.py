@@ -43,8 +43,8 @@ import psycopg_pool
 import pydantic
 import pydantic_settings
 import yarl
-
 from imbi_common import lifespan
+
 from imbi_gateway import helpers
 
 type RowType = psycopg.rows.DictRow

@@ -6,7 +6,6 @@ import unittest
 from collections import abc
 
 import fastapi.testclient
-
 from imbi_common import lifespan
 
 
