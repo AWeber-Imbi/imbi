@@ -13,7 +13,6 @@ from imbi_common import clickhouse, neo4j
 from neo4j import exceptions as neo4j_exc
 
 from imbi_api import email, neo4j_indexes, openapi, storage
-from imbi_api.assistant import client as assistant_client
 
 LOGGER = logging.getLogger(__name__)
 
@@ -76,15 +75,3 @@ async def storage_hook() -> abc.AsyncIterator[None]:
     finally:
         await storage.aclose()
 
-
-@contextlib.asynccontextmanager
-async def assistant_hook() -> abc.AsyncIterator[None]:
-    """Initialize the AI assistant client (non-fatal on failure)."""
-    try:
-        await assistant_client.initialize()
-    except Exception as err:  # noqa: BLE001
-        LOGGER.warning('Assistant initialization failed (non-fatal): %s', err)
-    try:
-        yield
-    finally:
-        await assistant_client.aclose()

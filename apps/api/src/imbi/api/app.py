@@ -13,7 +13,6 @@ def create_app() -> fastapi.FastAPI:
             lifespans.neo4j_hook,
             lifespans.email_hook,
             lifespans.storage_hook,
-            lifespans.assistant_hook,
         ),
         version=version,
         redoc_url='/docs',

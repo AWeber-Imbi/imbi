@@ -1,7 +1,5 @@
 import fastapi
 
-from imbi_api.assistant.endpoints import assistant_router
-
 from .admin import admin_router
 from .api_keys import api_keys_router
 from .auth import auth_router
@@ -22,7 +20,6 @@ from .users import users_router
 routers: list[fastapi.APIRouter] = [
     admin_router,
     api_keys_router,
-    assistant_router,
     auth_router,
     blueprint_router,
     client_credentials_router,
