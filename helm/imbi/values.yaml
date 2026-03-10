@@ -61,7 +61,7 @@ clickhouse:
   enabled: true
   auth:
     username: default
-    password: password
+    password: ""  # REQUIRED: must be overridden with a secure password
   defaultConfigurationOverrides: |
     <clickhouse>
       <profiles>
@@ -79,7 +79,7 @@ externalClickhouse:
 postgresql:
   enabled: true
   auth:
-    postgresPassword: secret
+    postgresPassword: ""  # REQUIRED: must be overridden with a secure password
     database: imbi
 
 # External PostgreSQL (when postgresql.enabled is false)

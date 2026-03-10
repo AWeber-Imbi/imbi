@@ -20,16 +20,19 @@ require_var() {
     fi
 }
 
-require_api_vars() {
+require_common_vars() {
     require_var NEO4J_URL "Neo4j connection URL (e.g. bolt://neo4j:7687)"
-    require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. http://default:password@clickhouse:8123/imbi)"
     require_var IMBI_AUTH_JWT_SECRET "JWT signing secret for authentication"
+}
+
+require_api_vars() {
+    require_common_vars
+    require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. http://default:password@clickhouse:8123/imbi)"
     require_var IMBI_AUTH_ENCRYPTION_KEY "Fernet encryption key for sensitive data"
 }
 
 require_assistant_vars() {
-    require_var NEO4J_URL "Neo4j connection URL (e.g. bolt://neo4j:7687)"
-    require_var IMBI_AUTH_JWT_SECRET "JWT signing secret for authentication"
+    require_common_vars
 }
 
 require_gateway_vars() {
@@ -69,8 +72,9 @@ fi
 
 case "$IMBI_SERVICE" in
     all)
-        require_api_vars
-        require_assistant_vars
+        require_common_vars
+        require_var CLICKHOUSE_URL "ClickHouse connection URL (e.g. http://default:password@clickhouse:8123/imbi)"
+        require_var IMBI_AUTH_ENCRYPTION_KEY "Fernet encryption key for sensitive data"
         require_gateway_vars
         ;;
     api)

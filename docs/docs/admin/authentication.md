@@ -21,7 +21,7 @@ the following requirements apply:
 
 To disable local authentication (for example, if you only want OAuth):
 
-```
+```bash
 IMBI_AUTH_LOCAL_ENABLED=false
 ```
 
@@ -36,14 +36,14 @@ first time are automatically provisioned with a default role.
 
 Add these environment variables to enable Google sign-in:
 
-```
+```bash
 IMBI_AUTH_GOOGLE_CLIENT_ID=your-client-id
 IMBI_AUTH_GOOGLE_CLIENT_SECRET=your-client-secret
 ```
 
 ### GitHub
 
-```
+```bash
 IMBI_AUTH_GITHUB_CLIENT_ID=your-client-id
 IMBI_AUTH_GITHUB_CLIENT_SECRET=your-client-secret
 ```
@@ -52,7 +52,7 @@ IMBI_AUTH_GITHUB_CLIENT_SECRET=your-client-secret
 
 Any OpenID Connect-compatible provider can be used:
 
-```
+```bash
 IMBI_AUTH_OIDC_CLIENT_ID=your-client-id
 IMBI_AUTH_OIDC_CLIENT_SECRET=your-client-secret
 IMBI_AUTH_OIDC_DISCOVERY_URL=https://your-idp/.well-known/openid-configuration

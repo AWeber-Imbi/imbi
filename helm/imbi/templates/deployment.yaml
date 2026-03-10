@@ -60,7 +60,7 @@ spec:
                   name: {{ include "imbi.secretName" . }}
                   key: anthropic-api-key
             {{- end }}
-            {{- if .Values.storage.accessKey }}
+            {{- if and .Values.storage.accessKey .Values.storage.secretKey }}
             - name: S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
