@@ -150,8 +150,9 @@ class Project(Node):
 
 # Model type mapping for schema generation
 MODEL_TYPES: dict[str, type[pydantic.BaseModel]] = {
-    'Team': Team,
     'Environment': Environment,
-    'ProjectType': ProjectType,
+    'Organization': Organization,
     'Project': Project,
+    'ProjectType': ProjectType,
+    'Team': Team,
 }
