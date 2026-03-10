@@ -20,7 +20,7 @@ class AssistantSettingsTestCase(unittest.TestCase):
     def test_default_settings(self) -> None:
         """Test default settings values."""
         s = settings.Assistant(
-            _env_file=None,  # type: ignore[call-arg]
+            _env_file=None,
         )
         self.assertFalse(s.enabled)
         self.assertIsNone(s.api_key)
@@ -38,7 +38,7 @@ class AssistantSettingsTestCase(unittest.TestCase):
     def test_auto_enable_with_api_key(self) -> None:
         """Test that providing an API key auto-enables."""
         s = settings.Assistant(
-            _env_file=None,  # type: ignore[call-arg]
+            _env_file=None,
         )
         self.assertTrue(s.enabled)
         self.assertEqual(s.api_key, 'sk-test-123')
@@ -47,7 +47,7 @@ class AssistantSettingsTestCase(unittest.TestCase):
     def test_disabled_without_api_key(self) -> None:
         """Test assistant stays disabled without API key."""
         s = settings.Assistant(
-            _env_file=None,  # type: ignore[call-arg]
+            _env_file=None,
         )
         self.assertFalse(s.enabled)
         self.assertIsNone(s.api_key)
@@ -63,7 +63,7 @@ class AssistantSettingsTestCase(unittest.TestCase):
     def test_explicit_enable(self) -> None:
         """Test explicit enable with API key."""
         s = settings.Assistant(
-            _env_file=None,  # type: ignore[call-arg]
+            _env_file=None,
         )
         self.assertTrue(s.enabled)
 
@@ -94,6 +94,6 @@ class AssistantSettingsTestCase(unittest.TestCase):
     def test_custom_model(self) -> None:
         """Test custom model configuration."""
         s = settings.Assistant(
-            _env_file=None,  # type: ignore[call-arg]
+            _env_file=None,
         )
         self.assertEqual(s.model, 'claude-opus-4-20250514')

@@ -1,5 +1,6 @@
 """FastAPI endpoints for the AI assistant."""
 
+import collections.abc
 import json
 import logging
 import typing
@@ -234,7 +235,7 @@ async def _process_stream_events(
     stream: typing.Any,
     tool_use_blocks: list[dict[str, typing.Any]],
     state: dict[str, typing.Any],
-) -> typing.AsyncIterator[str]:
+) -> collections.abc.AsyncIterator[str]:
     """Process streaming events from the Anthropic API.
 
     Yields SSE-formatted strings for each event.
@@ -306,7 +307,7 @@ async def _stream_response(
     max_tokens: int,
     is_first_exchange: bool,
     user_message_content: str,
-) -> typing.AsyncIterator[str]:
+) -> collections.abc.AsyncIterator[str]:
     """Stream an SSE response from the Anthropic API.
 
     Yields:

@@ -28,11 +28,11 @@ class LoadTemplateTestCase(unittest.TestCase):
     """Test cases for _load_template."""
 
     def setUp(self) -> None:
-        system_prompt._PROMPT_TEMPLATE = None
+        system_prompt._prompt_template = None
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
-        system_prompt._PROMPT_TEMPLATE = None
+        system_prompt._prompt_template = None
         settings._assistant_settings = None
 
     @mock.patch.dict(os.environ, {}, clear=True)
@@ -63,11 +63,11 @@ class BuildSystemPromptTestCase(unittest.TestCase):
     """Test cases for build_system_prompt."""
 
     def setUp(self) -> None:
-        system_prompt._PROMPT_TEMPLATE = None
+        system_prompt._prompt_template = None
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
-        system_prompt._PROMPT_TEMPLATE = None
+        system_prompt._prompt_template = None
         settings._assistant_settings = None
 
     @mock.patch.dict(

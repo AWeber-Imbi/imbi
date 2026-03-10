@@ -5,7 +5,7 @@ import pathlib
 from imbi_assistant import auth, settings
 
 _PROMPT_PATH = pathlib.Path(__file__).parent / 'system_prompt.md'
-_PROMPT_TEMPLATE: str | None = None
+_prompt_template: str | None = None
 
 
 def _load_template() -> str:
@@ -18,17 +18,17 @@ def _load_template() -> str:
         The prompt template string with format placeholders.
 
     """
-    global _PROMPT_TEMPLATE
-    if _PROMPT_TEMPLATE is not None:
-        return _PROMPT_TEMPLATE
+    global _prompt_template
+    if _prompt_template is not None:
+        return _prompt_template
 
     assistant_settings = settings.get_assistant_settings()
     if assistant_settings.system_prompt:
-        _PROMPT_TEMPLATE = assistant_settings.system_prompt
-        return _PROMPT_TEMPLATE
+        _prompt_template = assistant_settings.system_prompt
+        return _prompt_template
 
-    _PROMPT_TEMPLATE = _PROMPT_PATH.read_text(encoding='utf-8')
-    return _PROMPT_TEMPLATE
+    _prompt_template = _PROMPT_PATH.read_text(encoding='utf-8')
+    return _prompt_template
 
 
 def build_system_prompt(
