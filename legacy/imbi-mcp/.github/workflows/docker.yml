@@ -32,7 +32,18 @@ jobs:
       - name: Attach distributions
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ github.event.release.tag_name }} dist/*.whl dist/*.tar.gz
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tag="$RELEASE_TAG"
+          existing=$(gh release view "$tag" --json assets --jq '.assets[].name')
+          for file in dist/*.whl dist/*.tar.gz; do
+            name=$(basename "$file")
+            if echo "$existing" | grep -Fxq "$name"; then
+              echo "Asset exists, skipping: $name"
+            else
+              gh release upload "$tag" "$file"
+            fi
+          done
 
   build-and-publish-docker:
     runs-on: ubuntu-latest
