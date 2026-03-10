@@ -1,11 +1,31 @@
+import contextlib
 import datetime
+from collections import abc
 
 import fastapi
 import typer
-from imbi_common import lifespan, server
+from imbi_common import lifespan, neo4j, server
 
 import imbi_assistant
-from imbi_assistant import app_status
+from imbi_assistant import app_status, client, endpoints
+
+
+@contextlib.asynccontextmanager
+async def _neo4j_lifespan() -> abc.AsyncIterator[None]:
+    await neo4j.initialize()
+    try:
+        yield
+    finally:
+        await neo4j.aclose()
+
+
+@contextlib.asynccontextmanager
+async def _anthropic_lifespan() -> abc.AsyncIterator[None]:
+    await client.initialize()
+    try:
+        yield
+    finally:
+        await client.aclose()
 
 
 def create_app() -> fastapi.FastAPI:
@@ -13,9 +33,13 @@ def create_app() -> fastapi.FastAPI:
         title='Imbi Assistant',
         version=imbi_assistant.version,
         started_at=datetime.datetime.now(datetime.UTC),
-        lifespan=lifespan.Lifespan(),
+        lifespan=lifespan.Lifespan(
+            _neo4j_lifespan,
+            _anthropic_lifespan,
+        ),
     )
     app.include_router(app_status.router)
+    app.include_router(endpoints.assistant_router)
     return app
 
 

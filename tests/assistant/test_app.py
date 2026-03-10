@@ -1,4 +1,5 @@
 import datetime
+from unittest import mock
 
 import fastapi.testclient
 
@@ -12,7 +13,17 @@ class AppTests(helpers.TestCase):
         app_instance = imbi_assistant.app.create_app()
         self.assertIsInstance(app_instance, fastapi.FastAPI)
 
-    def test_status_endpoint(self) -> None:
+    @mock.patch('imbi_assistant.client.aclose')
+    @mock.patch('imbi_assistant.client.initialize')
+    @mock.patch('imbi_common.neo4j.aclose')
+    @mock.patch('imbi_common.neo4j.initialize')
+    def test_status_endpoint(
+        self,
+        _neo4j_init: mock.AsyncMock,
+        _neo4j_close: mock.AsyncMock,
+        _client_init: mock.AsyncMock,
+        _client_close: mock.AsyncMock,
+    ) -> None:
         start_time = datetime.datetime.now(datetime.UTC)
         with fastapi.testclient.TestClient(
             imbi_assistant.app.create_app()
@@ -30,7 +41,17 @@ class AppTests(helpers.TestCase):
         self.assertEqual('ok', body['status'])
         self.assertEqual(imbi_assistant.version, body['version'])
 
-    def test_status_endpoint_in_specific_environment(self) -> None:
+    @mock.patch('imbi_assistant.client.aclose')
+    @mock.patch('imbi_assistant.client.initialize')
+    @mock.patch('imbi_common.neo4j.aclose')
+    @mock.patch('imbi_common.neo4j.initialize')
+    def test_status_endpoint_in_specific_environment(
+        self,
+        _neo4j_init: mock.AsyncMock,
+        _neo4j_close: mock.AsyncMock,
+        _client_init: mock.AsyncMock,
+        _client_close: mock.AsyncMock,
+    ) -> None:
         with (
             self.override_environment(ENVIRONMENT='testing'),
             fastapi.testclient.TestClient(
