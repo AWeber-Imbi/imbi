@@ -10,7 +10,7 @@ import imbi_mcp
 from imbi_mcp import server
 
 
-def _minimal_openapi_spec() -> dict:  # type: ignore[type-arg]
+def _minimal_openapi_spec() -> dict[str, object]:
     return {
         'openapi': '3.1.0',
         'info': {'title': 'Imbi', 'version': '2.0.0a0'},
