@@ -32,8 +32,9 @@ jobs:
       - name: Attach distributions
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          tag=${{ github.event.release.tag_name }}
+          tag="$RELEASE_TAG"
           existing=$(gh release view "$tag" --json assets --jq '.assets[].name')
           for file in dist/*.whl dist/*.tar.gz; do
             name=$(basename "$file")
