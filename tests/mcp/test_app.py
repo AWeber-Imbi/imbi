@@ -32,6 +32,7 @@ class CLITests(helpers.TestCase):
         result = runner.invoke(app.cli, ['serve', '--help'])
         self.assertEqual(0, result.exit_code)
         output = _strip_ansi(result.output)
+        self.assertIn('--api-url', output)
         self.assertIn('--transport', output)
         self.assertIn('--host', output)
         self.assertIn('--port', output)
