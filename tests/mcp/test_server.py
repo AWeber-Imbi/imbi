@@ -4,6 +4,7 @@ from unittest import mock
 
 import fastmcp
 import httpx
+from fastmcp.server.providers.openapi import MCPType
 
 import imbi_mcp
 from imbi_mcp import server
@@ -52,15 +53,11 @@ class CreateServerTests(unittest.TestCase):
             200,
             content=json.dumps(spec).encode(),
             headers={'content-type': 'application/json'},
-            request=httpx.Request(
-                'GET', 'http://localhost:8000/openapi.json'
-            ),
+            request=httpx.Request('GET', 'http://localhost:8000/openapi.json'),
         )
 
     @mock.patch('imbi_mcp.server.httpx.get')
-    def test_returns_fastmcp_instance(
-        self, mock_get: mock.Mock
-    ) -> None:
+    def test_returns_fastmcp_instance(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         self.assertIsInstance(mcp, fastmcp.FastMCP)
@@ -72,17 +69,13 @@ class CreateServerTests(unittest.TestCase):
         self.assertEqual('Imbi', mcp.name)
 
     @mock.patch('imbi_mcp.server.httpx.get')
-    def test_server_version(
-        self, mock_get: mock.Mock
-    ) -> None:
+    def test_server_version(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         mcp = server.create_server('http://localhost:8000')
         self.assertEqual(imbi_mcp.version, mcp.version)
 
     @mock.patch('imbi_mcp.server.httpx.get')
-    def test_fetches_spec_from_api_url(
-        self, mock_get: mock.Mock
-    ) -> None:
+    def test_fetches_spec_from_api_url(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         server.create_server('http://example:9000')
         mock_get.assert_called_once_with(
@@ -90,13 +83,48 @@ class CreateServerTests(unittest.TestCase):
         )
 
     @mock.patch('imbi_mcp.server.httpx.get')
-    def test_strips_trailing_slash(
-        self, mock_get: mock.Mock
-    ) -> None:
+    def test_strips_trailing_slash(self, mock_get: mock.Mock) -> None:
         mock_get.return_value = self.mock_response
         server.create_server('http://example:9000/')
         mock_get.assert_called_once_with(
             'http://example:9000/openapi.json', timeout=30
+        )
+
+    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('fastmcp.FastMCP.from_openapi')
+    def test_route_maps_exclude_auth_and_status(
+        self, mock_from_openapi: mock.Mock, mock_get: mock.Mock
+    ) -> None:
+        mock_get.return_value = self.mock_response
+        mock_from_openapi.return_value = fastmcp.FastMCP(name='stub')
+        server.create_server('http://example:9000')
+        _, kwargs = mock_from_openapi.call_args
+        route_maps = kwargs['route_maps']
+        excluded = [rm for rm in route_maps if rm.mcp_type == MCPType.EXCLUDE]
+        patterns = [rm.pattern for rm in excluded]
+        self.assertIn(r'^/auth/', patterns)
+        self.assertIn(r'^/mfa/', patterns)
+        self.assertIn(r'^/status/?$', patterns)
+        self.assertIn(r'.*/thumbnail/?$', patterns)
+
+    @mock.patch('imbi_mcp.server.httpx.get')
+    @mock.patch('fastmcp.FastMCP.from_openapi')
+    def test_route_maps_classify_get_as_resources(
+        self, mock_from_openapi: mock.Mock, mock_get: mock.Mock
+    ) -> None:
+        mock_get.return_value = self.mock_response
+        mock_from_openapi.return_value = fastmcp.FastMCP(name='stub')
+        server.create_server('http://example:9000')
+        _, kwargs = mock_from_openapi.call_args
+        route_maps = kwargs['route_maps']
+        resource_maps = [
+            rm
+            for rm in route_maps
+            if rm.mcp_type in (MCPType.RESOURCE, MCPType.RESOURCE_TEMPLATE)
+        ]
+        self.assertTrue(
+            all('GET' in rm.methods for rm in resource_maps),
+            'All resource route maps should specify GET method',
         )
 
 
@@ -131,6 +159,4 @@ class InjectAuthTests(unittest.IsolatedAsyncioTestCase):
             return_value={},
         ) as mock_fn:
             await server._inject_auth(request)
-        mock_fn.assert_called_once_with(
-            include={'authorization'}
-        )
+        mock_fn.assert_called_once_with(include={'authorization'})

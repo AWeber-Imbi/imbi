@@ -33,7 +33,13 @@ def serve(
     ] = 8001,
 ) -> None:
     """Run the Imbi MCP server."""
-    mcp = server.create_server(api_url)
+    try:
+        mcp = server.create_server(api_url)
+    except Exception as err:
+        raise typer.BadParameter(
+            f'Failed to connect to Imbi API at {api_url}: {err}',
+            param_hint='--api-url',
+        ) from err
     mcp.run(transport=transport, host=host, port=port)
 
 

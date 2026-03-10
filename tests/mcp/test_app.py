@@ -1,4 +1,5 @@
 import re
+from unittest import mock
 
 import typer.testing
 
@@ -36,3 +37,14 @@ class CLITests(helpers.TestCase):
         self.assertIn('--transport', output)
         self.assertIn('--host', output)
         self.assertIn('--port', output)
+
+    @mock.patch('imbi_mcp.app.server.create_server')
+    def test_serve_api_connection_error(self, mock_create: mock.Mock) -> None:
+        mock_create.side_effect = ConnectionError('Connection refused')
+        runner = typer.testing.CliRunner()
+        result = runner.invoke(
+            app.cli, ['serve', '--api-url', 'http://bad:9999']
+        )
+        self.assertNotEqual(0, result.exit_code)
+        output = _strip_ansi(result.output)
+        self.assertIn('Failed to connect', output)

@@ -22,10 +22,8 @@ logger = logging.getLogger(__name__)
 _EXCLUDED_ROUTE_MAPS = [
     RouteMap(pattern=r'^/auth/', mcp_type=MCPType.EXCLUDE),
     RouteMap(pattern=r'^/mfa/', mcp_type=MCPType.EXCLUDE),
-    RouteMap(pattern=r'^/status$', mcp_type=MCPType.EXCLUDE),
-    RouteMap(
-        pattern=r'.*/thumbnail$', mcp_type=MCPType.EXCLUDE
-    ),
+    RouteMap(pattern=r'^/status/?$', mcp_type=MCPType.EXCLUDE),
+    RouteMap(pattern=r'.*/thumbnail/?$', mcp_type=MCPType.EXCLUDE),
 ]
 
 # Read-only list endpoints → resources, parameterised GETs →
