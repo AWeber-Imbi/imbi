@@ -5,7 +5,11 @@ metadata:
   labels:
     {{- include "imbi.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  {{- if eq .Values.service.mode "all" }}
+  replicas: {{ .Values.replicaCount | default 1 }}
+  {{- else }}
+  replicas: {{ (index .Values.service .Values.service.mode).replicas | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "imbi.selectorLabels" . | nindent 6 }}

@@ -3,6 +3,9 @@ image:
   tag: latest
   pullPolicy: IfNotPresent
 
+# Number of replicas (used when service.mode is "all")
+replicaCount: 1
+
 # Service mode: "all" runs everything in one pod, "individual" allows
 # scaling each service separately.
 service:
