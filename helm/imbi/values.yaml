@@ -6,8 +6,10 @@ image:
 # Number of replicas (used when service.mode is "all")
 replicaCount: 1
 
-# Service mode: "all" runs everything in one pod, "individual" allows
-# scaling each service separately.
+# Service mode:
+# - "all": run all services in one pod (uses replicaCount above)
+# - "api" | "assistant" | "gateway" | "mcp": run a single service
+# Use the matching .service.<name>.replicas value to scale that service.
 service:
   mode: all
   api:

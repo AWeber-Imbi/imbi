@@ -6,9 +6,9 @@ metadata:
     {{- include "imbi.labels" . | nindent 4 }}
 spec:
   {{- if eq .Values.service.mode "all" }}
-  replicas: {{ .Values.replicaCount | default 1 }}
+  replicas: {{ .Values.replicaCount }}
   {{- else }}
-  replicas: {{ (index .Values.service .Values.service.mode).replicas | default 1 }}
+  replicas: {{ (index .Values.service .Values.service.mode).replicas }}
   {{- end }}
   selector:
     matchLabels:
