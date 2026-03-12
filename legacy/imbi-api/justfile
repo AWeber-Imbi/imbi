@@ -36,32 +36,32 @@ docker:
         jwt_secret=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
     fi
     cat>".env"<<-EOF
-    TEST_HOST=$test_host
-    CLICKHOUSE_URL=http://default:password@$test_host:$(get_port clickhouse 8123)/imbi
-    FILE_CACHE_ENABLED=no
-    IMBI_AUTH_ENCRYPTION_KEY=development
+    TEST_HOST="$test_host"
+    CLICKHOUSE_URL="http://default:password@$test_host:$(get_port clickhouse 8123)/imbi"
+    FILE_CACHE_ENABLED="no"
+    IMBI_AUTH_ENCRYPTION_KEY="development"
     IMBI_AUTH_JWT_SECRET=$jwt_secret
-    IMBI_EMAIL_ENABLED=true
-    IMBI_EMAIL_SMTP_HOST=$test_host
-    IMBI_EMAIL_SMTP_PORT=$(get_port mailpit 1025)
-    IMBI_EMAIL_SMTP_USE_TLS=false
-    IMBI_EMAIL_FROM_EMAIL=noreply@imbi.example
-    IMBI_EMAIL_FROM_NAME=Imbi Development
-    NEO4J_URL=bolt://neo4j:neo4j@$test_host:$(get_port neo4j 7687)
-    S3_ENDPOINT_URL=http://$test_host:$(get_port localstack 4566)
-    S3_ACCESS_KEY=test
-    S3_SECRET_KEY=test
-    S3_BUCKET=imbi-uploads
-    S3_REGION=us-east-1
-    OTEL_LOGS_EXPORTER=none
-    OTEL_METRICS_EXPORTER=none
-    OTEL_TRACES_EXPORTER=otlp
-    OTEL_EXPORTER_OTLP_ENDPOINT=$test_host:$(get_port jaeger 4317)
-    OTEL_EXPORTER_OTLP_TRACES_INSECURE=true
-    OTEL_RESOURCE_ATTRIBUTES=service.name=imbi-api,service.environment=development
-    OTEL_SERVICE_NAME=imbi-api
-    MAILPIT_SMTP_PORT=$(get_port mailpit 1025)
-    MAILPIT_WEB_PORT=$(get_port mailpit 8025)
+    IMBI_EMAIL_ENABLED="true"
+    IMBI_EMAIL_SMTP_HOST="$test_host"
+    IMBI_EMAIL_SMTP_PORT="$(get_port mailpit 1025)"
+    IMBI_EMAIL_SMTP_USE_TLS="false"
+    IMBI_EMAIL_FROM_EMAIL="noreply@imbi.example"
+    IMBI_EMAIL_FROM_NAME="Imbi Development"
+    NEO4J_URL="bolt://neo4j:neo4j@$test_host:$(get_port neo4j 7687)"
+    S3_ENDPOINT_URL="http://$test_host:$(get_port localstack 4566)"
+    S3_ACCESS_KEY="test"
+    S3_SECRET_KEY="test"
+    S3_BUCKET="imbi-uploads"
+    S3_REGION="us-east-1"
+    OTEL_LOGS_EXPORTER="none"
+    OTEL_METRICS_EXPORTER="none"
+    OTEL_TRACES_EXPORTER="otlp"
+    OTEL_EXPORTER_OTLP_ENDPOINT="$test_host:$(get_port jaeger 4317)"
+    OTEL_EXPORTER_OTLP_TRACES_INSECURE="true"
+    OTEL_RESOURCE_ATTRIBUTES="service.name=imbi-api,service.environment=development"
+    OTEL_SERVICE_NAME="imbi-api"
+    MAILPIT_SMTP_PORT="$(get_port mailpit 1025)"
+    MAILPIT_WEB_PORT="$(get_port mailpit 8025)"
     EOF
 
 [doc("Run tests")]
