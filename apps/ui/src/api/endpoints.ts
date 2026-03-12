@@ -33,6 +33,8 @@ import type {
   Team,
   TeamCreate,
   TeamMember,
+  ThirdPartyService,
+  ThirdPartyServiceCreate,
   Upload,
   ApiKey,
   ApiKeyCreated,
@@ -399,6 +401,24 @@ export const removeTeamMember = (slug: string, email: string) =>
   apiClient.delete<void>(
     `/teams/${encodeURIComponent(slug)}/members/${encodeURIComponent(email)}`
   )
+
+// Admin - Third-Party Services
+export const listThirdPartyServices = async (): Promise<ThirdPartyService[]> => {
+  const response = await apiClient.get<ThirdPartyService[]>('/third-party-services/')
+  return Array.isArray(response) ? response : []
+}
+
+export const getThirdPartyService = (slug: string) =>
+  apiClient.get<ThirdPartyService>(`/third-party-services/${encodeURIComponent(slug)}`)
+
+export const createThirdPartyService = (svc: ThirdPartyServiceCreate) =>
+  apiClient.post<ThirdPartyService>('/third-party-services/', svc)
+
+export const updateThirdPartyService = (slug: string, svc: ThirdPartyServiceCreate) =>
+  apiClient.put<ThirdPartyService>(`/third-party-services/${encodeURIComponent(slug)}`, svc)
+
+export const deleteThirdPartyService = (slug: string) =>
+  apiClient.delete<void>(`/third-party-services/${encodeURIComponent(slug)}`)
 
 // Uploads
 export const uploadFile = (file: File): Promise<Upload> => {
