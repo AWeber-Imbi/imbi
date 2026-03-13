@@ -35,6 +35,8 @@ import type {
   TeamMember,
   ThirdPartyService,
   ThirdPartyServiceCreate,
+  ServiceApplication,
+  ServiceApplicationCreate,
   Upload,
   ApiKey,
   ApiKeyCreated,
@@ -419,6 +421,40 @@ export const updateThirdPartyService = (slug: string, svc: ThirdPartyServiceCrea
 
 export const deleteThirdPartyService = (slug: string) =>
   apiClient.delete<void>(`/third-party-services/${encodeURIComponent(slug)}`)
+
+// Service Applications (nested under Third-Party Services)
+export const listServiceApplications = async (serviceSlug: string): Promise<ServiceApplication[]> => {
+  const response = await apiClient.get<ServiceApplication[]>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getServiceApplication = (serviceSlug: string, appSlug: string) =>
+  apiClient.get<ServiceApplication>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
+  )
+
+export const createServiceApplication = (serviceSlug: string, data: ServiceApplicationCreate) =>
+  apiClient.post<ServiceApplication>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`,
+    data
+  )
+
+export const updateServiceApplication = (
+  serviceSlug: string,
+  appSlug: string,
+  data: ServiceApplicationCreate
+) =>
+  apiClient.put<ServiceApplication>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
+    data
+  )
+
+export const deleteServiceApplication = (serviceSlug: string, appSlug: string) =>
+  apiClient.delete<void>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
+  )
 
 // Uploads
 export const uploadFile = (file: File): Promise<Upload> => {

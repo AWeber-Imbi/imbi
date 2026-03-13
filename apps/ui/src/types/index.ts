@@ -474,6 +474,39 @@ export interface ThirdPartyServiceCreate {
   [key: string]: unknown
 }
 
+// Service Application types
+export interface ServiceApplication {
+  slug: string
+  name: string
+  description?: string | null
+  app_type: string
+  application_url?: string | null
+  client_id: string
+  client_secret: string
+  scopes: string[]
+  webhook_secret?: string | null
+  private_key?: string | null
+  signing_secret?: string | null
+  settings: Record<string, string | number | boolean>
+  status: 'active' | 'inactive' | 'revoked'
+}
+
+export interface ServiceApplicationCreate {
+  slug: string
+  name: string
+  description?: string | null
+  app_type: string
+  application_url?: string | null
+  client_id: string
+  client_secret: string
+  scopes?: string[]
+  webhook_secret?: string | null
+  private_key?: string | null
+  signing_secret?: string | null
+  settings?: Record<string, string | number | boolean>
+  status?: 'active' | 'inactive' | 'revoked'
+}
+
 export interface SchemaProperty {
   id: string
   name: string
