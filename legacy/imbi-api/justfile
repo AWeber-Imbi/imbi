@@ -29,17 +29,25 @@ docker:
     docker compose up -d --wait --wait-timeout 120 || (docker compose logs && false)
     docker compose exec -T clickhouse clickhouse client -q "CREATE DATABASE IF NOT EXISTS imbi"
     test_host="${TEST_HOST:-127.0.0.1}"
-    if test -f .env && grep -q '^IMBI_AUTH_JWT_SECRET=' .env; then
-        jwt_secret=$(grep -m1 '^IMBI_AUTH_JWT_SECRET=' .env | cut -d= -f2- | tr -d '\r')
-    fi
+    if test -f .env; then
+        if grep -q '^IMBI_AUTH_JWT_SECRET=' .env; then
+            jwt_secret=$(grep -m1 '^IMBI_AUTH_JWT_SECRET=' .env | cut -d= -f2- | tr -d '\r')
+        fi
+        if grep -q '^IMBI_AUTH_ENCRYPTION_KEY=' .env; then
+            encryption_key=$(grep -m1 '^IMBI_AUTH_ENCRYPTION_KEY=' .env | cut -d= -f2- | tr -d '\r')
+        fi
+     fi
     if test -z "${jwt_secret:-}"; then
         jwt_secret=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+    fi
+    if test -z "${encryption_key:-}"; then
+        encryption_key=$(python3 -c "import secrets; print(secrets.token_urlsafe(32) + '=')")
     fi
     cat>".env"<<-EOF
     TEST_HOST="$test_host"
     CLICKHOUSE_URL="http://default:password@$test_host:$(get_port clickhouse 8123)/imbi"
     FILE_CACHE_ENABLED="no"
-    IMBI_AUTH_ENCRYPTION_KEY="development"
+    IMBI_AUTH_ENCRYPTION_KEY=$encryption_key
     IMBI_AUTH_JWT_SECRET=$jwt_secret
     IMBI_EMAIL_ENABLED="true"
     IMBI_EMAIL_SMTP_HOST="$test_host"
