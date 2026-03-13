@@ -9,7 +9,7 @@ install:
     npm ci
 
 # Run development server
-dev:
+dev: install
     npm run dev
 
 # Run tests
