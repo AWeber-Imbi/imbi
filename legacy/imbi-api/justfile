@@ -31,10 +31,10 @@ docker:
     test_host="${TEST_HOST:-127.0.0.1}"
     if test -f .env; then
         if grep -q '^IMBI_AUTH_JWT_SECRET=' .env; then
-            jwt_secret=$(grep -m1 '^IMBI_AUTH_JWT_SECRET=' .env | cut -d= -f2- | tr -d '\r')
+            jwt_secret=$(grep -m1 '^IMBI_AUTH_JWT_SECRET=' .env | cut -d= -f2- | tr -d '\r"')
         fi
         if grep -q '^IMBI_AUTH_ENCRYPTION_KEY=' .env; then
-            encryption_key=$(grep -m1 '^IMBI_AUTH_ENCRYPTION_KEY=' .env | cut -d= -f2- | tr -d '\r')
+            encryption_key=$(grep -m1 '^IMBI_AUTH_ENCRYPTION_KEY=' .env | cut -d= -f2- | tr -d '\r"')
         fi
      fi
     if test -z "${jwt_secret:-}"; then
@@ -47,8 +47,8 @@ docker:
     TEST_HOST="$test_host"
     CLICKHOUSE_URL="http://default:password@$test_host:$(get_port clickhouse 8123)/imbi"
     FILE_CACHE_ENABLED="no"
-    IMBI_AUTH_ENCRYPTION_KEY=$encryption_key
-    IMBI_AUTH_JWT_SECRET=$jwt_secret
+    IMBI_AUTH_ENCRYPTION_KEY="$encryption_key"
+    IMBI_AUTH_JWT_SECRET="$jwt_secret"
     IMBI_EMAIL_ENABLED="true"
     IMBI_EMAIL_SMTP_HOST="$test_host"
     IMBI_EMAIL_SMTP_PORT="$(get_port mailpit 1025)"
