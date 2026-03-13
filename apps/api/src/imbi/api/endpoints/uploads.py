@@ -51,6 +51,7 @@ def _upload_response(upload: models.Upload) -> UploadResponse:
 @uploads_router.post('/', status_code=201)
 async def create_upload(
     file: fastapi.UploadFile,
+    storage_client: storage.InjectStorageClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('upload:create')),
@@ -93,7 +94,7 @@ async def create_upload(
     s3_key = f'uploads/{upload_id}/{filename}'
 
     # Upload original file
-    await storage.upload(s3_key, data, content_type)
+    await storage_client.upload(s3_key, data, content_type)
 
     # Generate thumbnail if applicable
     has_thumbnail = False
@@ -105,7 +106,7 @@ async def create_upload(
                 storage_settings,
             )
             thumbnail_s3_key = f'uploads/{upload_id}/thumbnail.webp'
-            await storage.upload(
+            await storage_client.upload(
                 thumbnail_s3_key,
                 thumb_data,
                 'image/webp',
@@ -137,9 +138,9 @@ async def create_upload(
             'Failed to save upload metadata for %s, rolling back S3 objects',
             upload_id,
         )
-        await storage.delete(s3_key)
+        await storage_client.delete(s3_key)
         if thumbnail_s3_key:
-            await storage.delete(thumbnail_s3_key)
+            await storage_client.delete(thumbnail_s3_key)
         raise
 
     LOGGER.info(
@@ -191,6 +192,7 @@ async def list_uploads(
 @uploads_router.get('/{upload_id}')
 async def get_upload(
     upload_id: str,
+    storage_client: storage.InjectStorageClient,
 ) -> fastapi.responses.Response:
     """Serve the uploaded file.
 
@@ -214,7 +216,7 @@ async def get_upload(
         )
 
     try:
-        data = await storage.download(upload.s3_key)
+        data = await storage_client.download(upload.s3_key)
     except botocore_exceptions.ClientError as err:  # pyright: ignore[reportMissingTypeStubs]
         resp = typing.cast(
             dict[str, typing.Any],
@@ -259,6 +261,7 @@ async def get_upload_meta(
 @uploads_router.get('/{upload_id}/thumbnail')
 async def get_upload_thumbnail(
     upload_id: str,
+    storage_client: storage.InjectStorageClient,
 ) -> fastapi.responses.Response:
     """Serve the upload thumbnail.
 
@@ -287,7 +290,7 @@ async def get_upload_thumbnail(
         )
 
     try:
-        data = await storage.download(upload.thumbnail_s3_key)
+        data = await storage_client.download(upload.thumbnail_s3_key)
     except botocore_exceptions.ClientError as err:  # pyright: ignore[reportMissingTypeStubs]
         resp = typing.cast(
             dict[str, typing.Any],
@@ -310,6 +313,7 @@ async def get_upload_thumbnail(
 @uploads_router.delete('/{upload_id}', status_code=204)
 async def delete_upload(
     upload_id: str,
+    storage_client: storage.InjectStorageClient,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('upload:delete')),
@@ -338,8 +342,8 @@ async def delete_upload(
     await neo4j.delete_node(models.Upload, {'id': upload_id})
 
     # Delete S3 objects (orphans can be cleaned up later if this fails)
-    await storage.delete(upload.s3_key)
+    await storage_client.delete(upload.s3_key)
     if upload.thumbnail_s3_key:
-        await storage.delete(upload.thumbnail_s3_key)
+        await storage_client.delete(upload.thumbnail_s3_key)
 
     LOGGER.info('Upload %s deleted by %s', upload_id, auth.require_user.email)

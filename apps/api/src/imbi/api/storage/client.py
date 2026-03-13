@@ -1,4 +1,4 @@
-"""S3 client singleton for object storage operations."""
+"""S3 client for object storage operations."""
 
 import asyncio
 import logging
@@ -15,15 +15,14 @@ LOGGER = logging.getLogger(__name__)
 
 
 class StorageClient:
-    """Singleton S3 client for object storage operations.
+    """S3 client for object storage operations.
 
     Uses aioboto3 for native async S3 operations. Supports both
     real AWS S3 and S3-compatible services like LocalStack.
 
-    """
+    Lifecycle is managed by :func:`imbi_api.lifespans.storage_hook`.
 
-    _instance: typing.ClassVar['StorageClient | None'] = None
-    _lock: typing.ClassVar[asyncio.Lock] = asyncio.Lock()
+    """
 
     def __init__(self) -> None:
         self._settings = settings.Storage()
@@ -33,18 +32,7 @@ class StorageClient:
             region_name=self._settings.region,
         )
         self._initialized = False
-
-    @classmethod
-    def get_instance(cls) -> 'StorageClient':
-        """Get the singleton StorageClient instance.
-
-        Returns:
-            The singleton StorageClient instance.
-
-        """
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
+        self._lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """Initialize the storage client and ensure the bucket exists.

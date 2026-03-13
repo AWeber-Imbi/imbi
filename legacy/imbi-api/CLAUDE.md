@@ -107,6 +107,12 @@ uv run pytest -v
     - `sessions.py`: Session management
     - `oauth.py`: OAuth2/OIDC provider integration (Google, GitHub, Keycloak)
   - `email/`: Email notification system
+    - `client.py`: SMTP client with retry logic
+    - `templates.py`: Jinja2 email template rendering
+    - `dependencies.py`: DI injection (`InjectEmailClient`, `InjectTemplateManager`)
+  - `storage/`: S3-compatible object storage
+    - `client.py`: Async S3 client via aioboto3
+    - `dependencies.py`: DI injection (`InjectStorageClient`)
   - `middleware/`: FastAPI middleware (rate limiting)
   - `openapi.py`: Custom OpenAPI schema generation
 - **`imbi_common` package** (external dependency): Shared code used across Imbi services
@@ -259,13 +265,15 @@ from imbi_api.app import create_app
 app = create_app()  # Returns configured FastAPI instance
 ```
 
-**Lifespan management**: The application uses FastAPI's lifespan context manager to:
-- Initialize Neo4j indexes on startup (`neo4j.initialize()`)
-- Initialize ClickHouse connection and test connectivity (`clickhouse.initialize()`)
-- Initialize Email system (`email.initialize()`)
-- Refresh blueprint models for OpenAPI schema
-- Clean up Neo4j, ClickHouse, and Email connections on shutdown
-- Ensures proper resource management across application lifecycle
+**Lifespan management**: The application uses `imbi_common.lifespan.Lifespan` to compose multiple async context manager hooks (`src/imbi_api/lifespans.py`):
+
+1. `clickhouse_hook` — init/close ClickHouse connection
+2. `neo4j_hook` — init/close Neo4j driver
+3. `neo4j_setup_hook` — create API-specific indexes, refresh blueprint models for OpenAPI
+4. `email_hook` — creates `EmailClient` + `TemplateManager`, yields `tuple[EmailClient, TemplateManager]`
+5. `storage_hook` — creates `StorageClient`, yields it
+
+Hooks that yield resources (email, storage) use the `Lifespan.get_state()` DI pattern — see "Dependency Injection Pattern" below. Neo4j and ClickHouse still use module-level singletons in `imbi_common` and are not yet DI'd.
 
 **Endpoint registration** (`src/imbi_api/endpoints/`):
 - Each endpoint module exports an `APIRouter`
@@ -278,6 +286,36 @@ app = create_app()  # Returns configured FastAPI instance
 - `serve`: Start uvicorn with development/production modes
 - `setup`: Initialize Imbi with authentication system and admin user
 - Configures logging, auto-reload, proxy headers, and custom Server header
+
+### Dependency Injection Pattern
+
+Email and storage use `imbi_common.lifespan.Lifespan` for type-safe DI. The pattern has three parts:
+
+1. **Lifespan hook** (`lifespans.py`) — async context manager that creates, yields, and cleans up a resource.
+2. **Dependency function** (`*/dependencies.py`) — calls `context.get_state(hook)` to retrieve the yielded resource.
+3. **Type alias** — `Annotated[T, Depends(fn)]` used as a parameter type in endpoint handlers.
+
+```python
+from imbi_api.storage import InjectStorageClient
+
+@router.post('/uploads/')
+async def create_upload(
+    file: fastapi.UploadFile,
+    storage_client: InjectStorageClient,
+) -> dict:
+    await storage_client.upload(key, data, content_type)
+```
+
+**Testing with DI**: Override the dependency function in `app.dependency_overrides` instead of patching module-level imports:
+
+```python
+from imbi_api.storage.dependencies import _get_storage_client
+
+mock_storage = unittest.mock.AsyncMock(spec=StorageClient)
+app.dependency_overrides[_get_storage_client] = lambda: mock_storage
+```
+
+**Not yet DI'd**: Neo4j and ClickHouse still use module-level singletons in `imbi_common`. Full DI for these requires refactoring the shared library to expose client objects.
 
 ### Data Modeling Conventions
 
@@ -305,13 +343,22 @@ Tests use `unittest.IsolatedAsyncioTestCase` for async support:
 ```python
 class MyTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        # Reset singleton for test isolation
+        # Reset singleton for test isolation (Neo4j, ClickHouse)
         client.Neo4j._instance = None
         # Set up mocks
 
     async def test_something(self) -> None:
         # Test async code
         pass
+```
+
+**DI-managed services** (email, storage): Use `dependency_overrides` on the FastAPI app instead of resetting singletons:
+
+```python
+from imbi_api.storage.dependencies import _get_storage_client
+
+mock_storage = mock.AsyncMock(spec=StorageClient)
+app.dependency_overrides[_get_storage_client] = lambda: mock_storage
 ```
 
 **Mocking async context managers**:
@@ -423,7 +470,7 @@ gh pr create --base main --title "Add new feature" --body "..."
 **Current development status**: This is a v2 alpha rewrite. Core infrastructure and authentication complete (~30% test coverage):
 
 ✅ **Implemented**:
-- FastAPI application with lifespan management (Neo4j, ClickHouse, Email init/cleanup)
+- FastAPI application with lifespan management (Email, Storage DI-managed via lifespan hooks; Neo4j, ClickHouse remain module-level singletons)
 - Status endpoint with health check (`GET /status`)
 - CLI with `serve` and `setup` commands (development and production modes)
 - Neo4j integration with singleton pattern, cypherantic wrappers, indexes, upsert operations
@@ -442,7 +489,8 @@ gh pr create --base main --title "Add new feature" --body "..."
   - Permission-based access control
   - Resource-level permissions (read, write, delete)
   - Role-based authorization with group support
-- Email notification system
+- Email notification system (DI-managed via lifespan hooks)
+- S3-compatible object storage with upload validation and thumbnails (DI-managed)
 - Docker Compose development environment (Neo4j, ClickHouse, Jaeger, Mailpit)
 - Pre-commit hooks with Ruff linting and formatting
 - Justfile for consistent developer workflow (matching imbi-common and imbi-gateway)

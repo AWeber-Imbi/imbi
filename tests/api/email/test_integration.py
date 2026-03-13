@@ -1,6 +1,7 @@
 """Integration tests for email module with Mailpit.
 
-These tests verify end-to-end email sending with a real SMTP server (Mailpit).
+These tests verify end-to-end email sending with a real SMTP server
+(Mailpit).
 """
 
 import os
@@ -17,10 +18,6 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
-        # Reset singletons for test isolation
-        client.EmailClient._instance = None
-        templates.TemplateManager._instance = None
-
         # Get Mailpit configuration from environment
         self.mailpit_smtp_host = os.getenv('MAILPIT_SMTP_HOST', '127.0.0.1')
         self.mailpit_smtp_port = int(os.getenv('MAILPIT_SMTP_PORT', '1025'))
@@ -33,12 +30,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         self.mailpit_available = self._is_mailpit_available()
 
     def _is_mailpit_available(self) -> bool:
-        """Check if Mailpit is running and accessible.
-
-        Returns:
-            True if Mailpit API is reachable, False otherwise.
-
-        """
+        """Check if Mailpit is running and accessible."""
         try:
             import socket
 
@@ -57,10 +49,8 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         if not self.mailpit_available:
             self.skipTest('Mailpit not available')
 
-        # Import here to avoid circular dependency
         from imbi_api import email
 
-        # Mock settings to use Mailpit
         with mock.patch(
             'imbi_api.email.client.settings.Email'
         ) as mock_settings:
@@ -78,28 +68,29 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_settings.from_name = 'Imbi Test'
             email_settings.reply_to = None
 
-            # Mock ClickHouse to avoid database dependency
+            email_client = client.EmailClient()
+            await email_client.initialize()
+            template_manager = templates.TemplateManager()
+
             with mock.patch('imbi_common.clickhouse.insert') as mock_insert:
                 mock_insert.return_value = None
 
-                # Send email
                 audit = await email.send_welcome_email(
+                    email_client,
+                    template_manager,
                     username='testuser',
                     email='test@example.com',
                     display_name='Test User',
                     login_url='https://imbi.example.com/login',
                 )
 
-                # Verify audit record
                 self.assertEqual(audit.to_email, 'test@example.com')
                 self.assertEqual(audit.template_name, 'welcome')
                 self.assertEqual(audit.status, 'sent')
                 self.assertIsNone(audit.error_message)
 
-                # Verify ClickHouse insert was called
                 mock_insert.assert_called_once()
 
-        # Verify email in Mailpit via API
         await self._verify_email_in_mailpit(
             to_email='test@example.com',
             expected_subject='Welcome to Imbi, Test User!',
@@ -114,16 +105,7 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
         expected_content_html: str,
         expected_content_text: str,
     ) -> None:
-        """Verify email was received by Mailpit.
-
-        Args:
-            to_email: Expected recipient email
-            expected_subject: Expected email subject
-            expected_content_html: Expected string in HTML body
-            expected_content_text: Expected string in text body
-
-        """
-        # Query Mailpit API for messages
+        """Verify email was received by Mailpit."""
         async with httpx.AsyncClient() as http_client:
             response = await http_client.get(
                 f'{self.mailpit_api_url}/api/v1/messages',
@@ -134,7 +116,6 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             data = response.json()
             messages = data.get('messages', [])
 
-            # Find message to our recipient
             message = None
             for msg in messages:
                 if any(
@@ -148,10 +129,8 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
                 f'No message found to {to_email} in Mailpit',
             )
 
-            # Verify subject
             self.assertEqual(message['Subject'], expected_subject)
 
-            # Get full message details
             message_id = message['ID']
             response = await http_client.get(
                 f'{self.mailpit_api_url}/api/v1/message/{message_id}',
@@ -161,7 +140,6 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
             full_message = response.json()
 
-            # Verify HTML content
             html_body = full_message.get('HTML', '')
             self.assertIn(
                 expected_content_html,
@@ -169,7 +147,6 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
                 'Expected content not found in HTML body',
             )
 
-            # Verify text content
             text_body = full_message.get('Text', '')
             self.assertIn(
                 expected_content_text,
@@ -177,7 +154,6 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
                 'Expected content not found in text body',
             )
 
-            # Verify both HTML and text parts exist
             self.assertTrue(html_body, 'HTML body is empty')
             self.assertTrue(text_body, 'Text body is empty')
 
@@ -191,20 +167,24 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_settings = mock_settings.return_value
             email_settings.enabled = False
 
+            email_client = client.EmailClient()
+            template_manager = templates.TemplateManager()
+
             with mock.patch('imbi_common.clickhouse.insert'):
                 audit = await email.send_welcome_email(
+                    email_client,
+                    template_manager,
                     username='testuser',
                     email='test@example.com',
                     display_name='Test User',
                     login_url='https://imbi.example.com/login',
                 )
 
-                # Verify email was skipped
                 self.assertEqual(audit.status, 'skipped')
                 self.assertEqual(audit.error_message, 'Email disabled')
 
     async def test_email_dry_run(self) -> None:
-        """Test that emails are logged but not sent in dry-run mode."""
+        """Test that emails are logged but not sent in dry-run."""
         from imbi_api import email
 
         with mock.patch(
@@ -214,15 +194,19 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_settings.enabled = True
             email_settings.dry_run = True
 
+            email_client = client.EmailClient()
+            template_manager = templates.TemplateManager()
+
             with mock.patch('imbi_common.clickhouse.insert'):
                 audit = await email.send_welcome_email(
+                    email_client,
+                    template_manager,
                     username='testuser',
                     email='test@example.com',
                     display_name='Test User',
                     login_url='https://imbi.example.com/login',
                 )
 
-                # Verify email was marked as dry-run
                 self.assertEqual(audit.status, 'dry_run')
                 self.assertEqual(audit.error_message, 'Dry run mode')
 
@@ -237,6 +221,9 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_settings.enabled = True
             email_settings.dry_run = True
 
+            email_client = client.EmailClient()
+            template_manager = templates.TemplateManager()
+
             with mock.patch('imbi_common.clickhouse.insert'):
                 with mock.patch(
                     'imbi_common.neo4j.create_node'
@@ -244,21 +231,20 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
                     mock_create.return_value = None
 
                     token, audit = await email.send_password_reset(
+                        email_client,
+                        template_manager,
                         username='testuser',
                         email='test@example.com',
                         display_name='Test User',
-                        reset_url_base='https://imbi.example.com/reset',
+                        reset_url_base=('https://imbi.example.com/reset'),
                     )
 
-                    # Verify token was created
                     self.assertEqual(token.email, 'test@example.com')
                     self.assertIsNotNone(token.token)
                     self.assertIsNotNone(token.expires_at)
 
-                    # Verify Neo4j create_node was called
                     mock_create.assert_called_once()
 
-                    # Verify audit record
                     self.assertEqual(audit.to_email, 'test@example.com')
                     self.assertEqual(audit.template_name, 'password_reset')
                     self.assertEqual(audit.status, 'dry_run')
@@ -276,26 +262,30 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_settings.enabled = True
             email_settings.dry_run = True
 
-            # Mock ClickHouse to raise an error
+            email_client = client.EmailClient()
+            template_manager = templates.TemplateManager()
+
             with mock.patch('imbi_common.clickhouse.insert') as mock_insert:
                 mock_insert.side_effect = clickhouse.client.DatabaseError(
                     'Connection failed'
                 )
 
-                # Email send should still succeed despite audit failure
                 audit = await email.send_welcome_email(
+                    email_client,
+                    template_manager,
                     username='testuser',
                     email='test@example.com',
                     display_name='Test User',
                     login_url='https://imbi.example.com/login',
                 )
 
-                # Verify email was still sent
                 self.assertEqual(audit.status, 'dry_run')
                 self.assertEqual(audit.to_email, 'test@example.com')
 
-    async def test_password_reset_url_with_existing_params(self) -> None:
-        """Test password reset URL handles existing query parameters."""
+    async def test_password_reset_url_with_existing_params(
+        self,
+    ) -> None:
+        """Test password reset URL handles existing query params."""
         from imbi_api import email
 
         with mock.patch(
@@ -305,42 +295,42 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             email_settings.enabled = True
             email_settings.dry_run = True
 
+            email_client = client.EmailClient()
+            template_manager = templates.TemplateManager()
+
             with mock.patch('imbi_common.clickhouse.insert'):
                 with mock.patch(
                     'imbi_common.neo4j.create_node'
                 ) as mock_create:
                     mock_create.return_value = None
 
-                    # Mock template manager to capture reset URL
-                    with mock.patch(
-                        'imbi_api.email.templates.TemplateManager.render_email'
+                    with mock.patch.object(
+                        template_manager,
+                        'render_email',
                     ) as mock_render:
-                        # Mock message with required attributes
                         mock_message = mock.MagicMock()
                         mock_message.to_email = 'test@example.com'
                         mock_message.template_name = 'password_reset'
                         mock_message.subject = 'Password Reset'
                         mock_render.return_value = mock_message
 
-                        # Test with URL that already has query params
                         base_url = (
                             'https://imbi.example.com/reset'
                             '?mode=secure&lang=en'
                         )
                         _token, _audit = await email.send_password_reset(
+                            email_client,
+                            template_manager,
                             username='testuser',
                             email='test@example.com',
                             display_name='Test User',
                             reset_url_base=base_url,
                         )
 
-                        # Verify template was called
                         mock_render.assert_called_once()
                         call_args = mock_render.call_args[0]
                         context = call_args[1]
 
-                        # Verify reset URL contains token and preserves
-                        # existing params
                         reset_url = context['reset_url']
                         self.assertIn('token=', reset_url)
                         self.assertIn('mode=secure', reset_url)

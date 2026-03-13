@@ -1,3 +1,5 @@
+export UV_FROZEN := "1"
+
 [doc("Bootstrap the environment and run the service in the foreground")]
 [group("Testing")]
 serve *ARGS: setup docker
@@ -66,6 +68,7 @@ docker:
 [group("Testing")]
 test: setup docker
     uv run pytest
+    uv run mypy -p imbi_api
 
 [doc("Run linters")]
 [group("Testing")]

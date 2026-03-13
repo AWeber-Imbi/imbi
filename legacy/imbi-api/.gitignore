@@ -4,6 +4,8 @@
 /public
 /site
 VERSION
+__pycache__/
+*.pyc
 !/.github
 !/.gitignore
 !/.pre-commit-config.yaml

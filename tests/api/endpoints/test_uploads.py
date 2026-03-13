@@ -7,6 +7,8 @@ from unittest import mock
 from fastapi import testclient
 
 from imbi_api import app, models
+from imbi_api.storage.client import StorageClient
+from imbi_api.storage.dependencies import _get_storage_client
 
 
 class UploadEndpointsTestCase(unittest.TestCase):
@@ -41,6 +43,16 @@ class UploadEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
+        # Create a mock storage client for DI override
+        self.mock_storage = mock.AsyncMock(spec=StorageClient)
+
+        def mock_get_storage():
+            return self.mock_storage
+
+        self.test_app.dependency_overrides[_get_storage_client] = (
+            mock_get_storage
+        )
+
         self.client = testclient.TestClient(self.test_app)
 
         self.test_upload = models.Upload(
@@ -55,7 +67,6 @@ class UploadEndpointsTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-    @mock.patch('imbi_api.endpoints.uploads.storage')
     @mock.patch('imbi_common.neo4j.upsert')
     @mock.patch(
         'imbi_api.endpoints.uploads.thumbnails.can_thumbnail',
@@ -69,11 +80,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
         mock_validate,
         mock_can_thumb,
         mock_upsert,
-        mock_storage,
     ) -> None:
         """Test successful file upload."""
         mock_upsert.return_value = 'element123'
-        mock_storage.upload = mock.AsyncMock()
 
         response = self.client.post(
             '/uploads/',
@@ -89,7 +98,7 @@ class UploadEndpointsTestCase(unittest.TestCase):
         self.assertEqual(data['size'], 11)
         self.assertFalse(data['has_thumbnail'])
         mock_validate.assert_called_once()
-        mock_storage.upload.assert_called_once()
+        self.mock_storage.upload.assert_called_once()
 
     @mock.patch(
         'imbi_api.endpoints.uploads.validation.validate_upload',
@@ -115,7 +124,6 @@ class UploadEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('bad file', response.json()['detail'])
 
-    @mock.patch('imbi_api.endpoints.uploads.storage')
     @mock.patch('imbi_common.neo4j.upsert')
     @mock.patch(
         'imbi_api.endpoints.uploads.thumbnails.can_thumbnail',
@@ -135,11 +143,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
         mock_gen_thumb,
         mock_can_thumb,
         mock_upsert,
-        mock_storage,
     ) -> None:
         """Test upload generates thumbnail for images."""
         mock_upsert.return_value = 'element123'
-        mock_storage.upload = mock.AsyncMock()
 
         response = self.client.post(
             '/uploads/',
@@ -152,7 +158,7 @@ class UploadEndpointsTestCase(unittest.TestCase):
         data = response.json()
         self.assertTrue(data['has_thumbnail'])
         # Two uploads: original + thumbnail
-        self.assertEqual(mock_storage.upload.call_count, 2)
+        self.assertEqual(self.mock_storage.upload.call_count, 2)
 
     def test_list_uploads_empty(self) -> None:
         """Test listing uploads when none exist."""
@@ -211,12 +217,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
             'image/png',
         )
 
-    @mock.patch('imbi_api.endpoints.uploads.storage')
-    def test_get_upload_serves_content(self, mock_storage) -> None:
+    def test_get_upload_serves_content(self) -> None:
         """Test getting upload serves file content."""
-        mock_storage.download = mock.AsyncMock(
-            return_value=b'file-data',
-        )
+        self.mock_storage.download.return_value = b'file-data'
 
         with mock.patch(
             'imbi_common.neo4j.fetch_node',
@@ -235,15 +238,14 @@ class UploadEndpointsTestCase(unittest.TestCase):
             response.headers['cache-control'],
         )
 
-    @mock.patch('imbi_api.endpoints.uploads.storage')
-    def test_get_upload_s3_missing(self, mock_storage) -> None:
+    def test_get_upload_s3_missing(self) -> None:
         """Test getting upload when S3 object is missing returns 404."""
         from botocore import (  # pyright: ignore[reportMissingTypeStubs]
             exceptions as botocore_exceptions,
         )
 
-        mock_storage.download = mock.AsyncMock(
-            side_effect=botocore_exceptions.ClientError(
+        self.mock_storage.download.side_effect = (
+            botocore_exceptions.ClientError(
                 {
                     'Error': {
                         'Code': 'NoSuchKey',
@@ -251,7 +253,7 @@ class UploadEndpointsTestCase(unittest.TestCase):
                     },
                 },
                 'GetObject',
-            ),
+            )
         )
 
         with mock.patch(
@@ -292,12 +294,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
         self.assertEqual(data['filename'], 'test.png')
         self.assertTrue(data['has_thumbnail'])
 
-    @mock.patch('imbi_api.endpoints.uploads.storage')
-    def test_get_thumbnail_serves_content(self, mock_storage) -> None:
+    def test_get_thumbnail_serves_content(self) -> None:
         """Test getting thumbnail serves image content."""
-        mock_storage.download = mock.AsyncMock(
-            return_value=b'thumb-data',
-        )
+        self.mock_storage.download.return_value = b'thumb-data'
 
         with mock.patch(
             'imbi_common.neo4j.fetch_node',
@@ -318,15 +317,14 @@ class UploadEndpointsTestCase(unittest.TestCase):
             response.headers['cache-control'],
         )
 
-    @mock.patch('imbi_api.endpoints.uploads.storage')
-    def test_get_thumbnail_s3_missing(self, mock_storage) -> None:
+    def test_get_thumbnail_s3_missing(self) -> None:
         """Test getting thumbnail when S3 object is missing."""
         from botocore import (  # pyright: ignore[reportMissingTypeStubs]
             exceptions as botocore_exceptions,
         )
 
-        mock_storage.download = mock.AsyncMock(
-            side_effect=botocore_exceptions.ClientError(
+        self.mock_storage.download.side_effect = (
+            botocore_exceptions.ClientError(
                 {
                     'Error': {
                         'Code': 'NoSuchKey',
@@ -334,7 +332,7 @@ class UploadEndpointsTestCase(unittest.TestCase):
                     },
                 },
                 'GetObject',
-            ),
+            )
         )
 
         with mock.patch(
@@ -378,11 +376,8 @@ class UploadEndpointsTestCase(unittest.TestCase):
             response.json()['detail'],
         )
 
-    @mock.patch('imbi_api.endpoints.uploads.storage')
-    def test_delete_upload(self, mock_storage) -> None:
+    def test_delete_upload(self) -> None:
         """Test deleting an upload."""
-        mock_storage.delete = mock.AsyncMock()
-
         with (
             mock.patch(
                 'imbi_common.neo4j.fetch_node',
@@ -399,7 +394,7 @@ class UploadEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 204)
         # Should delete original + thumbnail
-        self.assertEqual(mock_storage.delete.call_count, 2)
+        self.assertEqual(self.mock_storage.delete.call_count, 2)
 
     def test_delete_upload_not_found(self) -> None:
         """Test deleting non-existent upload returns 404."""
@@ -418,6 +413,15 @@ class UploadEndpointsTestCase(unittest.TestCase):
         from imbi_api.auth import permissions
 
         self.test_app.dependency_overrides.clear()
+
+        # Re-add storage override so we only test auth
+        def mock_get_storage():
+            return self.mock_storage
+
+        self.test_app.dependency_overrides[_get_storage_client] = (
+            mock_get_storage
+        )
+
         unauth_client = testclient.TestClient(self.test_app)
 
         response = unauth_client.get('/uploads/')

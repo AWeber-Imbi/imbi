@@ -10,19 +10,7 @@ class TemplateManagerTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
-        # Reset singleton for test isolation
-        templates.TemplateManager._instance = None
-        self.manager = templates.TemplateManager.get_instance()
-
-    def tearDown(self) -> None:
-        """Clean up test fixtures."""
-        templates.TemplateManager._instance = None
-
-    def test_singleton_pattern(self) -> None:
-        """Test TemplateManager uses singleton pattern."""
-        instance1 = templates.TemplateManager.get_instance()
-        instance2 = templates.TemplateManager.get_instance()
-        self.assertIs(instance1, instance2)
+        self.manager = templates.TemplateManager()
 
     def test_render_welcome_email_html(self) -> None:
         """Test rendering welcome email HTML."""

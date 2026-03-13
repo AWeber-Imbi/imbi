@@ -11,6 +11,7 @@ def create_app() -> fastapi.FastAPI:
         lifespan=Lifespan(
             lifespans.clickhouse_hook,
             lifespans.neo4j_hook,
+            lifespans.neo4j_setup_hook,
             lifespans.email_hook,
             lifespans.storage_hook,
         ),

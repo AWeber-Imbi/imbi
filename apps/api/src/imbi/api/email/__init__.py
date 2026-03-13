@@ -6,9 +6,8 @@ This module provides email sending capabilities including:
 - Email verification
 - Security alerts
 
-The module uses SMTP for email delivery with retry logic and dead letter queue
-for failed emails. All emails are rendered using Jinja2 templates with both
-HTML and plain text versions.
+The module uses SMTP for email delivery with retry logic. All emails are
+rendered using Jinja2 templates with both HTML and plain text versions.
 """
 
 import logging
@@ -16,55 +15,28 @@ from urllib import parse
 
 from imbi_common import clickhouse, neo4j
 
-from . import client, models, templates
+from .client import EmailClient
+from .dependencies import InjectEmailClient, InjectTemplateManager
+from .templates import TemplateManager
+
+from . import models  # isort: skip
 
 LOGGER = logging.getLogger(__name__)
 
 __all__ = [
-    'aclose',
-    'initialize',
+    'EmailClient',
+    'InjectEmailClient',
+    'InjectTemplateManager',
+    'TemplateManager',
     'send_password_reset',
     'send_welcome_email',
 ]
 
 
-async def initialize() -> None:
-    """Initialize the email module.
-
-    This should be called during application startup to:
-    - Validate email settings
-    - Initialize the email client singleton
-    - Initialize the template manager singleton
-
-    """
-    LOGGER.info('Initializing email module')
-
-    # Initialize singletons by getting instances
-    email_client = client.EmailClient.get_instance()
-    await email_client.initialize()
-    templates.TemplateManager.get_instance()
-
-    LOGGER.info('Email module initialized')
-
-
-async def aclose() -> None:
-    """Clean up email module resources.
-
-    This should be called during application shutdown.
-
-    """
-    LOGGER.info('Closing email module')
-
-    # Close and reset singletons
-    if client.EmailClient._instance is not None:  # pyright: ignore[reportPrivateUsage]
-        await client.EmailClient._instance.aclose()  # pyright: ignore[reportPrivateUsage]
-    client.EmailClient._instance = None  # pyright: ignore[reportPrivateUsage]
-    templates.TemplateManager._instance = None  # pyright: ignore[reportPrivateUsage]
-
-    LOGGER.info('Email module closed')
-
-
 async def send_welcome_email(
+    email_client: EmailClient,
+    template_manager: TemplateManager,
+    *,
     username: str,
     email: str,
     display_name: str,
@@ -73,6 +45,8 @@ async def send_welcome_email(
     """Send a welcome email to a new user.
 
     Args:
+        email_client: SMTP client for sending emails.
+        template_manager: Jinja2 template renderer.
         username: User's username
         email: User's email address
         display_name: User's display name for personalization
@@ -85,7 +59,6 @@ async def send_welcome_email(
     LOGGER.info('Sending welcome email to %s', email)
 
     # Render template
-    template_manager = templates.TemplateManager.get_instance()
     message = template_manager.render_email(
         'welcome',
         {
@@ -97,7 +70,6 @@ async def send_welcome_email(
     )
 
     # Send email
-    email_client = client.EmailClient.get_instance()
     audit = await email_client.send_email(message)
 
     # Save audit to ClickHouse
@@ -113,6 +85,9 @@ async def send_welcome_email(
 
 
 async def send_password_reset(
+    email_client: EmailClient,
+    template_manager: TemplateManager,
+    *,
     username: str,
     email: str,
     display_name: str,
@@ -121,6 +96,8 @@ async def send_password_reset(
     """Send a password reset email with a secure token.
 
     Args:
+        email_client: SMTP client for sending emails.
+        template_manager: Jinja2 template renderer.
         username: User's username
         email: User's email address
         display_name: User's display name for personalization
@@ -150,7 +127,6 @@ async def send_password_reset(
     reset_url = parse.urlunparse(parsed._replace(query=new_query))
 
     # Render template
-    template_manager = templates.TemplateManager.get_instance()
     message = template_manager.render_email(
         'password_reset',
         {
@@ -161,7 +137,6 @@ async def send_password_reset(
     )
 
     # Send email
-    email_client = client.EmailClient.get_instance()
     audit = await email_client.send_email(message)
 
     # Save audit to ClickHouse

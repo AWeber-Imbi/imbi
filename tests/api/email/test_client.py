@@ -13,9 +13,6 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         """Set up test fixtures."""
-        # Reset singleton for test isolation
-        client.EmailClient._instance = None
-
         # Mock settings
         self.mock_settings_patcher = mock.patch(
             'imbi_api.email.client.settings.Email'
@@ -52,15 +49,9 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.mock_settings_patcher.stop)
         self.addCleanup(self.smtp_patcher.stop)
 
-    async def test_singleton_pattern(self) -> None:
-        """Test EmailClient uses singleton pattern."""
-        instance1 = client.EmailClient.get_instance()
-        instance2 = client.EmailClient.get_instance()
-        self.assertIs(instance1, instance2)
-
     async def test_initialize_success(self) -> None:
         """Test successful email client initialization."""
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         self.assertTrue(email_client._initialized)
@@ -73,7 +64,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         """Test initialization when email sending is disabled."""
         self.mock_settings.enabled = False
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         self.assertTrue(email_client._initialized)
@@ -81,7 +72,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_initialize_idempotent(self) -> None:
         """Test initialize is idempotent (can be called multiple times)."""
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
         await email_client.initialize()
 
@@ -90,7 +81,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_send_email_success(self) -> None:
         """Test successful email sending."""
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         message = models.EmailMessage(
@@ -115,7 +106,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         """Test email sending when disabled."""
         self.mock_settings.enabled = False
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         message = models.EmailMessage(
             to_email='user@example.com',
             subject='Test',
@@ -135,7 +126,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         """Test email sending in dry run mode."""
         self.mock_settings.dry_run = True
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         message = models.EmailMessage(
             to_email='user@example.com',
             subject='Test',
@@ -159,7 +150,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
             'SMTP error'
         )
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         message = models.EmailMessage(
@@ -183,7 +174,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         """Test email sending with TLS."""
         self.mock_settings.smtp_use_tls = True
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         # Reset mock after initialization
@@ -208,7 +199,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_settings.smtp_username = 'testuser'
         self.mock_settings.smtp_password = 'testpass'
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         message = models.EmailMessage(
@@ -238,7 +229,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
                 mock_smtp_ssl
             )
 
-            email_client = client.EmailClient.get_instance()
+            email_client = client.EmailClient()
             await email_client.initialize()
 
             message = models.EmailMessage(
@@ -257,7 +248,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_aclose(self) -> None:
         """Test email client cleanup."""
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         self.assertTrue(email_client._initialized)
@@ -268,7 +259,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_create_audit(self) -> None:
         """Test audit record creation."""
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
 
         message = models.EmailMessage(
             to_email='user@example.com',
@@ -294,7 +285,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_settings.initial_retry_delay = 0.01
         self.mock_settings.retry_backoff_factor = 2.0
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         message = models.EmailMessage(
@@ -323,7 +314,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_settings.max_retries = 2
         self.mock_settings.initial_retry_delay = 0.01
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         message = models.EmailMessage(
@@ -354,7 +345,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_settings.initial_retry_delay = 0.1
         self.mock_settings.retry_backoff_factor = 2.0
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         message = models.EmailMessage(
@@ -393,7 +384,7 @@ class EmailClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.mock_settings.max_retries = 2
         self.mock_settings.initial_retry_delay = 0.01
 
-        email_client = client.EmailClient.get_instance()
+        email_client = client.EmailClient()
         await email_client.initialize()
 
         message = models.EmailMessage(

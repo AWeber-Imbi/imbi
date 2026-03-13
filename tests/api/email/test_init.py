@@ -1,92 +1,37 @@
-"""Tests for email module initialization and cleanup."""
+"""Tests for email module exports."""
 
 import unittest
-from unittest import mock
 
 from imbi_api import email
-from imbi_api.email import client, templates
+from imbi_api.email.client import EmailClient
+from imbi_api.email.dependencies import (
+    InjectEmailClient,
+    InjectTemplateManager,
+)
+from imbi_api.email.templates import TemplateManager
 
 
-class EmailModuleTestCase(unittest.IsolatedAsyncioTestCase):
-    """Test cases for email module-level functions."""
+class EmailModuleTestCase(unittest.TestCase):
+    """Test cases for email module public API."""
 
-    async def asyncSetUp(self) -> None:
-        """Set up test fixtures."""
-        # Reset singletons for test isolation
-        client.EmailClient._instance = None
-        templates.TemplateManager._instance = None
+    def test_exports_email_client(self) -> None:
+        self.assertIs(email.EmailClient, EmailClient)
 
-    async def test_initialize_success(self) -> None:
-        """Test successful email module initialization."""
-        with mock.patch(
-            'imbi_api.email.client.settings.Email'
-        ) as mock_settings:
-            email_settings = mock_settings.return_value
-            email_settings.enabled = False
+    def test_exports_template_manager(self) -> None:
+        self.assertIs(email.TemplateManager, TemplateManager)
 
-            await email.initialize()
+    def test_exports_inject_email_client(self) -> None:
+        self.assertIs(
+            email.InjectEmailClient,
+            InjectEmailClient,
+        )
 
-            # Verify singletons were created
-            self.assertIsNotNone(client.EmailClient._instance)
-            self.assertIsNotNone(templates.TemplateManager._instance)
-            self.assertTrue(client.EmailClient._instance._initialized)
+    def test_exports_inject_template_manager(self) -> None:
+        self.assertIs(
+            email.InjectTemplateManager,
+            InjectTemplateManager,
+        )
 
-    async def test_initialize_with_smtp_connection(self) -> None:
-        """Test email module initialization with SMTP connection."""
-        with mock.patch(
-            'imbi_api.email.client.settings.Email'
-        ) as mock_settings:
-            email_settings = mock_settings.return_value
-            email_settings.enabled = True
-            email_settings.smtp_host = 'localhost'
-            email_settings.smtp_port = 1025
-            email_settings.smtp_timeout = 30
-            email_settings.smtp_use_tls = False
-            email_settings.smtp_use_ssl = False
-
-            with mock.patch('smtplib.SMTP') as mock_smtp_class:
-                mock_smtp = mock.MagicMock()
-                mock_smtp_class.return_value.__enter__.return_value = mock_smtp
-
-                await email.initialize()
-
-                # Verify SMTP connection was tested
-                mock_smtp_class.assert_called_once_with(
-                    'localhost',
-                    1025,
-                    timeout=30,
-                )
-                mock_smtp.noop.assert_called_once()
-
-    async def test_aclose_with_initialized_instance(self) -> None:
-        """Test email module cleanup with initialized instance."""
-        with mock.patch(
-            'imbi_api.email.client.settings.Email'
-        ) as mock_settings:
-            email_settings = mock_settings.return_value
-            email_settings.enabled = False
-
-            # Initialize first
-            await email.initialize()
-            self.assertIsNotNone(client.EmailClient._instance)
-            self.assertIsNotNone(templates.TemplateManager._instance)
-
-            # Clean up
-            await email.aclose()
-
-            # Verify singletons were reset
-            self.assertIsNone(client.EmailClient._instance)
-            self.assertIsNone(templates.TemplateManager._instance)
-
-    async def test_aclose_without_initialized_instance(self) -> None:
-        """Test email module cleanup without initialized instance."""
-        # Ensure singletons are None
-        client.EmailClient._instance = None
-        templates.TemplateManager._instance = None
-
-        # Should not raise an error
-        await email.aclose()
-
-        # Verify singletons remain None
-        self.assertIsNone(client.EmailClient._instance)
-        self.assertIsNone(templates.TemplateManager._instance)
+    def test_exports_send_functions(self) -> None:
+        self.assertTrue(callable(email.send_welcome_email))
+        self.assertTrue(callable(email.send_password_reset))

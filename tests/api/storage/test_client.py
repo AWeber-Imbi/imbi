@@ -6,40 +6,13 @@ from unittest import mock
 from imbi_api.storage import client
 
 
-class StorageClientSingletonTestCase(unittest.TestCase):
-    """Test cases for StorageClient singleton pattern."""
-
-    def setUp(self) -> None:
-        client.StorageClient._instance = None
-
-    def tearDown(self) -> None:
-        client.StorageClient._instance = None
-
-    def test_get_instance_creates_singleton(self) -> None:
-        """Test that get_instance creates a singleton."""
-        instance1 = client.StorageClient.get_instance()
-        instance2 = client.StorageClient.get_instance()
-        self.assertIs(instance1, instance2)
-
-    def test_get_instance_returns_new_after_reset(self) -> None:
-        """Test that resetting creates a new instance."""
-        instance1 = client.StorageClient.get_instance()
-        client.StorageClient._instance = None
-        instance2 = client.StorageClient.get_instance()
-        self.assertIsNot(instance1, instance2)
-
-
 class StorageClientOperationsTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     """Test cases for StorageClient S3 operations."""
 
     async def asyncSetUp(self) -> None:
-        client.StorageClient._instance = None
-        self.client = client.StorageClient.get_instance()
-
-    async def asyncTearDown(self) -> None:
-        client.StorageClient._instance = None
+        self.client = client.StorageClient()
 
     async def test_initialize_creates_bucket(self) -> None:
         """Test that initialize creates the bucket."""

@@ -16,32 +16,20 @@ LOGGER = logging.getLogger(__name__)
 
 
 class EmailClient:
-    """Singleton SMTP client for sending emails.
+    """SMTP client for sending emails.
 
     The client uses Python's smtplib to send emails via SMTP. Operations
     run in an executor to avoid blocking the event loop. The client supports
     TLS/SSL connections and can be configured via Email settings.
 
-    """
+    Lifecycle is managed by :func:`imbi_api.lifespans.email_hook`.
 
-    _instance: typing.ClassVar['EmailClient | None'] = None
-    _lock: typing.ClassVar[asyncio.Lock] = asyncio.Lock()
+    """
 
     def __init__(self) -> None:
         self._settings = settings.Email()
         self._initialized = False
-
-    @classmethod
-    def get_instance(cls) -> 'EmailClient':
-        """Get the singleton EmailClient instance.
-
-        Returns:
-            The singleton EmailClient instance.
-
-        """
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
+        self._lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """Initialize the email client and verify SMTP connection.

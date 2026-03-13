@@ -16,14 +16,13 @@ LOGGER = logging.getLogger(__name__)
 class TemplateManager:
     """Manages Jinja2 email templates with HTML and plain text rendering.
 
-    The TemplateManager is a singleton that loads email templates from the
-    templates directory and renders them with context variables. It supports
-    both HTML and plain text versions of emails, with automatic HTML-to-text
-    conversion as a fallback.
+    Loads email templates from the templates directory and renders them
+    with context variables. Supports both HTML and plain text versions
+    of emails, with automatic HTML-to-text conversion as a fallback.
+
+    Lifecycle is managed by :func:`imbi_api.lifespans.email_hook`.
 
     """
-
-    _instance: typing.ClassVar['TemplateManager | None'] = None
 
     def __init__(self) -> None:
         template_dir = pathlib.Path(__file__).parent / 'templates'
@@ -36,18 +35,6 @@ class TemplateManager:
 
         # Add custom filters
         self._env.filters['strip_html'] = self._html_to_text
-
-    @classmethod
-    def get_instance(cls) -> 'TemplateManager':
-        """Get the singleton TemplateManager instance.
-
-        Returns:
-            The singleton TemplateManager instance.
-
-        """
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
 
     def render_email(
         self,
