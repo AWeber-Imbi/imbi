@@ -22,6 +22,39 @@ LOGGER = logging.getLogger(__name__)
 api_keys_router = fastapi.APIRouter(prefix='/api-keys', tags=['API Keys'])
 
 
+@typing.overload
+def _to_datetime(value: None) -> None: ...
+
+
+@typing.overload
+def _to_datetime(value: datetime.datetime) -> datetime.datetime: ...
+
+
+@typing.overload
+def _to_datetime(value: typing.Any) -> datetime.datetime | None: ...
+
+
+def _to_datetime(
+    value: typing.Any,
+) -> datetime.datetime | None:
+    """Convert a Neo4j DateTime to a Python datetime.
+
+    The Neo4j driver returns ``neo4j.time.DateTime`` objects that
+    Pydantic cannot coerce directly. This helper calls
+    ``.to_native()`` when the value is not already a stdlib
+    ``datetime``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value
+    # neo4j.time.DateTime exposes .to_native()
+    if hasattr(value, 'to_native'):
+        native: datetime.datetime = value.to_native()
+        return native
+    return typing.cast(datetime.datetime, value)
+
+
 class APIKeyCreate(pydantic.BaseModel):
     """Request model for creating an API key."""
 
@@ -204,10 +237,10 @@ async def list_api_keys(
             name=record['k']['name'],
             description=record['k'].get('description'),
             scopes=record['k'].get('scopes', []),
-            created_at=record['k']['created_at'],
-            expires_at=record['k'].get('expires_at'),
-            last_used=record['k'].get('last_used'),
-            last_rotated=record['k'].get('last_rotated'),
+            created_at=_to_datetime(record['k']['created_at']),
+            expires_at=_to_datetime(record['k'].get('expires_at')),
+            last_used=_to_datetime(record['k'].get('last_used')),
+            last_rotated=_to_datetime(record['k'].get('last_rotated')),
             revoked=record['k'].get('revoked', False),
         )
         for record in records
@@ -344,5 +377,5 @@ async def rotate_api_key(
         name=api_key_data['name'],
         description=api_key_data.get('description'),
         scopes=api_key_data.get('scopes', []),
-        expires_at=api_key_data.get('expires_at'),
+        expires_at=_to_datetime(api_key_data.get('expires_at')),
     )
