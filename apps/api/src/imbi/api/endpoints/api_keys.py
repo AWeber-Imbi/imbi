@@ -13,6 +13,7 @@ import typing
 import fastapi
 import pydantic
 from imbi_common import neo4j
+from imbi_common.neo4j import convert_neo4j_types
 
 from imbi_api import models, settings
 from imbi_api.auth import password, permissions
@@ -200,17 +201,18 @@ async def list_api_keys(
 
     api_keys = [
         APIKeyResponse(
-            key_id=record['k']['key_id'],
-            name=record['k']['name'],
-            description=record['k'].get('description'),
-            scopes=record['k'].get('scopes', []),
-            created_at=record['k']['created_at'],
-            expires_at=record['k'].get('expires_at'),
-            last_used=record['k'].get('last_used'),
-            last_rotated=record['k'].get('last_rotated'),
-            revoked=record['k'].get('revoked', False),
+            key_id=k['key_id'],
+            name=k['name'],
+            description=k.get('description'),
+            scopes=k.get('scopes', []),
+            created_at=k['created_at'],
+            expires_at=k.get('expires_at'),
+            last_used=k.get('last_used'),
+            last_rotated=k.get('last_rotated'),
+            revoked=k.get('revoked', False),
         )
         for record in records
+        for k in [convert_neo4j_types(record['k'])]
     ]
 
     LOGGER.debug(
@@ -312,7 +314,7 @@ async def rotate_api_key(
             status_code=404, detail='API key not found or not owned by user'
         )
 
-    api_key_data = records[0]['k']
+    api_key_data = convert_neo4j_types(records[0]['k'])
 
     if api_key_data.get('revoked', False):
         raise fastapi.HTTPException(

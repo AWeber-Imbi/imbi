@@ -34,7 +34,7 @@ dependencies = [
   "imbi-common",
   "fastapi",
   "httpx>=0.28.1",
-  "orjson",
+  "orjson>=3.11.6",
   "Pillow",
   "pydantic[email]",
   "python-multipart>=0.0.22",

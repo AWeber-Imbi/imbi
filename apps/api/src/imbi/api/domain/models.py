@@ -339,9 +339,9 @@ class APIKey(pydantic.BaseModel):
     revoked_at: datetime.datetime | None = None
 
     user: typing.Annotated[
-        User,
+        User | None,
         cypherantic.Relationship(rel_type='OWNED_BY', direction='OUTGOING'),
-    ]
+    ] = None
 
 
 class Upload(pydantic.BaseModel):
