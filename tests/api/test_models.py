@@ -1,8 +1,10 @@
 import unittest
+from unittest import mock
 
 import pydantic
 
 from imbi_api import models
+from imbi_api.domain import models as domain_models
 
 
 class BlueprintModelTestCase(unittest.TestCase):
@@ -16,11 +18,13 @@ class BlueprintModelTestCase(unittest.TestCase):
             'type': 'object',
             'properties': {'foo': {'type': 'string'}},
         }
-        blueprint = models.Blueprint(
-            name='Test Blueprint',
-            type='Environment',
-            description='A test blueprint',
-            json_schema=models.Schema.model_validate(schema),
+        blueprint = models.Blueprint.model_validate(
+            {
+                'name': 'Test Blueprint',
+                'type': 'Environment',
+                'description': 'A test blueprint',
+                'json_schema': models.Schema.model_validate(schema),
+            }
         )
         self.assertEqual(blueprint.name, 'Test Blueprint')
         self.assertEqual(blueprint.type, 'Environment')
@@ -35,48 +39,56 @@ class BlueprintModelTestCase(unittest.TestCase):
     def test_blueprint_validation(self) -> None:
         """Test Blueprint model validation."""
         with self.assertRaises(pydantic.ValidationError):
-            models.Blueprint(
-                name='Test', description='test'
+            models.Blueprint.model_validate(
+                {'name': 'Test', 'description': 'test'},
             )  # Missing type and json_schema
 
     def test_blueprint_slug_auto_generation(self) -> None:
         """Test that slug is auto-generated from name."""
         schema = {'type': 'object', 'properties': {}}
-        blueprint = models.Blueprint(
-            name='My Test Blueprint',
-            type='Project',
-            json_schema=models.Schema.model_validate(schema),
+        blueprint = models.Blueprint.model_validate(
+            {
+                'name': 'My Test Blueprint',
+                'type': 'Project',
+                'json_schema': models.Schema.model_validate(schema),
+            }
         )
         self.assertEqual(blueprint.slug, 'my-test-blueprint')
 
     def test_blueprint_slug_explicit(self) -> None:
         """Test setting slug explicitly."""
         schema = {'type': 'object', 'properties': {}}
-        blueprint = models.Blueprint(
-            name='Test Blueprint',
-            slug='custom-slug',
-            type='Project',
-            json_schema=models.Schema.model_validate(schema),
+        blueprint = models.Blueprint.model_validate(
+            {
+                'name': 'Test Blueprint',
+                'slug': 'custom-slug',
+                'type': 'Project',
+                'json_schema': models.Schema.model_validate(schema),
+            }
         )
         self.assertEqual(blueprint.slug, 'custom-slug')
 
     def test_blueprint_slug_special_characters(self) -> None:
         """Test slug generation with special characters."""
         schema = {'type': 'object', 'properties': {}}
-        blueprint = models.Blueprint(
-            name='Test & Blueprint #1',
-            type='Project',
-            json_schema=models.Schema.model_validate(schema),
+        blueprint = models.Blueprint.model_validate(
+            {
+                'name': 'Test & Blueprint #1',
+                'type': 'Project',
+                'json_schema': models.Schema.model_validate(schema),
+            }
         )
         self.assertEqual(blueprint.slug, 'test-blueprint-1')
 
     def test_blueprint_slug_unicode(self) -> None:
         """Test slug generation with Unicode characters."""
         schema = {'type': 'object', 'properties': {}}
-        blueprint = models.Blueprint(
-            name='Café Blueprint',
-            type='Project',
-            json_schema=models.Schema.model_validate(schema),
+        blueprint = models.Blueprint.model_validate(
+            {
+                'name': 'Café Blueprint',
+                'type': 'Project',
+                'json_schema': models.Schema.model_validate(schema),
+            }
         )
         self.assertEqual(blueprint.slug, 'cafe-blueprint')
 
@@ -84,11 +96,13 @@ class BlueprintModelTestCase(unittest.TestCase):
         """Test that invalid characters in explicit slug raise error."""
         schema = {'type': 'object', 'properties': {}}
         with self.assertRaises(pydantic.ValidationError) as ctx:
-            models.Blueprint(
-                name='Test',
-                slug='invalid slug!',
-                type='Project',
-                json_schema=models.Schema.model_validate(schema),
+            models.Blueprint.model_validate(
+                {
+                    'name': 'Test',
+                    'slug': 'invalid slug!',
+                    'type': 'Project',
+                    'json_schema': models.Schema.model_validate(schema),
+                }
             )
         self.assertIn('Slug must contain only', str(ctx.exception))
 
@@ -96,11 +110,13 @@ class BlueprintModelTestCase(unittest.TestCase):
         """Test that empty slug raises error."""
         schema = {'type': 'object', 'properties': {}}
         with self.assertRaises(pydantic.ValidationError) as ctx:
-            models.Blueprint(
-                name='Test',
-                slug='',
-                type='Project',
-                json_schema=models.Schema.model_validate(schema),
+            models.Blueprint.model_validate(
+                {
+                    'name': 'Test',
+                    'slug': '',
+                    'type': 'Project',
+                    'json_schema': models.Schema.model_validate(schema),
+                }
             )
         self.assertIn('Slug cannot be empty', str(ctx.exception))
 
@@ -110,10 +126,12 @@ class NodeModelTestCase(unittest.TestCase):
 
     def test_organization_creation(self) -> None:
         """Test creating an Organization model."""
-        org = models.Organization(
-            name='ACME Corp',
-            slug='acme',
-            description='Test organization',
+        org = models.Organization.model_validate(
+            {
+                'name': 'ACME Corp',
+                'slug': 'acme',
+                'description': 'Test organization',
+            }
         )
         self.assertEqual(org.name, 'ACME Corp')
         self.assertEqual(org.slug, 'acme')
@@ -121,12 +139,16 @@ class NodeModelTestCase(unittest.TestCase):
 
     def test_environment_creation(self) -> None:
         """Test creating an Environment model."""
-        org = models.Organization(name='Org', slug='org')
-        env = models.Environment(
-            name='Production',
-            slug='prod',
-            description='Production environment',
-            organization=org,
+        org = models.Organization.model_validate(
+            {'name': 'Org', 'slug': 'org'},
+        )
+        env = models.Environment.model_validate(
+            {
+                'name': 'Production',
+                'slug': 'prod',
+                'description': 'Production environment',
+                'organization': org,
+            }
         )
         self.assertEqual(env.name, 'Production')
         self.assertEqual(env.slug, 'prod')
@@ -134,21 +156,30 @@ class NodeModelTestCase(unittest.TestCase):
 
     def test_project_type_creation(self) -> None:
         """Test creating a ProjectType model."""
-        org = models.Organization(name='Org', slug='org')
-        project_type = models.ProjectType(
-            name='Web Service',
-            slug='web-service',
-            description='HTTP-based services',
-            organization=org,
+        org = models.Organization.model_validate(
+            {'name': 'Org', 'slug': 'org'},
+        )
+        project_type = models.ProjectType.model_validate(
+            {
+                'name': 'Web Service',
+                'slug': 'web-service',
+                'description': 'HTTP-based services',
+                'organization': org,
+            }
         )
         self.assertEqual(project_type.name, 'Web Service')
         self.assertEqual(project_type.slug, 'web-service')
-        self.assertEqual(project_type.description, 'HTTP-based services')
+        self.assertEqual(
+            project_type.description,
+            'HTTP-based services',
+        )
 
     def test_node_validation(self) -> None:
         """Test Node model validation."""
         with self.assertRaises(pydantic.ValidationError):
-            models.Environment(name='Test')  # Missing slug
+            models.Environment.model_validate(
+                {'name': 'Test'},
+            )  # Missing slug
 
 
 class ProjectModelTestCase(unittest.TestCase):
@@ -157,25 +188,344 @@ class ProjectModelTestCase(unittest.TestCase):
     def test_project_url_validation(self) -> None:
         """Test Project URL validation."""
         # Create minimal valid related objects
-        org = models.Organization(name='Org', slug='org')
-        team = models.Team(
-            name='Team',
-            slug='team',
-            organization=org,
+        org = models.Organization.model_validate(
+            {'name': 'Org', 'slug': 'org'},
         )
-        project_type = models.ProjectType(
-            name='Type',
-            slug='type',
-            organization=org,
+        team = models.Team.model_validate(
+            {
+                'name': 'Team',
+                'slug': 'team',
+                'organization': org,
+            }
+        )
+        project_type = models.ProjectType.model_validate(
+            {
+                'name': 'Type',
+                'slug': 'type',
+                'organization': org,
+            }
         )
 
         with self.assertRaises(pydantic.ValidationError):
-            models.Project(
-                name='Test',
-                slug='test',
-                team=team,
-                project_type=project_type,
-                links={'repo': 'not-a-url'},  # type: ignore[arg-type]
-                urls={},
-                identifiers={},
+            models.Project.model_validate(
+                {
+                    'name': 'Test',
+                    'slug': 'test',
+                    'team': team,
+                    'project_type': project_type,
+                    'links': {'repo': 'not-a-url'},
+                    'urls': {},
+                    'identifiers': {},
+                }
             )
+
+
+class ThirdPartyServiceModelTestCase(unittest.TestCase):
+    """Test cases for ThirdPartyService model."""
+
+    def setUp(self) -> None:
+        self.org = models.Organization.model_validate(
+            {
+                'name': 'Engineering',
+                'slug': 'engineering',
+            }
+        )
+
+    def test_creation_minimal(self) -> None:
+        svc = domain_models.ThirdPartyService.model_validate(
+            {
+                'name': 'Stripe',
+                'slug': 'stripe',
+                'vendor': 'Stripe Inc',
+                'organization': self.org,
+            }
+        )
+        self.assertEqual(svc.name, 'Stripe')
+        self.assertEqual(svc.vendor, 'Stripe Inc')
+        self.assertEqual(svc.status, 'active')
+        self.assertIsNone(svc.team)
+        self.assertIsNone(svc.service_url)
+        self.assertIsNone(svc.category)
+        self.assertEqual(svc.links, {})
+        self.assertEqual(svc.identifiers, {})
+
+    def test_creation_full(self) -> None:
+        team = models.Team.model_validate(
+            {
+                'name': 'Backend',
+                'slug': 'backend',
+                'organization': self.org,
+            }
+        )
+        svc = domain_models.ThirdPartyService.model_validate(
+            {
+                'name': 'Datadog',
+                'slug': 'datadog',
+                'vendor': 'Datadog Inc',
+                'organization': self.org,
+                'team': team,
+                'service_url': 'https://app.datadoghq.com',
+                'category': 'observability',
+                'status': 'evaluating',
+                'identifiers': {'account_id': 'abc123'},
+            }
+        )
+        self.assertEqual(svc.status, 'evaluating')
+        self.assertEqual(svc.category, 'observability')
+        self.assertIsNotNone(svc.team)
+        self.assertIsNotNone(svc.service_url)
+
+    def test_invalid_status(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.ThirdPartyService.model_validate(
+                {
+                    'name': 'Stripe',
+                    'slug': 'stripe',
+                    'vendor': 'Stripe Inc',
+                    'organization': self.org,
+                    'status': 'bogus',
+                }
+            )
+
+    def test_missing_required_fields(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.ThirdPartyService.model_validate(
+                {
+                    'name': 'Stripe',
+                    'slug': 'stripe',
+                    'organization': self.org,
+                    # Missing vendor
+                }
+            )
+
+
+class ServiceApplicationModelTestCase(unittest.TestCase):
+    """Test cases for ServiceApplication model."""
+
+    def _make_app(
+        self,
+        **overrides: object,
+    ) -> domain_models.ServiceApplication:
+        defaults: dict[str, object] = {
+            'slug': 'my-app',
+            'name': 'My App',
+            'app_type': 'github_app',
+            'client_id': 'cid-123',
+            'client_secret': 'plaintext-secret',
+        }
+        defaults.update(overrides)
+        return domain_models.ServiceApplication.model_validate(
+            defaults,
+        )
+
+    def test_creation_minimal(self) -> None:
+        app = self._make_app()
+        self.assertEqual(app.slug, 'my-app')
+        self.assertEqual(app.status, 'active')
+        self.assertEqual(app.scopes, [])
+        self.assertEqual(app.settings, {})
+        self.assertIsNone(app.webhook_secret)
+        self.assertIsNone(app.private_key)
+        self.assertIsNone(app.signing_secret)
+
+    def test_extra_fields_ignored(self) -> None:
+        app = domain_models.ServiceApplication.model_validate(
+            {
+                'slug': 'x',
+                'name': 'X',
+                'app_type': 't',
+                'client_id': 'c',
+                'client_secret': 's',
+                'unknown_field': 'ignored',
+            }
+        )
+        self.assertFalse(hasattr(app, 'unknown_field'))
+
+    def test_encrypt_secrets_client_only(self) -> None:
+        encryptor = mock.MagicMock()
+        encryptor.encrypt.side_effect = lambda v: f'enc:{v}'
+
+        app = self._make_app()
+        app.encrypt_secrets(encryptor)
+
+        self.assertEqual(app.client_secret, 'enc:plaintext-secret')
+        encryptor.encrypt.assert_called_once_with(
+            'plaintext-secret',
+        )
+
+    def test_encrypt_secrets_all_fields(self) -> None:
+        encryptor = mock.MagicMock()
+        encryptor.encrypt.side_effect = lambda v: f'enc:{v}'
+
+        app = self._make_app(
+            webhook_secret='wh-secret',
+            private_key='pk-data',
+            signing_secret='sig-data',
+        )
+        app.encrypt_secrets(encryptor)
+
+        self.assertEqual(app.client_secret, 'enc:plaintext-secret')
+        self.assertEqual(app.webhook_secret, 'enc:wh-secret')
+        self.assertEqual(app.private_key, 'enc:pk-data')
+        self.assertEqual(app.signing_secret, 'enc:sig-data')
+        self.assertEqual(encryptor.encrypt.call_count, 4)
+
+    def test_encrypt_secrets_skips_none(self) -> None:
+        encryptor = mock.MagicMock()
+        encryptor.encrypt.side_effect = lambda v: f'enc:{v}'
+
+        app = self._make_app(
+            webhook_secret=None,
+            private_key=None,
+            signing_secret=None,
+        )
+        app.encrypt_secrets(encryptor)
+
+        # Only client_secret encrypted
+        encryptor.encrypt.assert_called_once()
+        self.assertIsNone(app.webhook_secret)
+        self.assertIsNone(app.private_key)
+        self.assertIsNone(app.signing_secret)
+
+    def test_mask_secrets_client_only(self) -> None:
+        app = self._make_app()
+        app.mask_secrets()
+
+        self.assertEqual(app.client_secret, domain_models.SECRET_MASK)
+        self.assertIsNone(app.webhook_secret)
+        self.assertIsNone(app.private_key)
+        self.assertIsNone(app.signing_secret)
+
+    def test_mask_secrets_all_fields(self) -> None:
+        app = self._make_app(
+            webhook_secret='encrypted-wh',
+            private_key='encrypted-pk',
+            signing_secret='encrypted-sig',
+        )
+        app.mask_secrets()
+
+        self.assertEqual(app.client_secret, domain_models.SECRET_MASK)
+        self.assertEqual(
+            app.webhook_secret,
+            domain_models.SECRET_MASK,
+        )
+        self.assertEqual(
+            app.private_key,
+            domain_models.SECRET_MASK,
+        )
+        self.assertEqual(
+            app.signing_secret,
+            domain_models.SECRET_MASK,
+        )
+
+    def test_mask_secrets_skips_none(self) -> None:
+        app = self._make_app()
+        app.mask_secrets()
+
+        self.assertIsNone(app.webhook_secret)
+        self.assertIsNone(app.private_key)
+        self.assertIsNone(app.signing_secret)
+
+
+class ServiceApplicationCreateModelTestCase(unittest.TestCase):
+    """Test cases for ServiceApplicationCreate validation."""
+
+    def _valid_payload(
+        self,
+        **overrides: object,
+    ) -> dict[str, object]:
+        defaults: dict[str, object] = {
+            'slug': 'my-app',
+            'name': 'My App',
+            'app_type': 'github_app',
+            'client_id': 'cid-123',
+            'client_secret': 'secret-value',
+        }
+        defaults.update(overrides)
+        return defaults
+
+    def test_valid_creation(self) -> None:
+        obj = domain_models.ServiceApplicationCreate.model_validate(
+            self._valid_payload(),
+        )
+        self.assertEqual(obj.slug, 'my-app')
+        self.assertEqual(obj.status, 'active')
+        self.assertEqual(obj.scopes, [])
+        self.assertEqual(obj.settings, {})
+
+    def test_slug_pattern_rejects_uppercase(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.ServiceApplicationCreate.model_validate(
+                self._valid_payload(slug='Bad-Slug'),
+            )
+
+    def test_slug_pattern_rejects_leading_digit(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.ServiceApplicationCreate.model_validate(
+                self._valid_payload(slug='1-bad'),
+            )
+
+    def test_slug_too_short(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.ServiceApplicationCreate.model_validate(
+                self._valid_payload(slug='x'),
+            )
+
+    def test_empty_name_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.ServiceApplicationCreate.model_validate(
+                self._valid_payload(name=''),
+            )
+
+    def test_empty_client_secret_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.ServiceApplicationCreate.model_validate(
+                self._valid_payload(client_secret=''),
+            )
+
+    def test_invalid_status_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.ServiceApplicationCreate.model_validate(
+                self._valid_payload(status='bogus'),
+            )
+
+    def test_optional_fields(self) -> None:
+        obj = domain_models.ServiceApplicationCreate.model_validate(
+            self._valid_payload(
+                description='A test app',
+                application_url='https://example.com',
+                scopes=['read', 'write'],
+                webhook_secret='wh',
+                private_key='pk',
+                signing_secret='sig',
+                settings={'debug': True},
+                status='inactive',
+            ),
+        )
+        self.assertEqual(obj.description, 'A test app')
+        self.assertEqual(obj.scopes, ['read', 'write'])
+        self.assertEqual(obj.status, 'inactive')
+
+
+class ServiceApplicationResponseModelTestCase(unittest.TestCase):
+    """Test cases for ServiceApplicationResponse model."""
+
+    def test_defaults(self) -> None:
+        resp = domain_models.ServiceApplicationResponse.model_validate(
+            {
+                'slug': 'my-app',
+                'name': 'My App',
+                'app_type': 'github_app',
+                'client_id': 'cid-123',
+            }
+        )
+        self.assertEqual(
+            resp.client_secret,
+            domain_models.SECRET_MASK,
+        )
+        self.assertEqual(resp.scopes, [])
+        self.assertEqual(resp.settings, {})
+        self.assertEqual(resp.status, 'active')
+        self.assertIsNone(resp.webhook_secret)
+        self.assertIsNone(resp.private_key)
+        self.assertIsNone(resp.signing_secret)

@@ -37,6 +37,16 @@ INDEXES: list[typing.LiteralString] = [
     'FOR (n:APIKey) REQUIRE n.key_id IS UNIQUE;',
     'CREATE INDEX api_key_revoked IF NOT EXISTS '
     'FOR (n:APIKey) ON (n.revoked);',
+    # Third-Party Services
+    'CREATE CONSTRAINT third_party_service_slug_unique IF NOT EXISTS '
+    'FOR (n:ThirdPartyService) REQUIRE n.slug IS UNIQUE;',
+    'CREATE INDEX third_party_service_status IF NOT EXISTS '
+    'FOR (n:ThirdPartyService) ON (n.status);',
+    # Service Applications
+    'CREATE INDEX service_app_slug IF NOT EXISTS '
+    'FOR (n:ServiceApplication) ON (n.slug);',
+    'CREATE INDEX service_app_status IF NOT EXISTS '
+    'FOR (n:ServiceApplication) ON (n.status);',
     # Uploads
     'CREATE CONSTRAINT upload_id_unique IF NOT EXISTS '
     'FOR (n:Upload) REQUIRE n.id IS UNIQUE;',

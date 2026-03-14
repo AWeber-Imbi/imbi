@@ -30,6 +30,7 @@ Schema = _common.Schema
 Team = _common.Team
 
 # API-specific models from imbi_api.domain
+ThirdPartyService = _domain.ThirdPartyService
 APIKey = _domain.APIKey
 ClientCredential = _domain.ClientCredential
 ClientCredentialCreate = _domain.ClientCredentialCreate
@@ -48,6 +49,9 @@ Role = _domain.Role
 ServiceAccount = _domain.ServiceAccount
 ServiceAccountCreate = _domain.ServiceAccountCreate
 ServiceAccountResponse = _domain.ServiceAccountResponse
+ServiceApplication = _domain.ServiceApplication
+ServiceApplicationCreate = _domain.ServiceApplicationCreate
+ServiceApplicationResponse = _domain.ServiceApplicationResponse
 Session = _domain.Session
 TOTPSecret = _domain.TOTPSecret
 TokenMetadata = _domain.TokenMetadata

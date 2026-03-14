@@ -49,6 +49,31 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('project_type:read', 'project_type', 'read', 'View project types'),
     ('project_type:update', 'project_type', 'update', 'Update project types'),
     ('project_type:delete', 'project_type', 'delete', 'Delete project types'),
+    # Third-party service management
+    (
+        'third_party_service:create',
+        'third_party_service',
+        'create',
+        'Create third-party services',
+    ),
+    (
+        'third_party_service:read',
+        'third_party_service',
+        'read',
+        'View third-party services',
+    ),
+    (
+        'third_party_service:update',
+        'third_party_service',
+        'update',
+        'Update third-party services',
+    ),
+    (
+        'third_party_service:delete',
+        'third_party_service',
+        'delete',
+        'Delete third-party services',
+    ),
     # Upload management
     ('upload:create', 'upload', 'create', 'Upload files'),
     ('upload:read', 'upload', 'read', 'View and download uploads'),
@@ -106,6 +131,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'team:read',
             'team:update',
             'user:read',
+            'third_party_service:read',
+            'third_party_service:update',
             'upload:create',
             'upload:read',
         ],
@@ -122,6 +149,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'project_type:read',
             'organization:read',
             'team:read',
+            'third_party_service:read',
             'user:read',
             'role:read',
             'upload:read',

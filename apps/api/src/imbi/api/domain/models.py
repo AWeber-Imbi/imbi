@@ -32,8 +32,12 @@ __all__ = [
     'ServiceAccount',
     'ServiceAccountCreate',
     'ServiceAccountResponse',
+    'ServiceApplication',
+    'ServiceApplicationCreate',
+    'ServiceApplicationResponse',
     'Session',
     'TOTPSecret',
+    'ThirdPartyService',
     'TokenMetadata',
     'Upload',
     'User',
@@ -547,6 +551,128 @@ class ClientCredentialCreateResponse(pydantic.BaseModel):
     description: str | None = None
     scopes: list[str] = []
     expires_at: datetime.datetime | None = None
+
+
+class ThirdPartyService(models.Node):  # type: ignore[misc]
+    """An external SaaS platform or managed service.
+
+    Examples: Lob, FullStory, Stripe, Datadog, PagerDuty.
+    """
+
+    organization: typing.Annotated[
+        models.Organization,
+        cypherantic.Relationship(
+            rel_type='BELONGS_TO',
+            direction='OUTGOING',
+        ),
+    ]
+    team: typing.Annotated[
+        models.Team | None,
+        cypherantic.Relationship(
+            rel_type='MANAGED_BY',
+            direction='OUTGOING',
+        ),
+    ] = None
+    vendor: str
+    service_url: pydantic.HttpUrl | None = None
+    category: str | None = None
+    status: typing.Literal[
+        'active',
+        'deprecated',
+        'evaluating',
+        'inactive',
+    ] = 'active'
+    links: dict[str, pydantic.HttpUrl] = {}  # noqa: RUF012
+    identifiers: dict[str, int | str] = {}  # noqa: RUF012
+
+
+SECRET_MASK = '********'
+
+
+class ServiceApplication(pydantic.BaseModel):
+    """OAuth2 application registered in a third-party service."""
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+    slug: str
+    name: str
+    description: str | None = None
+    app_type: str  # e.g. github_app, pagerduty_oauth
+    application_url: str | None = None
+    client_id: str
+    client_secret: str  # Fernet-encrypted at rest
+    scopes: list[str] = []
+    webhook_secret: str | None = None  # Fernet-encrypted
+    private_key: str | None = None  # Fernet-encrypted (PEM)
+    signing_secret: str | None = None  # Fernet-encrypted
+    settings: dict[str, str | int | bool] = {}
+    status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
+
+    def encrypt_secrets(
+        self,
+        encryptor: typing.Any,  # TokenEncryption
+    ) -> None:
+        """Encrypt all secret fields in place."""
+        self.client_secret = encryptor.encrypt(self.client_secret)
+        if self.webhook_secret is not None:
+            self.webhook_secret = encryptor.encrypt(self.webhook_secret)
+        if self.private_key is not None:
+            self.private_key = encryptor.encrypt(self.private_key)
+        if self.signing_secret is not None:
+            self.signing_secret = encryptor.encrypt(self.signing_secret)
+
+    def mask_secrets(self) -> None:
+        """Replace encrypted secret fields with mask for responses."""
+        self.client_secret = SECRET_MASK
+        if self.webhook_secret is not None:
+            self.webhook_secret = SECRET_MASK
+        if self.private_key is not None:
+            self.private_key = SECRET_MASK
+        if self.signing_secret is not None:
+            self.signing_secret = SECRET_MASK
+
+
+class ServiceApplicationCreate(pydantic.BaseModel):
+    """Request model for creating a service application."""
+
+    slug: str = pydantic.Field(
+        ...,
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+    )
+    name: str = pydantic.Field(..., min_length=1, max_length=128)
+    description: str | None = None
+    app_type: str = pydantic.Field(..., min_length=1, max_length=64)
+    application_url: str | None = None
+    client_id: str = pydantic.Field(..., min_length=1)
+    client_secret: str = pydantic.Field(..., min_length=1)
+    scopes: list[str] = pydantic.Field(default_factory=list)
+    webhook_secret: str | None = None
+    private_key: str | None = None
+    signing_secret: str | None = None
+    settings: dict[str, str | int | bool] = pydantic.Field(
+        default_factory=dict,
+    )
+    status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
+
+
+class ServiceApplicationResponse(pydantic.BaseModel):
+    """Response model for service applications (secrets masked)."""
+
+    slug: str
+    name: str
+    description: str | None = None
+    app_type: str
+    application_url: str | None = None
+    client_id: str
+    client_secret: str = SECRET_MASK
+    scopes: list[str] = []
+    webhook_secret: str | None = None
+    private_key: str | None = None
+    signing_secret: str | None = None
+    settings: dict[str, str | int | bool] = {}
+    status: str = 'active'
 
 
 class OAuth2TokenResponse(pydantic.BaseModel):
