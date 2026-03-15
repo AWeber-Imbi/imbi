@@ -1,12 +1,18 @@
-[submodule "api"]
-	path = api
-	url = https://github.com/AWeber-Imbi/imbi-api.git
-[submodule "openapi"]
-	path = openapi
-	url = https://github.com/AWeber-Imbi/imbi-openapi.git
-[submodule "ui"]
-	path = ui
-	url = https://github.com/AWeber-Imbi/imbi-ui.git
-[submodule "ddl"]
-	path = ddl
-	url = https://github.com/AWeber-Imbi/imbi-schema.git
+[submodule "imbi-api"]
+	path = imbi-api
+	url = git@github.com:AWeber-Imbi/imbi-api.git
+[submodule "imbi-common"]
+	path = imbi-common
+	url = git@github.com:AWeber-Imbi/imbi-common.git
+[submodule "imbi-gateway"]
+	path = imbi-gateway
+	url = git@github.com:AWeber-Imbi/imbi-gateway.git
+[submodule "imbi-assistant"]
+	path = imbi-assistant
+	url = git@github.com:AWeber-Imbi/imbi-assistant.git
+[submodule "imbi-mcp"]
+	path = imbi-mcp
+	url = git@github.com:AWeber-Imbi/imbi-mcp.git
+[submodule "imbi-ui"]
+	path = imbi-ui
+	url = git@github.com:AWeber-Imbi/imbi-ui.git

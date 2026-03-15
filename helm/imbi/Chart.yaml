@@ -1,0 +1,22 @@
+apiVersion: v2
+name: imbi
+description: DevOps Service Management Platform
+type: application
+version: 0.1.0
+appVersion: "2.0.0-alpha"
+
+dependencies:
+  - name: neo4j
+    version: "5.x.x"
+    repository: https://helm.neo4j.com/neo4j
+    condition: neo4j.enabled
+
+  - name: clickhouse
+    version: "6.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: clickhouse.enabled
+
+  - name: postgresql
+    version: "16.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
