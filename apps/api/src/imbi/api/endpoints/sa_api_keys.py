@@ -143,8 +143,7 @@ async def create_sa_api_key(
         await result.consume()
 
     LOGGER.info(
-        'API key %s created for service account %s (expires: %s)',
-        key_id,
+        'API key created for service account %s (expires: %s)',
         slug,
         expires_at or 'never',
     )

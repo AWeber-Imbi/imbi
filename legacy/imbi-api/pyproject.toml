@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "build", "wheel"]
+requires = ["build", "hatchling", "wheel"]
 build-backend = "hatchling.build"
 
 [project]
@@ -26,21 +26,22 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
+  "Pillow",
   "aioboto3>=15.5.0",
   "aiohttp",
   "argon2-cffi>=25.1.0",
   "authlib>=1.6.6",
-  "filetype",
-  "imbi-common",
   "fastapi",
+  "filetype",
   "httpx>=0.28.1",
+  "imbi-common",
+  "jinja2",
   "orjson>=3.11.6",
-  "Pillow",
   "pydantic[email]",
-  "python-multipart>=0.0.22",
   "pyotp>=2.9.0",
+  "python-multipart>=0.0.22",
   "qrcode>=8.0",
-  "slowapi==0.1.9", # Pin: alpha quality, API may change
+  "slowapi==0.1.9",  # Pin: alpha quality, API may change
   "typer",
   "uvicorn",
   "yarl",
@@ -54,9 +55,7 @@ otel = [
   "opentelemetry-instrumentation-httpx",
   "opentelemetry-instrumentation-jinja2",
 ]
-sentry = [
-  "sentry-sdk"
-]
+sentry = ["sentry-sdk"]
 
 [project.scripts]
 imbi-api = "imbi_api.entrypoint:main"
@@ -155,33 +154,34 @@ quote-style = "single"
 
 [tool.ruff.lint]
 select = [
-  "BLE", # flake8-blind-except
-  "C4", # flake8-comprehensions
-  "C90", # mccabe
-  "E", "W", # pycodestyle
-  "F", # pyflakes
-  "G", # flake8-logging-format
-  "I", # isort
-  "N", # pep8-naming
-  "Q", # flake8-quotes
-  "S", # flake8-bandit
-  "ASYNC", # flake8-async
-  "B", # flake8-bugbear
-  "DTZ", # flake8-datetimez
-  "FURB", # refurb
-  "RUF", # ruff-specific
-  "T20", # flake8-print
-  "UP", # pyupgrade
+  "BLE",  # flake8-blind-except
+  "C4",  # flake8-comprehensions
+  "C90",  # mccabe
+  "E",
+  "W",  # pycodestyle
+  "F",  # pyflakes
+  "G",  # flake8-logging-format
+  "I",  # isort
+  "N",  # pep8-naming
+  "Q",  # flake8-quotes
+  "S",  # flake8-bandit
+  "ASYNC",  # flake8-async
+  "B",  # flake8-bugbear
+  "DTZ",  # flake8-datetimez
+  "FURB",  # refurb
+  "RUF",  # ruff-specific
+  "T20",  # flake8-print
+  "UP",  # pyupgrade
 ]
 ignore = [
-  "N818", # exception class names are not required to end in Error
-  "RSE", # contradicts Python Style Guide
-  "S105", # false positive: hardcoded password (for literal strings like 'bearer', 'access', 'refresh')
-  "S106", # false positive: hardcoded password in function argument
-  "TRY003", # message text in exception initializers is okay
-  "TRY400", # logging.exception is not always preferable
-  "UP040", # allow non-pep695-type-alias
-  "UP047", # allow non-pep695-generic-functions
+  "N818",  # exception class names are not required to end in Error
+  "RSE",  # contradicts Python Style Guide
+  "S105",  # false positive: hardcoded password (for literal strings like 'bearer', 'access', 'refresh')
+  "S106",  # false positive: hardcoded password in function argument
+  "TRY003",  # message text in exception initializers is okay
+  "TRY400",  # logging.exception is not always preferable
+  "UP040",  # allow non-pep695-type-alias
+  "UP047",  # allow non-pep695-generic-functions
 ]
 flake8-quotes = { inline-quotes = "single" }
 
@@ -193,12 +193,12 @@ max-complexity = 15
 
 [dependency-groups]
 dev = [
+  "basedpyright",
   "build",
   "coverage[toml]",
   "httpx",
   "mypy",
   "pre-commit",
-  "basedpyright",
   "pytest",
   "pytest-cov",
   "ruff",
@@ -208,8 +208,8 @@ docs = [
   "griffe-pydantic",
   "mkdocs>=1.5,<2",
   "mkdocs-material>9.5,<10",
-  "mkdocstrings[python]",
-  "mkdocstrings-python-xref>=1.6,<2"
+  "mkdocstrings-python-xref>=1.6,<2",
+  "mkdocstrings[python]"
 ]
 
 [[tool.uv.index]]

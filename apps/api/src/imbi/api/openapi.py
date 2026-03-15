@@ -32,8 +32,6 @@ _schema_cache: dict[str, typing.Any] | None = None
 # Mapping of API paths to their model types
 # These paths will have their request/response schemas rewritten
 PATH_MODEL_MAPPING: dict[str, str] = {
-    '/organizations/': 'Organization',
-    '/organizations/{slug}': 'Organization',
     '/teams/': 'Team',
     '/teams/{slug}': 'Team',
     '/environments/': 'Environment',
