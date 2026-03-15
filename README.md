@@ -83,6 +83,46 @@ Once running, the following services are available:
 | LocalStack | http://localhost:4566 | S3-compatible object storage |
 | PostgreSQL | localhost:5432 | Gateway database (user: `postgres`, password: `secret`) |
 
+### UI Development with Docker Compose
+
+You can use Docker Compose to run the full backend stack while developing
+the UI locally with hot-reload:
+
+```bash
+# 1. Start the backend services
+docker compose up --build -d
+
+# 2. Run initial setup (first time only — creates admin user, seeds permissions)
+docker compose exec -it imbi imbi-api setup
+
+# 3. In the imbi-ui directory, point the dev proxy at the local backend
+cd imbi-ui
+echo 'VITE_PROXY_TARGET=http://localhost:8080' > .env.local
+npm install
+npm run dev
+```
+
+The Vite dev server starts on http://localhost:3000 and proxies `/api`
+requests to the Caddy reverse proxy at `:8080`, which routes them to the
+appropriate backend service.
+
+If you have an API token (e.g. from `imbi-api setup`), you can pass it
+to the proxy so requests are authenticated:
+
+```bash
+echo 'VITE_PROXY_TARGET=http://localhost:8080' > .env.local
+echo 'VITE_API_TOKEN=your-token-here' >> .env.local
+```
+
+Useful services during UI development:
+
+| Service | URL | Use |
+|---------|-----|-----|
+| UI (dev) | http://localhost:3000 | Vite dev server with hot-reload |
+| Imbi (backend) | http://localhost:8080 | Full app via Caddy (API + bundled UI) |
+| Mailpit | http://localhost:8025 | View emails sent by the app |
+| Neo4j Browser | http://localhost:7474 | Inspect graph data directly |
+
 ### Running the Docker Image
 
 ```bash
