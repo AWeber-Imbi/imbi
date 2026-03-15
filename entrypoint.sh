@@ -104,7 +104,7 @@ check_errors "service '$IMBI_SERVICE'"
 
 start_api() {
     echo "Starting imbi-api on :8000..."
-    imbi-api serve --host 0.0.0.0 --port 8000 &
+    IMBI_HOST=0.0.0.0 IMBI_PORT=8000 imbi-api serve &
 }
 
 start_assistant() {
@@ -136,7 +136,7 @@ case "$IMBI_SERVICE" in
         start_caddy
         ;;
     api)
-        exec imbi-api serve --host 0.0.0.0 --port 8000
+        IMBI_HOST=0.0.0.0 IMBI_PORT=8000 exec imbi-api serve
         ;;
     assistant)
         exec imbi-assistant serve --host 0.0.0.0 --port 8002

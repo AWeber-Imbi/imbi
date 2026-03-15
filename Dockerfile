@@ -25,35 +25,25 @@ RUN pip install uv \
  && apt-get install -y --no-install-recommends git \
  && rm -rf /var/lib/apt/lists/*
 
-# Build imbi-common first (dependency of other services)
-COPY imbi-common/pyproject.toml imbi-common/uv.lock imbi-common/
-COPY imbi-common/src/ imbi-common/src/
-RUN cd imbi-common && uv build --wheel --out-dir /tmp/wheels/
+# Copy all service sources
+COPY imbi-common/ imbi-common/
+COPY imbi-api/ imbi-api/
+COPY imbi-assistant/ imbi-assistant/
+COPY imbi-gateway/ imbi-gateway/
+COPY imbi-mcp/ imbi-mcp/
 
-# Build imbi-api
-COPY imbi-api/pyproject.toml imbi-api/uv.lock imbi-api/
-COPY imbi-api/src/ imbi-api/src/
-RUN cd imbi-api && uv build --wheel --out-dir /tmp/wheels/
+# Build wheels for all services
+RUN for svc in imbi-common imbi-api imbi-assistant imbi-gateway imbi-mcp; do \
+      cd /tmp/build/$svc && uv build --wheel --out-dir /tmp/wheels/; \
+    done
 
-# Build imbi-assistant
-COPY imbi-assistant/pyproject.toml imbi-assistant/uv.lock imbi-assistant/
-COPY imbi-assistant/src/ imbi-assistant/src/
-RUN cd imbi-assistant && uv build --wheel --out-dir /tmp/wheels/
-
-# Build imbi-gateway
-COPY imbi-gateway/pyproject.toml imbi-gateway/uv.lock imbi-gateway/
-COPY imbi-gateway/src/ imbi-gateway/src/
-RUN cd imbi-gateway && uv build --wheel --out-dir /tmp/wheels/
-
-# Build imbi-mcp
-COPY imbi-mcp/pyproject.toml imbi-mcp/uv.lock imbi-mcp/
-COPY imbi-mcp/src/ imbi-mcp/src/
-RUN cd imbi-mcp && uv build --wheel --out-dir /tmp/wheels/
-
-# Install all services into a venv
-RUN uv venv /app \
+# Install all services into a venv, then clean up source
+RUN uv venv --python $(which python3) /app \
+ && ln -sf $(which python3) /app/bin/python3 \
  && . /app/bin/activate \
- && uv pip install /tmp/wheels/*.whl
+ && uv pip install /tmp/wheels/*.whl \
+ && chmod -R a+rX /app \
+ && rm -rf /tmp/build /tmp/wheels
 
 # ---------------------------------------------------------------------------
 # Stage 3: Caddy binary
@@ -74,7 +64,7 @@ RUN apt-get update \
 RUN useradd -r -g users -d /app imbi
 
 # Copy Python venv with all services installed
-COPY --from=python-builder /app/ /app/
+COPY --from=python-builder --chown=imbi:users /app/ /app/
 
 # Copy Caddy binary
 COPY --from=caddy /usr/bin/caddy /usr/local/bin/caddy

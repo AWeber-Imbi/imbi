@@ -59,10 +59,29 @@ or scale out individual components.
 
 ### Running with Docker Compose
 
+The included `compose.yaml` starts Imbi and all backing services:
+
 ```bash
-# Pull and start everything
-docker compose up -d
+# Build and start everything
+docker compose up --build -d
+
+# Run initial setup (create admin user, seed permissions)
+docker compose exec -it imbi imbi-api setup
+
+# View logs
+docker compose logs -f imbi
 ```
+
+Once running, the following services are available:
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Imbi | http://localhost:8080 | Main application (UI + API via Caddy) |
+| Neo4j Browser | http://localhost:7474 | Graph database admin UI |
+| ClickHouse | http://localhost:8123 | Analytics database HTTP interface |
+| Mailpit | http://localhost:8025 | Email testing UI (captures all outbound email) |
+| LocalStack | http://localhost:4566 | S3-compatible object storage |
+| PostgreSQL | localhost:5432 | Gateway database (user: `postgres`, password: `secret`) |
 
 ### Running the Docker Image
 
@@ -143,8 +162,10 @@ just update-submodules-tag v1.0.0
 | `ANTHROPIC_API_KEY` | Anthropic API key for assistant | - |
 | `IMBI_ASSISTANT_ENABLED` | Enable the AI assistant | `false` |
 | `IMBI_EMAIL_ENABLED` | Enable email notifications | `false` |
-| `IMBI_EMAIL_SMTP_HOST` | SMTP server host | - |
+| `IMBI_EMAIL_SMTP_HOST` | SMTP server host | `localhost` |
 | `IMBI_EMAIL_SMTP_PORT` | SMTP server port | `587` |
+| `IMBI_EMAIL_SMTP_USE_TLS` | Use TLS for SMTP | `true` |
+| `IMBI_ENVIRONMENT` | Runtime environment | `development` |
 
 ## Project Structure
 
