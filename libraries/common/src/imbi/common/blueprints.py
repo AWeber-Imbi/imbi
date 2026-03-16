@@ -128,3 +128,23 @@ async def get_model[ModelType: pydantic.BaseModel](
     ):
         blueprints.append(blueprint)
     return _apply_blueprints(model, blueprints)
+
+
+def make_response_model[ModelType: pydantic.BaseModel](
+    write_model: type[ModelType],
+) -> type[ModelType]:
+    """Create a response model from a write model.
+
+    Adds ``relationships`` to the write model for use in API
+    responses. The write model already has timestamps and
+    blueprint fields; this adds the response-only enrichments.
+
+    """
+    return pydantic.create_model(
+        f'{write_model.__name__}Response',
+        __base__=write_model,
+        relationships=(
+            dict[str, models.RelationshipLink] | None,
+            None,
+        ),
+    )

@@ -122,12 +122,7 @@ def serve(
         'port': port,
     }
     if dev:
-        args.update(
-            {
-                'log_level': 'trace',
-                'reload': True,
-            }
-        )
+        args['reload'] = True
     uvicorn.run(entrypoint, **args)
 
 

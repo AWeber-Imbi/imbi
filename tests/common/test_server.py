@@ -90,7 +90,6 @@ class ServerCliTests(unittest.TestCase):
             'package.module:func',
             **{
                 **self.standard_kwargs,
-                'log_level': 'trace',
                 'reload': True,
             },
         )

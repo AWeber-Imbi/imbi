@@ -1,3 +1,4 @@
+import datetime
 import typing
 
 import cypherantic
@@ -15,6 +16,7 @@ __all__ = [
     'Organization',
     'Project',
     'ProjectType',
+    'RelationshipLink',
     'Schema',
     'Team',
 ]
@@ -81,6 +83,13 @@ class BlueprintEdge(typing.NamedTuple):
     properties: BlueprintAssignment
 
 
+class RelationshipLink(pydantic.BaseModel):
+    """A hypermedia-style link to related resources."""
+
+    href: str
+    count: int
+
+
 class Node(pydantic.BaseModel):
     """Base model for Cypherantic nodes.
 
@@ -94,6 +103,10 @@ class Node(pydantic.BaseModel):
     slug: str
     description: str | None = None
     icon: pydantic.HttpUrl | str | None = None
+    created_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: datetime.datetime | None = None
 
 
 class Organization(Node):

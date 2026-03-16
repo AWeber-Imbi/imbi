@@ -1,3 +1,4 @@
+import datetime
 import unittest
 
 import pydantic
@@ -145,6 +146,28 @@ class NodeModelTestCase(unittest.TestCase):
         self.assertEqual(project_type.slug, 'web-service')
         self.assertEqual(project_type.description, 'HTTP-based services')
         self.assertEqual(project_type.organization, org)
+
+    def test_node_timestamps_defaults(self) -> None:
+        """Test that created_at defaults to now, updated_at to None."""
+        org = models.Organization(
+            name='ACME Corp',
+            slug='acme',
+        )
+        self.assertIsNotNone(org.created_at)
+        self.assertEqual(org.created_at.tzinfo, datetime.UTC)
+        self.assertIsNone(org.updated_at)
+
+    def test_node_timestamps_explicit(self) -> None:
+        """Test that Node timestamps can be set explicitly."""
+        now = datetime.datetime.now(datetime.UTC)
+        org = models.Organization(
+            name='ACME Corp',
+            slug='acme',
+            created_at=now,
+            updated_at=now,
+        )
+        self.assertEqual(org.created_at, now)
+        self.assertEqual(org.updated_at, now)
 
     def test_node_validation(self) -> None:
         """Test Node model validation."""

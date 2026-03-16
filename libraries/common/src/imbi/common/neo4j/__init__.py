@@ -1,4 +1,5 @@
 import contextlib
+import datetime
 import logging
 import re
 import typing
@@ -122,6 +123,11 @@ async def create_node(model: ModelType) -> ModelType:
     :returns: The created node as a Pydantic model with round-trip values
 
     """
+    now = datetime.datetime.now(datetime.UTC)
+    if hasattr(model, 'created_at') and model.created_at is None:
+        model.created_at = now
+    if hasattr(model, 'updated_at') and model.updated_at is None:
+        model.updated_at = now
     async with session() as sess:
         node = await cypherantic.create_node(sess, model)
         node_props = convert_neo4j_types(dict(node))
@@ -294,6 +300,30 @@ async def run(
         yield result
 
 
+async def query(
+    cypher: str,
+    **parameters: typing.Any,
+) -> list[dict[str, typing.Any]]:
+    """Run a Cypher query and return converted records.
+
+    Combines :func:`run`, ``result.data()``, and
+    :func:`convert_neo4j_types` into a single call so that
+    callers get native Python types without extra boilerplate.
+
+    Args:
+        cypher: The Cypher query to execute.
+        **parameters: Query parameters.
+
+    Returns:
+        List of record dicts with native Python types.
+
+    """
+    async with run(cypher, **parameters) as result:
+        records = await result.data()
+    result_data: list[dict[str, typing.Any]] = convert_neo4j_types(records)
+    return result_data
+
+
 def _cypher_property_params(value: dict[str, typing.Any]) -> str:
     """Turn a dict into a Cypher-friendly string of properties for querying"""
     return ', '.join(f'{key}: ${key}' for key in (value or {}).keys())
@@ -370,11 +400,20 @@ async def upsert(
     :returns: The elementId of the upserted node
 
     """
+    # Auto-manage timestamps
+    now = datetime.datetime.now(datetime.UTC)
+    if hasattr(node, 'updated_at'):
+        node.updated_at = now
+    if hasattr(node, 'created_at') and node.created_at is None:
+        node.created_at = now
+
     auto_increment_fields = set(auto_increment or [])
 
     # Build field-name-to-alias mapping for alias-safe handling
+    model_cls = type(node)
     field_to_alias = {
-        name: info.alias or name for name, info in node.model_fields.items()
+        name: info.alias or name
+        for name, info in model_cls.model_fields.items()
     }
     alias_to_field = {v: k for k, v in field_to_alias.items()}
     auto_increment_aliases = {
@@ -389,6 +428,22 @@ async def upsert(
             assignment.append(f'node.{key} = coalesce(node.{key}, 0) + 1')
         else:
             assignment.append(f'node.{key} = ${key}')
+
+    # Split assignments: created_at only on CREATE, not on MATCH
+    created_at_alias = field_to_alias.get(
+        'created_at',
+        'created_at',
+    )
+    on_create_assignment = list(assignment)
+    on_match_assignment = [
+        expr
+        for key, expr in zip(
+            properties.keys(),
+            assignment,
+            strict=True,
+        )
+        if key != created_at_alias
+    ]
 
     # Namespace constraint params to avoid collisions with
     # model properties (e.g. when renaming a slug)
@@ -413,8 +468,8 @@ async def upsert(
 
     query = (
         f'         MERGE (node:{label} {{{where_props}}})'
-        f' ON CREATE SET {", ".join(assignment)}'
-        f'  ON MATCH SET {", ".join(assignment)}'
+        f' ON CREATE SET {", ".join(on_create_assignment)}'
+        f'  ON MATCH SET {", ".join(on_match_assignment)}'
         f'        RETURN {return_fields}'
     ).strip()
     LOGGER.debug('Upsert query: %s', query)
