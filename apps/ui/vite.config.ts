@@ -9,7 +9,6 @@ export default defineConfig(({ mode }) => {
   // Use IMBI_TOKEN from system environment, or VITE_API_TOKEN from .env
   const apiToken = process.env.IMBI_TOKEN || env.VITE_API_TOKEN
 
-  console.log('[Vite] Proxy target:', env.VITE_PROXY_TARGET || 'https://imbi.aweber.io')
   console.log('[Vite] API token configured:', !!apiToken)
 
   return {
@@ -23,16 +22,14 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       proxy: {
         '/api': {
-          target: env.VITE_PROXY_TARGET || 'https://imbi.aweber.io',
+          target: 'http://127.0.0.1:8000',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ''),
           configure: (proxy, _options) => {
             proxy.on('proxyReq', (proxyReq, req, _res) => {
-              // Add API token if available
               if (apiToken) {
                 proxyReq.setHeader('Private-Token', apiToken)
               }
-              // Log requests in development
               console.log(`[Proxy] ${req.method} ${req.url} -> ${proxyReq.path}`)
             })
             proxy.on('error', (err, _req, _res) => {
@@ -41,8 +38,41 @@ export default defineConfig(({ mode }) => {
           },
         },
         '/uploads': {
-          target: env.VITE_PROXY_TARGET || 'https://imbi.aweber.io',
+          target: 'http://127.0.0.1:8000',
           changeOrigin: true,
+        },
+        '/assistant': {
+          target: 'http://127.0.0.1:8002',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/assistant/, ''),
+          proxyTimeout: 0,
+          timeout: 0,
+          configure: (proxy, _options) => {
+            proxy.on('proxyReq', (proxyReq, req, _res) => {
+              proxyReq.setHeader('Accept', 'text/event-stream')
+              console.log(`[Proxy] ${req.method} ${req.url} -> ${proxyReq.path}`)
+            })
+            proxy.on('proxyRes', (proxyRes) => {
+              proxyRes.headers['cache-control'] ??= 'no-cache'
+              proxyRes.headers['connection'] ??= 'keep-alive'
+            })
+            proxy.on('error', (err, _req, _res) => {
+              console.log('[Proxy] Error:', err.message)
+            })
+          },
+        },
+        '/gateway': {
+          target: 'http://127.0.0.1:8003',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/gateway/, ''),
+          configure: (proxy, _options) => {
+            proxy.on('proxyReq', (proxyReq, req, _res) => {
+              console.log(`[Proxy] ${req.method} ${req.url} -> ${proxyReq.path}`)
+            })
+            proxy.on('error', (err, _req, _res) => {
+              console.log('[Proxy] Error:', err.message)
+            })
+          },
         },
       },
     },

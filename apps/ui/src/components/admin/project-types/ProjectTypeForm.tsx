@@ -13,7 +13,7 @@ import type { ProjectType, ProjectTypeCreate } from '@/types'
 
 interface ProjectTypeFormProps {
   projectType: ProjectType | null
-  onSave: (pt: ProjectTypeCreate) => void
+  onSave: (orgSlug: string, pt: ProjectTypeCreate) => void
   onCancel: () => void
   isDarkMode: boolean
   isLoading?: boolean
@@ -71,12 +71,11 @@ export function ProjectTypeForm({
     e.preventDefault()
     if (!validate()) return
 
-    onSave({
+    onSave(orgSlug, {
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
-      organization_slug: orgSlug,
       ...dynamicFormData,
     })
   }
@@ -168,12 +167,12 @@ export function ProjectTypeForm({
               <select
                 value={orgSlug}
                 onChange={(e) => setOrgSlug(e.target.value)}
-                disabled={isEditing || isLoading}
+                disabled={isEditing || isLoading || organizations.length <= 1}
                 className={`w-full px-3 py-2 rounded-lg border text-sm ${
                   isDarkMode
                     ? 'bg-gray-700 border-gray-600 text-white'
                     : 'bg-white border-gray-300 text-gray-900'
-                } ${isEditing ? 'opacity-60 cursor-not-allowed' : ''} ${
+                } ${isEditing || isLoading || organizations.length <= 1 ? 'opacity-60 cursor-not-allowed' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
               >

@@ -1,4 +1,3 @@
-import { apiClient } from './client'
 import { useAuthStore } from '@/stores/authStore'
 import type {
   Conversation,
@@ -7,34 +6,67 @@ import type {
   UpdateConversationRequest,
 } from '@/types/assistant'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+const ASSISTANT_BASE_URL = '/assistant'
 
-// REST endpoints via apiClient
+async function assistantFetch<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const token = useAuthStore.getState().accessToken
+  const response = await fetch(`${ASSISTANT_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  })
+  if (!response.ok) {
+    if (response.status === 401) {
+      window.location.assign('/login')
+    }
+    throw new Error(`HTTP ${response.status}`)
+  }
+  if (response.status === 204) return undefined as T
+  return response.json()
+}
+
+// REST endpoints
 export const createConversation = (data?: CreateConversationRequest) =>
-  apiClient.post<Conversation>('/assistant/conversations', data ?? {})
+  assistantFetch<Conversation>('/conversations', {
+    method: 'POST',
+    body: JSON.stringify(data ?? {}),
+  })
 
 export const listConversations = (params?: {
   limit?: number
   offset?: number
   include_archived?: boolean
-}) => apiClient.get<Conversation[]>('/assistant/conversations', params)
+}) => {
+  const searchParams = params
+    ? '?' + new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => [k, String(v)]),
+      ).toString()
+    : ''
+  return assistantFetch<Conversation[]>(`/conversations${searchParams}`)
+}
 
 export const getConversation = (id: string) =>
-  apiClient.get<ConversationWithMessages>(
-    `/assistant/conversations/${id}`,
-  )
+  assistantFetch<ConversationWithMessages>(`/conversations/${id}`)
 
 export const deleteConversation = (id: string) =>
-  apiClient.delete<void>(`/assistant/conversations/${id}`)
+  assistantFetch<void>(`/conversations/${id}`, { method: 'DELETE' })
 
 export const updateConversation = (
   id: string,
   data: UpdateConversationRequest,
 ) =>
-  apiClient.patch<Conversation>(
-    `/assistant/conversations/${id}`,
-    data,
-  )
+  assistantFetch<Conversation>(`/conversations/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
 
 // SSE streaming via native fetch (Axios doesn't support streaming)
 export type SSEEventHandler = {
@@ -42,6 +74,10 @@ export type SSEEventHandler = {
   onToolUseStart?: (id: string, name: string) => void
   onToolInput?: (partialJson: string) => void
   onContentBlockStop?: () => void
+  onClientAction?: (
+    action: string,
+    params: Record<string, string>,
+  ) => void
   onDone?: (
     messageId: string,
     usage: { input_tokens: number; output_tokens: number },
@@ -57,7 +93,7 @@ export async function sendMessageSSE(
 ): Promise<void> {
   const token = useAuthStore.getState().accessToken
   const url =
-    `${API_BASE_URL}/assistant/conversations/` +
+    `${ASSISTANT_BASE_URL}/conversations/` +
     `${conversationId}/messages`
 
   const response = await fetch(url, {
@@ -134,6 +170,23 @@ export async function sendMessageSSE(
                 parsed.usage,
               )
               break
+            case 'client_action': {
+              if (
+                typeof parsed.action === 'string' &&
+                parsed.action &&
+                (!parsed.params ||
+                  (typeof parsed.params === 'object' &&
+                    !Array.isArray(parsed.params)))
+              ) {
+                handlers.onClientAction?.(
+                  parsed.action,
+                  parsed.params as Record<string, string>,
+                )
+              } else {
+                handlers.onError?.('Invalid client_action payload')
+              }
+              break
+            }
             case 'error':
               handlers.onError?.(parsed.message)
               break

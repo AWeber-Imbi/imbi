@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   useQuery,
   useMutation,
@@ -7,7 +7,6 @@ import {
 import {
   Plus,
   Search,
-  Filter,
   Trash2,
   Power,
   Bot,
@@ -17,6 +16,7 @@ import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { ServiceAccountForm } from './service-accounts/ServiceAccountForm'
 import { ServiceAccountDetail } from './service-accounts/ServiceAccountDetail'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import {
   listServiceAccounts,
   createServiceAccount,
@@ -29,16 +29,13 @@ interface ServiceAccountManagementProps {
   isDarkMode: boolean
 }
 
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
 type StatusFilter = 'all' | 'active' | 'inactive'
 
 export function ServiceAccountManagement({
   isDarkMode,
 }: ServiceAccountManagementProps) {
   const queryClient = useQueryClient()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [selectedAccount, setSelectedAccount] =
-    useState<ServiceAccount | null>(null)
+  const { viewMode, slug: selectedAccountSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] =
     useState<StatusFilter>('all')
@@ -75,8 +72,7 @@ export function ServiceAccountManagement({
       queryClient.invalidateQueries({
         queryKey: ['serviceAccounts'],
       })
-      setViewMode('list')
-      setSelectedAccount(null)
+      goToList()
     },
     onError: (error: any) => {
       console.error('Failed to create service account:', error)
@@ -96,8 +92,7 @@ export function ServiceAccountManagement({
       queryClient.invalidateQueries({
         queryKey: ['serviceAccounts'],
       })
-      setViewMode('list')
-      setSelectedAccount(null)
+      goToList()
     },
     onError: (error: any) => {
       console.error('Failed to update service account:', error)
@@ -124,6 +119,11 @@ export function ServiceAccountManagement({
     }
   )
 
+  const selectedAccount = useMemo(
+    () => serviceAccounts.find((a: ServiceAccount) => a.slug === selectedAccountSlug) || null,
+    [serviceAccounts, selectedAccountSlug],
+  )
+
   const handleDelete = (slug: string) => {
     const account = serviceAccounts.find(
       (a: ServiceAccount) => a.slug === slug
@@ -138,13 +138,11 @@ export function ServiceAccountManagement({
   }
 
   const handleViewClick = (account: ServiceAccount) => {
-    setSelectedAccount(account)
-    setViewMode('detail')
+    goToDetail(account.slug)
   }
 
   const handleEditClick = (account: ServiceAccount) => {
-    setSelectedAccount(account)
-    setViewMode('edit')
+    goToEdit(account.slug)
   }
 
   const handleSave = (data: ServiceAccountCreate) => {
@@ -156,8 +154,7 @@ export function ServiceAccountManagement({
   }
 
   const handleCancel = () => {
-    setViewMode('list')
-    setSelectedAccount(null)
+    goToList()
   }
 
   const formatDate = (dateString?: string | null) => {
@@ -240,65 +237,23 @@ export function ServiceAccountManagement({
   // View mode: List (default)
   return (
     <div className="space-y-6">
-      {/* Header with Actions */}
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2
-            className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Service Accounts
-          </h2>
-          <p
-            className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Manage API access for automated services and integrations
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            setSelectedAccount(null)
-            setViewMode('create')
-          }}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Create Service Account
-        </Button>
-      </div>
-
-      {/* Filters and Search */}
-      <div
-        className={`flex flex-wrap items-center gap-4 p-4 rounded-lg border ${
-          isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
-        }`}
-      >
-        <div className="flex-1 min-w-[300px]">
-          <div className="relative">
-            <Search
-              className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}
-            />
+        <div className="flex-1 flex items-center gap-3">
+          <div className="relative max-w-md flex-1">
+            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
+              isDarkMode ? 'text-gray-400' : 'text-gray-500'
+            }`} />
             <Input
-              placeholder="Search by name or slug..."
+              placeholder="Search service accounts..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-9 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`pl-10 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Filter
-            className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          />
           <select
             value={statusFilter}
-            onChange={(e) =>
-              setStatusFilter(e.target.value as StatusFilter)
-            }
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             className={`px-3 py-2 rounded-lg border text-sm ${
               isDarkMode
                 ? 'bg-gray-700 border-gray-600 text-white'
@@ -310,6 +265,13 @@ export function ServiceAccountManagement({
             <option value="inactive">Inactive</option>
           </select>
         </div>
+        <Button
+          onClick={goToCreate}
+          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New Service Account
+        </Button>
       </div>
 
       {/* Service Accounts Table */}
@@ -374,10 +336,7 @@ export function ServiceAccountManagement({
                   </div>
                   {!searchQuery && statusFilter === 'all' && (
                     <Button
-                      onClick={() => {
-                        setSelectedAccount(null)
-                        setViewMode('create')
-                      }}
+                      onClick={goToCreate}
                       className="mt-4 bg-[#2A4DD0] hover:bg-blue-700 text-white"
                     >
                       Create Your First Service Account

@@ -67,11 +67,11 @@ export function Admin({ isDarkMode }: AdminProps) {
   const orgName = selectedOrganization?.name || 'Organization'
 
   const orgAdminSections: SectionDef[] = [
-    { id: 'teams', label: 'Teams', icon: UsersRound, description: `Manage teams in ${orgName}`, scope: 'org' },
-    { id: 'environments', label: 'Environments', icon: Layers, description: `Manage environments in ${orgName}`, scope: 'org' },
-    { id: 'project-types', label: 'Project Types', icon: FolderTree, description: `Manage project types in ${orgName}`, scope: 'org' },
-    { id: 'third-party-services', label: 'Third-Party Services', icon: Cloud, description: `Manage external SaaS services in ${orgName}`, scope: 'org' },
-    { id: 'blueprints', label: 'Blueprints', icon: FileJson, description: `Configure metadata templates in ${orgName}`, scope: 'org' },
+    { id: 'teams', label: 'Teams', icon: UsersRound, description: 'Manage teams', scope: 'org' },
+    { id: 'environments', label: 'Environments', icon: Layers, description: 'Manage environments', scope: 'org' },
+    { id: 'project-types', label: 'Project Types', icon: FolderTree, description: 'Manage project types', scope: 'org' },
+    { id: 'third-party-services', label: 'Third-Party Services', icon: Cloud, description: 'Manage external SaaS services', scope: 'org' },
+    { id: 'blueprints', label: 'Blueprints', icon: FileJson, description: 'Configure metadata templates', scope: 'org' },
   ]
 
   const systemAdminSections: SectionDef[] = [
@@ -108,19 +108,10 @@ export function Admin({ isDarkMode }: AdminProps) {
         <Icon className="w-5 h-5 mt-0.5 flex-shrink-0" />
         {!isCollapsed && (
           <>
-            <div className="flex-1 min-w-0">
-              <div className={`font-medium ${isActive ? (isDarkMode ? 'text-blue-300' : 'text-[#2A4DD0]') : ''}`}>
-                {sectionDef.label}
-              </div>
-              <div className={`text-xs mt-0.5 ${
-                isActive
-                  ? isDarkMode ? 'text-blue-400/70' : 'text-[#2A4DD0]/70'
-                  : isDarkMode ? 'text-gray-500' : 'text-gray-500'
-              }`}>
-                {sectionDef.description}
-              </div>
+            <div className={`flex-1 min-w-0 font-medium ${isActive ? (isDarkMode ? 'text-blue-300' : 'text-[#2A4DD0]') : ''}`}>
+              {sectionDef.label}
             </div>
-            {isActive && <ChevronRight className="w-4 h-4 mt-1 flex-shrink-0" />}
+            {isActive && <ChevronRight className="w-4 h-4 mt-0.5 flex-shrink-0" />}
           </>
         )}
       </button>
@@ -191,23 +182,9 @@ export function Admin({ isDarkMode }: AdminProps) {
             <div className="px-8 py-6">
               <div className="flex items-center gap-3">
                 {currentSectionData && <currentSectionData.icon className={`w-6 h-6 ${isDarkMode ? 'text-blue-400' : 'text-[#2A4DD0]'}`} />}
-                <div>
-                  <div className="flex items-center gap-3">
-                    <h1 className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                      {currentSectionData?.label}
-                    </h1>
-                    {currentSectionData?.scope === 'org' && selectedOrganization && (
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-                      }`}>
-                        {selectedOrganization.name} only
-                      </span>
-                    )}
-                  </div>
-                  <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    {currentSectionData?.description}
-                  </p>
-                </div>
+                <h1 className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  {currentSectionData?.label}
+                </h1>
               </div>
             </div>
           </div>

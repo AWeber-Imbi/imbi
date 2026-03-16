@@ -37,7 +37,7 @@ export function ColorPicker({ value, onChange, isDarkMode }: ColorPickerProps) {
             type="button"
             onClick={() => onChange(color)}
             className={`w-12 h-12 rounded-lg transition-all ${
-              value.toUpperCase() === color.toUpperCase()
+              value && value.toUpperCase() === color.toUpperCase()
                 ? 'ring-2 ring-offset-2 ring-blue-500'
                 : 'hover:scale-105'
             }`}
@@ -52,14 +52,17 @@ export function ColorPicker({ value, onChange, isDarkMode }: ColorPickerProps) {
         <button
           type="button"
           onClick={handleSwatchClick}
-          className="w-10 h-10 rounded-lg border flex-shrink-0 cursor-pointer"
-          style={{ backgroundColor: value || '#3B82F6' }}
-          title="Click to open color picker"
+          aria-label={value ? 'Change label color' : 'Pick label color'}
+          className={`w-10 h-10 rounded-lg border flex-shrink-0 cursor-pointer ${
+            !value ? (isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-100 border-gray-300') : ''
+          }`}
+          style={value ? { backgroundColor: value } : undefined}
+          title={value ? 'Click to change color' : 'Click to pick a color'}
         />
         <input
           ref={inputRef}
           type="color"
-          value={value || '#3B82F6'}
+          value={value || '#000000'}
           onChange={(e) => onChange(e.target.value.toUpperCase())}
           className="sr-only"
         />

@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Trash2, Layers, AlertCircle } from 'lucide-react'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ProjectTypeForm } from './project-types/ProjectTypeForm'
 import { ProjectTypeDetail } from './project-types/ProjectTypeDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { listProjectTypes, deleteProjectType, createProjectType, updateProjectType } from '@/api/endpoints'
 import type { ProjectTypeCreate } from '@/types'
 
@@ -13,54 +15,49 @@ interface ProjectTypeManagementProps {
   isDarkMode: boolean
 }
 
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
-
 export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps) {
   const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [selectedPtSlug, setSelectedPtSlug] = useState<string | null>(null)
+  const orgSlug = selectedOrganization?.slug
+  const { viewMode, slug: selectedPtSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const { data: projectTypes = [], isLoading, error } = useQuery({
-    queryKey: ['projectTypes'],
-    queryFn: listProjectTypes,
+    queryKey: ['projectTypes', orgSlug],
+    queryFn: () => listProjectTypes(orgSlug!),
+    enabled: !!orgSlug,
   })
 
   const createMutation = useMutation({
-    mutationFn: createProjectType,
+    mutationFn: ({ orgSlug, pt }: { orgSlug: string; pt: ProjectTypeCreate }) =>
+      createProjectType(orgSlug, pt),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projectTypes'] })
-      setViewMode('list')
-      setSelectedPtSlug(null)
+      queryClient.invalidateQueries({ queryKey: ['projectTypes', orgSlug] })
+      goToList()
     },
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ slug, pt }: { slug: string; pt: ProjectTypeCreate }) =>
-      updateProjectType(slug, pt),
+    mutationFn: ({ orgSlug, slug, pt }: { orgSlug: string; slug: string; pt: ProjectTypeCreate }) =>
+      updateProjectType(orgSlug, slug, pt),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projectTypes'] })
-      setViewMode('list')
-      setSelectedPtSlug(null)
+      queryClient.invalidateQueries({ queryKey: ['projectTypes', orgSlug] })
+      goToList()
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: deleteProjectType,
+    mutationFn: ({ orgSlug, slug }: { orgSlug: string; slug: string }) =>
+      deleteProjectType(orgSlug, slug),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projectTypes'] })
+      queryClient.invalidateQueries({ queryKey: ['projectTypes', orgSlug] })
     },
     onError: (error: any) => {
       alert(`Failed to delete project type: ${error.response?.data?.detail || error.message}`)
     },
   })
 
-  // Filter by selected org and search
   const filteredProjectTypes = projectTypes.filter((pt) => {
-    if (selectedOrganization && pt.organization.slug !== selectedOrganization.slug) {
-      return false
-    }
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       return (
@@ -77,29 +74,27 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
     [projectTypes, selectedPtSlug],
   )
 
-  const orgCount = useMemo(
-    () => new Set(filteredProjectTypes.map((pt) => pt.organization.slug)).size,
-    [filteredProjectTypes],
-  )
-
   const handleDelete = (slug: string) => {
     const pt = projectTypes.find((p) => p.slug === slug)
     if (pt && confirm(`Delete project type "${pt.name}"? This action cannot be undone.`)) {
-      deleteMutation.mutate(slug)
+      deleteMutation.mutate({ orgSlug: pt.organization.slug, slug })
     }
   }
 
-  const handleSave = (ptData: ProjectTypeCreate) => {
+  const handleSave = (formOrgSlug: string, ptData: ProjectTypeCreate) => {
     if (viewMode === 'create') {
-      createMutation.mutate(ptData)
+      createMutation.mutate({ orgSlug: formOrgSlug, pt: ptData })
     } else if (selectedPtSlug) {
-      updateMutation.mutate({ slug: selectedPtSlug, pt: ptData })
+      updateMutation.mutate({
+        orgSlug: selectedProjectType?.organization.slug || formOrgSlug,
+        slug: selectedPtSlug,
+        pt: ptData,
+      })
     }
   }
 
   const handleCancel = () => {
-    setViewMode('list')
-    setSelectedPtSlug(null)
+    goToList()
   }
 
   if (isLoading) {
@@ -126,6 +121,14 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
     )
   }
 
+  if (!orgSlug) {
+    return (
+      <div className={`text-center py-12 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        Select an organization to manage project types.
+      </div>
+    )
+  }
+
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <ProjectTypeForm
@@ -143,10 +146,7 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
     return (
       <ProjectTypeDetail
         projectType={selectedProjectType}
-        onEdit={() => {
-          setSelectedPtSlug(selectedProjectType.slug)
-          setViewMode('edit')
-        }}
+        onEdit={() => goToEdit(selectedProjectType.slug)}
         onBack={handleCancel}
         isDarkMode={isDarkMode}
       />
@@ -171,39 +171,12 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
           </div>
         </div>
         <Button
-          onClick={() => {
-            setSelectedPtSlug(null)
-            setViewMode('create')
-          }}
+          onClick={goToCreate}
           className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
         >
           <Plus className="w-4 h-4 mr-2" />
           New Project Type
         </Button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className={`p-4 rounded-lg border ${
-          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        }`}>
-          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Total Project Types
-          </div>
-          <div className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            {filteredProjectTypes.length}
-          </div>
-        </div>
-        <div className={`p-4 rounded-lg border ${
-          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        }`}>
-          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Organizations
-          </div>
-          <div className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            {orgCount}
-          </div>
-        </div>
       </div>
 
       {/* Project Types Table */}
@@ -219,15 +192,20 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
                 }`}>
                   Project Type
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                <th className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
                   Slug
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
-                  Organization
+                  Projects
+                </th>
+                <th className={`px-6 py-3 text-center text-xs uppercase tracking-wider whitespace-nowrap ${
+                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                }`}>
+                  Last Updated
                 </th>
                 <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
@@ -240,16 +218,12 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
               {filteredProjectTypes.map((pt) => (
                 <tr
                   key={pt.slug}
-                  onClick={() => {
-                    setSelectedPtSlug(pt.slug)
-                    setViewMode('detail')
-                  }}
+                  onClick={() => goToDetail(pt.slug)}
                   onKeyDown={(e) => {
                     if (e.currentTarget !== e.target) return
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      setSelectedPtSlug(pt.slug)
-                      setViewMode('detail')
+                      goToDetail(pt.slug)
                     }
                   }}
                   tabIndex={0}
@@ -279,17 +253,24 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
                       </div>
                     </div>
                   </td>
-                  <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <td className={`px-6 py-4 text-sm whitespace-nowrap text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     <code className={`px-2 py-1 rounded ${
                       isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
                     }`}>
                       {pt.slug}
                     </code>
                   </td>
-                  <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {pt.organization.name}
+                  <td className={`px-6 py-4 text-sm text-right whitespace-nowrap ${
+                    (pt.relationships?.projects?.count ?? 0) === 0
+                      ? (isDarkMode ? 'text-gray-600' : 'text-gray-400')
+                      : (isDarkMode ? 'text-gray-300' : 'text-gray-600')
+                  }`}>
+                    {pt.relationships?.projects?.count ?? 0}
                   </td>
-                  <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                  <td className={`px-6 py-4 text-sm whitespace-nowrap text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    {formatRelativeDate(pt.updated_at ?? pt.created_at)}
+                  </td>
+                  <td className="px-6 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         variant="ghost"

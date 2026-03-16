@@ -7,12 +7,17 @@ import {
   Terminal,
   HelpCircle,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useAssistantStore } from '@/stores/assistantStore'
 import {
   sendMessageSSE,
   createConversation,
   getConversation,
 } from '@/api/assistant'
+import { useAuth } from '@/hooks/useAuth'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import { queryClient } from '@/main'
+import { getQueryKeysForResource } from '@/lib/queryKeys'
 import { SessionEntry } from './assistant/MessageBubble'
 import { ToolUseIndicator } from './assistant/ToolUseIndicator'
 import { ConversationHistory } from './assistant/ConversationHistory'
@@ -21,7 +26,24 @@ interface CommandBarProps {
   isDarkMode: boolean
 }
 
+function buildUserContext(
+  user: { display_name: string; email_address: string; groups?: string[]; roles?: string[]; is_admin?: boolean } | null,
+  org: { name: string; slug: string } | null,
+): string {
+  if (!user) return ''
+  const parts: string[] = []
+  parts.push(`User: ${user.display_name} (${user.email_address})`)
+  if (user.is_admin) parts.push('Role: Administrator')
+  if (user.groups?.length) parts.push(`Groups: ${user.groups.join(', ')}`)
+  if (user.roles?.length) parts.push(`Roles: ${user.roles.join(', ')}`)
+  if (org) parts.push(`Organization: ${org.name} (${org.slug})`)
+  return `<context>\n${parts.join('\n')}\n</context>\n\n`
+}
+
 export function CommandBar({ isDarkMode }: CommandBarProps) {
+  const { user } = useAuth()
+  const { selectedOrganization } = useOrganization()
+  const navigate = useNavigate()
   const [input, setInput] = useState('')
   const [panelHeight, setPanelHeight] = useState(() => {
     const saved = localStorage.getItem('imbi-assistant-height')
@@ -50,6 +72,18 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
     finishStreaming,
     clearConversation,
   } = useAssistantStore()
+
+  // Set CSS custom property so page content can avoid being hidden
+  const INPUT_BAR_HEIGHT = 64
+  useEffect(() => {
+    const total = isExpanded
+      ? panelHeight + INPUT_BAR_HEIGHT
+      : INPUT_BAR_HEIGHT
+    document.documentElement.style.setProperty(
+      '--assistant-height',
+      `${total}px`,
+    )
+  }, [isExpanded, panelHeight])
 
   // Auto-scroll to bottom on new content
   useEffect(() => {
@@ -111,7 +145,9 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
 
       // Create conversation if none active
       let conversationId = currentConversationId
+      let isNewConversation = false
       if (!conversationId) {
+        isNewConversation = true
         try {
           const conv = await createConversation()
           conversationId = conv.id
@@ -142,6 +178,13 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
       }
       addMessage(userMessage)
 
+      // Prepend user/org context on the first message so
+      // the assistant knows who is asking and which org
+      // they are working in.
+      const messageContent = isNewConversation
+        ? buildUserContext(user, selectedOrganization) + userText
+        : userText
+
       // Start streaming
       startStreaming()
       const abort = new AbortController()
@@ -150,7 +193,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
       try {
         await sendMessageSSE(
           conversationId,
-          userText,
+          messageContent,
           {
             onText: (text) => {
               appendStreamingContent(text)
@@ -174,6 +217,27 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
               if (current) {
                 addPendingToolUse(current)
                 setActiveToolUse(null)
+              }
+            },
+            onClientAction: (action, params) => {
+              if (
+                action === 'navigate_to' &&
+                params.path
+              ) {
+                navigate(params.path)
+              } else if (
+                action === 'refresh_data' &&
+                params.resource
+              ) {
+                const keys = getQueryKeysForResource(
+                  params.resource,
+                  params.org_slug,
+                )
+                for (const key of keys) {
+                  queryClient.invalidateQueries({
+                    queryKey: key,
+                  })
+                }
               }
             },
             onDone: (messageId) => {
@@ -214,11 +278,14 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
       setExpanded,
       addMessage,
       setCurrentConversation,
+      user,
+      selectedOrganization,
       startStreaming,
       appendStreamingContent,
       setActiveToolUse,
       addPendingToolUse,
       finishStreaming,
+      navigate,
     ],
   )
 

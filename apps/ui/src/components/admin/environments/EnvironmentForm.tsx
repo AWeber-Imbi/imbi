@@ -14,7 +14,7 @@ import type { Environment, EnvironmentCreate } from '@/types'
 
 interface EnvironmentFormProps {
   environment: Environment | null
-  onSave: (env: EnvironmentCreate) => void
+  onSave: (orgSlug: string, env: EnvironmentCreate) => void
   onCancel: () => void
   isDarkMode: boolean
   isLoading?: boolean
@@ -73,13 +73,12 @@ export function EnvironmentForm({
     e.preventDefault()
     if (!validate()) return
 
-    onSave({
+    onSave(orgSlug, {
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
       label_color: /^#[0-9A-Fa-f]{6}$/.test(labelColor) ? labelColor.toUpperCase() : null,
-      organization_slug: orgSlug,
       ...dynamicFormData,
     })
   }
@@ -171,12 +170,12 @@ export function EnvironmentForm({
               <select
                 value={orgSlug}
                 onChange={(e) => setOrgSlug(e.target.value)}
-                disabled={isEditing || isLoading}
+                disabled={isEditing || isLoading || organizations.length <= 1}
                 className={`w-full px-3 py-2 rounded-lg border text-sm ${
                   isDarkMode
                     ? 'bg-gray-700 border-gray-600 text-white'
                     : 'bg-white border-gray-300 text-gray-900'
-                } ${isEditing ? 'opacity-60 cursor-not-allowed' : ''} ${
+                } ${isEditing || isLoading || organizations.length <= 1 ? 'opacity-60 cursor-not-allowed' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
               >
