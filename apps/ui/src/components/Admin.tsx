@@ -70,6 +70,7 @@ export function Admin({ isDarkMode }: AdminProps) {
     { id: 'teams', label: 'Teams', icon: UsersRound, description: 'Manage teams', scope: 'org' },
     { id: 'environments', label: 'Environments', icon: Layers, description: 'Manage environments', scope: 'org' },
     { id: 'project-types', label: 'Project Types', icon: FolderTree, description: 'Manage project types', scope: 'org' },
+    { id: 'third-party-services', label: 'Third-Party Services', icon: Cloud, description: 'Manage external SaaS services', scope: 'org' },
     { id: 'blueprints', label: 'Blueprints', icon: FileJson, description: 'Configure metadata templates', scope: 'org' },
   ]
 

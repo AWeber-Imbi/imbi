@@ -457,6 +457,100 @@ export interface BlueprintCreate {
   version?: number
 }
 
+// Third-Party Service types
+export interface ThirdPartyService {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  vendor: string
+  service_url?: string | null
+  category?: string | null
+  status: 'active' | 'deprecated' | 'evaluating' | 'inactive'
+  links: Record<string, string>
+  identifiers: Record<string, string | number>
+  organization: {
+    name: string
+    slug: string
+  }
+  team?: {
+    name: string
+    slug: string
+  } | null
+  [key: string]: unknown
+}
+
+export interface ThirdPartyServiceCreate {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  vendor: string
+  service_url?: string | null
+  category?: string | null
+  status?: string
+  links?: Record<string, string>
+  identifiers?: Record<string, string | number>
+  organization_slug: string
+  team_slug?: string | null
+  [key: string]: unknown
+}
+
+// Service Application types
+export interface ServiceApplication {
+  slug: string
+  name: string
+  description?: string | null
+  app_type: string
+  application_url?: string | null
+  client_id: string
+  scopes: string[]
+  settings: Record<string, string | number | boolean>
+  status: 'active' | 'inactive' | 'revoked'
+}
+
+export interface ServiceApplicationCreate {
+  slug: string
+  name: string
+  description?: string | null
+  app_type: string
+  application_url?: string | null
+  client_id: string
+  client_secret: string
+  scopes?: string[]
+  webhook_secret?: string | null
+  private_key?: string | null
+  signing_secret?: string | null
+  settings?: Record<string, string | number | boolean>
+  status?: 'active' | 'inactive' | 'revoked'
+}
+
+export interface ServiceApplicationUpdate {
+  slug: string
+  name: string
+  description?: string | null
+  app_type: string
+  application_url?: string | null
+  client_id: string
+  scopes?: string[]
+  settings?: Record<string, string | number | boolean>
+  status?: 'active' | 'inactive' | 'revoked'
+}
+
+export interface ServiceApplicationSecrets {
+  client_secret: string
+  webhook_secret?: string | null
+  private_key?: string | null
+  signing_secret?: string | null
+}
+
+export interface ServiceApplicationSecretsUpdate {
+  client_secret?: string | null
+  webhook_secret?: string | null
+  private_key?: string | null
+  signing_secret?: string | null
+}
+
 export interface SchemaProperty {
   id: string
   name: string

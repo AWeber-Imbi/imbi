@@ -228,6 +228,15 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     )
   }
 
+  // Guard for invalid user email in URL
+  if ((viewMode === 'edit' || viewMode === 'detail') && !!selectedUserEmail && !selectedUser) {
+    return (
+      <div className={`p-4 rounded-lg border ${isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'}`}>
+        User not found. They may have been removed.
+      </div>
+    )
+  }
+
   // View mode: Create or Edit
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
