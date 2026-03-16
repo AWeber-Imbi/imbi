@@ -8,7 +8,7 @@ import { KeyValueEditor } from '@/components/ui/key-value-editor'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { listTeams } from '@/api/endpoints'
 import { slugify } from '@/lib/utils'
-import type { ThirdPartyService, ThirdPartyServiceCreate } from '@/types'
+import type { Team, ThirdPartyService, ThirdPartyServiceCreate } from '@/types'
 
 interface ThirdPartyServiceFormProps {
   service: ThirdPartyService | null
@@ -54,11 +54,12 @@ export function ThirdPartyServiceForm({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const { data: teams = [] } = useQuery({
-    queryKey: ['teams'],
-    queryFn: listTeams,
+    queryKey: ['teams', orgSlug],
+    queryFn: () => listTeams(orgSlug),
+    enabled: !!orgSlug,
   })
 
-  const orgTeams = teams.filter((t) => t.organization.slug === orgSlug)
+  const orgTeams = teams.filter((t: Team) => t.organization.slug === orgSlug)
 
   const validate = () => {
     const newErrors: Record<string, string> = {}
