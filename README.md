@@ -20,29 +20,25 @@ and AI-powered features.
 ## Architecture
 
 ```
-                              +-----------------+
-                              |    imbi-ui      |
-                              |  React / Vite   |
-                              +-----------------+
-                                      |
-                            +-------------------+
-                            |      Caddy        |
-                            |  reverse proxy    |
-                            +-------------------+
-                              |   |   |   |
-          +----------+--------+---+---+---+--------+----------+
-          |          |            |            |               |
-     imbi-api   imbi-assistant  imbi-gateway  imbi-mcp
-     (FastAPI)   (FastAPI)      (FastAPI)     (FastMCP)
-          |          |            |               |
-          +----------+------------+---------------+
-                              |
-                        imbi-common
-                    (shared Python library)
-                              |
-                    +---------+---------+
-                    |                   |
-                 Neo4j             ClickHouse
+                          +--------------------+
+                          |       Caddy        |
+                          |   reverse proxy    |
+                          +----+--+--+--+--+---+
+                               |  |  |  |  |
+        +----------------------+  |  |  |  +---------------------+
+        |            +------------+  |  +-----------+            |
+        |            |               |              |            |
+    imbi-api   imbi-assistant    imbi-ui      imbi-gateway   imbi-mcp
+    (FastAPI)    (FastAPI)     (React/Vite)    (FastAPI)      (FastMCP)
+        |            |                              |            |
+        +------------+--------------+---------------+------------+
+                                    |
+                              imbi-common
+                       (shared Python library)
+                                    |
+                          +---------+---------+
+                          |                   |
+                        Neo4j            ClickHouse
 ```
 
 All services run behind [Caddy](https://caddyserver.com/), a powerful and

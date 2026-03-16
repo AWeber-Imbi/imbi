@@ -6,27 +6,25 @@ complete service management platform.
 ## Service Architecture
 
 ```
-                         +-------------------+
-                         |    imbi-ui        |
-                         |  React / Vite     |
-                         +-------------------+
-                                  |
-                        +-------------------+
-                        |      Caddy        |
-                        |  reverse proxy    |
-                        +-------------------+
-                          |   |   |   |
-      +----------+--------+---+---+---+--------+----------+
-      |          |            |            |               |
- imbi-api   imbi-assistant  imbi-gateway  imbi-mcp
-      |          |            |               |
-      +----------+------------+---------------+
-                          |
-                    imbi-common
-                          |
-                +---------+---------+
-                |                   |
-             Neo4j             ClickHouse
+                          +--------------------+
+                          |       Caddy        |
+                          |   reverse proxy    |
+                          +----+--+--+--+--+---+
+                               |  |  |  |  |
+        +----------------------+  |  |  |  +---------------------+
+        |            +------------+  |  +-----------+            |
+        |            |               |              |            |
+    imbi-api   imbi-assistant    imbi-ui      imbi-gateway   imbi-mcp
+    (FastAPI)    (FastAPI)     (React/Vite)    (FastAPI)      (FastMCP)
+        |            |                              |            |
+        +------------+--------------+---------------+------------+
+                                    |
+                              imbi-common
+                       (shared Python library)
+                                    |
+                          +---------+---------+
+                          |                   |
+                        Neo4j            ClickHouse
 ```
 
 ## Services
