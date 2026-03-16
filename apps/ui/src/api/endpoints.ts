@@ -33,6 +33,13 @@ import type {
   Team,
   TeamCreate,
   TeamMember,
+  ThirdPartyService,
+  ThirdPartyServiceCreate,
+  ServiceApplication,
+  ServiceApplicationCreate,
+  ServiceApplicationUpdate,
+  ServiceApplicationSecrets,
+  ServiceApplicationSecretsUpdate,
   Upload,
   ApiKey,
   ApiKeyCreated,
@@ -398,6 +405,74 @@ export const addTeamMember = (slug: string, email: string) =>
 export const removeTeamMember = (slug: string, email: string) =>
   apiClient.delete<void>(
     `/teams/${encodeURIComponent(slug)}/members/${encodeURIComponent(email)}`
+  )
+
+// Admin - Third-Party Services
+export const listThirdPartyServices = async (): Promise<ThirdPartyService[]> => {
+  const response = await apiClient.get<ThirdPartyService[]>('/third-party-services/')
+  return Array.isArray(response) ? response : []
+}
+
+export const getThirdPartyService = (slug: string) =>
+  apiClient.get<ThirdPartyService>(`/third-party-services/${encodeURIComponent(slug)}`)
+
+export const createThirdPartyService = (svc: ThirdPartyServiceCreate) =>
+  apiClient.post<ThirdPartyService>('/third-party-services/', svc)
+
+export const updateThirdPartyService = (slug: string, svc: ThirdPartyServiceCreate) =>
+  apiClient.put<ThirdPartyService>(`/third-party-services/${encodeURIComponent(slug)}`, svc)
+
+export const deleteThirdPartyService = (slug: string) =>
+  apiClient.delete<void>(`/third-party-services/${encodeURIComponent(slug)}`)
+
+// Service Applications (nested under Third-Party Services)
+export const listServiceApplications = async (serviceSlug: string): Promise<ServiceApplication[]> => {
+  const response = await apiClient.get<ServiceApplication[]>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getServiceApplication = (serviceSlug: string, appSlug: string) =>
+  apiClient.get<ServiceApplication>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
+  )
+
+export const createServiceApplication = (serviceSlug: string, data: ServiceApplicationCreate) =>
+  apiClient.post<ServiceApplication>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`,
+    data
+  )
+
+export const updateServiceApplication = (
+  serviceSlug: string,
+  appSlug: string,
+  data: ServiceApplicationUpdate
+) =>
+  apiClient.put<ServiceApplication>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
+    data
+  )
+
+export const deleteServiceApplication = (serviceSlug: string, appSlug: string) =>
+  apiClient.delete<void>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
+  )
+
+// Service Application Secrets
+export const getApplicationSecrets = (serviceSlug: string, appSlug: string) =>
+  apiClient.get<ServiceApplicationSecrets>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`
+  )
+
+export const updateApplicationSecrets = (
+  serviceSlug: string,
+  appSlug: string,
+  data: ServiceApplicationSecretsUpdate
+) =>
+  apiClient.put<ServiceApplicationSecrets>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
+    data
   )
 
 // Uploads
