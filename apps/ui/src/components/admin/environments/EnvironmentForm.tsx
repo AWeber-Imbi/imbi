@@ -170,12 +170,12 @@ export function EnvironmentForm({
               <select
                 value={orgSlug}
                 onChange={(e) => setOrgSlug(e.target.value)}
-                disabled={isEditing || isLoading}
+                disabled={isEditing || isLoading || organizations.length <= 1}
                 className={`w-full px-3 py-2 rounded-lg border text-sm ${
                   isDarkMode
                     ? 'bg-gray-700 border-gray-600 text-white'
                     : 'bg-white border-gray-300 text-gray-900'
-                } ${isEditing ? 'opacity-60 cursor-not-allowed' : ''} ${
+                } ${isEditing || organizations.length <= 1 ? 'opacity-60 cursor-not-allowed' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
               >
