@@ -192,7 +192,7 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
                 }`}>
                   Environment
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                <th className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
                   Slug
@@ -202,12 +202,7 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
                 }`}>
                   Projects
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider whitespace-nowrap ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                }`}>
-                  Label Color
-                </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider whitespace-nowrap ${
+                <th className={`px-6 py-3 text-center text-xs uppercase tracking-wider whitespace-nowrap ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
                   Last Updated
@@ -258,12 +253,25 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
                       </div>
                     </div>
                   </td>
-                  <td className={`px-6 py-4 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    <code className={`px-2 py-1 rounded ${
-                      isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {env.slug}
-                    </code>
+                  <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
+                    {env.label_color ? (
+                      <span
+                        className="px-2 py-1 rounded text-xs font-medium"
+                        style={{
+                          backgroundColor: env.label_color + '20',
+                          color: env.label_color,
+                          border: `1px solid ${env.label_color}40`,
+                        }}
+                      >
+                        {env.slug}
+                      </span>
+                    ) : (
+                      <code className={`px-2 py-1 rounded ${
+                        isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        {env.slug}
+                      </code>
+                    )}
                   </td>
                   <td className={`px-6 py-4 text-sm text-right whitespace-nowrap ${
                     (env.relationships?.projects?.count ?? 0) === 0
@@ -272,24 +280,7 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
                   }`}>
                     {env.relationships?.projects?.count ?? 0}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {env.label_color ? (
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-5 h-5 rounded flex-shrink-0"
-                          style={{ backgroundColor: env.label_color }}
-                        />
-                        <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                          {env.label_color}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                        None
-                      </span>
-                    )}
-                  </td>
-                  <td className={`px-6 py-4 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <td className={`px-6 py-4 text-sm whitespace-nowrap text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     {formatRelativeDate(env.updated_at ?? env.created_at)}
                   </td>
                   <td className="px-6 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>

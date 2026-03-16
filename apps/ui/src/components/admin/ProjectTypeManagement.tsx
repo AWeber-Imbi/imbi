@@ -192,7 +192,7 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
                 }`}>
                   Project Type
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                <th className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
                   Slug
@@ -202,7 +202,7 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
                 }`}>
                   Projects
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider whitespace-nowrap ${
+                <th className={`px-6 py-3 text-center text-xs uppercase tracking-wider whitespace-nowrap ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
                   Last Updated
@@ -253,7 +253,7 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
                       </div>
                     </div>
                   </td>
-                  <td className={`px-6 py-4 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <td className={`px-6 py-4 text-sm whitespace-nowrap text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     <code className={`px-2 py-1 rounded ${
                       isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
                     }`}>
@@ -267,7 +267,7 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
                   }`}>
                     {pt.relationships?.projects?.count ?? 0}
                   </td>
-                  <td className={`px-6 py-4 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <td className={`px-6 py-4 text-sm whitespace-nowrap text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     {formatRelativeDate(pt.updated_at ?? pt.created_at)}
                   </td>
                   <td className="px-6 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>

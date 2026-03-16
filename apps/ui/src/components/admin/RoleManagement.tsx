@@ -231,7 +231,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
               <th className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Role
               </th>
-              <th className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Slug
               </th>
               <th className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -240,7 +240,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
               <th className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Type
               </th>
-              <th className={`px-4 py-3 text-left text-xs font-medium whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th className={`px-4 py-3 text-center text-xs font-medium whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Last Updated
               </th>
               <th className={`px-4 py-3 text-right text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -278,7 +278,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                         </span>
                       </div>
                     </td>
-                    <td className={`px-4 py-3 text-sm font-mono whitespace-nowrap ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    <td className={`px-4 py-3 text-sm font-mono whitespace-nowrap text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                       {role.slug}
                     </td>
                     <td className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
@@ -300,7 +300,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                         </span>
                       )}
                     </td>
-                    <td className={`px-4 py-3 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <td className={`px-4 py-3 text-sm whitespace-nowrap text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                       {formatRelativeDate(role.updated_at)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
