@@ -172,7 +172,7 @@ export function ProjectTypeForm({
                   isDarkMode
                     ? 'bg-gray-700 border-gray-600 text-white'
                     : 'bg-white border-gray-300 text-gray-900'
-                } ${isEditing || organizations.length <= 1 ? 'opacity-60 cursor-not-allowed' : ''} ${
+                } ${isEditing || isLoading || organizations.length <= 1 ? 'opacity-60 cursor-not-allowed' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
               >

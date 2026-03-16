@@ -170,12 +170,23 @@ export async function sendMessageSSE(
                 parsed.usage,
               )
               break
-            case 'client_action':
-              handlers.onClientAction?.(
-                parsed.action,
-                parsed.params,
-              )
+            case 'client_action': {
+              if (
+                typeof parsed.action === 'string' &&
+                parsed.action &&
+                (!parsed.params ||
+                  (typeof parsed.params === 'object' &&
+                    !Array.isArray(parsed.params)))
+              ) {
+                handlers.onClientAction?.(
+                  parsed.action,
+                  parsed.params as Record<string, string>,
+                )
+              } else {
+                handlers.onError?.('Invalid client_action payload')
+              }
               break
+            }
             case 'error':
               handlers.onError?.(parsed.message)
               break

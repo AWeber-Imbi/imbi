@@ -30,7 +30,7 @@ export function useAdminNav(): AdminNavState {
     viewMode = action === 'edit' ? 'edit' : 'detail'
   }
 
-  const base = `/admin/${section}`
+  const base = section ? `/admin/${section}` : '/admin'
 
   const goToList = useCallback(
     () => navigate(base),

@@ -52,6 +52,7 @@ export function ColorPicker({ value, onChange, isDarkMode }: ColorPickerProps) {
         <button
           type="button"
           onClick={handleSwatchClick}
+          aria-label={value ? 'Change label color' : 'Pick label color'}
           className={`w-10 h-10 rounded-lg border flex-shrink-0 cursor-pointer ${
             !value ? (isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-100 border-gray-300') : ''
           }`}

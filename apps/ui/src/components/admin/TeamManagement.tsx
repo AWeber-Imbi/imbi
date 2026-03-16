@@ -259,6 +259,15 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
                 <tr
                   key={team.slug}
                   onClick={() => goToDetail(team.slug)}
+                  onKeyDown={(e) => {
+                    if (e.currentTarget !== e.target) return
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      goToDetail(team.slug)
+                    }
+                  }}
+                  tabIndex={0}
+                  aria-label={`View team ${team.name}`}
                   className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
                 >
                   <td className="px-6 py-4">

@@ -134,6 +134,15 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
     )
   }
 
+  // Guard for invalid organization slug in URL
+  if ((viewMode === 'edit' || viewMode === 'detail') && !!selectedOrgSlug && !selectedOrg) {
+    return (
+      <div className={`p-4 rounded-lg border ${isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'}`}>
+        Organization not found. It may have been deleted.
+      </div>
+    )
+  }
+
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <OrganizationForm

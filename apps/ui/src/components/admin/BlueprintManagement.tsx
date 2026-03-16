@@ -263,6 +263,15 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     )
   }
 
+  // Guard for invalid blueprint URL slugs
+  if ((viewMode === 'edit' || viewMode === 'detail') && !!selectedSlug && !selectedKey) {
+    return (
+      <div className={`p-4 rounded-lg border ${isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'}`}>
+        Invalid blueprint URL. Please reopen from the list.
+      </div>
+    )
+  }
+
   // View mode: Create or Edit
   if (viewMode === 'create' || viewMode === 'edit') {
     const isCreate = viewMode === 'create'

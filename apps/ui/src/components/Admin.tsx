@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Users, Shield, FileJson, ChevronRight, ChevronLeft,
-  ExternalLink, Building2, Globe, Layers, FolderTree, UsersRound, Bot,
+  ExternalLink, Building2, Globe, Layers, FolderTree, UsersRound, Bot, Cloud,
 } from 'lucide-react'
 import { UserManagement } from './admin/UserManagement'
 import { RoleManagement } from './admin/RoleManagement'
@@ -12,6 +12,7 @@ import { ServiceAccountManagement } from './admin/ServiceAccountManagement'
 import { OAuthManagement } from './admin/OAuthManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
+import { ThirdPartyServiceManagement } from './admin/ThirdPartyServiceManagement'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -23,6 +24,7 @@ type AdminSection =
   | 'teams'
   | 'environments'
   | 'project-types'
+  | 'third-party-services'
   | 'blueprints'
   | 'organizations'
   | 'users'
@@ -34,6 +36,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'teams',
   'environments',
   'project-types',
+  'third-party-services',
   'blueprints',
   'organizations',
   'users',
@@ -190,6 +193,7 @@ export function Admin({ isDarkMode }: AdminProps) {
             {currentSection === 'teams' && <TeamManagement isDarkMode={isDarkMode} />}
             {currentSection === 'environments' && <EnvironmentManagement isDarkMode={isDarkMode} />}
             {currentSection === 'project-types' && <ProjectTypeManagement isDarkMode={isDarkMode} />}
+            {currentSection === 'third-party-services' && <ThirdPartyServiceManagement isDarkMode={isDarkMode} />}
             {currentSection === 'blueprints' && <BlueprintManagement isDarkMode={isDarkMode} />}
             {currentSection === 'organizations' && <OrganizationManagement isDarkMode={isDarkMode} />}
             {currentSection === 'users' && <UserManagement isDarkMode={isDarkMode} />}

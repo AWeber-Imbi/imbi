@@ -45,9 +45,16 @@ export default defineConfig(({ mode }) => {
           target: 'http://127.0.0.1:8002',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/assistant/, ''),
+          proxyTimeout: 0,
+          timeout: 0,
           configure: (proxy, _options) => {
             proxy.on('proxyReq', (proxyReq, req, _res) => {
+              proxyReq.setHeader('Accept', 'text/event-stream')
               console.log(`[Proxy] ${req.method} ${req.url} -> ${proxyReq.path}`)
+            })
+            proxy.on('proxyRes', (proxyRes) => {
+              proxyRes.headers['cache-control'] ??= 'no-cache'
+              proxyRes.headers['connection'] ??= 'keep-alive'
             })
             proxy.on('error', (err, _req, _res) => {
               console.log('[Proxy] Error:', err.message)
