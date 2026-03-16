@@ -1,5 +1,6 @@
 """Project type management endpoints."""
 
+import datetime
 import logging
 import typing
 
@@ -9,17 +10,30 @@ from imbi_common import blueprints, models, neo4j
 from neo4j import exceptions
 
 from imbi_api.auth import permissions
+from imbi_api.relationships import relationship_link
 
 LOGGER = logging.getLogger(__name__)
 
-project_types_router = fastapi.APIRouter(
-    prefix='/project-types',
-    tags=['Project Types'],
-)
+project_types_router = fastapi.APIRouter(tags=['Project Types'])
+
+
+def _add_relationships(
+    pt: dict[str, typing.Any],
+    project_count: int = 0,
+) -> dict[str, typing.Any]:
+    """Attach relationships sub-object to a project type dict."""
+    pt['relationships'] = {
+        'projects': relationship_link(
+            f'/api/projects?project-type={pt["slug"]}',
+            project_count,
+        ),
+    }
+    return pt
 
 
 @project_types_router.post('/', status_code=201)
 async def create_project_type(
+    org_slug: str,
     data: dict[str, typing.Any],
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -31,25 +45,20 @@ async def create_project_type(
     """Create a new project type linked to an organization.
 
     Parameters:
-        data: Project type data including base fields and
-            ``organization_slug``.
+        org_slug: Organization slug from URL path.
+        data: Project type data including base fields.
 
     Returns:
         The created project type.
 
     Raises:
-        400: Invalid data or missing organization_slug
+        400: Invalid data
         404: Organization not found
         409: Project type with slug already exists
 
     """
     payload = dict(data)
-    org_slug = payload.pop('organization_slug', None)
-    if not org_slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='organization_slug is required',
-        )
+    payload.pop('organization_slug', None)
     payload.pop('organization', None)
 
     dynamic_model = await blueprints.get_model(
@@ -74,6 +83,9 @@ async def create_project_type(
             detail=f'Validation error: {e.errors()}',
         ) from e
 
+    now = datetime.datetime.now(datetime.UTC)
+    project_type.created_at = now
+    project_type.updated_at = now
     props = project_type.model_dump(
         exclude={'organization'},
     )
@@ -85,12 +97,11 @@ async def create_project_type(
     RETURN pt{.*, organization: o{.*}} AS project_type
     """
     try:
-        async with neo4j.run(
+        records = await neo4j.query(
             query,
             org_slug=org_slug,
             props=props,
-        ) as result:
-            records = await result.data()
+        )
     except exceptions.ConstraintError as e:
         raise fastapi.HTTPException(
             status_code=409,
@@ -105,14 +116,12 @@ async def create_project_type(
             detail=(f'Organization with slug {org_slug!r} not found'),
         )
 
-    return typing.cast(
-        dict[str, typing.Any],
-        records[0]['project_type'],
-    )
+    return _add_relationships(records[0]['project_type'])
 
 
 @project_types_router.get('/')
 async def list_project_types(
+    org_slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -120,28 +129,37 @@ async def list_project_types(
         ),
     ],
 ) -> list[dict[str, typing.Any]]:
-    """List all project types.
+    """List all project types in an organization.
+
+    Parameters:
+        org_slug: Organization slug from URL path.
 
     Returns:
         Project types ordered by name, each including their
-        organization.
+        organization and relationships.
 
     """
     query: typing.LiteralString = """
-    MATCH (pt:ProjectType)-[:BELONGS_TO]->(o:Organization)
-    RETURN pt{.*, organization: o{.*}} AS project_type
+    MATCH (pt:ProjectType)
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    OPTIONAL MATCH (p:Project)-[:TYPE]->(pt)
+    WITH pt, o, count(DISTINCT p) AS project_count
+    RETURN pt{.*, organization: o{.*}} AS project_type,
+           project_count
     ORDER BY pt.name
     """
     project_types: list[dict[str, typing.Any]] = []
-    async with neo4j.run(query) as result:
-        records = await result.data()
-        for record in records:
-            project_types.append(record['project_type'])
+    records = await neo4j.query(query, org_slug=org_slug)
+    for record in records:
+        pt = record['project_type']
+        _add_relationships(pt, record['project_count'])
+        project_types.append(pt)
     return project_types
 
 
 @project_types_router.get('/{slug}')
 async def get_project_type(
+    org_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -153,10 +171,11 @@ async def get_project_type(
     """Get a project type by slug.
 
     Parameters:
+        org_slug: Organization slug from URL path.
         slug: Project type slug identifier.
 
     Returns:
-        Project type with organization.
+        Project type with organization and relationships.
 
     Raises:
         404: Project type not found
@@ -164,25 +183,32 @@ async def get_project_type(
     """
     query: typing.LiteralString = """
     MATCH (pt:ProjectType {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization)
-    RETURN pt{.*, organization: o{.*}} AS project_type
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    OPTIONAL MATCH (p:Project)-[:TYPE]->(pt)
+    WITH pt, o, count(DISTINCT p) AS project_count
+    RETURN pt{.*, organization: o{.*}} AS project_type,
+           project_count
     """
-    async with neo4j.run(query, slug=slug) as result:
-        records = await result.data()
+    records = await neo4j.query(
+        query,
+        slug=slug,
+        org_slug=org_slug,
+    )
 
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(f'Project type with slug {slug!r} not found'),
         )
-    return typing.cast(
-        dict[str, typing.Any],
+    return _add_relationships(
         records[0]['project_type'],
+        records[0]['project_count'],
     )
 
 
 @project_types_router.put('/{slug}')
 async def update_project_type(
+    org_slug: str,
     slug: str,
     data: dict[str, typing.Any],
     auth: typing.Annotated[
@@ -195,6 +221,7 @@ async def update_project_type(
     """Update a project type.
 
     Parameters:
+        org_slug: Organization slug from URL path.
         slug: Project type slug from URL.
         data: Updated project type data.
 
@@ -219,11 +246,14 @@ async def update_project_type(
 
     query: typing.LiteralString = """
     MATCH (pt:ProjectType {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization)
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     RETURN pt{.*, organization: o{.*}} AS project_type
     """
-    async with neo4j.run(query, slug=slug) as result:
-        records = await result.data()
+    records = await neo4j.query(
+        query,
+        slug=slug,
+        org_slug=org_slug,
+    )
 
     if not records:
         raise fastapi.HTTPException(
@@ -248,23 +278,29 @@ async def update_project_type(
             detail=f'Validation error: {e.errors()}',
         ) from e
 
+    project_type.created_at = existing.get('created_at')
+    project_type.updated_at = datetime.datetime.now(datetime.UTC)
     props = project_type.model_dump(
         exclude={'organization'},
     )
 
     update_query: typing.LiteralString = """
     MATCH (pt:ProjectType {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization)
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     SET pt = $props
-    RETURN pt{.*, organization: o{.*}} AS project_type
+    WITH pt, o
+    OPTIONAL MATCH (p:Project)-[:TYPE]->(pt)
+    WITH pt, o, count(DISTINCT p) AS project_count
+    RETURN pt{.*, organization: o{.*}} AS project_type,
+           project_count
     """
     try:
-        async with neo4j.run(
+        updated = await neo4j.query(
             update_query,
             slug=slug,
+            org_slug=org_slug,
             props=props,
-        ) as result:
-            updated = await result.data()
+        )
     except exceptions.ConstraintError as e:
         raise fastapi.HTTPException(
             status_code=409,
@@ -279,14 +315,15 @@ async def update_project_type(
             detail=(f'Project type with slug {slug!r} not found'),
         )
 
-    return typing.cast(
-        dict[str, typing.Any],
+    return _add_relationships(
         updated[0]['project_type'],
+        updated[0]['project_count'],
     )
 
 
 @project_types_router.delete('/{slug}', status_code=204)
 async def delete_project_type(
+    org_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -300,17 +337,26 @@ async def delete_project_type(
     """Delete a project type.
 
     Parameters:
+        org_slug: Organization slug from URL path.
         slug: Project type slug to delete.
 
     Raises:
         404: Project type not found
 
     """
-    deleted = await neo4j.delete_node(
-        models.ProjectType,
-        {'slug': slug},
+    query: typing.LiteralString = """
+    MATCH (pt:ProjectType {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    DETACH DELETE pt
+    RETURN count(pt) AS deleted
+    """
+    records = await neo4j.query(
+        query,
+        slug=slug,
+        org_slug=org_slug,
     )
-    if not deleted:
+
+    if not records or records[0].get('deleted', 0) == 0:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(f'Project type with slug {slug!r} not found'),

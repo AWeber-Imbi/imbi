@@ -1,5 +1,6 @@
 """Team management endpoints."""
 
+import datetime
 import logging
 import typing
 
@@ -9,14 +10,37 @@ from imbi_common import blueprints, models, neo4j
 from neo4j import exceptions
 
 from imbi_api.auth import permissions
+from imbi_api.relationships import relationship_link
 
 LOGGER = logging.getLogger(__name__)
 
-teams_router = fastapi.APIRouter(prefix='/teams', tags=['Teams'])
+teams_router = fastapi.APIRouter(tags=['Teams'])
+
+
+def _add_relationships(
+    team: dict[str, typing.Any],
+    org_slug: str,
+    project_count: int = 0,
+    member_count: int = 0,
+) -> dict[str, typing.Any]:
+    """Attach relationships sub-object to a team dict."""
+    slug = team['slug']
+    team['relationships'] = {
+        'projects': relationship_link(
+            f'/api/projects?team={slug}',
+            project_count,
+        ),
+        'members': relationship_link(
+            f'/api/organizations/{org_slug}/teams/{slug}/members',
+            member_count,
+        ),
+    }
+    return team
 
 
 @teams_router.post('/', status_code=201)
 async def create_team(
+    org_slug: str,
     data: dict[str, typing.Any],
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -26,26 +50,25 @@ async def create_team(
     """Create a new team linked to an organization.
 
     Parameters:
-        data: Team data including base fields and
-            ``organization_slug``.
+        org_slug: Organization slug from URL path.
+        data: Team data including base fields.
 
     Returns:
         The created team.
 
     Raises:
-        400: Invalid data or missing organization_slug
+        400: Invalid data
         404: Organization not found
         409: Team with slug already exists
 
     """
-    org_slug = data.pop('organization_slug', None)
-    if not org_slug:
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail='organization_slug is required',
-        )
-
     dynamic_model = await blueprints.get_model(models.Team)
+
+    # Defensive copy: remove organization fields to prevent
+    # duplicate keyword arguments when unpacking into model
+    payload = dict(data)
+    payload.pop('organization_slug', None)
+    payload.pop('organization', None)
 
     # Validate team fields (without organization relationship)
     try:
@@ -54,7 +77,7 @@ async def create_team(
                 name='',
                 slug=org_slug,
             ),
-            **data,
+            **payload,
         )
     except pydantic.ValidationError as e:
         LOGGER.warning('Validation error creating team: %s', e)
@@ -65,6 +88,9 @@ async def create_team(
 
     # Build property SET clause from model fields (exclude
     # relationship fields)
+    now = datetime.datetime.now(datetime.UTC)
+    team.created_at = now
+    team.updated_at = now
     props = team.model_dump(
         exclude={'organization'},
     )
@@ -76,12 +102,11 @@ async def create_team(
     RETURN t{.*, organization: o{.*}} AS team
     """
     try:
-        async with neo4j.run(
+        records = await neo4j.query(
             query,
             org_slug=org_slug,
             props=props,
-        ) as result:
-            records = await result.data()
+        )
     except exceptions.ConstraintError as e:
         raise fastapi.HTTPException(
             status_code=409,
@@ -94,41 +119,54 @@ async def create_team(
             detail=(f'Organization with slug {org_slug!r} not found'),
         )
 
-    return typing.cast(
-        dict[str, typing.Any],
-        records[0]['team'],
-    )
+    return _add_relationships(records[0]['team'], org_slug)
 
 
 @teams_router.get('/')
 async def list_teams(
+    org_slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('team:read')),
     ],
 ) -> list[dict[str, typing.Any]]:
-    """List all teams.
+    """List all teams in an organization.
+
+    Parameters:
+        org_slug: Organization slug from URL path.
 
     Returns:
         Teams ordered by name, each including their
-        organization.
+        organization and relationships.
 
     """
     query: typing.LiteralString = """
-    MATCH (t:Team)-[:BELONGS_TO]->(o:Organization)
-    RETURN t{.*, organization: o{.*}} AS team
+    MATCH (t:Team)-[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t)
+    OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)
+    WITH t, o, count(DISTINCT p) AS project_count,
+                count(DISTINCT u) AS member_count
+    RETURN t{.*, organization: o{.*}} AS team,
+           project_count, member_count
     ORDER BY t.name
     """
     teams: list[dict[str, typing.Any]] = []
-    async with neo4j.run(query) as result:
-        records = await result.data()
-        for record in records:
-            teams.append(record['team'])
+    records = await neo4j.query(query, org_slug=org_slug)
+    for record in records:
+        team = record['team']
+        _add_relationships(
+            team,
+            org_slug,
+            record['project_count'],
+            record['member_count'],
+        )
+        teams.append(team)
     return teams
 
 
 @teams_router.get('/{slug}')
 async def get_team(
+    org_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -138,35 +176,48 @@ async def get_team(
     """Get a team by slug.
 
     Parameters:
+        org_slug: Organization slug from URL path.
         slug: Team slug identifier.
 
     Returns:
-        Team with organization.
+        Team with organization and relationships.
 
     Raises:
         404: Team not found
 
     """
     query: typing.LiteralString = """
-    MATCH (t:Team {slug: $slug})-[:BELONGS_TO]->(o:Organization)
-    RETURN t{.*, organization: o{.*}} AS team
+    MATCH (t:Team {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t)
+    OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)
+    WITH t, o, count(DISTINCT p) AS project_count,
+                count(DISTINCT u) AS member_count
+    RETURN t{.*, organization: o{.*}} AS team,
+           project_count, member_count
     """
-    async with neo4j.run(query, slug=slug) as result:
-        records = await result.data()
+    records = await neo4j.query(
+        query,
+        slug=slug,
+        org_slug=org_slug,
+    )
 
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Team with slug {slug!r} not found',
         )
-    return typing.cast(
-        dict[str, typing.Any],
+    return _add_relationships(
         records[0]['team'],
+        org_slug,
+        records[0]['project_count'],
+        records[0]['member_count'],
     )
 
 
 @teams_router.put('/{slug}')
 async def update_team(
+    org_slug: str,
     slug: str,
     data: dict[str, typing.Any],
     auth: typing.Annotated[
@@ -177,6 +228,7 @@ async def update_team(
     """Update a team.
 
     Parameters:
+        org_slug: Organization slug from URL path.
         slug: Team slug from URL.
         data: Updated team data.
 
@@ -188,22 +240,30 @@ async def update_team(
         404: Team not found
 
     """
-    # If no slug in body, default to the URL slug (no rename)
-    if 'slug' not in data:
-        data['slug'] = slug
+    # Defensive copy: avoid mutating the caller's input
+    payload = dict(data)
 
-    # Remove organization_slug if present (not updatable)
-    data.pop('organization_slug', None)
+    # If no slug in body, default to the URL slug (no rename)
+    if 'slug' not in payload:
+        payload['slug'] = slug
+
+    # Remove organization fields (not updatable)
+    payload.pop('organization_slug', None)
+    payload.pop('organization', None)
 
     dynamic_model = await blueprints.get_model(models.Team)
 
     # Fetch team with its organization relationship
     query: typing.LiteralString = """
-    MATCH (t:Team {slug: $slug})-[:BELONGS_TO]->(o:Organization)
+    MATCH (t:Team {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     RETURN t{.*, organization: o{.*}} AS team
     """
-    async with neo4j.run(query, slug=slug) as result:
-        records = await result.data()
+    records = await neo4j.query(
+        query,
+        slug=slug,
+        org_slug=org_slug,
+    )
 
     if not records:
         raise fastapi.HTTPException(
@@ -216,7 +276,7 @@ async def update_team(
     try:
         team = dynamic_model(
             organization=existing['organization'],
-            **data,
+            **payload,
         )
     except pydantic.ValidationError as e:
         LOGGER.warning(
@@ -229,24 +289,33 @@ async def update_team(
         ) from e
 
     # Build property SET from model fields, excluding relationship
+    team.created_at = existing.get('created_at')
+    team.updated_at = datetime.datetime.now(datetime.UTC)
     props = team.model_dump(exclude={'organization'})
 
     update_query: typing.LiteralString = """
-    MATCH (t:Team {slug: $slug})-[:BELONGS_TO]->(o:Organization)
+    MATCH (t:Team {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     SET t = $props
-    RETURN t{.*, organization: o{.*}} AS team
+    WITH t, o
+    OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t)
+    OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)
+    WITH t, o, count(DISTINCT p) AS project_count,
+                count(DISTINCT u) AS member_count
+    RETURN t{.*, organization: o{.*}} AS team,
+           project_count, member_count
     """
     try:
-        async with neo4j.run(
+        updated = await neo4j.query(
             update_query,
             slug=slug,
+            org_slug=org_slug,
             props=props,
-        ) as result:
-            updated = await result.data()
+        )
     except exceptions.ConstraintError as e:
         raise fastapi.HTTPException(
             status_code=409,
-            detail=(f'Team with slug {data["slug"]!r} already exists'),
+            detail=(f'Team with slug {payload["slug"]!r} already exists'),
         ) from e
 
     if not updated:
@@ -255,14 +324,17 @@ async def update_team(
             detail=f'Team with slug {slug!r} not found',
         )
 
-    return typing.cast(
-        dict[str, typing.Any],
+    return _add_relationships(
         updated[0]['team'],
+        org_slug,
+        updated[0]['project_count'],
+        updated[0]['member_count'],
     )
 
 
 @teams_router.delete('/{slug}', status_code=204)
 async def delete_team(
+    org_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -272,17 +344,26 @@ async def delete_team(
     """Delete a team.
 
     Parameters:
+        org_slug: Organization slug from URL path.
         slug: Team slug to delete.
 
     Raises:
         404: Team not found
 
     """
-    deleted = await neo4j.delete_node(
-        models.Team,
-        {'slug': slug},
+    query: typing.LiteralString = """
+    MATCH (t:Team {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    DETACH DELETE t
+    RETURN count(t) AS deleted
+    """
+    records = await neo4j.query(
+        query,
+        slug=slug,
+        org_slug=org_slug,
     )
-    if not deleted:
+
+    if not records or records[0].get('deleted', 0) == 0:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Team with slug {slug!r} not found',
@@ -291,6 +372,7 @@ async def delete_team(
 
 @teams_router.get('/{slug}/members')
 async def list_team_members(
+    org_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -300,6 +382,7 @@ async def list_team_members(
     """List members of a team.
 
     Parameters:
+        org_slug: Organization slug from URL path.
         slug: Team slug identifier.
 
     Returns:
@@ -311,14 +394,18 @@ async def list_team_members(
     """
     query: typing.LiteralString = """
     MATCH (t:Team {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)
     RETURN t, collect({
         email: u.email,
         display_name: u.display_name
     }) AS members
     """
-    async with neo4j.run(query, slug=slug) as result:
-        records = await result.data()
+    records = await neo4j.query(
+        query,
+        slug=slug,
+        org_slug=org_slug,
+    )
 
     if not records or not records[0].get('t'):
         raise fastapi.HTTPException(
@@ -331,6 +418,7 @@ async def list_team_members(
 
 @teams_router.post('/{slug}/members', status_code=201)
 async def add_team_member(
+    org_slug: str,
     slug: str,
     data: dict[str, str],
     auth: typing.Annotated[
@@ -341,6 +429,7 @@ async def add_team_member(
     """Add a user to a team.
 
     Parameters:
+        org_slug: Organization slug from URL path.
         slug: Team slug identifier.
         data: Must contain ``email`` of user to add.
 
@@ -362,15 +451,16 @@ async def add_team_member(
     query: typing.LiteralString = """
     MATCH (u:User {email: $email})
     MATCH (t:Team {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     MERGE (u)-[:MEMBER_OF]->(t)
     RETURN u, t
     """
-    async with neo4j.run(
+    records = await neo4j.query(
         query,
         email=email,
         slug=slug,
-    ) as result:
-        records = await result.data()
+        org_slug=org_slug,
+    )
 
     if not records:
         raise fastapi.HTTPException(
@@ -385,6 +475,7 @@ async def add_team_member(
     status_code=204,
 )
 async def remove_team_member(
+    org_slug: str,
     slug: str,
     email: str,
     auth: typing.Annotated[
@@ -395,6 +486,7 @@ async def remove_team_member(
     """Remove a user from a team.
 
     Parameters:
+        org_slug: Organization slug from URL path.
         slug: Team slug identifier.
         email: Email of the user to remove.
 
@@ -404,15 +496,16 @@ async def remove_team_member(
     """
     query: typing.LiteralString = """
     MATCH (u:User {email: $email})-[m:MEMBER_OF]->(t:Team {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     DELETE m
     RETURN count(m) AS deleted
     """
-    async with neo4j.run(
+    records = await neo4j.query(
         query,
         email=email,
         slug=slug,
-    ) as result:
-        records = await result.data()
+        org_slug=org_slug,
+    )
 
     if not records or records[0].get('deleted', 0) == 0:
         raise fastapi.HTTPException(

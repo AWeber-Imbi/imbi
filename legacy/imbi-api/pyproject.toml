@@ -217,4 +217,4 @@ url = "https://pypi.org/simple"
 default = true
 
 [tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "main" }
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", branch = "feature/timestamps-and-relationships" }

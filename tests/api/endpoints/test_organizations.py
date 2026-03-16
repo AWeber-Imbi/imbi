@@ -76,6 +76,23 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
             data = response.json()
             self.assertEqual(data['slug'], 'engineering')
             self.assertEqual(data['name'], 'Engineering')
+            self.assertIn('relationships', data)
+            rels = data['relationships']
+            self.assertIn('teams', rels)
+            self.assertIn('members', rels)
+            self.assertIn('projects', rels)
+            self.assertEqual(
+                rels['teams']['count'],
+                0,
+            )
+            self.assertEqual(
+                rels['members']['count'],
+                0,
+            )
+            self.assertEqual(
+                rels['projects']['count'],
+                0,
+            )
 
     def test_create_organization_validation_error(self) -> None:
         """Test creating organization with invalid data."""
@@ -113,15 +130,46 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
                 response.json()['detail'],
             )
 
+    def _mock_list_result(
+        self,
+        org_data=None,
+        team_count=0,
+        member_count=0,
+        project_count=0,
+    ):
+        """Create a mock for neo4j.run returning org list."""
+        mock_result = mock.AsyncMock()
+        if org_data is not None:
+            mock_result.data.return_value = [
+                {
+                    'organization': org_data,
+                    'team_count': team_count,
+                    'member_count': member_count,
+                    'project_count': project_count,
+                },
+            ]
+        else:
+            mock_result.data.return_value = []
+        mock_result.__aenter__.return_value = mock_result
+        mock_result.__aexit__.return_value = None
+        return mock_result
+
     def test_list_organizations(self) -> None:
         """Test listing all organizations."""
-
-        async def mock_fetch_nodes(*args, **kwargs):
-            yield self.test_org
+        mock_result = self._mock_list_result(
+            {
+                'name': 'Engineering',
+                'slug': 'engineering',
+                'description': 'Engineering organization',
+            },
+            team_count=3,
+            member_count=10,
+            project_count=25,
+        )
 
         with mock.patch(
-            'imbi_common.neo4j.fetch_nodes',
-            new=mock_fetch_nodes,
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
         ):
             response = self.client.get('/organizations/')
 
@@ -130,14 +178,49 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
             self.assertIsInstance(data, list)
             self.assertEqual(len(data), 1)
             self.assertEqual(data[0]['slug'], 'engineering')
+            rels = data[0]['relationships']
+            self.assertEqual(
+                rels['teams']['count'],
+                3,
+            )
+            self.assertEqual(
+                rels['teams']['href'],
+                '/api/organizations/engineering/teams',
+            )
+            self.assertEqual(
+                rels['members']['count'],
+                10,
+            )
+            self.assertEqual(
+                rels['members']['href'],
+                '/api/organizations/engineering/members',
+            )
+            self.assertEqual(
+                rels['projects']['count'],
+                25,
+            )
+            self.assertEqual(
+                rels['projects']['href'],
+                '/api/organizations/engineering/projects',
+            )
 
     def test_get_organization(self) -> None:
         """Test retrieving single organization."""
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-        ) as mock_fetch:
-            mock_fetch.return_value = self.test_org
+        mock_result = self._mock_list_result(
+            {
+                'name': 'Engineering',
+                'slug': 'engineering',
+                'description': 'Engineering organization',
+            },
+            team_count=2,
+            member_count=5,
+            project_count=12,
+        )
 
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
             response = self.client.get(
                 '/organizations/engineering',
             )
@@ -146,14 +229,20 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
             data = response.json()
             self.assertEqual(data['slug'], 'engineering')
             self.assertEqual(data['name'], 'Engineering')
+            rels = data['relationships']
+            self.assertEqual(
+                rels['teams']['count'],
+                2,
+            )
 
     def test_get_organization_not_found(self) -> None:
         """Test retrieving non-existent organization."""
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-        ) as mock_fetch:
-            mock_fetch.return_value = None
+        mock_result = self._mock_list_result(None)
 
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=mock_result,
+        ):
             response = self.client.get(
                 '/organizations/nonexistent',
             )
@@ -166,13 +255,28 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
 
     def test_update_organization(self) -> None:
         """Test updating organization."""
+        count_result = mock.AsyncMock()
+        count_result.data.return_value = [
+            {
+                'team_count': 1,
+                'member_count': 2,
+                'project_count': 3,
+            },
+        ]
+        count_result.__aenter__.return_value = count_result
+        count_result.__aexit__.return_value = None
+
         with (
             mock.patch(
                 'imbi_common.neo4j.fetch_node',
             ) as mock_fetch,
             mock.patch(
                 'imbi_common.neo4j.upsert',
-            ) as mock_upsert,
+            ),
+            mock.patch(
+                'imbi_common.neo4j.run',
+                return_value=count_result,
+            ),
         ):
             mock_fetch.return_value = self.test_org
 
@@ -191,10 +295,21 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
                 data['name'],
                 'Engineering Department',
             )
-            mock_upsert.assert_called_once()
+            self.assertIn('relationships', data)
 
     def test_update_organization_slug_rename(self) -> None:
         """Test updating with different slug renames it."""
+        count_result = mock.AsyncMock()
+        count_result.data.return_value = [
+            {
+                'team_count': 0,
+                'member_count': 0,
+                'project_count': 0,
+            },
+        ]
+        count_result.__aenter__.return_value = count_result
+        count_result.__aexit__.return_value = None
+
         with (
             mock.patch(
                 'imbi_common.neo4j.fetch_node',
@@ -202,6 +317,10 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
             mock.patch(
                 'imbi_common.neo4j.upsert',
             ) as mock_upsert,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                return_value=count_result,
+            ),
         ):
             mock_fetch.return_value = self.test_org
 

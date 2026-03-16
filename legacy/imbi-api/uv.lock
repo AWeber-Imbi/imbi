@@ -1006,7 +1006,7 @@ requires-dist = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "imbi-common", git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main" },
+    { name = "imbi-common", git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=feature%2Ftimestamps-and-relationships" },
     { name = "jinja2" },
     { name = "opentelemetry-distro", marker = "extra == 'otel'" },
     { name = "opentelemetry-instrumentation-asyncio", marker = "extra == 'otel'" },
@@ -1051,7 +1051,7 @@ docs = [
 [[package]]
 name = "imbi-common"
 version = "0.1.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=main#184c32fd22679756e33c86a1c27e9232dfb993ab" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?branch=feature%2Ftimestamps-and-relationships#cc387db44e76572d608a7897e0a815b416b9b499" }
 dependencies = [
     { name = "clickhouse-connect" },
     { name = "cryptography" },

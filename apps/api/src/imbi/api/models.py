@@ -26,6 +26,7 @@ Node = _common.Node
 Organization = _common.Organization
 Project = _common.Project
 ProjectType = _common.ProjectType
+RelationshipLink = _common.RelationshipLink
 Schema = _common.Schema
 Team = _common.Team
 

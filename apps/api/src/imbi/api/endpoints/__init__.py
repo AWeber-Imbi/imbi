@@ -5,15 +5,12 @@ from .api_keys import api_keys_router
 from .auth import auth_router
 from .blueprints import blueprint_router
 from .client_credentials import client_credentials_router
-from .environments import environments_router
 from .mfa import mfa_router
 from .organizations import organizations_router
-from .project_types import project_types_router
 from .roles import roles_router
 from .sa_api_keys import sa_api_keys_router
 from .service_accounts import service_accounts_router
 from .status import status_router
-from .teams import teams_router
 from .third_party_services import third_party_services_router
 from .uploads import uploads_router
 from .users import users_router
@@ -24,15 +21,12 @@ routers: list[fastapi.APIRouter] = [
     auth_router,
     blueprint_router,
     client_credentials_router,
-    environments_router,
     mfa_router,
     organizations_router,
-    project_types_router,
     roles_router,
     sa_api_keys_router,
     service_accounts_router,
     status_router,
-    teams_router,
     third_party_services_router,
     uploads_router,
     users_router,
