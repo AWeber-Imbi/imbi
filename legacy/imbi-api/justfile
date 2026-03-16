@@ -74,16 +74,15 @@ docker:
 
 [doc("Run tests")]
 [group("Testing")]
-test: setup docker
-    uv run pytest
-    uv run mypy -p imbi_api
+test *TESTS: setup docker
+    uv run pytest {{TESTS}}
 
 [doc("Run linters")]
 [group("Testing")]
 lint: setup
     uv run pre-commit run --all-files
     uv run basedpyright
-    uv run mypy
+    uv run mypy -p imbi_api
 
 [doc("Reformat code (optionally pass specific files)")]
 [group("Development")]

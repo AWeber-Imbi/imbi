@@ -14,6 +14,7 @@ import pydantic
 from imbi_common import models
 
 __all__ = [
+    'SECRET_FIELDS',
     'APIKey',
     'ClientCredential',
     'ClientCredentialCreate',
@@ -32,12 +33,17 @@ __all__ = [
     'ServiceAccount',
     'ServiceAccountCreate',
     'ServiceAccountResponse',
-    'ServiceApplication',
     'ServiceApplicationCreate',
     'ServiceApplicationResponse',
+    'ServiceApplicationSecrets',
+    'ServiceApplicationSecretsUpdate',
+    'ServiceApplicationUpdate',
     'Session',
     'TOTPSecret',
     'ThirdPartyService',
+    'ThirdPartyServiceCreate',
+    'ThirdPartyServiceResponse',
+    'ThirdPartyServiceUpdate',
     'TokenMetadata',
     'Upload',
     'User',
@@ -458,13 +464,12 @@ class ServiceAccountCreate(pydantic.BaseModel):
     """Request model for creating service accounts."""
 
     slug: str = pydantic.Field(
-        ...,
         pattern=r'^[a-z][a-z0-9-]*$',
         min_length=2,
         max_length=64,
         description='Unique slug identifier (lowercase, hyphens)',
     )
-    display_name: str = pydantic.Field(..., min_length=1, max_length=128)
+    display_name: str = pydantic.Field(min_length=1, max_length=128)
     description: str | None = None
     is_active: bool = True
 
@@ -510,7 +515,6 @@ class ClientCredentialCreate(pydantic.BaseModel):
     """Request model for creating client credentials."""
 
     name: str = pydantic.Field(
-        ...,
         min_length=1,
         max_length=128,
         description='Human-readable name',
@@ -586,67 +590,110 @@ class ThirdPartyService(models.Node):  # type: ignore[misc]
     identifiers: dict[str, int | str] = {}  # noqa: RUF012
 
 
-SECRET_MASK = '********'
+_VALID_SERVICE_STATUSES = typing.Literal[
+    'active',
+    'deprecated',
+    'evaluating',
+    'inactive',
+]
 
 
-class ServiceApplication(pydantic.BaseModel):
-    """OAuth2 application registered in a third-party service."""
+class ThirdPartyServiceCreate(pydantic.BaseModel):
+    """Request model for creating a third-party service."""
 
-    model_config = pydantic.ConfigDict(extra='ignore')
-
-    slug: str
-    name: str
+    organization_slug: str = pydantic.Field(
+        min_length=1,
+        max_length=128,
+    )
+    team_slug: str | None = None
+    name: str = pydantic.Field(min_length=1, max_length=128)
+    slug: str = pydantic.Field(
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+    )
+    vendor: str = pydantic.Field(min_length=1, max_length=128)
     description: str | None = None
-    app_type: str  # e.g. github_app, pagerduty_oauth
-    application_url: str | None = None
-    client_id: str
-    client_secret: str  # Fernet-encrypted at rest
-    scopes: list[str] = []
-    webhook_secret: str | None = None  # Fernet-encrypted
-    private_key: str | None = None  # Fernet-encrypted (PEM)
-    signing_secret: str | None = None  # Fernet-encrypted
-    settings: dict[str, str | int | bool] = {}
-    status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
+    icon: str | None = None
+    service_url: pydantic.HttpUrl | None = None
+    category: str | None = None
+    status: _VALID_SERVICE_STATUSES = 'active'
+    links: dict[str, str] = pydantic.Field(
+        default_factory=dict,
+    )
+    identifiers: dict[str, int | str] = pydantic.Field(
+        default_factory=dict,
+    )
 
-    def encrypt_secrets(
-        self,
-        encryptor: typing.Any,  # TokenEncryption
-    ) -> None:
-        """Encrypt all secret fields in place."""
-        self.client_secret = encryptor.encrypt(self.client_secret)
-        if self.webhook_secret is not None:
-            self.webhook_secret = encryptor.encrypt(self.webhook_secret)
-        if self.private_key is not None:
-            self.private_key = encryptor.encrypt(self.private_key)
-        if self.signing_secret is not None:
-            self.signing_secret = encryptor.encrypt(self.signing_secret)
 
-    def mask_secrets(self) -> None:
-        """Replace encrypted secret fields with mask for responses."""
-        self.client_secret = SECRET_MASK
-        if self.webhook_secret is not None:
-            self.webhook_secret = SECRET_MASK
-        if self.private_key is not None:
-            self.private_key = SECRET_MASK
-        if self.signing_secret is not None:
-            self.signing_secret = SECRET_MASK
+class ThirdPartyServiceUpdate(pydantic.BaseModel):
+    """Request model for updating a third-party service.
+
+    Designed for GET-modify-PUT: the client fetches the full resource,
+    modifies fields, and sends the complete object back. All fields
+    that exist on the response are required (no silent defaults).
+    """
+
+    team_slug: str | None = None
+    name: str = pydantic.Field(min_length=1, max_length=128)
+    slug: str = pydantic.Field(
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+    )
+    vendor: str = pydantic.Field(min_length=1, max_length=128)
+    description: str | None = None
+    icon: str | None = None
+    service_url: pydantic.HttpUrl | None = None
+    category: str | None = None
+    status: _VALID_SERVICE_STATUSES
+    links: dict[str, str] = pydantic.Field(default_factory=dict)
+    identifiers: dict[str, int | str] = pydantic.Field(
+        default_factory=dict,
+    )
+
+
+class ThirdPartyServiceResponse(pydantic.BaseModel):
+    """Response model for a third-party service."""
+
+    model_config = pydantic.ConfigDict(extra='allow')
+
+    name: str
+    slug: str
+    vendor: str
+    description: str | None = None
+    icon: str | None = None
+    service_url: str | None = None
+    category: str | None = None
+    status: str = 'active'
+    links: dict[str, typing.Any] = {}
+    identifiers: dict[str, typing.Any] = {}
+    organization: dict[str, typing.Any] | None = None
+    team: dict[str, typing.Any] | None = None
+
+
+SECRET_FIELDS = (
+    'client_secret',
+    'webhook_secret',
+    'private_key',
+    'signing_secret',
+)
 
 
 class ServiceApplicationCreate(pydantic.BaseModel):
     """Request model for creating a service application."""
 
     slug: str = pydantic.Field(
-        ...,
         pattern=r'^[a-z][a-z0-9-]*$',
         min_length=2,
         max_length=64,
     )
-    name: str = pydantic.Field(..., min_length=1, max_length=128)
+    name: str = pydantic.Field(min_length=1, max_length=128)
     description: str | None = None
-    app_type: str = pydantic.Field(..., min_length=1, max_length=64)
+    app_type: str = pydantic.Field(min_length=1, max_length=64)
     application_url: str | None = None
-    client_id: str = pydantic.Field(..., min_length=1)
-    client_secret: str = pydantic.Field(..., min_length=1)
+    client_id: str = pydantic.Field(min_length=1)
+    client_secret: str = pydantic.Field(min_length=1)
     scopes: list[str] = pydantic.Field(default_factory=list)
     webhook_secret: str | None = None
     private_key: str | None = None
@@ -657,8 +704,28 @@ class ServiceApplicationCreate(pydantic.BaseModel):
     status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
 
 
+class ServiceApplicationUpdate(pydantic.BaseModel):
+    """Request model for updating non-secret application fields."""
+
+    slug: str = pydantic.Field(
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+    )
+    name: str = pydantic.Field(min_length=1, max_length=128)
+    description: str | None = None
+    app_type: str = pydantic.Field(min_length=1, max_length=64)
+    application_url: str | None = None
+    client_id: str = pydantic.Field(min_length=1)
+    scopes: list[str] = pydantic.Field(default_factory=list)
+    settings: dict[str, str | int | bool] = pydantic.Field(
+        default_factory=dict,
+    )
+    status: typing.Literal['active', 'inactive', 'revoked'] = 'active'
+
+
 class ServiceApplicationResponse(pydantic.BaseModel):
-    """Response model for service applications (secrets masked)."""
+    """Response model for service applications (no secrets)."""
 
     slug: str
     name: str
@@ -666,13 +733,35 @@ class ServiceApplicationResponse(pydantic.BaseModel):
     app_type: str
     application_url: str | None = None
     client_id: str
-    client_secret: str = SECRET_MASK
     scopes: list[str] = []
+    settings: dict[str, str | int | bool] = {}
+    status: str = 'active'
+
+
+class ServiceApplicationSecrets(pydantic.BaseModel):
+    """Response model for application secrets (decrypted)."""
+
+    client_secret: str
     webhook_secret: str | None = None
     private_key: str | None = None
     signing_secret: str | None = None
-    settings: dict[str, str | int | bool] = {}
-    status: str = 'active'
+
+
+class ServiceApplicationSecretsUpdate(pydantic.BaseModel):
+    """Request model for updating application secrets."""
+
+    client_secret: str | None = pydantic.Field(default=None, min_length=1)
+    webhook_secret: str | None = pydantic.Field(default=None, min_length=1)
+    private_key: str | None = pydantic.Field(default=None, min_length=1)
+    signing_secret: str | None = pydantic.Field(default=None, min_length=1)
+
+    @pydantic.model_validator(mode='after')
+    def at_least_one_field(self) -> typing.Self:
+        """Ensure at least one secret field is provided."""
+        if all(getattr(self, f) is None for f in SECRET_FIELDS):
+            msg = 'At least one secret field must be provided'
+            raise ValueError(msg)
+        return self
 
 
 class OAuth2TokenResponse(pydantic.BaseModel):
