@@ -13,6 +13,8 @@ import {
   createConversation,
   getConversation,
 } from '@/api/assistant'
+import { useAuth } from '@/hooks/useAuth'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import { SessionEntry } from './assistant/MessageBubble'
 import { ToolUseIndicator } from './assistant/ToolUseIndicator'
 import { ConversationHistory } from './assistant/ConversationHistory'
@@ -21,7 +23,23 @@ interface CommandBarProps {
   isDarkMode: boolean
 }
 
+function buildUserContext(
+  user: { display_name: string; email_address: string; groups?: string[]; roles?: string[]; is_admin?: boolean } | null,
+  org: { name: string; slug: string } | null,
+): string {
+  if (!user) return ''
+  const parts: string[] = []
+  parts.push(`User: ${user.display_name} (${user.email_address})`)
+  if (user.is_admin) parts.push('Role: Administrator')
+  if (user.groups?.length) parts.push(`Groups: ${user.groups.join(', ')}`)
+  if (user.roles?.length) parts.push(`Roles: ${user.roles.join(', ')}`)
+  if (org) parts.push(`Organization: ${org.name} (${org.slug})`)
+  return `<context>\n${parts.join('\n')}\n</context>\n\n`
+}
+
 export function CommandBar({ isDarkMode }: CommandBarProps) {
+  const { user } = useAuth()
+  const { selectedOrganization } = useOrganization()
   const [input, setInput] = useState('')
   const [panelHeight, setPanelHeight] = useState(() => {
     const saved = localStorage.getItem('imbi-assistant-height')
@@ -111,7 +129,9 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
 
       // Create conversation if none active
       let conversationId = currentConversationId
+      let isNewConversation = false
       if (!conversationId) {
+        isNewConversation = true
         try {
           const conv = await createConversation()
           conversationId = conv.id
@@ -142,6 +162,13 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
       }
       addMessage(userMessage)
 
+      // Prepend user/org context on the first message so
+      // the assistant knows who is asking and which org
+      // they are working in.
+      const messageContent = isNewConversation
+        ? buildUserContext(user, selectedOrganization) + userText
+        : userText
+
       // Start streaming
       startStreaming()
       const abort = new AbortController()
@@ -150,7 +177,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
       try {
         await sendMessageSSE(
           conversationId,
-          userText,
+          messageContent,
           {
             onText: (text) => {
               appendStreamingContent(text)
@@ -214,6 +241,8 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
       setExpanded,
       addMessage,
       setCurrentConversation,
+      user,
+      selectedOrganization,
       startStreaming,
       appendStreamingContent,
       setActiveToolUse,
