@@ -36,7 +36,7 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
 
   // Roles - store slugs
   const [selectedRoleSlugs, setSelectedRoleSlugs] = useState<string[]>(
-    user?.roles.map(r => r.slug) || []
+    user?.roles?.map(r => r.slug) ?? []
   )
 
   // Fetch available roles

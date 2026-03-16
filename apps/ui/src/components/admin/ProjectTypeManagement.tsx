@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Trash2, Layers, AlertCircle } from 'lucide-react'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ProjectTypeForm } from './project-types/ProjectTypeForm'
@@ -178,20 +179,6 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-4">
-        <div className={`p-4 rounded-lg border ${
-          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        }`}>
-          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Total Project Types
-          </div>
-          <div className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            {filteredProjectTypes.length}
-          </div>
-        </div>
-      </div>
-
       {/* Project Types Table */}
       <div className={`rounded-lg border ${
         isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
@@ -210,10 +197,15 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
                 }`}>
                   Slug
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
-                  Organization
+                  Projects
+                </th>
+                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider whitespace-nowrap ${
+                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                }`}>
+                  Last Updated
                 </th>
                 <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
@@ -261,17 +253,24 @@ export function ProjectTypeManagement({ isDarkMode }: ProjectTypeManagementProps
                       </div>
                     </div>
                   </td>
-                  <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <td className={`px-6 py-4 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     <code className={`px-2 py-1 rounded ${
                       isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
                     }`}>
                       {pt.slug}
                     </code>
                   </td>
-                  <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {pt.organization.name}
+                  <td className={`px-6 py-4 text-sm text-right whitespace-nowrap ${
+                    (pt.relationships?.projects?.count ?? 0) === 0
+                      ? (isDarkMode ? 'text-gray-600' : 'text-gray-400')
+                      : (isDarkMode ? 'text-gray-300' : 'text-gray-600')
+                  }`}>
+                    {pt.relationships?.projects?.count ?? 0}
                   </td>
-                  <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                  <td className={`px-6 py-4 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    {formatRelativeDate(pt.updated_at ?? pt.created_at)}
+                  </td>
+                  <td className="px-6 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         variant="ghost"

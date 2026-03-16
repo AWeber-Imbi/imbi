@@ -1,5 +1,6 @@
 import { ArrowLeft, Edit2, Building2 } from 'lucide-react'
 import { Button } from '../../ui/button'
+import { formatDate } from '@/lib/formatDate'
 import type { Organization } from '@/types'
 
 interface OrganizationDetailProps {
@@ -10,13 +11,6 @@ interface OrganizationDetailProps {
 }
 
 export function OrganizationDetail({ organization, onEdit, onBack, isDarkMode }: OrganizationDetailProps) {
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    })
-  }
 
   return (
     <div className="space-y-6">
@@ -77,13 +71,13 @@ export function OrganizationDetail({ organization, onEdit, onBack, isDarkMode }:
             </div>
           </div>
 
-          {organization.last_modified_at && (
+          {organization.updated_at && (
             <div>
               <div className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 Last Modified
               </div>
               <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                {formatDate(organization.last_modified_at)}
+                {formatDate(organization.updated_at)}
               </div>
             </div>
           )}

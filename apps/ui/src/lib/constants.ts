@@ -4,7 +4,7 @@
  */
 export const NODE_BASE_FIELDS = [
   'name', 'slug', 'description', 'icon', 'label_color',
-  'organization', 'organization_slug', 'created_at', 'last_modified_at',
+  'organization', 'organization_slug', 'created_at', 'updated_at', 'relationships',
 ]
 
 export const NODE_BASE_FIELDS_SET = new Set(NODE_BASE_FIELDS)

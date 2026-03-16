@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Trash2, Users, AlertCircle } from 'lucide-react'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { TeamForm } from './teams/TeamForm'
@@ -198,7 +199,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             Total Projects
           </div>
           <div className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            &mdash;
+            {filteredTeams.reduce((sum, t) => sum + (t.relationships?.projects?.count ?? 0), 0)}
           </div>
         </div>
         <div className={`p-4 rounded-lg border ${
@@ -208,7 +209,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             Total Members
           </div>
           <div className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            &mdash;
+            {filteredTeams.reduce((sum, t) => sum + (t.relationships?.members?.count ?? 0), 0)}
           </div>
         </div>
       </div>
@@ -231,15 +232,20 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
                 }`}>
                   Slug
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
                   Projects
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
                 }`}>
                   Members
+                </th>
+                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider whitespace-nowrap ${
+                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                }`}>
+                  Last Updated
                 </th>
                 <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
                   isDarkMode ? 'text-gray-400' : 'text-gray-500'
@@ -278,20 +284,31 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
                       </div>
                     </div>
                   </td>
-                  <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <td className={`px-6 py-4 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     <code className={`px-2 py-1 rounded ${
                       isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
                     }`}>
                       {team.slug}
                     </code>
                   </td>
-                  <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    &mdash;
+                  <td className={`px-6 py-4 text-sm text-right whitespace-nowrap ${
+                    (team.relationships?.projects?.count ?? 0) === 0
+                      ? (isDarkMode ? 'text-gray-600' : 'text-gray-400')
+                      : (isDarkMode ? 'text-gray-300' : 'text-gray-600')
+                  }`}>
+                    {team.relationships?.projects?.count ?? 0}
                   </td>
-                  <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                    &mdash;
+                  <td className={`px-6 py-4 text-sm text-right whitespace-nowrap ${
+                    (team.relationships?.members?.count ?? 0) === 0
+                      ? (isDarkMode ? 'text-gray-600' : 'text-gray-400')
+                      : (isDarkMode ? 'text-gray-300' : 'text-gray-600')
+                  }`}>
+                    {team.relationships?.members?.count ?? 0}
                   </td>
-                  <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                  <td className={`px-6 py-4 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    {formatRelativeDate(team.updated_at ?? team.created_at)}
+                  </td>
+                  <td className="px-6 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         variant="ghost"

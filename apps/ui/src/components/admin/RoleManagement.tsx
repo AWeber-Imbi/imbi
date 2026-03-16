@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Edit2, Trash2, Shield, AlertCircle, Lock } from 'lucide-react'
+import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RoleForm } from './roles/RoleForm'
@@ -239,6 +240,9 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
               <th className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Type
               </th>
+              <th className={`px-4 py-3 text-left text-xs font-medium whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Last Updated
+              </th>
               <th className={`px-4 py-3 text-right text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Actions
               </th>
@@ -247,7 +251,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
           <tbody className={isDarkMode ? 'divide-y divide-gray-700' : 'divide-y divide-gray-200'}>
             {filteredRoles.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center">
+                <td colSpan={6} className="px-4 py-12 text-center">
                   <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                     {searchQuery
                       ? 'No roles match your search'
@@ -274,13 +278,13 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                         </span>
                       </div>
                     </td>
-                    <td className={`px-4 py-3 text-sm font-mono ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    <td className={`px-4 py-3 text-sm font-mono whitespace-nowrap ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                       {role.slug}
                     </td>
                     <td className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                       {role.description || '-'}
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
                       {isSystem ? (
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
                           isDarkMode ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-100 text-amber-700'
@@ -296,7 +300,10 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className={`px-4 py-3 text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                      {formatRelativeDate(role.updated_at)}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={(e) => {

@@ -42,7 +42,7 @@ export interface Project {
   environments?: string[]
   archived?: boolean
   created_at: string
-  last_modified_at?: string
+  updated_at?: string
 }
 
 export interface Namespace {
@@ -53,15 +53,25 @@ export interface Namespace {
   maintained_by?: string[]
 }
 
+export interface RelationshipLink {
+  href: string
+  count: number
+}
+
 export interface Environment {
   name: string
   slug: string
   description?: string | null
   icon?: string | null
   label_color?: string | null
+  created_at?: string | null
+  updated_at?: string | null
   organization: {
     name: string
     slug: string
+  }
+  relationships?: {
+    projects?: RelationshipLink
   }
   [key: string]: unknown
 }
@@ -80,9 +90,14 @@ export interface ProjectType {
   slug: string
   description?: string | null
   icon?: string | null
+  created_at?: string | null
+  updated_at?: string | null
   organization: {
     name: string
     slug: string
+  }
+  relationships?: {
+    projects?: RelationshipLink
   }
   [key: string]: unknown
 }
@@ -173,7 +188,7 @@ export interface UserResponse extends User {
   roles?: string[]
   permissions?: string[]
   created_at?: string
-  last_modified_at?: string
+  updated_at?: string
   is_active?: boolean
   is_admin?: boolean
   is_service_account?: boolean
@@ -220,6 +235,7 @@ export interface Role {
   name: string
   slug: string
   description?: string | null
+  updated_at?: string | null
 }
 
 export interface RoleDetail extends Role {
@@ -282,12 +298,12 @@ export interface Organization {
   slug: string
   description?: string | null
   icon?: string | null
-  created_at: string
-  last_modified_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
   relationships?: {
-    teams?: { href: string; count: number }
-    members?: { href: string; count: number }
-    projects?: { href: string; count: number }
+    teams?: RelationshipLink
+    members?: RelationshipLink
+    projects?: RelationshipLink
   }
 }
 
@@ -304,12 +320,16 @@ export interface Team {
   slug: string
   description?: string | null
   icon?: string | null
+  created_at?: string | null
+  updated_at?: string | null
   organization: {
     name: string
     slug: string
   }
-  created_at: string
-  last_modified_at?: string | null
+  relationships?: {
+    projects?: RelationshipLink
+    members?: RelationshipLink
+  }
   [key: string]: unknown
 }
 
