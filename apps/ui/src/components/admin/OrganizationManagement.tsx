@@ -162,29 +162,8 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Organizations
-          </h2>
-          <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Manage organizations and their settings
-          </p>
-        </div>
-        <Button
-          onClick={goToCreate}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Add Organization
-        </Button>
-      </div>
-
-      {/* Search */}
-      <div className={`flex items-center gap-4 p-4 rounded-lg border ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
-        <div className="flex-1 min-w-[300px]">
-          <div className="relative">
+        <div className="flex-1">
+          <div className="relative max-w-md">
             <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
               isDarkMode ? 'text-gray-400' : 'text-gray-500'
             }`} />
@@ -192,10 +171,17 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
               placeholder="Search organizations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-9 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`pl-10 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
           </div>
         </div>
+        <Button
+          onClick={goToCreate}
+          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New Organization
+        </Button>
       </div>
 
       {/* Organizations Table */}

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Filter, Edit2, Trash2, Power, Crown, AlertCircle } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, Power, Crown, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Gravatar } from '../ui/gravatar'
@@ -257,45 +257,20 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
   // View mode: List (default)
   return (
     <div className="space-y-6">
-      {/* Header with Actions */}
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            Users
-          </h2>
-          <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Manage user accounts and administrators
-          </p>
-        </div>
-        <Button
-          onClick={handleCreateClick}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Create New User
-        </Button>
-      </div>
-
-      {/* Filters and Search */}
-      <div className={`flex flex-wrap items-center gap-4 p-4 rounded-lg border ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
-        <div className="flex-1 min-w-[300px]">
-          <div className="relative">
+        <div className="flex-1 flex items-center gap-3">
+          <div className="relative max-w-md flex-1">
             <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
               isDarkMode ? 'text-gray-400' : 'text-gray-500'
             }`} />
             <Input
-              placeholder="Search by email or name..."
+              placeholder="Search users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-9 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`pl-10 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
             />
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Filter className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`} />
           <select
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value as UserFilter)}
@@ -309,7 +284,6 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
             <option value="users">Regular Users</option>
             <option value="admins">Administrators</option>
           </select>
-
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
@@ -324,6 +298,13 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
             <option value="inactive">Inactive</option>
           </select>
         </div>
+        <Button
+          onClick={handleCreateClick}
+          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New User
+        </Button>
       </div>
 
       {/* Bulk Actions */}
