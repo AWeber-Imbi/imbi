@@ -14,7 +14,7 @@ import type { Environment, EnvironmentCreate } from '@/types'
 
 interface EnvironmentFormProps {
   environment: Environment | null
-  onSave: (env: EnvironmentCreate) => void
+  onSave: (orgSlug: string, env: EnvironmentCreate) => void
   onCancel: () => void
   isDarkMode: boolean
   isLoading?: boolean
@@ -73,13 +73,12 @@ export function EnvironmentForm({
     e.preventDefault()
     if (!validate()) return
 
-    onSave({
+    onSave(orgSlug, {
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
       label_color: /^#[0-9A-Fa-f]{6}$/.test(labelColor) ? labelColor.toUpperCase() : null,
-      organization_slug: orgSlug,
       ...dynamicFormData,
     })
   }

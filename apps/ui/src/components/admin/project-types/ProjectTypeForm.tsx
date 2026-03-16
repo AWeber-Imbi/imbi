@@ -13,7 +13,7 @@ import type { ProjectType, ProjectTypeCreate } from '@/types'
 
 interface ProjectTypeFormProps {
   projectType: ProjectType | null
-  onSave: (pt: ProjectTypeCreate) => void
+  onSave: (orgSlug: string, pt: ProjectTypeCreate) => void
   onCancel: () => void
   isDarkMode: boolean
   isLoading?: boolean
@@ -71,12 +71,11 @@ export function ProjectTypeForm({
     e.preventDefault()
     if (!validate()) return
 
-    onSave({
+    onSave(orgSlug, {
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
-      organization_slug: orgSlug,
       ...dynamicFormData,
     })
   }

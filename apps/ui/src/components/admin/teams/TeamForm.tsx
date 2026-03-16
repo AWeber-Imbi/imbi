@@ -13,7 +13,7 @@ import type { Team, TeamCreate } from '@/types'
 
 interface TeamFormProps {
   team: Team | null
-  onSave: (team: TeamCreate) => void
+  onSave: (orgSlug: string, team: TeamCreate) => void
   onCancel: () => void
   isDarkMode: boolean
   isLoading?: boolean
@@ -71,12 +71,11 @@ export function TeamForm({
     e.preventDefault()
     if (!validate()) return
 
-    onSave({
+    onSave(orgSlug, {
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim() || null,
       icon: icon.trim() || null,
-      organization_slug: orgSlug,
       ...dynamicFormData,
     })
   }

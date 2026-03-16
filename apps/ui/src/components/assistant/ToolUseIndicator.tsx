@@ -11,6 +11,8 @@ const TOOL_FRIENDLY_NAMES: Record<string, string> = {
   list_blueprints: 'Fetching blueprints',
   list_teams: 'Loading teams',
   list_users: 'Looking up users',
+  navigate_to: 'Navigating',
+  refresh_data: 'Refreshing data',
 }
 
 export function ToolUseIndicator({

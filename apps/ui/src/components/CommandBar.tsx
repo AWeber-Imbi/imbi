@@ -7,6 +7,7 @@ import {
   Terminal,
   HelpCircle,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useAssistantStore } from '@/stores/assistantStore'
 import {
   sendMessageSSE,
@@ -15,6 +16,8 @@ import {
 } from '@/api/assistant'
 import { useAuth } from '@/hooks/useAuth'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { queryClient } from '@/main'
+import { getQueryKeysForResource } from '@/lib/queryKeys'
 import { SessionEntry } from './assistant/MessageBubble'
 import { ToolUseIndicator } from './assistant/ToolUseIndicator'
 import { ConversationHistory } from './assistant/ConversationHistory'
@@ -40,6 +43,7 @@ function buildUserContext(
 export function CommandBar({ isDarkMode }: CommandBarProps) {
   const { user } = useAuth()
   const { selectedOrganization } = useOrganization()
+  const navigate = useNavigate()
   const [input, setInput] = useState('')
   const [panelHeight, setPanelHeight] = useState(() => {
     const saved = localStorage.getItem('imbi-assistant-height')
@@ -68,6 +72,18 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
     finishStreaming,
     clearConversation,
   } = useAssistantStore()
+
+  // Set CSS custom property so page content can avoid being hidden
+  const INPUT_BAR_HEIGHT = 64
+  useEffect(() => {
+    const total = isExpanded
+      ? panelHeight + INPUT_BAR_HEIGHT
+      : INPUT_BAR_HEIGHT
+    document.documentElement.style.setProperty(
+      '--assistant-height',
+      `${total}px`,
+    )
+  }, [isExpanded, panelHeight])
 
   // Auto-scroll to bottom on new content
   useEffect(() => {
@@ -203,6 +219,27 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
                 setActiveToolUse(null)
               }
             },
+            onClientAction: (action, params) => {
+              if (
+                action === 'navigate_to' &&
+                params.path
+              ) {
+                navigate(params.path)
+              } else if (
+                action === 'refresh_data' &&
+                params.resource
+              ) {
+                const keys = getQueryKeysForResource(
+                  params.resource,
+                  params.org_slug,
+                )
+                for (const key of keys) {
+                  queryClient.invalidateQueries({
+                    queryKey: key,
+                  })
+                }
+              }
+            },
             onDone: (messageId) => {
               finishStreaming(messageId)
             },
@@ -248,6 +285,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
       setActiveToolUse,
       addPendingToolUse,
       finishStreaming,
+      navigate,
     ],
   )
 

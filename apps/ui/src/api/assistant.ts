@@ -74,6 +74,10 @@ export type SSEEventHandler = {
   onToolUseStart?: (id: string, name: string) => void
   onToolInput?: (partialJson: string) => void
   onContentBlockStop?: () => void
+  onClientAction?: (
+    action: string,
+    params: Record<string, string>,
+  ) => void
   onDone?: (
     messageId: string,
     usage: { input_tokens: number; output_tokens: number },
@@ -164,6 +168,12 @@ export async function sendMessageSSE(
               handlers.onDone?.(
                 parsed.message_id,
                 parsed.usage,
+              )
+              break
+            case 'client_action':
+              handlers.onClientAction?.(
+                parsed.action,
+                parsed.params,
               )
               break
             case 'error':

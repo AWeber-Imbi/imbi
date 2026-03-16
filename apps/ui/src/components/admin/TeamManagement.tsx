@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Trash2, Users, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
@@ -6,6 +6,7 @@ import { Input } from '../ui/input'
 import { TeamForm } from './teams/TeamForm'
 import { TeamDetail } from './teams/TeamDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { listTeams, deleteTeam, createTeam, updateTeam } from '@/api/endpoints'
 import type { TeamCreate } from '@/types'
 
@@ -13,54 +14,50 @@ interface TeamManagementProps {
   isDarkMode: boolean
 }
 
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
-
 export function TeamManagement({ isDarkMode }: TeamManagementProps) {
   const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [selectedTeamSlug, setSelectedTeamSlug] = useState<string | null>(null)
+  const { viewMode, slug: selectedTeamSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
+  const orgSlug = selectedOrganization?.slug
+
   const { data: teams = [], isLoading, error } = useQuery({
-    queryKey: ['teams'],
-    queryFn: listTeams,
+    queryKey: ['teams', orgSlug],
+    queryFn: () => listTeams(orgSlug!),
+    enabled: !!orgSlug,
   })
 
   const createMutation = useMutation({
-    mutationFn: createTeam,
+    mutationFn: ({ orgSlug, team }: { orgSlug: string; team: TeamCreate }) =>
+      createTeam(orgSlug, team),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teams'] })
-      setViewMode('list')
-      setSelectedTeamSlug(null)
+      queryClient.invalidateQueries({ queryKey: ['teams', orgSlug] })
+      goToList()
     },
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ slug, team }: { slug: string; team: TeamCreate }) =>
-      updateTeam(slug, team),
+    mutationFn: ({ orgSlug, slug, team }: { orgSlug: string; slug: string; team: TeamCreate }) =>
+      updateTeam(orgSlug, slug, team),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teams'] })
-      setViewMode('list')
-      setSelectedTeamSlug(null)
+      queryClient.invalidateQueries({ queryKey: ['teams', orgSlug] })
+      goToList()
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: deleteTeam,
+    mutationFn: ({ orgSlug, slug }: { orgSlug: string; slug: string }) =>
+      deleteTeam(orgSlug, slug),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teams'] })
+      queryClient.invalidateQueries({ queryKey: ['teams', orgSlug] })
     },
     onError: (error: any) => {
       alert(`Failed to delete team: ${error.response?.data?.detail || error.message}`)
     },
   })
 
-  // Filter by selected org and search
   const filteredTeams = teams.filter((team) => {
-    if (selectedOrganization && team.organization.slug !== selectedOrganization.slug) {
-      return false
-    }
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       return (
@@ -72,26 +69,32 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
     return true
   })
 
-  const selectedTeam = teams.find((t) => t.slug === selectedTeamSlug) || null
+  const selectedTeam = useMemo(
+    () => teams.find((t) => t.slug === selectedTeamSlug) || null,
+    [teams, selectedTeamSlug],
+  )
 
   const handleDelete = (slug: string) => {
     const team = teams.find((t) => t.slug === slug)
     if (team && confirm(`Delete team "${team.name}"? This action cannot be undone.`)) {
-      deleteMutation.mutate(slug)
+      deleteMutation.mutate({ orgSlug: team.organization.slug, slug })
     }
   }
 
-  const handleSave = (teamData: TeamCreate) => {
+  const handleSave = (formOrgSlug: string, teamData: TeamCreate) => {
     if (viewMode === 'create') {
-      createMutation.mutate(teamData)
+      createMutation.mutate({ orgSlug: formOrgSlug, team: teamData })
     } else if (selectedTeamSlug) {
-      updateMutation.mutate({ slug: selectedTeamSlug, team: teamData })
+      updateMutation.mutate({
+        orgSlug: selectedTeam?.organization.slug || formOrgSlug,
+        slug: selectedTeamSlug,
+        team: teamData,
+      })
     }
   }
 
   const handleCancel = () => {
-    setViewMode('list')
-    setSelectedTeamSlug(null)
+    goToList()
   }
 
   if (isLoading) {
@@ -118,6 +121,14 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
     )
   }
 
+  if (!orgSlug) {
+    return (
+      <div className={`text-center py-12 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        Select an organization to manage teams.
+      </div>
+    )
+  }
+
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <TeamForm
@@ -135,10 +146,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
     return (
       <TeamDetail
         team={selectedTeam}
-        onEdit={() => {
-          setSelectedTeamSlug(selectedTeam.slug)
-          setViewMode('edit')
-        }}
+        onEdit={() => goToEdit(selectedTeam.slug)}
         onBack={handleCancel}
         isDarkMode={isDarkMode}
       />
@@ -163,10 +171,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
           </div>
         </div>
         <Button
-          onClick={() => {
-            setSelectedTeamSlug(null)
-            setViewMode('create')
-          }}
+          onClick={goToCreate}
           className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -247,10 +252,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
               {filteredTeams.map((team) => (
                 <tr
                   key={team.slug}
-                  onClick={() => {
-                    setSelectedTeamSlug(team.slug)
-                    setViewMode('detail')
-                  }}
+                  onClick={() => goToDetail(team.slug)}
                   className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
                 >
                   <td className="px-6 py-4">

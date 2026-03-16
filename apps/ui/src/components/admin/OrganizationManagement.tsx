@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Edit2, Trash2, Building2, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { OrganizationForm } from './organizations/OrganizationForm'
 import { OrganizationDetail } from './organizations/OrganizationDetail'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import {
   listOrganizations,
-  listTeams,
   deleteOrganization,
   createOrganization,
   updateOrganization
@@ -18,12 +18,9 @@ interface OrganizationManagementProps {
   isDarkMode: boolean
 }
 
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
-
 export function OrganizationManagement({ isDarkMode }: OrganizationManagementProps) {
   const queryClient = useQueryClient()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [selectedOrgSlug, setSelectedOrgSlug] = useState<string | null>(null)
+  const { viewMode, slug: selectedOrgSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const { data: organizations = [], isLoading, error } = useQuery({
@@ -31,27 +28,16 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
     queryFn: listOrganizations,
   })
 
-  const { data: teams = [], isLoading: teamsLoading, isError: teamsError } = useQuery({
-    queryKey: ['teams'],
-    queryFn: listTeams,
-  })
-
   const canDeleteOrg = (slug: string): { allowed: boolean; reason?: string } => {
-    if (teamsLoading) {
-      return { allowed: false, reason: 'Loading team data...' }
-    }
-    if (teamsError) {
-      return { allowed: false, reason: 'Unable to verify team associations' }
-    }
     if (organizations.length <= 1) {
       return { allowed: false, reason: 'Cannot delete the only organization' }
     }
-    const orgTeams = teams.filter((t) => t.organization.slug === slug)
-    if (orgTeams.length > 0) {
-      const names = orgTeams.map((t) => t.name).join(', ')
+    const org = organizations.find((o) => o.slug === slug)
+    const teamCount = org?.relationships?.teams?.count ?? 0
+    if (teamCount > 0) {
       return {
         allowed: false,
-        reason: `Has ${orgTeams.length} team(s): ${names}`,
+        reason: `Has ${teamCount} team(s)`,
       }
     }
     return { allowed: true }
@@ -61,8 +47,7 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
     mutationFn: createOrganization,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organizations'] })
-      setViewMode('list')
-      setSelectedOrgSlug(null)
+      goToList()
     },
   })
 
@@ -71,8 +56,7 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
       updateOrganization(slug, org),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organizations'] })
-      setViewMode('list')
-      setSelectedOrgSlug(null)
+      goToList()
     },
   })
 
@@ -98,7 +82,10 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
     return true
   })
 
-  const selectedOrg = organizations.find((o) => o.slug === selectedOrgSlug) || null
+  const selectedOrg = useMemo(
+    () => organizations.find((o) => o.slug === selectedOrgSlug) || null,
+    [organizations, selectedOrgSlug],
+  )
 
   const handleDelete = (slug: string) => {
     const check = canDeleteOrg(slug)
@@ -119,8 +106,7 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
   }
 
   const handleCancel = () => {
-    setViewMode('list')
-    setSelectedOrgSlug(null)
+    goToList()
   }
 
   if (isLoading) {
@@ -164,10 +150,7 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
     return (
       <OrganizationDetail
         organization={selectedOrg}
-        onEdit={() => {
-          setSelectedOrgSlug(selectedOrg.slug)
-          setViewMode('edit')
-        }}
+        onEdit={() => goToEdit(selectedOrg.slug)}
         onBack={handleCancel}
         isDarkMode={isDarkMode}
       />
@@ -187,10 +170,7 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
           </p>
         </div>
         <Button
-          onClick={() => {
-            setSelectedOrgSlug(null)
-            setViewMode('create')
-          }}
+          onClick={goToCreate}
           className="bg-[#2A4DD0] hover:bg-blue-700 text-white gap-2"
         >
           <Plus className="w-4 h-4" />
@@ -234,10 +214,7 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
             return (
               <div
                 key={org.slug}
-                onClick={() => {
-                  setSelectedOrgSlug(org.slug)
-                  setViewMode('detail')
-                }}
+                onClick={() => goToDetail(org.slug)}
                 className={`p-6 rounded-lg border cursor-pointer transition-shadow hover:shadow-lg ${
                   isDarkMode
                     ? 'bg-gray-800 border-gray-700 hover:border-blue-500'
@@ -278,10 +255,7 @@ export function OrganizationManagement({ isDarkMode }: OrganizationManagementPro
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setSelectedOrgSlug(org.slug)
-                      setViewMode('edit')
-                    }}
+                    onClick={() => goToEdit(org.slug)}
                     className={isDarkMode ? 'border-gray-700 hover:bg-gray-700' : ''}
                   >
                     <Edit2 className="w-3 h-3 mr-1" />

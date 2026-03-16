@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { EnvironmentForm } from './environments/EnvironmentForm'
 import { EnvironmentDetail } from './environments/EnvironmentDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { listEnvironments, deleteEnvironment, createEnvironment, updateEnvironment } from '@/api/endpoints'
 import type { EnvironmentCreate } from '@/types'
 
@@ -13,54 +14,49 @@ interface EnvironmentManagementProps {
   isDarkMode: boolean
 }
 
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
-
 export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps) {
   const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [selectedEnvSlug, setSelectedEnvSlug] = useState<string | null>(null)
+  const orgSlug = selectedOrganization?.slug
+  const { viewMode, slug: selectedEnvSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   const { data: environments = [], isLoading, error } = useQuery({
-    queryKey: ['environments'],
-    queryFn: listEnvironments,
+    queryKey: ['environments', orgSlug],
+    queryFn: () => listEnvironments(orgSlug!),
+    enabled: !!orgSlug,
   })
 
   const createMutation = useMutation({
-    mutationFn: createEnvironment,
+    mutationFn: ({ orgSlug, env }: { orgSlug: string; env: EnvironmentCreate }) =>
+      createEnvironment(orgSlug, env),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['environments'] })
-      setViewMode('list')
-      setSelectedEnvSlug(null)
+      queryClient.invalidateQueries({ queryKey: ['environments', orgSlug] })
+      goToList()
     },
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ slug, env }: { slug: string; env: EnvironmentCreate }) =>
-      updateEnvironment(slug, env),
+    mutationFn: ({ orgSlug, slug, env }: { orgSlug: string; slug: string; env: EnvironmentCreate }) =>
+      updateEnvironment(orgSlug, slug, env),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['environments'] })
-      setViewMode('list')
-      setSelectedEnvSlug(null)
+      queryClient.invalidateQueries({ queryKey: ['environments', orgSlug] })
+      goToList()
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: deleteEnvironment,
+    mutationFn: ({ orgSlug, slug }: { orgSlug: string; slug: string }) =>
+      deleteEnvironment(orgSlug, slug),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['environments'] })
+      queryClient.invalidateQueries({ queryKey: ['environments', orgSlug] })
     },
     onError: (error: any) => {
       alert(`Failed to delete environment: ${error.response?.data?.detail || error.message}`)
     },
   })
 
-  // Filter by selected org and search
   const filteredEnvironments = environments.filter((env) => {
-    if (selectedOrganization && env.organization.slug !== selectedOrganization.slug) {
-      return false
-    }
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       return (
@@ -77,29 +73,27 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
     [environments, selectedEnvSlug],
   )
 
-  const orgCount = useMemo(
-    () => new Set(filteredEnvironments.map((e) => e.organization.slug)).size,
-    [filteredEnvironments],
-  )
-
   const handleDelete = (slug: string) => {
     const env = environments.find((e) => e.slug === slug)
     if (env && confirm(`Delete environment "${env.name}"? This action cannot be undone.`)) {
-      deleteMutation.mutate(slug)
+      deleteMutation.mutate({ orgSlug: env.organization.slug, slug })
     }
   }
 
-  const handleSave = (envData: EnvironmentCreate) => {
+  const handleSave = (formOrgSlug: string, envData: EnvironmentCreate) => {
     if (viewMode === 'create') {
-      createMutation.mutate(envData)
+      createMutation.mutate({ orgSlug: formOrgSlug, env: envData })
     } else if (selectedEnvSlug) {
-      updateMutation.mutate({ slug: selectedEnvSlug, env: envData })
+      updateMutation.mutate({
+        orgSlug: selectedEnvironment?.organization.slug || formOrgSlug,
+        slug: selectedEnvSlug,
+        env: envData,
+      })
     }
   }
 
   const handleCancel = () => {
-    setViewMode('list')
-    setSelectedEnvSlug(null)
+    goToList()
   }
 
   if (isLoading) {
@@ -126,6 +120,14 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
     )
   }
 
+  if (!orgSlug) {
+    return (
+      <div className={`text-center py-12 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+        Select an organization to manage environments.
+      </div>
+    )
+  }
+
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <EnvironmentForm
@@ -143,10 +145,7 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
     return (
       <EnvironmentDetail
         environment={selectedEnvironment}
-        onEdit={() => {
-          setSelectedEnvSlug(selectedEnvironment.slug)
-          setViewMode('edit')
-        }}
+        onEdit={() => goToEdit(selectedEnvironment.slug)}
         onBack={handleCancel}
         isDarkMode={isDarkMode}
       />
@@ -171,10 +170,7 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
           </div>
         </div>
         <Button
-          onClick={() => {
-            setSelectedEnvSlug(null)
-            setViewMode('create')
-          }}
+          onClick={goToCreate}
           className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -183,7 +179,7 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <div className={`p-4 rounded-lg border ${
           isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
         }`}>
@@ -192,16 +188,6 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
           </div>
           <div className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             {filteredEnvironments.length}
-          </div>
-        </div>
-        <div className={`p-4 rounded-lg border ${
-          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        }`}>
-          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Organizations
-          </div>
-          <div className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-            {orgCount}
           </div>
         </div>
       </div>
@@ -245,16 +231,12 @@ export function EnvironmentManagement({ isDarkMode }: EnvironmentManagementProps
               {filteredEnvironments.map((env) => (
                 <tr
                   key={env.slug}
-                  onClick={() => {
-                    setSelectedEnvSlug(env.slug)
-                    setViewMode('detail')
-                  }}
+                  onClick={() => goToDetail(env.slug)}
                   onKeyDown={(e) => {
                     if (e.currentTarget !== e.target) return
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      setSelectedEnvSlug(env.slug)
-                      setViewMode('detail')
+                      goToDetail(env.slug)
                     }
                   }}
                   tabIndex={0}

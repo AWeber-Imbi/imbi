@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Filter, Edit2, Trash2, Power, Crown, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
@@ -6,6 +6,7 @@ import { Input } from '../ui/input'
 import { Gravatar } from '../ui/gravatar'
 import { UserForm } from './users/UserForm'
 import { UserDetail } from './users/UserDetail'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { listAdminUsers, deleteAdminUser, updateAdminUser, createAdminUser } from '@/api/endpoints'
 import type { AdminUser, AdminUserCreate } from '@/types'
 
@@ -13,14 +14,12 @@ interface UserManagementProps {
   isDarkMode: boolean
 }
 
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
 type UserFilter = 'all' | 'users' | 'admins'
 type StatusFilter = 'all' | 'active' | 'inactive'
 
 export function UserManagement({ isDarkMode }: UserManagementProps) {
   const queryClient = useQueryClient()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
+  const { viewMode, slug: selectedUserEmail, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
   const [userFilter, setUserFilter] = useState<UserFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -60,8 +59,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     mutationFn: createAdminUser,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
-      setViewMode('list')
-      setSelectedUser(null)
+      goToList()
     },
     onError: (error: any) => {
       // Error will be displayed in the UserForm component
@@ -75,8 +73,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       updateAdminUser(email, user),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
-      setViewMode('list')
-      setSelectedUser(null)
+      goToList()
     },
     onError: (error: any) => {
       // Error will be displayed in the UserForm component
@@ -174,20 +171,23 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     return user.groups.map(g => g.name).join(', ')
   }
 
+  // Look up selected user from list by email (slug from URL)
+  const selectedUser = useMemo(
+    () => users.find((u) => u.email === selectedUserEmail) || null,
+    [users, selectedUserEmail],
+  )
+
   // View handlers
   const handleCreateClick = () => {
-    setSelectedUser(null)
-    setViewMode('create')
+    goToCreate()
   }
 
   const handleEditClick = (user: AdminUser) => {
-    setSelectedUser(user)
-    setViewMode('edit')
+    goToEdit(user.email)
   }
 
   const handleViewClick = (user: AdminUser) => {
-    setSelectedUser(user)
-    setViewMode('detail')
+    goToDetail(user.email)
   }
 
   const handleSave = (userData: AdminUserCreate) => {
@@ -199,8 +199,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
   }
 
   const handleCancel = () => {
-    setViewMode('list')
-    setSelectedUser(null)
+    goToList()
   }
 
   // Loading state

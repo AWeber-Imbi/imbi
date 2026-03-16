@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RoleForm } from './roles/RoleForm'
 import { RoleDetail } from './roles/RoleDetail'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { getRoles, getRole, deleteRole, createRole, updateRole, grantPermission, revokePermission } from '@/api/endpoints'
 import type { RoleDetail as RoleDetailType, RoleCreate } from '@/types'
 
@@ -12,12 +13,9 @@ interface RoleManagementProps {
   isDarkMode: boolean
 }
 
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
-
 export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   const queryClient = useQueryClient()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [selectedRoleSlug, setSelectedRoleSlug] = useState<string | null>(null)
+  const { viewMode, slug: selectedRoleSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   // Fetch roles from API
@@ -62,8 +60,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
-      setViewMode('list')
-      setSelectedRoleSlug(null)
+      goToList()
     },
     onError: (error: any) => {
       console.error('Failed to create role:', error)
@@ -79,8 +76,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
       queryClient.invalidateQueries({ queryKey: ['role'] })
-      setViewMode('list')
-      setSelectedRoleSlug(null)
+      goToList()
     },
     onError: (error: any) => {
       console.error('Failed to update role:', error)
@@ -107,18 +103,15 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   }
 
   const handleCreateClick = () => {
-    setSelectedRoleSlug(null)
-    setViewMode('create')
+    goToCreate()
   }
 
   const handleEditClick = (slug: string) => {
-    setSelectedRoleSlug(slug)
-    setViewMode('edit')
+    goToEdit(slug)
   }
 
   const handleViewClick = (slug: string) => {
-    setSelectedRoleSlug(slug)
-    setViewMode('detail')
+    goToDetail(slug)
   }
 
   const handleSave = (roleData: RoleCreate, permissions: string[]) => {
@@ -130,8 +123,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   }
 
   const handleCancel = () => {
-    setViewMode('list')
-    setSelectedRoleSlug(null)
+    goToList()
   }
 
   // Loading state

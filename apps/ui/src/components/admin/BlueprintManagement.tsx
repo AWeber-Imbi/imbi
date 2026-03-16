@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Search, Edit2, Trash2, FileJson, AlertCircle,
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BlueprintForm } from './blueprints/BlueprintForm'
 import { BlueprintDetail } from './blueprints/BlueprintDetail'
+import { useAdminNav } from '@/hooks/useAdminNav'
 import { useOpenApiSpec, getSchemaEnum } from '@/api/openapi'
 import {
   listBlueprints, deleteBlueprint, createBlueprint, updateBlueprint,
@@ -17,8 +18,6 @@ import type { Blueprint, BlueprintCreate } from '@/types'
 interface BlueprintManagementProps {
   isDarkMode: boolean
 }
-
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
 
 interface BlueprintKey {
   type: string
@@ -81,11 +80,21 @@ export function getTypeBadgeClasses(
 
 export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   const queryClient = useQueryClient()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
-  const [selectedKey, setSelectedKey] = useState<BlueprintKey | null>(null)
+  const { viewMode, slug: selectedSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [enabledFilter, setEnabledFilter] = useState<string>('')
+
+  // Parse compound key from URL slug (format: "type:slug")
+  const selectedKey = useMemo<BlueprintKey | null>(() => {
+    if (!selectedSlug) return null
+    const colonIdx = selectedSlug.indexOf(':')
+    if (colonIdx === -1) return null
+    return {
+      type: selectedSlug.substring(0, colonIdx),
+      slug: selectedSlug.substring(colonIdx + 1),
+    }
+  }, [selectedSlug])
 
   // Fetch blueprints
   const { data: blueprints = [], isLoading, error } = useQuery({
@@ -129,8 +138,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     mutationFn: (blueprint: BlueprintCreate) => createBlueprint(blueprint),
     onSuccess: () => {
       invalidateAfterMutation()
-      setViewMode('list')
-      setSelectedKey(null)
+      goToList()
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (error: any) => {
@@ -151,8 +159,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     }) => updateBlueprint(type, slug, blueprint),
     onSuccess: () => {
       invalidateAfterMutation()
-      setViewMode('list')
-      setSelectedKey(null)
+      goToList()
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (error: any) => {
@@ -195,18 +202,15 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   }
 
   const handleCreateClick = () => {
-    setSelectedKey(null)
-    setViewMode('create')
+    goToCreate()
   }
 
   const handleEditClick = (key: BlueprintKey) => {
-    setSelectedKey(key)
-    setViewMode('edit')
+    goToEdit(`${key.type}:${key.slug}`)
   }
 
   const handleViewClick = (key: BlueprintKey) => {
-    setSelectedKey(key)
-    setViewMode('detail')
+    goToDetail(`${key.type}:${key.slug}`)
   }
 
   const handleSave = (data: BlueprintCreate) => {
@@ -222,8 +226,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   }
 
   const handleCancel = () => {
-    setViewMode('list')
-    setSelectedKey(null)
+    goToList()
   }
 
   // Loading state

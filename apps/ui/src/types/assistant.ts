@@ -64,6 +64,12 @@ export interface SSEErrorEvent {
   message: string
 }
 
+export interface SSEClientActionEvent {
+  id: string
+  action: 'navigate_to' | 'refresh_data'
+  params: Record<string, string>
+}
+
 export interface CreateConversationRequest {
   model?: string
 }

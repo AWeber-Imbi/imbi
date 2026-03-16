@@ -72,7 +72,6 @@ export interface EnvironmentCreate {
   description?: string | null
   icon?: string | null
   label_color?: string | null
-  organization_slug: string
   [key: string]: unknown
 }
 
@@ -93,7 +92,6 @@ export interface ProjectTypeCreate {
   slug: string
   description?: string | null
   icon?: string | null
-  organization_slug: string
   [key: string]: unknown
 }
 
@@ -286,6 +284,11 @@ export interface Organization {
   icon?: string | null
   created_at: string
   last_modified_at?: string | null
+  relationships?: {
+    teams?: { href: string; count: number }
+    members?: { href: string; count: number }
+    projects?: { href: string; count: number }
+  }
 }
 
 export interface OrganizationCreate {
@@ -315,7 +318,6 @@ export interface TeamCreate {
   slug: string
   description?: string | null
   icon?: string | null
-  organization_slug: string
   [key: string]: unknown
 }
 

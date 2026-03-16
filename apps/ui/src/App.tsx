@@ -92,7 +92,7 @@ function App() {
           }
         />
         <Route
-          path="/admin/:section?"
+          path="/admin/:section?/:slug?/:action?"
           element={
             <AdminProtectedRoute>
               <AdminPage />

@@ -25,7 +25,7 @@ export function AdminPage() {
           isDarkMode={isDarkMode}
           onThemeToggle={handleThemeToggle}
         />
-        <main className="pt-16 pb-32">
+        <main className="pt-16" style={{ paddingBottom: 'var(--assistant-height, 64px)' }}>
           <Admin isDarkMode={isDarkMode} />
         </main>
         <CommandBar isDarkMode={isDarkMode} />

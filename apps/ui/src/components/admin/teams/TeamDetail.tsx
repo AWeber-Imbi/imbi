@@ -23,8 +23,8 @@ export function TeamDetail({ team, onEdit, onBack, isDarkMode }: TeamDetailProps
   const [newMemberEmail, setNewMemberEmail] = useState('')
 
   const { data: members = [], isLoading: membersLoading } = useQuery({
-    queryKey: ['teamMembers', team.slug],
-    queryFn: () => getTeamMembers(team.slug),
+    queryKey: ['teamMembers', team.organization.slug, team.slug],
+    queryFn: () => getTeamMembers(team.organization.slug, team.slug),
   })
 
   const { data: teamSchema } = useQuery({
@@ -34,9 +34,9 @@ export function TeamDetail({ team, onEdit, onBack, isDarkMode }: TeamDetailProps
   })
 
   const addMemberMutation = useMutation({
-    mutationFn: (email: string) => addTeamMember(team.slug, email),
+    mutationFn: (email: string) => addTeamMember(team.organization.slug, team.slug, email),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teamMembers', team.slug] })
+      queryClient.invalidateQueries({ queryKey: ['teamMembers', team.organization.slug, team.slug] })
       setNewMemberEmail('')
       setShowAddMember(false)
     },
@@ -46,9 +46,9 @@ export function TeamDetail({ team, onEdit, onBack, isDarkMode }: TeamDetailProps
   })
 
   const removeMemberMutation = useMutation({
-    mutationFn: (email: string) => removeTeamMember(team.slug, email),
+    mutationFn: (email: string) => removeTeamMember(team.organization.slug, team.slug, email),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teamMembers', team.slug] })
+      queryClient.invalidateQueries({ queryKey: ['teamMembers', team.organization.slug, team.slug] })
     },
     onError: (error: any) => {
       alert(`Failed to remove member: ${error.response?.data?.detail || error.message}`)
