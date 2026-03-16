@@ -482,11 +482,7 @@ export interface ServiceApplication {
   app_type: string
   application_url?: string | null
   client_id: string
-  client_secret: string
   scopes: string[]
-  webhook_secret?: string | null
-  private_key?: string | null
-  signing_secret?: string | null
   settings: Record<string, string | number | boolean>
   status: 'active' | 'inactive' | 'revoked'
 }
@@ -505,6 +501,32 @@ export interface ServiceApplicationCreate {
   signing_secret?: string | null
   settings?: Record<string, string | number | boolean>
   status?: 'active' | 'inactive' | 'revoked'
+}
+
+export interface ServiceApplicationUpdate {
+  slug: string
+  name: string
+  description?: string | null
+  app_type: string
+  application_url?: string | null
+  client_id: string
+  scopes?: string[]
+  settings?: Record<string, string | number | boolean>
+  status?: 'active' | 'inactive' | 'revoked'
+}
+
+export interface ServiceApplicationSecrets {
+  client_secret: string
+  webhook_secret?: string | null
+  private_key?: string | null
+  signing_secret?: string | null
+}
+
+export interface ServiceApplicationSecretsUpdate {
+  client_secret?: string | null
+  webhook_secret?: string | null
+  private_key?: string | null
+  signing_secret?: string | null
 }
 
 export interface SchemaProperty {

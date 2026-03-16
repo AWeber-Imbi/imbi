@@ -4,7 +4,8 @@ import { Plus, Trash2, Key, AlertCircle, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { listServiceApplications, deleteServiceApplication, createServiceApplication, updateServiceApplication } from '@/api/endpoints'
 import { OAuth2ApplicationForm } from './OAuth2ApplicationForm'
-import type { ServiceApplication, ServiceApplicationCreate } from '@/types'
+import { ApplicationSecretsPanel } from './ApplicationSecretsPanel'
+import type { ServiceApplication, ServiceApplicationCreate, ServiceApplicationUpdate } from '@/types'
 
 interface OAuth2ApplicationListProps {
   serviceSlug: string
@@ -37,7 +38,7 @@ export function OAuth2ApplicationList({ serviceSlug, isDarkMode }: OAuth2Applica
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ appSlug, data }: { appSlug: string; data: ServiceApplicationCreate }) =>
+    mutationFn: ({ appSlug, data }: { appSlug: string; data: ServiceApplicationUpdate }) =>
       updateServiceApplication(serviceSlug, appSlug, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['service-applications', serviceSlug] })
@@ -62,27 +63,51 @@ export function OAuth2ApplicationList({ serviceSlug, isDarkMode }: OAuth2Applica
     }
   }
 
-  const handleSave = (data: ServiceApplicationCreate) => {
+  const handleSave = (data: ServiceApplicationCreate | ServiceApplicationUpdate) => {
     if (viewMode === 'create') {
-      createMutation.mutate(data)
+      createMutation.mutate(data as ServiceApplicationCreate)
     } else if (editingApp) {
-      updateMutation.mutate({ appSlug: editingApp.slug, data })
+      updateMutation.mutate({ appSlug: editingApp.slug, data: data as ServiceApplicationUpdate })
     }
   }
 
-  if (viewMode === 'create' || viewMode === 'edit') {
+  if (viewMode === 'create') {
     return (
       <OAuth2ApplicationForm
-        application={editingApp}
+        application={null}
         onSave={handleSave}
         onCancel={() => {
           setViewMode('list')
           setEditingApp(null)
         }}
         isDarkMode={isDarkMode}
-        isLoading={createMutation.isPending || updateMutation.isPending}
-        error={createMutation.error || updateMutation.error}
+        isLoading={createMutation.isPending}
+        error={createMutation.error}
       />
+    )
+  }
+
+  if (viewMode === 'edit' && editingApp) {
+    return (
+      <div className="space-y-6">
+        <OAuth2ApplicationForm
+          application={editingApp}
+          onSave={handleSave}
+          onCancel={() => {
+            setViewMode('list')
+            setEditingApp(null)
+          }}
+          isDarkMode={isDarkMode}
+          isLoading={updateMutation.isPending}
+          error={updateMutation.error}
+        />
+        <ApplicationSecretsPanel
+          serviceSlug={serviceSlug}
+          appSlug={editingApp.slug}
+          appType={editingApp.app_type}
+          isDarkMode={isDarkMode}
+        />
+      </div>
     )
   }
 

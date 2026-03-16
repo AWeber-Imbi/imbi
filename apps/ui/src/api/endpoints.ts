@@ -37,6 +37,9 @@ import type {
   ThirdPartyServiceCreate,
   ServiceApplication,
   ServiceApplicationCreate,
+  ServiceApplicationUpdate,
+  ServiceApplicationSecrets,
+  ServiceApplicationSecretsUpdate,
   Upload,
   ApiKey,
   ApiKeyCreated,
@@ -444,7 +447,7 @@ export const createServiceApplication = (serviceSlug: string, data: ServiceAppli
 export const updateServiceApplication = (
   serviceSlug: string,
   appSlug: string,
-  data: ServiceApplicationCreate
+  data: ServiceApplicationUpdate
 ) =>
   apiClient.put<ServiceApplication>(
     `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
@@ -454,6 +457,22 @@ export const updateServiceApplication = (
 export const deleteServiceApplication = (serviceSlug: string, appSlug: string) =>
   apiClient.delete<void>(
     `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
+  )
+
+// Service Application Secrets
+export const getApplicationSecrets = (serviceSlug: string, appSlug: string) =>
+  apiClient.get<ServiceApplicationSecrets>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`
+  )
+
+export const updateApplicationSecrets = (
+  serviceSlug: string,
+  appSlug: string,
+  data: ServiceApplicationSecretsUpdate
+) =>
+  apiClient.put<ServiceApplicationSecrets>(
+    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
+    data
   )
 
 // Uploads
