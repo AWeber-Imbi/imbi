@@ -701,7 +701,7 @@ requires-dist = [
   { name = "fastapi", specifier = ">=0.135.1" },
   { name = "fastmcp", specifier = ">=2.0.0" },
   { name = "httpx", specifier = ">=0.28.1" },
-  { name = "imbi-common", extras = ["server"], editable = "../imbi-common" },
+  { name = "imbi-common", extras = ["server"], git = "https://github.com/AWeber-Imbi/imbi-common?rev=main" },
   { name = "pydantic", specifier = "~=2.12" },
 ]
 
@@ -721,7 +721,7 @@ dev = [
 [[package]]
 name = "imbi-common"
 version = "0.1.0"
-source = { editable = "../imbi-common" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common?rev=main#205611a339ccf802f88ca0503c0512e91fa7c680" }
 dependencies = [
   { name = "clickhouse-connect" },
   { name = "cryptography" },
@@ -740,52 +740,6 @@ dependencies = [
 server = [
   { name = "fastapi" },
   { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-  { name = "clickhouse-connect" },
-  { name = "cryptography", specifier = ">=42.0.4" },
-  { name = "cypherantic" },
-  { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115.0" },
-  { name = "jsonschema-models" },
-  { name = "neo4j" },
-  { name = "orjson" },
-  { name = "pydantic", extras = ["email"], specifier = ">=2.0" },
-  { name = "pydantic-settings" },
-  { name = "pyjwt", specifier = ">=2.10.1" },
-  { name = "python-slugify" },
-  { name = "typer", specifier = ">=0.21.1" },
-  { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.40.0" },
-]
-provides-extras = ["server"]
-
-[package.metadata.requires-dev]
-dev = [
-  { name = "basedpyright" },
-  { name = "build" },
-  { name = "click", specifier = "~=8.2.1" },
-  { name = "coverage", extras = ["toml"] },
-  { name = "httpx" },
-  { name = "mypy", specifier = "~=1.19.1" },
-  { name = "pre-commit" },
-  { name = "pytest" },
-  { name = "ruff", specifier = "~=0.14.6" },
-  { name = "sentry-sdk", specifier = ">=2.48.0" },
-  { name = "tomli-w", specifier = "~=1.2" },
-  { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
-]
-dist = [
-  { name = "build" },
-  { name = "twine" },
-  { name = "wheel" },
-]
-docs = [
-  { name = "griffe-pydantic" },
-  { name = "mkdocs", specifier = ">=1.5,<2" },
-  { name = "mkdocs-material", specifier = ">9.5,<10" },
-  { name = "mkdocstrings", extras = ["python"] },
-  { name = "mkdocstrings-python-xref", specifier = ">=1.6,<2" },
 ]
 
 [[package]]
