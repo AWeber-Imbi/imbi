@@ -28,7 +28,8 @@ class AssistantSettingsTestCase(unittest.TestCase):
         self.assertEqual(s.max_tokens, 16384)
         self.assertEqual(s.max_conversation_turns, 100)
         self.assertIsNone(s.system_prompt)
-        self.assertEqual(s.mcp_servers, [])
+        self.assertEqual(s.api_url, 'http://localhost:8000')
+        self.assertEqual(s.max_tool_rounds, 10)
 
     @mock.patch.dict(
         os.environ,

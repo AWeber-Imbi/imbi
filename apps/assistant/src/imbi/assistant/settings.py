@@ -2,7 +2,6 @@
 
 import logging
 import os
-import typing
 
 import pydantic
 import pydantic_settings
@@ -22,10 +21,9 @@ class Assistant(pydantic_settings.BaseSettings):
     model: str = 'claude-sonnet-4-6'
     max_tokens: int = 16384
     max_conversation_turns: int = 100
+    max_tool_rounds: int = 10
     system_prompt: str | None = None
-    mcp_servers: list[dict[str, typing.Any]] = pydantic.Field(
-        default_factory=list,
-    )
+    api_url: str = 'http://localhost:8000'
 
     @property
     def api_key(self) -> str | None:

@@ -6,7 +6,7 @@ from unittest import mock
 
 import fastapi
 
-from imbi_assistant import auth, client, endpoints, models, settings
+from imbi_assistant import auth, client, endpoints, mcp, models, settings
 
 
 def _make_user() -> auth.User:
@@ -636,15 +636,28 @@ class UpdateConversationEndpointTestCase(
         self.assertEqual(ctx.exception.status_code, 404)
 
 
+def _make_mock_mcp_manager() -> mock.MagicMock:
+    """Create a mock MCPManager."""
+    manager = mock.MagicMock(spec=mcp.MCPManager)
+    manager.get_tools.return_value = []
+    manager.get_tool_names.return_value = []
+    manager.execute_tool = mock.AsyncMock(return_value='{}')
+    manager.is_initialized = False
+    return manager
+
+
 class SendMessageEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     def setUp(self) -> None:
         self._original_client = client._client
+        self._original_manager = mcp._manager
+        mcp._manager = _make_mock_mcp_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         client._client = self._original_client
+        mcp._manager = self._original_manager
         settings._assistant_settings = None
 
     async def test_send_message_assistant_unavailable(
@@ -708,9 +721,6 @@ class SendMessageEndpointTestCase(
 
     @mock.patch.dict('os.environ', {}, clear=True)
     @mock.patch(
-        'imbi_assistant.system_prompt.build_system_prompt',
-    )
-    @mock.patch(
         'imbi_assistant.neo4j_ops.get_messages',
     )
     @mock.patch(
@@ -728,7 +738,6 @@ class SendMessageEndpointTestCase(
         mock_count: mock.AsyncMock,
         mock_add: mock.AsyncMock,
         mock_get_msgs: mock.AsyncMock,
-        mock_build_prompt: mock.MagicMock,
     ) -> None:
         client._client = mock.MagicMock()
         auth_ctx = _make_auth_context()
@@ -753,7 +762,6 @@ class SendMessageEndpointTestCase(
                 sequence=0,
             ),
         ]
-        mock_build_prompt.return_value = 'System prompt'
         body = models.SendMessageRequest(content='Hello')
         from fastapi import responses
 
@@ -761,6 +769,7 @@ class SendMessageEndpointTestCase(
             conversation_id='conv-123',
             body=body,
             auth_ctx=auth_ctx,
+            credentials=None,
         )
         self.assertIsInstance(result, responses.StreamingResponse)
         self.assertEqual(result.media_type, 'text/event-stream')
@@ -771,10 +780,13 @@ class StreamResponseTestCase(
 ):
     def setUp(self) -> None:
         self._original_client = client._client
+        self._original_manager = mcp._manager
+        mcp._manager = _make_mock_mcp_manager()
         settings._assistant_settings = None
 
     def tearDown(self) -> None:
         client._client = self._original_client
+        mcp._manager = self._original_manager
         settings._assistant_settings = None
 
     @staticmethod

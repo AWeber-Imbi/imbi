@@ -60,6 +60,13 @@ def build_system_prompt(
             'Use them to look up real data when answering '
             'questions.'
         )
+    else:
+        tools_section = (
+            'You have NO tools available. You cannot look up '
+            'live data from Imbi. Answer general questions about '
+            'Imbi concepts, or direct the user to the Imbi UI '
+            'for data queries.'
+        )
 
     perms_section = ''
     if perms:

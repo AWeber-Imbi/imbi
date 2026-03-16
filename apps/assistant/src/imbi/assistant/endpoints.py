@@ -12,6 +12,8 @@ from fastapi import responses
 from imbi_assistant import (
     auth,
     client,
+    client_tools,
+    mcp,
     models,
     neo4j_ops,
     settings,
@@ -21,7 +23,6 @@ from imbi_assistant import (
 LOGGER = logging.getLogger(__name__)
 
 assistant_router = fastapi.APIRouter(
-    prefix='/assistant',
     tags=['Assistant'],
 )
 
@@ -307,43 +308,156 @@ async def _stream_response(
     max_tokens: int,
     is_first_exchange: bool,
     user_message_content: str,
+    tools: list[dict[str, typing.Any]] | None = None,
+    auth_token: str | None = None,
 ) -> collections.abc.AsyncIterator[str]:
     """Stream an SSE response from the Anthropic API.
+
+    Implements an agentic loop: when Claude responds with
+    tool_use, the tools are executed against the Imbi API
+    and the results are fed back for another round.
 
     Yields:
         SSE-formatted strings.
 
     """
     api_client = client.get_client()
-    state: dict[str, typing.Any] = {
-        'text': '',
-        'stop_reason': None,
-        'usage': {},
-    }
+    assistant_settings = settings.get_assistant_settings()
+    max_rounds = assistant_settings.max_tool_rounds
+    mcp_manager = mcp.get_manager()
+    accumulated_text = ''
 
-    tool_use_blocks: list[dict[str, typing.Any]] = []
-    kwargs: dict[str, typing.Any] = {
-        'model': model,
-        'max_tokens': max_tokens,
-        'system': system,
-        'messages': api_messages,
-    }
+    for _round in range(max_rounds):
+        state: dict[str, typing.Any] = {
+            'text': '',
+            'stop_reason': None,
+            'usage': {},
+        }
+        tool_use_blocks: list[dict[str, typing.Any]] = []
 
-    try:
-        async with api_client.messages.stream(**kwargs) as stream:
-            async for chunk in _process_stream_events(
-                stream, tool_use_blocks, state
-            ):
-                yield chunk
-    except anthropic.APIError as exc:
-        LOGGER.exception('Anthropic API error')
-        yield _sse_event(
-            'error',
-            {'message': str(exc)},
+        kwargs: dict[str, typing.Any] = {
+            'model': model,
+            'max_tokens': max_tokens,
+            'system': system,
+            'messages': api_messages,
+        }
+        if tools:
+            kwargs['tools'] = tools
+
+        try:
+            async with api_client.messages.stream(
+                **kwargs,
+            ) as stream:
+                async for chunk in _process_stream_events(
+                    stream, tool_use_blocks, state
+                ):
+                    yield chunk
+        except anthropic.APIError as exc:
+            LOGGER.exception('Anthropic API error')
+            yield _sse_event(
+                'error',
+                {'message': str(exc)},
+            )
+            return
+
+        accumulated_text += state['text']
+
+        # If Claude did not request tool use, we are done.
+        if state['stop_reason'] != 'tool_use' or not tool_use_blocks:
+            break
+
+        # Save the assistant message with tool_use blocks.
+        await neo4j_ops.add_message(
+            conversation_id=conversation_id,
+            role='assistant',
+            content=state['text'],
+            tool_use=tool_use_blocks,
+            token_usage=(state['usage'] or None),
         )
-        return
 
-    # Save assistant message
+        # Build the assistant content for the API messages.
+        assistant_content: list[dict[str, typing.Any]] = []
+        if state['text']:
+            assistant_content.append(
+                {'type': 'text', 'text': state['text']},
+            )
+        assistant_content.extend(
+            {
+                'type': 'tool_use',
+                'id': tb['id'],
+                'name': tb['name'],
+                'input': tb['input'],
+            }
+            for tb in tool_use_blocks
+        )
+        api_messages.append(
+            {'role': 'assistant', 'content': assistant_content},
+        )
+
+        # Execute each tool and collect results.
+        tool_results: list[dict[str, typing.Any]] = []
+        for tb in tool_use_blocks:
+            if client_tools.is_client_tool(tb['name']):
+                yield _sse_event(
+                    'client_action',
+                    {
+                        'id': tb['id'],
+                        'action': tb['name'],
+                        'params': tb['input'],
+                    },
+                )
+                tool_results.append(
+                    {
+                        'type': 'tool_result',
+                        'tool_use_id': tb['id'],
+                        'content': json.dumps(
+                            {
+                                'success': True,
+                                'action': tb['name'],
+                            }
+                        ),
+                    }
+                )
+            else:
+                yield _sse_event(
+                    'tool_executing',
+                    {
+                        'id': tb['id'],
+                        'name': tb['name'],
+                    },
+                )
+                result_text = await mcp_manager.execute_tool(
+                    tb['name'],
+                    tb['input'],
+                    auth_token,
+                )
+                tool_results.append(
+                    {
+                        'type': 'tool_result',
+                        'tool_use_id': tb['id'],
+                        'content': result_text,
+                    }
+                )
+                yield _sse_event(
+                    'tool_result',
+                    {
+                        'id': tb['id'],
+                        'name': tb['name'],
+                    },
+                )
+
+        # Save tool results as a user message.
+        await neo4j_ops.add_message(
+            conversation_id=conversation_id,
+            role='user',
+            content='',
+            tool_results=tool_results,
+        )
+        api_messages.append(
+            {'role': 'user', 'content': tool_results},
+        )
+
+    # Save the final assistant message.
     msg = await neo4j_ops.add_message(
         conversation_id=conversation_id,
         role='assistant',
@@ -360,11 +474,11 @@ async def _stream_response(
         },
     )
 
-    if is_first_exchange and state['text']:
+    if is_first_exchange and accumulated_text:
         title = await _generate_title(
             api_client,
             user_message_content,
-            state['text'],
+            accumulated_text,
             model,
         )
         await neo4j_ops.update_conversation_title(
@@ -382,6 +496,8 @@ async def send_message(
     conversation_id: str,
     body: models.SendMessageRequest,
     auth_ctx: AuthDep,
+    credentials: fastapi.security.HTTPAuthorizationCredentials
+    | None = fastapi.Depends(auth.oauth2_scheme),  # noqa: B008
 ) -> responses.StreamingResponse:
     """Send a message and stream the response via SSE."""
     _require_assistant()
@@ -417,9 +533,18 @@ async def send_message(
         _build_api_message(m) for m in all_msgs
     ]
 
-    system = system_prompt.build_system_prompt(auth_ctx, tool_names=[])
+    mcp_manager = mcp.get_manager()
+    mcp_tool_list = mcp_manager.get_tools()
+    all_tools = (mcp_tool_list or []) + client_tools.get_tools()
+    tools = all_tools or None
+    tool_names = mcp_manager.get_tool_names() + client_tools.get_tool_names()
+    system = system_prompt.build_system_prompt(
+        auth_ctx,
+        tool_names=tool_names,
+    )
 
     is_first_exchange = len(all_msgs) <= 2
+    auth_token = credentials.credentials if credentials else None
 
     return responses.StreamingResponse(
         _stream_response(
@@ -431,6 +556,8 @@ async def send_message(
             max_tokens=assistant_settings.max_tokens,
             is_first_exchange=is_first_exchange,
             user_message_content=body.content,
+            tools=tools,
+            auth_token=auth_token,
         ),
         media_type='text/event-stream',
         headers={
