@@ -489,10 +489,10 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
 
       {/* Command Input Bar */}
       <div
-        className={`fixed bottom-0 left-0 right-0 z-50 ${
+        className={`fixed bottom-0 left-0 right-0 z-50 pt-3 ${
           isDarkMode
             ? 'bg-gray-900 border-gray-700'
-            : 'bg-white border-gray-200'
+            : 'bg-gray-100 border-gray-200'
         } border-t`}
       >
         {/* Tray Toggle */}
@@ -505,10 +505,10 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
                 : 'Expand assistant'
             }
             type="button"
-            className={`-mt-3 px-4 py-0.5 rounded-t-md border border-b-0 text-xs font-mono transition-all ${
+            className={`-mt-6 px-4 py-0.5 rounded-t-md border border-b-0 text-xs font-mono transition-all ${
               isDarkMode
                 ? 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-400'
-                : 'bg-white border-gray-200 text-gray-400 hover:text-gray-600'
+                : 'bg-gray-100 border-gray-200 text-gray-400 hover:text-gray-600'
             } ${isExpanded ? 'shadow-lg' : ''}`}
           >
             {isExpanded ? (

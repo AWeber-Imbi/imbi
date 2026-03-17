@@ -24,13 +24,7 @@ export function ProjectsPage() {
           onThemeToggle={handleThemeToggle}
         />
         <main className="pt-16" style={{ paddingBottom: 'var(--assistant-height, 64px)' }}>
-          <ProjectsView
-            onProjectSelect={(projectId) => {
-              console.log('Selected project:', projectId)
-              // TODO: Navigate to project detail
-            }}
-            isDarkMode={isDarkMode}
-          />
+          <ProjectsView isDarkMode={isDarkMode} />
         </main>
         <CommandBar isDarkMode={isDarkMode} />
       </div>

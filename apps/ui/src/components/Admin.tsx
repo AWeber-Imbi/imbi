@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Users, Shield, FileJson, ChevronRight, ChevronLeft,
-  ExternalLink, Building2, Globe, Layers, FolderTree, UsersRound, Bot, Cloud,
+  ExternalLink, Building2, Globe, Layers, FolderTree, UsersRound, Bot, Cloud, Link2,
 } from 'lucide-react'
 import { UserManagement } from './admin/UserManagement'
 import { RoleManagement } from './admin/RoleManagement'
@@ -13,6 +13,7 @@ import { OAuthManagement } from './admin/OAuthManagement'
 import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { ThirdPartyServiceManagement } from './admin/ThirdPartyServiceManagement'
+import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -25,6 +26,7 @@ type AdminSection =
   | 'environments'
   | 'project-types'
   | 'third-party-services'
+  | 'link-definitions'
   | 'blueprints'
   | 'organizations'
   | 'users'
@@ -37,6 +39,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'environments',
   'project-types',
   'third-party-services',
+  'link-definitions',
   'blueprints',
   'organizations',
   'users',
@@ -71,6 +74,7 @@ export function Admin({ isDarkMode }: AdminProps) {
     { id: 'environments', label: 'Environments', icon: Layers, description: 'Manage environments', scope: 'org' },
     { id: 'project-types', label: 'Project Types', icon: FolderTree, description: 'Manage project types', scope: 'org' },
     { id: 'third-party-services', label: 'Third-Party Services', icon: Cloud, description: 'Manage external SaaS services', scope: 'org' },
+    { id: 'link-definitions', label: 'Link Definitions', icon: Link2, description: 'Manage link definitions for projects', scope: 'org' },
     { id: 'blueprints', label: 'Blueprints', icon: FileJson, description: 'Configure metadata templates', scope: 'org' },
   ]
 
@@ -195,6 +199,7 @@ export function Admin({ isDarkMode }: AdminProps) {
             {currentSection === 'environments' && <EnvironmentManagement isDarkMode={isDarkMode} />}
             {currentSection === 'project-types' && <ProjectTypeManagement isDarkMode={isDarkMode} />}
             {currentSection === 'third-party-services' && <ThirdPartyServiceManagement isDarkMode={isDarkMode} />}
+            {currentSection === 'link-definitions' && <LinkDefinitionManagement isDarkMode={isDarkMode} />}
             {currentSection === 'blueprints' && <BlueprintManagement isDarkMode={isDarkMode} />}
             {currentSection === 'organizations' && <OrganizationManagement isDarkMode={isDarkMode} />}
             {currentSection === 'users' && <UserManagement isDarkMode={isDarkMode} />}

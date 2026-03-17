@@ -27,6 +27,7 @@ import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponents
 import { RecentDeploymentsWidget } from './dashboard/widgets/RecentDeploymentsWidget'
 import { useQuery } from '@tanstack/react-query'
 import { getProjects } from '@/api/endpoints'
+import { useOrganization } from '@/contexts/OrganizationContext'
 
 interface ViewChangeEvent {
   view: string
@@ -173,6 +174,8 @@ function SortableWidget({ id, children, isDarkMode }: SortableWidgetProps) {
 }
 
 export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkMode }: DashboardProps) {
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug || ''
   const [showWidgetSelector, setShowWidgetSelector] = useState(false)
 
   const [selectedWidgets, setSelectedWidgets] = useState<string[]>(() => {
@@ -200,12 +203,13 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
 
   // Fetch real data for stats
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => getProjects(),
+    queryKey: ['projects', orgSlug],
+    queryFn: () => getProjects(orgSlug),
+    enabled: !!orgSlug,
   })
 
   const projectCount = projects?.length || 0
-  const namespaceCount = projects ? new Set(projects.map(p => p.namespace)).size : 0
+  const teamCount = projects ? new Set(projects.map(p => p.team.slug)).size : 0
 
   // Persist selections
   useEffect(() => {
@@ -239,9 +243,9 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
       case 'stat-active-deployments':
         return <StatWidget title="Active Deployments" value="1,429" icon="🚀" isDarkMode={isDarkMode} />
       case 'stat-teams':
-        return <StatWidget title="Teams" value="11" icon="👥" isDarkMode={isDarkMode} />
+        return <StatWidget title="Teams" value={teamCount.toLocaleString()} icon="👥" isDarkMode={isDarkMode} />
       case 'stat-namespaces':
-        return <StatWidget title="Namespaces" value={namespaceCount.toLocaleString()} icon="📦" isDarkMode={isDarkMode} />
+        return <StatWidget title="Teams" value={teamCount.toLocaleString()} icon="📦" isDarkMode={isDarkMode} />
       case 'team-activity':
         return <TeamActivityWidget isDarkMode={isDarkMode} onViewChange={onViewChange} />
       case 'recent-activity':
