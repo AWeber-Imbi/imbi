@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Edit2, Shield, Lock, Plus, Trash2, AlertCircle,
-  Users, UsersRound, Info
+  Users, UsersRound, Info, Bot
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Gravatar } from '@/components/ui/gravatar'
-import { getRole, getAdminSettings, getRoleUsers, getRoleGroups, grantPermission, revokePermission } from '@/api/endpoints'
-import type { Permission, RoleUser } from '@/types'
+import { getRole, getAdminSettings, getRoleUsers, getRoleServiceAccounts, getRoleGroups, grantPermission, revokePermission } from '@/api/endpoints'
+import type { Permission, RoleUser, ServiceAccount } from '@/types'
 
 interface RoleDetailProps {
   slug: string
@@ -16,7 +16,7 @@ interface RoleDetailProps {
   isDarkMode: boolean
 }
 
-type DetailTab = 'permissions' | 'users' | 'groups'
+type DetailTab = 'permissions' | 'users' | 'service-accounts' | 'groups'
 
 export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps) {
   const queryClient = useQueryClient()
@@ -41,6 +41,13 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
     queryKey: ['roleUsers', slug],
     queryFn: () => getRoleUsers(slug),
     enabled: activeTab === 'users',
+  })
+
+  // Fetch service accounts with this role
+  const { data: roleServiceAccounts, isLoading: saLoading, error: saError } = useQuery({
+    queryKey: ['roleServiceAccounts', slug],
+    queryFn: () => getRoleServiceAccounts(slug),
+    enabled: activeTab === 'service-accounts',
   })
 
   // Fetch groups with this role
@@ -129,6 +136,7 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
   const tabs: { id: DetailTab; label: string; icon: typeof Shield }[] = [
     { id: 'permissions', label: 'Permissions', icon: Shield },
     { id: 'users', label: 'Users', icon: Users },
+    { id: 'service-accounts', label: 'Service Accounts', icon: Bot },
     { id: 'groups', label: 'Groups', icon: UsersRound },
   ]
 
@@ -462,6 +470,101 @@ export function RoleDetail({ slug, onEdit, onBack, isDarkMode }: RoleDetailProps
                     <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       {user.last_login
                         ? new Date(user.last_login).toLocaleDateString()
+                        : 'Never'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Service Accounts Tab */}
+      {activeTab === 'service-accounts' && (
+        <div className="space-y-4">
+          {/* Info banner */}
+          <div className={`flex items-start gap-3 p-4 rounded-lg border ${
+            isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-blue-50 border-blue-200'
+          }`}>
+            <Info className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+              isDarkMode ? 'text-blue-400' : 'text-blue-600'
+            }`} />
+            <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-blue-700'}`}>
+              Role assignments are managed via Service Account Management. This list shows service accounts assigned this role via organization membership.
+            </div>
+          </div>
+
+          {/* Service account list */}
+          {saLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Loading service accounts...
+              </div>
+            </div>
+          ) : saError ? (
+            <div className={`flex items-center gap-3 p-4 rounded-lg border ${
+              isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
+            }`}>
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <div>
+                <div className="font-medium">Failed to load service accounts</div>
+                <div className="text-sm mt-1">
+                  {saError instanceof Error ? saError.message : 'An error occurred'}
+                </div>
+              </div>
+            </div>
+          ) : !roleServiceAccounts || roleServiceAccounts.length === 0 ? (
+            <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <div>No service accounts assigned this role</div>
+              <div className="text-sm mt-1">Assign this role to service accounts via Service Account Management</div>
+            </div>
+          ) : (
+            <div className={`rounded-lg border overflow-hidden ${
+              isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+            }`}>
+              <div className={`grid grid-cols-[1fr_auto_auto] gap-4 px-4 py-2.5 text-xs font-medium uppercase tracking-wider border-b ${
+                isDarkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500'
+              }`}>
+                <div>Service Account</div>
+                <div>Status</div>
+                <div>Last Authenticated</div>
+              </div>
+              <div className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
+                {roleServiceAccounts.map((sa: ServiceAccount) => (
+                  <div key={sa.slug} className="grid grid-cols-[1fr_auto_auto] gap-4 items-center px-4 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`p-1.5 rounded-full ${isDarkMode ? 'bg-purple-900/30' : 'bg-purple-100'}`}>
+                        <Bot className={`w-4 h-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className={`text-sm font-medium truncate ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}>
+                          {sa.display_name}
+                        </div>
+                        <div className={`text-xs font-mono truncate ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {sa.slug}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      {sa.is_active ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          isDarkMode ? 'bg-green-900/30 text-green-400' : 'bg-green-100 text-green-700'
+                        }`}>
+                          Active
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          isDarkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          Inactive
+                        </span>
+                      )}
+                    </div>
+                    <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {sa.last_authenticated
+                        ? new Date(sa.last_authenticated).toLocaleDateString()
                         : 'Never'}
                     </div>
                   </div>

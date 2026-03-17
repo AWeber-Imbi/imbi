@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowLeft, Edit2, ExternalLink, Info, Key } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { OAuth2ApplicationList } from './OAuth2ApplicationList'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import type { ThirdPartyService } from '@/types'
 
 interface ThirdPartyServiceDetailProps {
@@ -21,6 +22,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; darkBg: string; 
 }
 
 export function ThirdPartyServiceDetail({ service, onEdit, onBack, isDarkMode }: ThirdPartyServiceDetailProps) {
+  const { selectedOrganization } = useOrganization()
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
   const statusColor = STATUS_COLORS[service.status] || STATUS_COLORS.inactive
   const linkEntries = Object.entries(service.links || {})
@@ -230,6 +232,7 @@ export function ThirdPartyServiceDetail({ service, onEdit, onBack, isDarkMode }:
       {/* Applications Tab */}
       {activeTab === 'applications' && (
         <OAuth2ApplicationList
+          orgSlug={selectedOrganization?.slug || ''}
           serviceSlug={service.slug}
           isDarkMode={isDarkMode}
         />

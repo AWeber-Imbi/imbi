@@ -5,6 +5,7 @@ import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { Gravatar } from '../../ui/gravatar'
 import { getRoles } from '@/api/endpoints'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import type { AdminUser, AdminUserCreate } from '@/types'
 
 interface UserFormProps {
@@ -34,10 +35,12 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
   const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false)
   const [isServiceAccount, setIsServiceAccount] = useState(user?.is_service_account ?? false)
 
-  // Roles - store slugs
-  const [selectedRoleSlugs, setSelectedRoleSlugs] = useState<string[]>(
-    user?.roles?.map(r => r.slug) ?? []
+  // Organization membership (for creation only)
+  const { organizations } = useOrganization()
+  const [organizationSlug, setOrganizationSlug] = useState(
+    organizations.length === 1 ? organizations[0].slug : ''
   )
+  const [roleSlug, setRoleSlug] = useState('')
 
   // Fetch available roles
   const { data: availableRoles = [], isLoading: rolesLoading } = useQuery({
@@ -114,12 +117,19 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
       if (confirmError) errors.confirmPassword = confirmError
     }
 
+    if (!isEditing) {
+      if (!organizationSlug) errors.organization_slug = 'Organization is required'
+      if (!roleSlug) errors.role_slug = 'Role is required'
+    }
+
     setValidationErrors(errors)
     setTouched({
       email: true,
       display_name: true,
       password: true,
-      confirmPassword: true
+      confirmPassword: true,
+      organization_slug: true,
+      role_slug: true,
     })
 
     return Object.keys(errors).length === 0
@@ -135,17 +145,15 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
       display_name: displayName.trim(),
       is_active: isActive,
       is_admin: isAdmin,
-      is_service_account: isServiceAccount
+      is_service_account: isServiceAccount,
+      organization_slug: organizationSlug,
+      role_slug: roleSlug,
     }
 
     // Only include password if changing it or creating new user
     if (changePassword || !isEditing) {
       userData.password = password
     }
-
-    // Note: Groups and roles might need to be set via separate API calls
-    // depending on the backend implementation. For now, we're not including them
-    // in the AdminUserCreate payload as they're not in the type definition.
 
     onSave(userData)
   }
@@ -551,57 +559,87 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
         </div>
       </div>
 
-      {/* Section 3: Role Assignments */}
-      <div className={`p-6 rounded-lg border ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
-        <h3 className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-          Direct Role Assignments
-        </h3>
+      {/* Section 3: Organization Membership (creation only) */}
+      {!isEditing && (
+        <div className={`p-6 rounded-lg border ${
+          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+        }`}>
+          <h3 className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            Organization Membership
+          </h3>
+          <p className={`text-sm mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            Users must belong to at least one organization with a role to have any permissions.
+          </p>
 
-        {rolesLoading ? (
-          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Loading roles...
-          </p>
-        ) : availableRoles.length === 0 ? (
-          <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            No roles available
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {availableRoles.map((role) => (
-              <label key={role.slug} className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedRoleSlugs.includes(role.slug)}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Organization */}
+            <div>
+              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Organization <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={organizationSlug}
+                onChange={(e) => {
+                  setOrganizationSlug(e.target.value)
+                  handleFieldChange('organization_slug')
+                }}
+                disabled={isLoading}
+                className={`w-full px-3 py-2 rounded-md border text-sm ${
+                  isDarkMode
+                    ? 'bg-gray-700 border-gray-600 text-white'
+                    : 'bg-white border-gray-300 text-gray-900'
+                } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+              >
+                <option value="">Select an organization...</option>
+                {organizations.map((org) => (
+                  <option key={org.slug} value={org.slug}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+              {touched.organization_slug && validationErrors.organization_slug && (
+                <p className="text-sm text-red-600 mt-1">{validationErrors.organization_slug}</p>
+              )}
+            </div>
+
+            {/* Role */}
+            <div>
+              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Role <span className="text-red-500">*</span>
+              </label>
+              {rolesLoading ? (
+                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Loading roles...
+                </p>
+              ) : (
+                <select
+                  value={roleSlug}
                   onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedRoleSlugs([...selectedRoleSlugs, role.slug])
-                    } else {
-                      setSelectedRoleSlugs(selectedRoleSlugs.filter(s => s !== role.slug))
-                    }
+                    setRoleSlug(e.target.value)
+                    handleFieldChange('role_slug')
                   }}
                   disabled={isLoading}
-                  className="rounded mt-0.5"
-                />
-                <div className="flex-1">
-                  <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
-                    {role.name}
-                  </span>
-                  {role.description && (
-                    <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                      {role.description}
-                    </p>
-                  )}
-                </div>
-              </label>
-            ))}
+                  className={`w-full px-3 py-2 rounded-md border text-sm ${
+                    isDarkMode
+                      ? 'bg-gray-700 border-gray-600 text-white'
+                      : 'bg-white border-gray-300 text-gray-900'
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                >
+                  <option value="">Select a role...</option>
+                  {availableRoles.map((role) => (
+                    <option key={role.slug} value={role.slug}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {touched.role_slug && validationErrors.role_slug && (
+                <p className="text-sm text-red-600 mt-1">{validationErrors.role_slug}</p>
+              )}
+            </div>
           </div>
-        )}
-        <p className={`text-xs mt-3 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-          Note: Role assignments may need to be configured separately after user creation, depending on backend implementation.
-        </p>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

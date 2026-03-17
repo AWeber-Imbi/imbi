@@ -8,6 +8,7 @@ import { ApplicationSecretsPanel } from './ApplicationSecretsPanel'
 import type { ServiceApplication, ServiceApplicationCreate, ServiceApplicationUpdate } from '@/types'
 
 interface OAuth2ApplicationListProps {
+  orgSlug: string
   serviceSlug: string
   isDarkMode: boolean
 }
@@ -18,39 +19,39 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; darkBg: string; 
   revoked: { bg: 'bg-red-100', text: 'text-red-700', darkBg: 'bg-red-900/30', darkText: 'text-red-400' },
 }
 
-export function OAuth2ApplicationList({ serviceSlug, isDarkMode }: OAuth2ApplicationListProps) {
+export function OAuth2ApplicationList({ orgSlug, serviceSlug, isDarkMode }: OAuth2ApplicationListProps) {
   const queryClient = useQueryClient()
   const [viewMode, setViewMode] = useState<'list' | 'create' | 'edit'>('list')
   const [editingApp, setEditingApp] = useState<ServiceApplication | null>(null)
 
   const { data: applications = [], isLoading, error } = useQuery({
-    queryKey: ['service-applications', serviceSlug],
-    queryFn: () => listServiceApplications(serviceSlug),
+    queryKey: ['service-applications', orgSlug, serviceSlug],
+    queryFn: () => listServiceApplications(orgSlug, serviceSlug),
   })
 
   const createMutation = useMutation({
     mutationFn: (data: ServiceApplicationCreate) =>
-      createServiceApplication(serviceSlug, data),
+      createServiceApplication(orgSlug, serviceSlug, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['service-applications', serviceSlug] })
+      queryClient.invalidateQueries({ queryKey: ['service-applications', orgSlug, serviceSlug] })
       setViewMode('list')
     },
   })
 
   const updateMutation = useMutation({
     mutationFn: ({ appSlug, data }: { appSlug: string; data: ServiceApplicationUpdate }) =>
-      updateServiceApplication(serviceSlug, appSlug, data),
+      updateServiceApplication(orgSlug, serviceSlug, appSlug, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['service-applications', serviceSlug] })
+      queryClient.invalidateQueries({ queryKey: ['service-applications', orgSlug, serviceSlug] })
       setViewMode('list')
       setEditingApp(null)
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (appSlug: string) => deleteServiceApplication(serviceSlug, appSlug),
+    mutationFn: (appSlug: string) => deleteServiceApplication(orgSlug, serviceSlug, appSlug),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['service-applications', serviceSlug] })
+      queryClient.invalidateQueries({ queryKey: ['service-applications', orgSlug, serviceSlug] })
     },
     onError: (error: any) => {
       alert(`Failed to delete application: ${error.response?.data?.detail || error.message}`)
@@ -102,6 +103,7 @@ export function OAuth2ApplicationList({ serviceSlug, isDarkMode }: OAuth2Applica
           error={updateMutation.error}
         />
         <ApplicationSecretsPanel
+          orgSlug={orgSlug}
           serviceSlug={serviceSlug}
           appSlug={editingApp.slug}
           appType={editingApp.app_type}

@@ -7,6 +7,7 @@ import { getApplicationSecrets, updateApplicationSecrets } from '@/api/endpoints
 import type { ServiceApplicationSecretsUpdate } from '@/types'
 
 interface ApplicationSecretsPanelProps {
+  orgSlug: string
   serviceSlug: string
   appSlug: string
   appType: string
@@ -27,6 +28,7 @@ const FIELD_LABELS: Record<string, string> = {
 }
 
 export function ApplicationSecretsPanel({
+  orgSlug,
   serviceSlug,
   appSlug,
   appType,
@@ -46,18 +48,18 @@ export function ApplicationSecretsPanel({
     error,
     refetch,
   } = useQuery({
-    queryKey: ['application-secrets', serviceSlug, appSlug],
-    queryFn: () => getApplicationSecrets(serviceSlug, appSlug),
+    queryKey: ['application-secrets', orgSlug, serviceSlug, appSlug],
+    queryFn: () => getApplicationSecrets(orgSlug, serviceSlug, appSlug),
     enabled: revealed,
     retry: false,
   })
 
   const updateMutation = useMutation({
     mutationFn: (data: ServiceApplicationSecretsUpdate) =>
-      updateApplicationSecrets(serviceSlug, appSlug, data),
+      updateApplicationSecrets(orgSlug, serviceSlug, appSlug, data),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['application-secrets', serviceSlug, appSlug],
+        queryKey: ['application-secrets', orgSlug, serviceSlug, appSlug],
       })
       setEditing(false)
       setEditValues({})

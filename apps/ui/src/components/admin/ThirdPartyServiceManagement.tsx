@@ -29,15 +29,18 @@ export function ThirdPartyServiceManagement({ isDarkMode }: ThirdPartyServiceMan
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
+  const orgSlug = selectedOrganization?.slug
+
   const { data: services = [], isLoading, error } = useQuery({
-    queryKey: ['third-party-services'],
-    queryFn: listThirdPartyServices,
+    queryKey: ['third-party-services', orgSlug],
+    queryFn: () => listThirdPartyServices(orgSlug!),
+    enabled: !!orgSlug,
   })
 
   const createMutation = useMutation({
-    mutationFn: createThirdPartyService,
+    mutationFn: (svc: ThirdPartyServiceCreate) => createThirdPartyService(orgSlug!, svc),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['third-party-services'] })
+      queryClient.invalidateQueries({ queryKey: ['third-party-services', orgSlug] })
       setViewMode('list')
       setSelectedSlug(null)
     },
@@ -45,18 +48,18 @@ export function ThirdPartyServiceManagement({ isDarkMode }: ThirdPartyServiceMan
 
   const updateMutation = useMutation({
     mutationFn: ({ slug, svc }: { slug: string; svc: ThirdPartyServiceCreate }) =>
-      updateThirdPartyService(slug, svc),
+      updateThirdPartyService(orgSlug!, slug, svc),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['third-party-services'] })
+      queryClient.invalidateQueries({ queryKey: ['third-party-services', orgSlug] })
       setViewMode('list')
       setSelectedSlug(null)
     },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: deleteThirdPartyService,
+    mutationFn: (slug: string) => deleteThirdPartyService(orgSlug!, slug),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['third-party-services'] })
+      queryClient.invalidateQueries({ queryKey: ['third-party-services', orgSlug] })
     },
     onError: (error: any) => {
       alert(`Failed to delete service: ${error.response?.data?.detail || error.message}`)
@@ -64,9 +67,6 @@ export function ThirdPartyServiceManagement({ isDarkMode }: ThirdPartyServiceMan
   })
 
   const filteredServices = services.filter((svc) => {
-    if (selectedOrganization && svc.organization.slug !== selectedOrganization.slug) {
-      return false
-    }
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       return (

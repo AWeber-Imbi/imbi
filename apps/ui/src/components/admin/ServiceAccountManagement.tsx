@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import {
   useQuery,
   useMutation,
@@ -19,11 +19,12 @@ import { ServiceAccountDetail } from './service-accounts/ServiceAccountDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import {
   listServiceAccounts,
+  getServiceAccount,
   createServiceAccount,
   updateServiceAccount,
   deleteServiceAccount,
 } from '@/api/endpoints'
-import type { ServiceAccount, ServiceAccountCreate } from '@/types'
+import type { ServiceAccount, ServiceAccountCreate, ServiceAccountUpdate } from '@/types'
 
 interface ServiceAccountManagementProps {
   isDarkMode: boolean
@@ -86,7 +87,7 @@ export function ServiceAccountManagement({
       data,
     }: {
       slug: string
-      data: ServiceAccountCreate
+      data: ServiceAccountUpdate
     }) => updateServiceAccount(slug, data),
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -119,10 +120,12 @@ export function ServiceAccountManagement({
     }
   )
 
-  const selectedAccount = useMemo(
-    () => serviceAccounts.find((a: ServiceAccount) => a.slug === selectedAccountSlug) || null,
-    [serviceAccounts, selectedAccountSlug],
-  )
+  // Fetch full SA detail (with orgs) when viewing/editing a specific account
+  const { data: selectedAccount = null } = useQuery({
+    queryKey: ['serviceAccount', selectedAccountSlug],
+    queryFn: () => getServiceAccount(selectedAccountSlug!),
+    enabled: !!selectedAccountSlug && (viewMode === 'detail' || viewMode === 'edit'),
+  })
 
   const handleDelete = (slug: string) => {
     const account = serviceAccounts.find(
@@ -149,7 +152,9 @@ export function ServiceAccountManagement({
     if (viewMode === 'create') {
       createMutation.mutate(data)
     } else if (selectedAccount) {
-      updateMutation.mutate({ slug: selectedAccount.slug, data })
+      // Strip org/role fields for update — they're only for creation
+      const { organization_slug: _, role_slug: __, ...updateData } = data
+      updateMutation.mutate({ slug: selectedAccount.slug, data: updateData })
     }
   }
 

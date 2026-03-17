@@ -23,6 +23,7 @@ import type {
   UserResponse,
   AdminUser,
   AdminUserCreate,
+  AdminUserUpdate,
   AdminSettings,
   Role,
   RoleDetail,
@@ -47,6 +48,7 @@ import type {
   ApiKeyCreated,
   ServiceAccount,
   ServiceAccountCreate,
+  ServiceAccountUpdate,
   ClientCredential,
   ClientCredentialCreated,
   ClientCredentialCreate,
@@ -252,11 +254,36 @@ export const getAdminUser = (email: string) =>
 export const createAdminUser = (user: AdminUserCreate) =>
   apiClient.post<AdminUser>('/users/', user)
 
-export const updateAdminUser = (email: string, user: AdminUserCreate) =>
+export const updateAdminUser = (email: string, user: AdminUserUpdate) =>
   apiClient.put<AdminUser>(`/users/${encodeURIComponent(email)}`, user)
 
 export const deleteAdminUser = (email: string) =>
   apiClient.delete<void>(`/users/${encodeURIComponent(email)}`)
+
+// User organization membership
+export const addUserToOrg = (
+  email: string,
+  data: { organization_slug: string; role_slug: string }
+) =>
+  apiClient.post(
+    `/users/${encodeURIComponent(email)}/organizations`,
+    data
+  )
+
+export const updateUserOrgRole = (
+  email: string,
+  orgSlug: string,
+  data: { role_slug: string }
+) =>
+  apiClient.put(
+    `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`,
+    data
+  )
+
+export const removeUserFromOrg = (email: string, orgSlug: string) =>
+  apiClient.delete(
+    `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`
+  )
 
 // Admin - Roles Management
 export const getRoles = async (): Promise<Role[]> => {
@@ -295,6 +322,13 @@ export const revokePermission = (slug: string, permissionName: string) =>
 export const getRoleUsers = async (slug: string): Promise<RoleUser[]> => {
   const response = await apiClient.get<RoleUser[]>(
     `/roles/${encodeURIComponent(slug)}/users`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getRoleServiceAccounts = async (slug: string): Promise<ServiceAccount[]> => {
+  const response = await apiClient.get<ServiceAccount[]>(
+    `/roles/${encodeURIComponent(slug)}/service-accounts`
   )
   return Array.isArray(response) ? response : []
 }
@@ -492,70 +526,84 @@ export const removeTeamMember = (orgSlug: string, slug: string, email: string) =
   )
 
 // Admin - Third-Party Services
-export const listThirdPartyServices = async (): Promise<ThirdPartyService[]> => {
-  const response = await apiClient.get<ThirdPartyService[]>('/third-party-services/')
+export const listThirdPartyServices = async (orgSlug: string): Promise<ThirdPartyService[]> => {
+  const response = await apiClient.get<ThirdPartyService[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/`
+  )
   return Array.isArray(response) ? response : []
 }
 
-export const getThirdPartyService = (slug: string) =>
-  apiClient.get<ThirdPartyService>(`/third-party-services/${encodeURIComponent(slug)}`)
+export const getThirdPartyService = (orgSlug: string, slug: string) =>
+  apiClient.get<ThirdPartyService>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`
+  )
 
-export const createThirdPartyService = (svc: ThirdPartyServiceCreate) =>
-  apiClient.post<ThirdPartyService>('/third-party-services/', svc)
+export const createThirdPartyService = (orgSlug: string, svc: ThirdPartyServiceCreate) =>
+  apiClient.post<ThirdPartyService>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/`,
+    svc
+  )
 
-export const updateThirdPartyService = (slug: string, svc: ThirdPartyServiceCreate) =>
-  apiClient.put<ThirdPartyService>(`/third-party-services/${encodeURIComponent(slug)}`, svc)
+export const updateThirdPartyService = (orgSlug: string, slug: string, svc: ThirdPartyServiceCreate) =>
+  apiClient.put<ThirdPartyService>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`,
+    svc
+  )
 
-export const deleteThirdPartyService = (slug: string) =>
-  apiClient.delete<void>(`/third-party-services/${encodeURIComponent(slug)}`)
+export const deleteThirdPartyService = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`
+  )
 
 // Service Applications (nested under Third-Party Services)
-export const listServiceApplications = async (serviceSlug: string): Promise<ServiceApplication[]> => {
+export const listServiceApplications = async (orgSlug: string, serviceSlug: string): Promise<ServiceApplication[]> => {
   const response = await apiClient.get<ServiceApplication[]>(
-    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getServiceApplication = (serviceSlug: string, appSlug: string) =>
+export const getServiceApplication = (orgSlug: string, serviceSlug: string, appSlug: string) =>
   apiClient.get<ServiceApplication>(
-    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
   )
 
-export const createServiceApplication = (serviceSlug: string, data: ServiceApplicationCreate) =>
+export const createServiceApplication = (orgSlug: string, serviceSlug: string, data: ServiceApplicationCreate) =>
   apiClient.post<ServiceApplication>(
-    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`,
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`,
     data
   )
 
 export const updateServiceApplication = (
+  orgSlug: string,
   serviceSlug: string,
   appSlug: string,
   data: ServiceApplicationUpdate
 ) =>
   apiClient.put<ServiceApplication>(
-    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
     data
   )
 
-export const deleteServiceApplication = (serviceSlug: string, appSlug: string) =>
+export const deleteServiceApplication = (orgSlug: string, serviceSlug: string, appSlug: string) =>
   apiClient.delete<void>(
-    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
   )
 
 // Service Application Secrets
-export const getApplicationSecrets = (serviceSlug: string, appSlug: string) =>
+export const getApplicationSecrets = (orgSlug: string, serviceSlug: string, appSlug: string) =>
   apiClient.get<ServiceApplicationSecrets>(
-    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`
   )
 
 export const updateApplicationSecrets = (
+  orgSlug: string,
   serviceSlug: string,
   appSlug: string,
   data: ServiceApplicationSecretsUpdate
 ) =>
   apiClient.put<ServiceApplicationSecrets>(
-    `/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
     data
   )
 
@@ -608,7 +656,7 @@ export const getServiceAccount = (slug: string) =>
 export const createServiceAccount = (data: ServiceAccountCreate) =>
   apiClient.post<ServiceAccount>('/service-accounts', data)
 
-export const updateServiceAccount = (slug: string, data: ServiceAccountCreate) =>
+export const updateServiceAccount = (slug: string, data: ServiceAccountUpdate) =>
   apiClient.put<ServiceAccount>(`/service-accounts/${encodeURIComponent(slug)}`, data)
 
 export const deleteServiceAccount = (slug: string) =>
@@ -620,6 +668,16 @@ export const addServiceAccountToOrg = (
 ) =>
   apiClient.post(
     `/service-accounts/${encodeURIComponent(slug)}/organizations`,
+    data
+  )
+
+export const updateServiceAccountOrgRole = (
+  slug: string,
+  orgSlug: string,
+  data: { role_slug: string }
+) =>
+  apiClient.put(
+    `/service-accounts/${encodeURIComponent(slug)}/organizations/${encodeURIComponent(orgSlug)}`,
     data
   )
 

@@ -35,7 +35,7 @@ export function ThirdPartyServiceForm({
   error,
 }: ThirdPartyServiceFormProps) {
   const isEditing = !!service
-  const { selectedOrganization, organizations } = useOrganization()
+  const { selectedOrganization } = useOrganization()
 
   const [name, setName] = useState(service?.name || '')
   const [slug, setSlug] = useState(service?.slug || '')
@@ -47,9 +47,7 @@ export function ThirdPartyServiceForm({
   const [status, setStatus] = useState<string>(service?.status || 'active')
   const [links, setLinks] = useState<Record<string, string | number>>(service?.links || {})
   const [identifiers, setIdentifiers] = useState<Record<string, string | number>>(service?.identifiers || {})
-  const [orgSlug, setOrgSlug] = useState(
-    service?.organization.slug || selectedOrganization?.slug || ''
-  )
+  const orgSlug = selectedOrganization?.slug || ''
   const [teamSlug, setTeamSlug] = useState(service?.team?.slug || '')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -68,7 +66,6 @@ export function ThirdPartyServiceForm({
     if (slug && !/^[a-z0-9_-]+$/.test(slug)) {
       newErrors.slug = 'Slug must be lowercase and can only contain letters, numbers, hyphens, and underscores'
     }
-    if (!orgSlug) newErrors.organization = 'Organization is required'
     if (!vendor.trim()) newErrors.vendor = 'Vendor is required'
     if (serviceUrl && !/^https?:\/\/.+/.test(serviceUrl)) {
       newErrors.service_url = 'Must be a valid URL starting with http:// or https://'
@@ -92,7 +89,6 @@ export function ThirdPartyServiceForm({
       status,
       links: links as Record<string, string>,
       identifiers,
-      organization_slug: orgSlug,
       team_slug: teamSlug || null,
     })
   }
@@ -173,51 +169,21 @@ export function ThirdPartyServiceForm({
           </h3>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Organization <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={orgSlug}
-                  onChange={(e) => {
-                    setOrgSlug(e.target.value)
-                    setTeamSlug('')
-                  }}
-                  disabled={isEditing || isLoading}
-                  className={`${selectClass} ${isEditing ? 'opacity-60 cursor-not-allowed' : ''} ${
-                    errors.organization ? 'border-red-500' : ''
-                  }`}
-                >
-                  <option value="">Select organization...</option>
-                  {organizations.map((org) => (
-                    <option key={org.slug} value={org.slug}>{org.name}</option>
-                  ))}
-                </select>
-                {errors.organization && (
-                  <div className={`flex items-center gap-1 mt-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
-                    <AlertCircle className="w-3 h-3" />
-                    {errors.organization}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Managing Team
-                </label>
-                <select
-                  value={teamSlug}
-                  onChange={(e) => setTeamSlug(e.target.value)}
-                  disabled={isLoading || !orgSlug}
-                  className={selectClass}
-                >
-                  <option value="">No team assigned</option>
-                  {orgTeams.map((team) => (
-                    <option key={team.slug} value={team.slug}>{team.name}</option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Managing Team
+              </label>
+              <select
+                value={teamSlug}
+                onChange={(e) => setTeamSlug(e.target.value)}
+                disabled={isLoading || !orgSlug}
+                className={selectClass}
+              >
+                <option value="">No team assigned</option>
+                {orgTeams.map((team) => (
+                  <option key={team.slug} value={team.slug}>{team.name}</option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
