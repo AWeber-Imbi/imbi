@@ -16,6 +16,7 @@ from .link_definitions import link_definitions_router
 from .project_types import project_types_router
 from .projects import projects_router
 from .teams import teams_router
+from .third_party_services import third_party_services_router
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +43,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     projects_router,
     prefix='/{org_slug}/projects',
+)
+organizations_router.include_router(
+    third_party_services_router,
+    prefix='/{org_slug}/third-party-services',
 )
 
 

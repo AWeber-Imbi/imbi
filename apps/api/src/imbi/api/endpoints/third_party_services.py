@@ -29,10 +29,8 @@ def _build_service_response(
     record: dict[str, typing.Any],
 ) -> models.ThirdPartyServiceResponse:
     """Build a ThirdPartyServiceResponse from a Neo4j record."""
-    service = _deserialize_json_fields(
-        record['service'],
-        _SERVICE_JSON_FIELDS,
-    )
+    service = neo4j.convert_neo4j_types(record['service'])
+    service = _deserialize_json_fields(service, _SERVICE_JSON_FIELDS)
     return models.ThirdPartyServiceResponse(**service)
 
 
@@ -105,13 +103,13 @@ def _build_secrets_response(
 
 
 third_party_services_router = fastapi.APIRouter(
-    prefix='/third-party-services',
     tags=['Third-Party Services'],
 )
 
 
 @third_party_services_router.post('/', status_code=201)
 async def create_third_party_service(
+    org_slug: str,
     data: models.ThirdPartyServiceCreate,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -158,7 +156,7 @@ async def create_third_party_service(
             AS service
         """
         params: dict[str, typing.Any] = {
-            'org_slug': data.organization_slug,
+            'org_slug': org_slug,
             'team_slug': data.team_slug,
             'props': neo4j_props,
         }
@@ -171,7 +169,7 @@ async def create_third_party_service(
             AS service
         """
         params = {
-            'org_slug': data.organization_slug,
+            'org_slug': org_slug,
             'props': neo4j_props,
         }
 
@@ -191,15 +189,13 @@ async def create_third_party_service(
             raise fastapi.HTTPException(
                 status_code=404,
                 detail=(
-                    f'Organization {data.organization_slug!r} '
+                    f'Organization {org_slug!r} '
                     f'or team {data.team_slug!r} not found'
                 ),
             )
         raise fastapi.HTTPException(
             status_code=404,
-            detail=(
-                f'Organization with slug {data.organization_slug!r} not found'
-            ),
+            detail=(f'Organization with slug {org_slug!r} not found'),
         )
 
     return _build_service_response(records[0])
@@ -207,6 +203,7 @@ async def create_third_party_service(
 
 @third_party_services_router.get('/')
 async def list_third_party_services(
+    org_slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -216,7 +213,7 @@ async def list_third_party_services(
         ),
     ],
 ) -> list[models.ThirdPartyServiceResponse]:
-    """List all third-party services.
+    """List third-party services for an organization.
 
     Returns:
         Services ordered by name, each including their
@@ -224,19 +221,21 @@ async def list_third_party_services(
 
     """
     query: typing.LiteralString = """
-    MATCH (s:ThirdPartyService)-[:BELONGS_TO]->(o:Organization)
+    MATCH (s:ThirdPartyService)-[:BELONGS_TO]->
+          (o:Organization {slug: $org_slug})
     OPTIONAL MATCH (s)-[:MANAGED_BY]->(t:Team)
     RETURN s{.*, organization: o{.*}, team: t{.*}}
         AS service
     ORDER BY s.name
     """
-    async with neo4j.run(query) as result:
+    async with neo4j.run(query, org_slug=org_slug) as result:
         records = await result.data()
     return [_build_service_response(record) for record in records]
 
 
 @third_party_services_router.get('/{slug}')
 async def get_third_party_service(
+    org_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -261,12 +260,16 @@ async def get_third_party_service(
     """
     query: typing.LiteralString = """
     MATCH (s:ThirdPartyService {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization)
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     OPTIONAL MATCH (s)-[:MANAGED_BY]->(t:Team)
     RETURN s{.*, organization: o{.*}, team: t{.*}}
         AS service
     """
-    async with neo4j.run(query, slug=slug) as result:
+    async with neo4j.run(
+        query,
+        slug=slug,
+        org_slug=org_slug,
+    ) as result:
         records = await result.data()
 
     if not records:
@@ -279,6 +282,7 @@ async def get_third_party_service(
 
 @third_party_services_router.put('/{slug}')
 async def update_third_party_service(
+    org_slug: str,
     slug: str,
     data: models.ThirdPartyServiceUpdate,
     auth: typing.Annotated[
@@ -307,12 +311,16 @@ async def update_third_party_service(
     # Fetch existing to validate it exists
     fetch_query: typing.LiteralString = """
     MATCH (s:ThirdPartyService {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization)
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     OPTIONAL MATCH (s)-[:MANAGED_BY]->(t:Team)
     RETURN s{.*, organization: o{.*}, team: t{.*}}
         AS service
     """
-    async with neo4j.run(fetch_query, slug=slug) as result:
+    async with neo4j.run(
+        fetch_query,
+        slug=slug,
+        org_slug=org_slug,
+    ) as result:
         records = await result.data()
 
     if not records:
@@ -339,7 +347,7 @@ async def update_third_party_service(
     if data.team_slug:
         update_query: typing.LiteralString = """
         MATCH (s:ThirdPartyService {slug: $slug})
-              -[:BELONGS_TO]->(o:Organization)
+              -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
         OPTIONAL MATCH (s)-[old_mgr:MANAGED_BY]->()
         DELETE old_mgr
         WITH s, o
@@ -351,13 +359,14 @@ async def update_third_party_service(
         """
         update_params: dict[str, typing.Any] = {
             'slug': slug,
+            'org_slug': org_slug,
             'team_slug': data.team_slug,
             'props': neo4j_props,
         }
     else:
         update_query = """
         MATCH (s:ThirdPartyService {slug: $slug})
-              -[:BELONGS_TO]->(o:Organization)
+              -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
         OPTIONAL MATCH (s)-[old_mgr:MANAGED_BY]->()
         DELETE old_mgr
         WITH s, o
@@ -367,6 +376,7 @@ async def update_third_party_service(
         """
         update_params = {
             'slug': slug,
+            'org_slug': org_slug,
             'props': neo4j_props,
         }
 
@@ -396,6 +406,7 @@ async def update_third_party_service(
 
 @third_party_services_router.delete('/{slug}', status_code=204)
 async def delete_third_party_service(
+    org_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -417,11 +428,16 @@ async def delete_third_party_service(
     """
     query: typing.LiteralString = """
     MATCH (s:ThirdPartyService {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     OPTIONAL MATCH (a:ServiceApplication)-[:REGISTERED_IN]->(s)
     DETACH DELETE a, s
     RETURN count(s) AS deleted
     """
-    async with neo4j.run(query, slug=slug) as result:
+    async with neo4j.run(
+        query,
+        slug=slug,
+        org_slug=org_slug,
+    ) as result:
         records = await result.data()
 
     if not records or records[0]['deleted'] == 0:
@@ -438,6 +454,7 @@ async def delete_third_party_service(
     '/{slug}/applications/',
 )
 async def list_service_applications(
+    org_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -452,15 +469,21 @@ async def list_service_applications(
     query: typing.LiteralString = """
     MATCH (a:ServiceApplication)-[:REGISTERED_IN]->
           (s:ThirdPartyService {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     RETURN a{.*} AS app
     ORDER BY a.name
     """
-    async with neo4j.run(query, slug=slug) as result:
+    async with neo4j.run(
+        query,
+        slug=slug,
+        org_slug=org_slug,
+    ) as result:
         records = await result.data()
 
     apps: list[models.ServiceApplicationResponse] = []
     for record in records:
-        app = _deserialize_json_fields(record['app'], _APP_JSON_FIELDS)
+        app = neo4j.convert_neo4j_types(record['app'])
+        app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
         _strip_secrets(app)
         apps.append(models.ServiceApplicationResponse(**app))
     return apps
@@ -471,6 +494,7 @@ async def list_service_applications(
     status_code=201,
 )
 async def create_service_application(
+    org_slug: str,
     slug: str,
     data: models.ServiceApplicationCreate,
     auth: typing.Annotated[
@@ -487,12 +511,14 @@ async def create_service_application(
     check_query: typing.LiteralString = """
     MATCH (a:ServiceApplication {slug: $app_slug})
           -[:REGISTERED_IN]->(s:ThirdPartyService {slug: $svc_slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     RETURN count(a) AS cnt
     """
     async with neo4j.run(
         check_query,
         app_slug=data.slug,
         svc_slug=slug,
+        org_slug=org_slug,
     ) as result:
         records = await result.data()
 
@@ -523,6 +549,7 @@ async def create_service_application(
 
     create_query: typing.LiteralString = """
     MATCH (s:ThirdPartyService {slug: $svc_slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     CREATE (a:ServiceApplication $props)
     CREATE (a)-[:REGISTERED_IN]->(s)
     RETURN a{.*} AS app
@@ -530,6 +557,7 @@ async def create_service_application(
     async with neo4j.run(
         create_query,
         svc_slug=slug,
+        org_slug=org_slug,
         props=neo4j_props,
     ) as result:
         records = await result.data()
@@ -540,12 +568,14 @@ async def create_service_application(
             detail=(f'Third-party service with slug {slug!r} not found'),
         )
 
-    app = _deserialize_json_fields(records[0]['app'], _APP_JSON_FIELDS)
+    app = neo4j.convert_neo4j_types(records[0]['app'])
+    app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
     _strip_secrets(app)
     return models.ServiceApplicationResponse(**app)
 
 
 async def _fetch_application(
+    org_slug: str,
     svc_slug: str,
     app_slug: str,
 ) -> dict[str, typing.Any]:
@@ -553,12 +583,14 @@ async def _fetch_application(
     query: typing.LiteralString = """
     MATCH (a:ServiceApplication {slug: $app_slug})
           -[:REGISTERED_IN]->(s:ThirdPartyService {slug: $svc_slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     RETURN a{.*} AS app
     """
     async with neo4j.run(
         query,
         app_slug=app_slug,
         svc_slug=svc_slug,
+        org_slug=org_slug,
     ) as result:
         records = await result.data()
 
@@ -569,16 +601,15 @@ async def _fetch_application(
                 f'Application {app_slug!r} not found in service {svc_slug!r}'
             ),
         )
-    return _deserialize_json_fields(
-        records[0]['app'],
-        _APP_JSON_FIELDS,
-    )
+    app = neo4j.convert_neo4j_types(records[0]['app'])
+    return _deserialize_json_fields(app, _APP_JSON_FIELDS)
 
 
 @third_party_services_router.get(
     '/{slug}/applications/{app_slug}',
 )
 async def get_service_application(
+    org_slug: str,
     slug: str,
     app_slug: str,
     auth: typing.Annotated[
@@ -595,7 +626,7 @@ async def get_service_application(
     Secret fields are not included in the response. Use the
     ``/secrets`` sub-resource to retrieve or update secrets.
     """
-    app = await _fetch_application(slug, app_slug)
+    app = await _fetch_application(org_slug, slug, app_slug)
     _strip_secrets(app)
     return models.ServiceApplicationResponse(**app)
 
@@ -604,6 +635,7 @@ async def get_service_application(
     '/{slug}/applications/{app_slug}',
 )
 async def update_service_application(
+    org_slug: str,
     slug: str,
     app_slug: str,
     data: models.ServiceApplicationUpdate,
@@ -621,7 +653,7 @@ async def update_service_application(
     Secret fields cannot be updated via this endpoint. Use
     ``PUT /secrets`` instead.
     """
-    existing = await _fetch_application(slug, app_slug)
+    existing = await _fetch_application(org_slug, slug, app_slug)
     props = data.model_dump()
 
     # Preserve existing secret values unchanged
@@ -633,6 +665,7 @@ async def update_service_application(
     update_query: typing.LiteralString = """
     MATCH (a:ServiceApplication {slug: $app_slug})
           -[:REGISTERED_IN]->(s:ThirdPartyService {slug: $svc_slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     SET a = $props
     RETURN a{.*} AS app
     """
@@ -640,6 +673,7 @@ async def update_service_application(
         update_query,
         app_slug=app_slug,
         svc_slug=slug,
+        org_slug=org_slug,
         props=neo4j_props,
     ) as result:
         updated = await result.data()
@@ -650,10 +684,8 @@ async def update_service_application(
             detail=(f'Application {app_slug!r} not found in service {slug!r}'),
         )
 
-    app = _deserialize_json_fields(
-        updated[0]['app'],
-        _APP_JSON_FIELDS,
-    )
+    app = neo4j.convert_neo4j_types(updated[0]['app'])
+    app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
     _strip_secrets(app)
     return models.ServiceApplicationResponse(**app)
 
@@ -663,6 +695,7 @@ async def update_service_application(
     status_code=204,
 )
 async def delete_service_application(
+    org_slug: str,
     slug: str,
     app_slug: str,
     auth: typing.Annotated[
@@ -678,6 +711,7 @@ async def delete_service_application(
     query: typing.LiteralString = """
     MATCH (a:ServiceApplication {slug: $app_slug})
           -[:REGISTERED_IN]->(s:ThirdPartyService {slug: $svc_slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     DETACH DELETE a
     RETURN count(a) AS deleted
     """
@@ -685,6 +719,7 @@ async def delete_service_application(
         query,
         app_slug=app_slug,
         svc_slug=slug,
+        org_slug=org_slug,
     ) as result:
         records = await result.data()
 
@@ -702,6 +737,7 @@ async def delete_service_application(
     '/{slug}/applications/{app_slug}/secrets',
 )
 async def get_application_secrets(
+    org_slug: str,
     slug: str,
     app_slug: str,
     auth: typing.Annotated[
@@ -723,7 +759,7 @@ async def get_application_secrets(
             detail='Admin privileges required to access secrets',
         )
 
-    app = await _fetch_application(slug, app_slug)
+    app = await _fetch_application(org_slug, slug, app_slug)
     encryptor = encryption.TokenEncryption.get_instance()
     return _build_secrets_response(app, encryptor)
 
@@ -732,6 +768,7 @@ async def get_application_secrets(
     '/{slug}/applications/{app_slug}/secrets',
 )
 async def update_application_secrets(
+    org_slug: str,
     slug: str,
     app_slug: str,
     data: models.ServiceApplicationSecretsUpdate,
@@ -755,7 +792,7 @@ async def update_application_secrets(
             detail='Admin privileges required to update secrets',
         )
 
-    existing = await _fetch_application(slug, app_slug)
+    existing = await _fetch_application(org_slug, slug, app_slug)
     encryptor = encryption.TokenEncryption.get_instance()
 
     # Build updated secret values: encrypt new ones, keep existing
@@ -770,6 +807,7 @@ async def update_application_secrets(
     update_query: typing.LiteralString = """
     MATCH (a:ServiceApplication {slug: $app_slug})
           -[:REGISTERED_IN]->(s:ThirdPartyService {slug: $svc_slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     SET a.client_secret = $client_secret,
         a.webhook_secret = $webhook_secret,
         a.private_key = $private_key,
@@ -780,6 +818,7 @@ async def update_application_secrets(
         update_query,
         app_slug=app_slug,
         svc_slug=slug,
+        org_slug=org_slug,
         **secret_params,
     ) as result:
         records = await result.data()

@@ -215,6 +215,47 @@ async def list_role_users(
     return [models.UserResponse(**u) for u in user_data if u]
 
 
+@roles_router.get(
+    '/{slug}/service-accounts',
+    response_model=list[models.ServiceAccountResponse],
+)
+async def list_role_service_accounts(
+    slug: str,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('role:read')),
+    ],
+) -> list[models.ServiceAccountResponse]:
+    """Retrieve service accounts assigned this role via org membership.
+
+    Parameters:
+        slug: Role slug identifier.
+
+    Returns:
+        Service accounts with a MEMBER_OF relationship where the
+        role property matches this role's slug.
+
+    Raises:
+        404: If role not found.
+
+    """
+    query: typing.LiteralString = """
+    MATCH (r:Role {slug: $slug})
+    OPTIONAL MATCH (s:ServiceAccount)-[m:MEMBER_OF]->(o:Organization)
+    WHERE m.role = $slug
+    RETURN r, collect(DISTINCT s) AS service_accounts
+    """
+    records = await neo4j.query(query, slug=slug)
+    if not records or not records[0].get('r'):
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Role with slug {slug!r} not found',
+        )
+
+    sa_data = records[0].get('service_accounts', [])
+    return [models.ServiceAccountResponse(**sa) for sa in sa_data if sa]
+
+
 @roles_router.put('/{slug}', response_model=models.Role)
 async def update_role(
     slug: str,

@@ -11,7 +11,6 @@ from .roles import roles_router
 from .sa_api_keys import sa_api_keys_router
 from .service_accounts import service_accounts_router
 from .status import status_router
-from .third_party_services import third_party_services_router
 from .uploads import uploads_router
 from .users import users_router
 
@@ -27,7 +26,6 @@ routers: list[fastapi.APIRouter] = [
     sa_api_keys_router,
     service_accounts_router,
     status_router,
-    third_party_services_router,
     uploads_router,
     users_router,
 ]
