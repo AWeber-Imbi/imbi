@@ -39,6 +39,13 @@ export function ProjectDetailPage() {
           onThemeToggle={handleThemeToggle}
         />
         <main className="pt-16" style={{ paddingBottom: 'var(--assistant-height, 64px)' }}>
+          {!orgSlug && (
+            <div className="max-w-7xl mx-auto px-6 py-8">
+              <div className="text-center py-12 text-amber-600">
+                Select an organization to view this project.
+              </div>
+            </div>
+          )}
           {isLoading && (
             <div className="max-w-7xl mx-auto px-6 py-8">
               <div className="flex items-center justify-center h-64">

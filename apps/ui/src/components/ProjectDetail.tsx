@@ -12,9 +12,9 @@ import {
   ArrowRight,
   icons,
 } from 'lucide-react'
-import { Button } from './ui/button'
-import { Card } from './ui/card'
-import { Badge } from './ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -102,15 +102,28 @@ export function ProjectDetail({ project, onBack, isDarkMode }: ProjectDetailProp
     linkDefs.map(ld => [ld.slug, ld]),
   )
 
-  const externalLinks = Object.entries(project.links || {}).map(([key, url]) => {
-    const def = linkDefMap[key]
-    return {
-      key,
-      url: String(url),
-      Icon: getLucideIcon(def?.icon),
-      label: def?.name || key.replace(/_/g, ' '),
-    }
-  })
+  const externalLinks = Object.entries(project.links || {})
+    .map(([key, url]) => {
+      const raw = String(url)
+      let safeUrl: string | null = null
+      try {
+        const parsed = new URL(raw)
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          safeUrl = parsed.toString()
+        }
+      } catch {
+        safeUrl = null
+      }
+      if (!safeUrl) return null
+      const def = linkDefMap[key]
+      return {
+        key,
+        url: safeUrl,
+        Icon: getLucideIcon(def?.icon),
+        label: def?.name || key.replace(/_/g, ' '),
+      }
+    })
+    .filter((link): link is NonNullable<typeof link> => link !== null)
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -223,6 +236,7 @@ export function ProjectDetail({ project, onBack, isDarkMode }: ProjectDetailProp
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
+              aria-label={tab.id === 'settings' ? 'Settings' : undefined}
               className={`pb-3 border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'border-blue-600 text-blue-600'

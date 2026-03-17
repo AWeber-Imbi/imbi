@@ -33,7 +33,7 @@ export function LinkDefinitionForm({
   const [icon, setIcon] = useState(linkDefinition?.icon || '')
   const [urlTemplate, setUrlTemplate] = useState(linkDefinition?.url_template || '')
   const [orgSlug, setOrgSlug] = useState(
-    linkDefinition?.organization.slug || selectedOrganization?.slug || ''
+    linkDefinition?.organization?.slug || selectedOrganization?.slug || ''
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
 

@@ -26,7 +26,7 @@ import { MyPullRequestsWidget } from './dashboard/widgets/MyPullRequestsWidget'
 import { OutdatedComponentsWidget } from './dashboard/widgets/OutdatedComponentsWidget'
 import { RecentDeploymentsWidget } from './dashboard/widgets/RecentDeploymentsWidget'
 import { useQuery } from '@tanstack/react-query'
-import { getProjects } from '@/api/endpoints'
+import { getProjects, getNamespaces } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
 
 interface ViewChangeEvent {
@@ -208,8 +208,14 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
     enabled: !!orgSlug,
   })
 
+  const { data: namespaces } = useQuery({
+    queryKey: ['namespaces'],
+    queryFn: () => getNamespaces(),
+  })
+
   const projectCount = projects?.length || 0
   const teamCount = projects ? new Set(projects.map(p => p.team.slug)).size : 0
+  const namespaceCount = namespaces?.length || 0
 
   // Persist selections
   useEffect(() => {
@@ -245,7 +251,7 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
       case 'stat-teams':
         return <StatWidget title="Teams" value={teamCount.toLocaleString()} icon="👥" isDarkMode={isDarkMode} />
       case 'stat-namespaces':
-        return <StatWidget title="Teams" value={teamCount.toLocaleString()} icon="📦" isDarkMode={isDarkMode} />
+        return <StatWidget title="Namespaces" value={namespaceCount.toLocaleString()} icon="📦" isDarkMode={isDarkMode} />
       case 'team-activity':
         return <TeamActivityWidget isDarkMode={isDarkMode} onViewChange={onViewChange} />
       case 'recent-activity':

@@ -70,7 +70,7 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
   const createMutation = useMutation({
     mutationFn: (data: ProjectCreate) => createProject(orgSlug, data),
     onSuccess: (created) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['projects', orgSlug] })
       onProjectCreated?.(created.slug)
       handleClose()
     },
