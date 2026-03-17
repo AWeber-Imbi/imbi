@@ -281,9 +281,21 @@ export interface AdminUser {
   avatar_url?: string | null
   groups: { name: string; slug: string; description?: string | null; roles: Role[] }[]
   roles: Role[]
+  organizations?: OrgMembership[]
 }
 
 export interface AdminUserCreate {
+  email: string
+  display_name: string
+  password?: string | null
+  is_active?: boolean
+  is_admin?: boolean
+  is_service_account?: boolean
+  organization_slug: string
+  role_slug: string
+}
+
+export interface AdminUserUpdate {
   email: string
   display_name: string
   password?: string | null
@@ -375,6 +387,15 @@ export interface ServiceAccount {
 }
 
 export interface ServiceAccountCreate {
+  slug: string
+  display_name: string
+  description?: string | null
+  is_active?: boolean
+  organization_slug: string
+  role_slug: string
+}
+
+export interface ServiceAccountUpdate {
   slug: string
   display_name: string
   description?: string | null

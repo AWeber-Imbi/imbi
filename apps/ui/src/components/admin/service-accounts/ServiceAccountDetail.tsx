@@ -18,6 +18,7 @@ import {
   RotateCw,
   Shield,
   Tag,
+  Building2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,7 +31,12 @@ import {
   createClientCredential,
   revokeClientCredential,
   rotateClientCredential,
+  addServiceAccountToOrg,
+  updateServiceAccountOrgRole,
+  removeServiceAccountFromOrg,
+  getRoles,
 } from '@/api/endpoints'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import type {
   ServiceAccount,
   ApiKey,
@@ -38,6 +44,7 @@ import type {
   ClientCredential,
   ClientCredentialCreated,
   ClientCredentialCreate,
+  OrgMembership,
 } from '@/types'
 
 interface ServiceAccountDetailProps {
@@ -71,6 +78,59 @@ export function ServiceAccountDetail({
   const [newlyCreatedCredential, setNewlyCreatedCredential] =
     useState<ClientCredentialCreated | null>(null)
 
+  // Organization membership state
+  const { organizations: allOrgs } = useOrganization()
+  const [showAddOrg, setShowAddOrg] = useState(false)
+  const [newOrgSlug, setNewOrgSlug] = useState('')
+  const [newRoleSlug, setNewRoleSlug] = useState('')
+
+  const { data: availableRoles = [] } = useQuery({
+    queryKey: ['roles'],
+    queryFn: getRoles,
+  })
+
+  const memberOrgSlugs = new Set((account.organizations ?? []).map(o => o.organization_slug))
+  const availableOrgs = allOrgs.filter(o => !memberOrgSlugs.has(o.slug))
+
+  const addOrgMutation = useMutation({
+    mutationFn: (data: { organization_slug: string; role_slug: string }) =>
+      addServiceAccountToOrg(account.slug, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
+      queryClient.invalidateQueries({ queryKey: ['serviceAccount', account.slug] })
+      setShowAddOrg(false)
+      setNewOrgSlug('')
+      setNewRoleSlug('')
+    },
+    onError: (error: any) => {
+      alert(`Failed to add to organization: ${error.response?.data?.detail || error.message}`)
+    },
+  })
+
+  const updateOrgRoleMutation = useMutation({
+    mutationFn: ({ orgSlug, roleSlug }: { orgSlug: string; roleSlug: string }) =>
+      updateServiceAccountOrgRole(account.slug, orgSlug, { role_slug: roleSlug }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
+      queryClient.invalidateQueries({ queryKey: ['serviceAccount', account.slug] })
+    },
+    onError: (error: any) => {
+      alert(`Failed to update role: ${error.response?.data?.detail || error.message}`)
+    },
+  })
+
+  const removeOrgMutation = useMutation({
+    mutationFn: (orgSlug: string) =>
+      removeServiceAccountFromOrg(account.slug, orgSlug),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
+      queryClient.invalidateQueries({ queryKey: ['serviceAccount', account.slug] })
+    },
+    onError: (error: any) => {
+      alert(`Failed to remove from organization: ${error.response?.data?.detail || error.message}`)
+    },
+  })
+
   // Reset all sensitive/form state when the viewed account changes
   useEffect(() => {
     setNewKeyName('')
@@ -83,6 +143,9 @@ export function ServiceAccountDetail({
     setCredentialExpiresDays('')
     setNewlyCreatedCredential(null)
     setCopiedId(null)
+    setShowAddOrg(false)
+    setNewOrgSlug('')
+    setNewRoleSlug('')
   }, [account.slug])
 
   // Fetch API keys
@@ -385,6 +448,227 @@ export function ServiceAccountDetail({
             Service Account
           </div>
         </div>
+      </div>
+
+      {/* Organization Memberships */}
+      <div
+        className={`p-6 rounded-lg border ${
+          isDarkMode
+            ? 'bg-gray-800 border-gray-700'
+            : 'bg-white border-gray-200'
+        }`}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Building2
+              className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            />
+            <h3
+              className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            >
+              Organization Memberships
+            </h3>
+          </div>
+          {availableOrgs.length > 0 && (
+            <Button
+              onClick={() => setShowAddOrg(!showAddOrg)}
+              variant="outline"
+              size="sm"
+              className={
+                isDarkMode
+                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  : ''
+              }
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add to Organization
+            </Button>
+          )}
+        </div>
+
+        {/* Add to Organization Form */}
+        {showAddOrg && (
+          <div
+            className={`mb-4 p-4 rounded-lg border ${
+              isDarkMode
+                ? 'bg-gray-750 border-gray-600'
+                : 'bg-gray-50 border-gray-200'
+            }`}
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label
+                  className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Organization
+                </label>
+                <select
+                  value={newOrgSlug}
+                  onChange={(e) => setNewOrgSlug(e.target.value)}
+                  className={`w-full px-3 py-2 rounded-md border text-sm ${
+                    isDarkMode
+                      ? 'bg-gray-700 border-gray-600 text-white'
+                      : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                >
+                  <option value="">Select...</option>
+                  {availableOrgs.map((org) => (
+                    <option key={org.slug} value={org.slug}>
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label
+                  className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Role
+                </label>
+                <select
+                  value={newRoleSlug}
+                  onChange={(e) => setNewRoleSlug(e.target.value)}
+                  className={`w-full px-3 py-2 rounded-md border text-sm ${
+                    isDarkMode
+                      ? 'bg-gray-700 border-gray-600 text-white'
+                      : 'bg-white border-gray-300 text-gray-900'
+                  }`}
+                >
+                  <option value="">Select...</option>
+                  {availableRoles.map((role) => (
+                    <option key={role.slug} value={role.slug}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mt-3">
+              <Button
+                onClick={() =>
+                  addOrgMutation.mutate({
+                    organization_slug: newOrgSlug,
+                    role_slug: newRoleSlug,
+                  })
+                }
+                disabled={
+                  !newOrgSlug ||
+                  !newRoleSlug ||
+                  addOrgMutation.isPending
+                }
+                className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+                size="sm"
+              >
+                {addOrgMutation.isPending ? 'Adding...' : 'Add'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowAddOrg(false)
+                  setNewOrgSlug('')
+                  setNewRoleSlug('')
+                }}
+                className={
+                  isDarkMode
+                    ? 'border-gray-600 text-gray-300'
+                    : ''
+                }
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Memberships List */}
+        {(account.organizations ?? []).length > 0 ? (
+          <div className="space-y-2">
+            {(account.organizations ?? []).map(
+              (membership: OrgMembership) => (
+                <div
+                  key={membership.organization_slug}
+                  className={`flex items-center justify-between p-3 rounded-lg border ${
+                    isDarkMode
+                      ? 'bg-gray-750 border-gray-600'
+                      : 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <div className="flex-1">
+                    <div
+                      className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                    >
+                      {membership.organization_name}
+                    </div>
+                    <div
+                      className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                    >
+                      {membership.organization_slug}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={membership.role}
+                      onChange={(e) =>
+                        updateOrgRoleMutation.mutate({
+                          orgSlug: membership.organization_slug,
+                          roleSlug: e.target.value,
+                        })
+                      }
+                      disabled={updateOrgRoleMutation.isPending}
+                      className={`px-2 py-1 rounded border text-xs ${
+                        isDarkMode
+                          ? 'bg-gray-700 border-gray-600 text-white'
+                          : 'bg-white border-gray-300 text-gray-900'
+                      }`}
+                    >
+                      {availableRoles.map((role) => (
+                        <option key={role.slug} value={role.slug}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Remove ${account.display_name} from ${membership.organization_name}?`
+                          )
+                        ) {
+                          removeOrgMutation.mutate(
+                            membership.organization_slug
+                          )
+                        }
+                      }}
+                      disabled={removeOrgMutation.isPending}
+                      className={`p-1.5 rounded ${
+                        isDarkMode
+                          ? 'text-red-400 hover:text-red-300 hover:bg-gray-700'
+                          : 'text-red-600 hover:text-red-700 hover:bg-gray-100'
+                      }`}
+                      title="Remove from organization"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        ) : (
+          <div
+            className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+          >
+            <Building2
+              className={`w-8 h-8 mx-auto mb-2 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
+            />
+            <div>Not a member of any organization</div>
+            <div className="text-sm mt-1">
+              This service account has no permissions until added to
+              an organization
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Client Credentials */}

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Edit2, Trash2, Power, Crown, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
@@ -7,8 +7,8 @@ import { Gravatar } from '../ui/gravatar'
 import { UserForm } from './users/UserForm'
 import { UserDetail } from './users/UserDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
-import { listAdminUsers, deleteAdminUser, updateAdminUser, createAdminUser } from '@/api/endpoints'
-import type { AdminUser, AdminUserCreate } from '@/types'
+import { listAdminUsers, getAdminUser, deleteAdminUser, updateAdminUser, createAdminUser } from '@/api/endpoints'
+import type { AdminUser, AdminUserCreate, AdminUserUpdate } from '@/types'
 
 interface UserManagementProps {
   isDarkMode: boolean
@@ -44,7 +44,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
 
   // Toggle active mutation
   const toggleActiveMutation = useMutation({
-    mutationFn: ({ email, user }: { email: string, user: AdminUserCreate }) =>
+    mutationFn: ({ email, user }: { email: string, user: AdminUserUpdate }) =>
       updateAdminUser(email, user),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
@@ -69,7 +69,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
 
   // Update user mutation
   const updateMutation = useMutation({
-    mutationFn: ({ email, user }: { email: string, user: AdminUserCreate }) =>
+    mutationFn: ({ email, user }: { email: string, user: AdminUserUpdate }) =>
       updateAdminUser(email, user),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
@@ -171,11 +171,12 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     return user.groups.map(g => g.name).join(', ')
   }
 
-  // Look up selected user from list by email (slug from URL)
-  const selectedUser = useMemo(
-    () => users.find((u) => u.email === selectedUserEmail) || null,
-    [users, selectedUserEmail],
-  )
+  // Fetch full user detail (with orgs) when viewing/editing a specific user
+  const { data: selectedUser = null } = useQuery({
+    queryKey: ['adminUser', selectedUserEmail],
+    queryFn: () => getAdminUser(selectedUserEmail!),
+    enabled: !!selectedUserEmail && (viewMode === 'detail' || viewMode === 'edit'),
+  })
 
   // View handlers
   const handleCreateClick = () => {
@@ -194,7 +195,9 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     if (viewMode === 'create') {
       createMutation.mutate(userData)
     } else if (selectedUser) {
-      updateMutation.mutate({ email: selectedUser.email, user: userData })
+      // Strip org/role fields for update — they're only for creation
+      const { organization_slug: _, role_slug: __, ...updateData } = userData
+      updateMutation.mutate({ email: selectedUser.email, user: updateData })
     }
   }
 

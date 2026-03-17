@@ -21,6 +21,7 @@ import type {
   UserResponse,
   AdminUser,
   AdminUserCreate,
+  AdminUserUpdate,
   AdminSettings,
   Role,
   RoleDetail,
@@ -45,6 +46,7 @@ import type {
   ApiKeyCreated,
   ServiceAccount,
   ServiceAccountCreate,
+  ServiceAccountUpdate,
   ClientCredential,
   ClientCredentialCreated,
   ClientCredentialCreate,
@@ -207,11 +209,36 @@ export const getAdminUser = (email: string) =>
 export const createAdminUser = (user: AdminUserCreate) =>
   apiClient.post<AdminUser>('/users/', user)
 
-export const updateAdminUser = (email: string, user: AdminUserCreate) =>
+export const updateAdminUser = (email: string, user: AdminUserUpdate) =>
   apiClient.put<AdminUser>(`/users/${encodeURIComponent(email)}`, user)
 
 export const deleteAdminUser = (email: string) =>
   apiClient.delete<void>(`/users/${encodeURIComponent(email)}`)
+
+// User organization membership
+export const addUserToOrg = (
+  email: string,
+  data: { organization_slug: string; role_slug: string }
+) =>
+  apiClient.post(
+    `/users/${encodeURIComponent(email)}/organizations`,
+    data
+  )
+
+export const updateUserOrgRole = (
+  email: string,
+  orgSlug: string,
+  data: { role_slug: string }
+) =>
+  apiClient.put(
+    `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`,
+    data
+  )
+
+export const removeUserFromOrg = (email: string, orgSlug: string) =>
+  apiClient.delete(
+    `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`
+  )
 
 // Admin - Roles Management
 export const getRoles = async (): Promise<Role[]> => {
@@ -250,6 +277,13 @@ export const revokePermission = (slug: string, permissionName: string) =>
 export const getRoleUsers = async (slug: string): Promise<RoleUser[]> => {
   const response = await apiClient.get<RoleUser[]>(
     `/roles/${encodeURIComponent(slug)}/users`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getRoleServiceAccounts = async (slug: string): Promise<ServiceAccount[]> => {
+  const response = await apiClient.get<ServiceAccount[]>(
+    `/roles/${encodeURIComponent(slug)}/service-accounts`
   )
   return Array.isArray(response) ? response : []
 }
@@ -563,7 +597,7 @@ export const getServiceAccount = (slug: string) =>
 export const createServiceAccount = (data: ServiceAccountCreate) =>
   apiClient.post<ServiceAccount>('/service-accounts', data)
 
-export const updateServiceAccount = (slug: string, data: ServiceAccountCreate) =>
+export const updateServiceAccount = (slug: string, data: ServiceAccountUpdate) =>
   apiClient.put<ServiceAccount>(`/service-accounts/${encodeURIComponent(slug)}`, data)
 
 export const deleteServiceAccount = (slug: string) =>
@@ -575,6 +609,16 @@ export const addServiceAccountToOrg = (
 ) =>
   apiClient.post(
     `/service-accounts/${encodeURIComponent(slug)}/organizations`,
+    data
+  )
+
+export const updateServiceAccountOrgRole = (
+  slug: string,
+  orgSlug: string,
+  data: { role_slug: string }
+) =>
+  apiClient.put(
+    `/service-accounts/${encodeURIComponent(slug)}/organizations/${encodeURIComponent(orgSlug)}`,
     data
   )
 

@@ -1,7 +1,10 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Save, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { getRoles } from '@/api/endpoints'
+import { useOrganization } from '@/contexts/OrganizationContext'
 import type { ServiceAccount, ServiceAccountCreate } from '@/types'
 
 interface ServiceAccountFormProps {
@@ -35,6 +38,19 @@ export function ServiceAccountForm({
   // Account status
   const [isActive, setIsActive] = useState(account?.is_active ?? true)
 
+  // Organization membership (for creation only)
+  const { organizations } = useOrganization()
+  const [organizationSlug, setOrganizationSlug] = useState(
+    organizations.length === 1 ? organizations[0].slug : ''
+  )
+  const [roleSlug, setRoleSlug] = useState('')
+
+  // Fetch available roles
+  const { data: availableRoles = [], isLoading: rolesLoading } = useQuery({
+    queryKey: ['roles'],
+    queryFn: getRoles,
+  })
+
   // Validation state
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string>
@@ -65,10 +81,17 @@ export function ServiceAccountForm({
     const displayNameError = validateDisplayName(displayName)
     if (displayNameError) errors.display_name = displayNameError
 
+    if (!isEditing) {
+      if (!organizationSlug) errors.organization_slug = 'Organization is required'
+      if (!roleSlug) errors.role_slug = 'Role is required'
+    }
+
     setValidationErrors(errors)
     setTouched({
       slug: true,
       display_name: true,
+      organization_slug: true,
+      role_slug: true,
     })
 
     return Object.keys(errors).length === 0
@@ -82,6 +105,8 @@ export function ServiceAccountForm({
       display_name: displayName.trim(),
       description: description.trim() || null,
       is_active: isActive,
+      organization_slug: organizationSlug,
+      role_slug: roleSlug,
     }
 
     onSave(data)
@@ -309,7 +334,109 @@ export function ServiceAccountForm({
         </div>
       </div>
 
-      {/* Section 2: Account Status */}
+      {/* Section 2: Organization Membership (creation only) */}
+      {!isEditing && (
+        <div
+          className={`p-6 rounded-lg border ${
+            isDarkMode
+              ? 'bg-gray-800 border-gray-700'
+              : 'bg-white border-gray-200'
+          }`}
+        >
+          <h3
+            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
+            Organization Membership
+          </h3>
+          <p
+            className={`text-sm mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+          >
+            Service accounts must belong to at least one organization
+            with a role to have any permissions.
+          </p>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Organization */}
+            <div>
+              <label
+                className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
+                Organization <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={organizationSlug}
+                onChange={(e) => {
+                  setOrganizationSlug(e.target.value)
+                  handleFieldChange('organization_slug')
+                }}
+                disabled={isLoading}
+                className={`w-full px-3 py-2 rounded-md border text-sm ${
+                  isDarkMode
+                    ? 'bg-gray-700 border-gray-600 text-white'
+                    : 'bg-white border-gray-300 text-gray-900'
+                } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+              >
+                <option value="">Select an organization...</option>
+                {organizations.map((org) => (
+                  <option key={org.slug} value={org.slug}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+              {touched.organization_slug &&
+                validationErrors.organization_slug && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {validationErrors.organization_slug}
+                  </p>
+                )}
+            </div>
+
+            {/* Role */}
+            <div>
+              <label
+                className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
+                Role <span className="text-red-500">*</span>
+              </label>
+              {rolesLoading ? (
+                <p
+                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                >
+                  Loading roles...
+                </p>
+              ) : (
+                <select
+                  value={roleSlug}
+                  onChange={(e) => {
+                    setRoleSlug(e.target.value)
+                    handleFieldChange('role_slug')
+                  }}
+                  disabled={isLoading}
+                  className={`w-full px-3 py-2 rounded-md border text-sm ${
+                    isDarkMode
+                      ? 'bg-gray-700 border-gray-600 text-white'
+                      : 'bg-white border-gray-300 text-gray-900'
+                  } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                >
+                  <option value="">Select a role...</option>
+                  {availableRoles.map((role) => (
+                    <option key={role.slug} value={role.slug}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {touched.role_slug && validationErrors.role_slug && (
+                <p className="text-sm text-red-600 mt-1">
+                  {validationErrors.role_slug}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Section 3: Account Status */}
       <div
         className={`p-6 rounded-lg border ${
           isDarkMode
