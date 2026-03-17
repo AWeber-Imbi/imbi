@@ -1051,7 +1051,7 @@ docs = [
 [[package]]
 name = "imbi-common"
 version = "0.1.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#205611a339ccf802f88ca0503c0512e91fa7c680" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#ef8a6d7129e88d8b8641af362fad95c3528e0d81" }
 dependencies = [
     { name = "clickhouse-connect" },
     { name = "cryptography" },

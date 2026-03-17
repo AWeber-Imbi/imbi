@@ -21,6 +21,7 @@ Blueprint = _common.Blueprint
 BlueprintAssignment = _common.BlueprintAssignment
 BlueprintEdge = _common.BlueprintEdge
 Environment = _common.Environment
+LinkDefinition = _common.LinkDefinition
 MODEL_TYPES = _common.MODEL_TYPES
 Node = _common.Node
 Organization = _common.Organization
