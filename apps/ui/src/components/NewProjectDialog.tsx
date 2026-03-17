@@ -103,6 +103,7 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
   }
 
   const handleSave = () => {
+    if (!orgSlug || createMutation.isPending) return
     const projectData: ProjectCreate = {
       name,
       slug,
@@ -145,7 +146,13 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create New Project"
+      onKeyDown={(e) => { if (e.key === 'Escape') handleClose() }}
+    >
       <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
       <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col">
         {/* Header */}

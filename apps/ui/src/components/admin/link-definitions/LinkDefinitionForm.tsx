@@ -51,7 +51,7 @@ export function LinkDefinitionForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    if (isLoading || !validate()) return
 
     onSave(orgSlug, {
       name: name.trim(),
