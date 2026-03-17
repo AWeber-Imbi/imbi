@@ -8,8 +8,10 @@ import type {
   ApiStatus,
   User,
   Project,
+  ProjectCreate,
+  LinkDefinition,
+  LinkDefinitionCreate,
   ActivityFeedEntry,
-  Namespace,
   Environment,
   EnvironmentCreate,
   ProjectType,
@@ -73,17 +75,65 @@ export const getUserByUsername = (username: string) =>
 export const getCurrentUser = () => apiClient.get<User>('/ui/user')
 export const logout = () => apiClient.get<void>('/ui/logout')
 
-// Projects
-export const getProjects = async (params?: {
-  namespace_id?: number
-  project_type_id?: number
-  include_archived?: boolean
-}): Promise<Project[]> => {
-  const response = await apiClient.get<CollectionResponse<Project>>('/projects', params)
-  return response.data
+// Projects (org-scoped)
+export const getProjects = async (orgSlug: string): Promise<Project[]> => {
+  const response = await apiClient.get<Project[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/`
+  )
+  return Array.isArray(response) ? response : []
 }
 
-export const getProject = (id: number) => apiClient.get<Project>(`/projects/${id}`)
+export const getProject = (orgSlug: string, slug: string) =>
+  apiClient.get<Project>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(slug)}`
+  )
+
+export const createProject = (orgSlug: string, project: ProjectCreate) =>
+  apiClient.post<Project>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
+    project
+  )
+
+export const updateProject = (orgSlug: string, slug: string, project: Partial<ProjectCreate>) =>
+  apiClient.put<Project>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(slug)}`,
+    project
+  )
+
+export const deleteProject = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(slug)}`
+  )
+
+// Link Definitions (org-scoped)
+export const listLinkDefinitions = async (orgSlug: string): Promise<LinkDefinition[]> => {
+  const response = await apiClient.get<LinkDefinition[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getLinkDefinition = (orgSlug: string, slug: string) =>
+  apiClient.get<LinkDefinition>(
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`
+  )
+
+export const createLinkDefinition = (orgSlug: string, data: LinkDefinitionCreate) =>
+  apiClient.post<LinkDefinition>(
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/`,
+    data
+  )
+
+export const updateLinkDefinition = (orgSlug: string, slug: string, data: Partial<LinkDefinitionCreate>) =>
+  apiClient.put<LinkDefinition>(
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
+    data
+  )
+
+export const deleteLinkDefinition = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`
+  )
 
 // Activity Feed
 export const getActivityFeed = async (params?: {
@@ -104,11 +154,6 @@ export const getActivityFeed = async (params?: {
 }
 
 // Metadata
-export const getNamespaces = async (): Promise<Namespace[]> => {
-  const response = await apiClient.get<CollectionResponse<Namespace>>('/namespaces')
-  return response.data
-}
-
 export const getEnvironments = async (): Promise<Environment[]> => {
   const response = await apiClient.get<CollectionResponse<Environment>>('/environments')
   return response.data

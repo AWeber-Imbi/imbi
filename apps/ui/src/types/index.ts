@@ -31,26 +31,72 @@ export interface User {
 }
 
 export interface Project {
-  id: number
-  namespace_id: number
-  namespace: string
-  project_type_id: number
-  project_type: string
   name: string
   slug: string
-  description?: string
-  environments?: string[]
-  archived?: boolean
-  created_at: string
-  updated_at?: string
+  description?: string | null
+  icon?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  team: {
+    name: string
+    slug: string
+    organization: {
+      name: string
+      slug: string
+    }
+  }
+  project_type: {
+    name: string
+    slug: string
+    organization: {
+      name: string
+      slug: string
+    }
+  }
+  environments?: Environment[]
+  links?: Record<string, string>
+  identifiers?: Record<string, string | number>
+  relationships?: {
+    team?: RelationshipLink
+    environments?: RelationshipLink
+    dependencies?: RelationshipLink
+  }
+  [key: string]: unknown
 }
 
-export interface Namespace {
-  id: number
+export interface ProjectCreate {
   name: string
   slug: string
-  icon_class?: string
-  maintained_by?: string[]
+  description?: string | null
+  icon?: string | null
+  team_slug: string
+  project_type_slug: string
+  environment_slugs?: string[]
+  links?: Record<string, string>
+  identifiers?: Record<string, string | number>
+  [key: string]: unknown
+}
+
+export interface LinkDefinition {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  url_template?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  organization: {
+    name: string
+    slug: string
+  }
+}
+
+export interface LinkDefinitionCreate {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  url_template?: string | null
 }
 
 export interface RelationshipLink {
