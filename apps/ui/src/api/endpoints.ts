@@ -12,7 +12,6 @@ import type {
   LinkDefinition,
   LinkDefinitionCreate,
   ActivityFeedEntry,
-  Namespace,
   Environment,
   EnvironmentCreate,
   ProjectType,
@@ -155,11 +154,6 @@ export const getActivityFeed = async (params?: {
 }
 
 // Metadata
-export const getNamespaces = async (): Promise<Namespace[]> => {
-  const response = await apiClient.get<CollectionResponse<Namespace>>('/namespaces')
-  return response.data
-}
-
 export const getEnvironments = async (): Promise<Environment[]> => {
   const response = await apiClient.get<CollectionResponse<Environment>>('/environments')
   return response.data

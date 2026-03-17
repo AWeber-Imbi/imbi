@@ -99,14 +99,6 @@ export interface LinkDefinitionCreate {
   url_template?: string | null
 }
 
-export interface Namespace {
-  id: number
-  name: string
-  slug: string
-  icon_class?: string
-  maintained_by?: string[]
-}
-
 export interface RelationshipLink {
   href: string
   count: number
