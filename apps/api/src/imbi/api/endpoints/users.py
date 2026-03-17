@@ -84,6 +84,42 @@ async def create_user(
             detail=f'User with email {user.email!r} already exists',
         ) from e
 
+    # Create MEMBER_OF relationship to organization with role
+    membership_query = """
+    MATCH (u:User {email: $email})
+    MATCH (o:Organization {slug: $org_slug})
+    MATCH (r:Role {slug: $role_slug})
+    MERGE (u)-[m:MEMBER_OF]->(o)
+    SET m.role = $role_slug
+    RETURN o.name AS org_name, o.slug AS org_slug, r.slug AS role
+    """
+    organizations: list[models.OrgMembership] = []
+    async with neo4j.run(
+        membership_query,
+        email=user.email,
+        org_slug=user_create.organization_slug,
+        role_slug=user_create.role_slug,
+    ) as result:
+        records = await result.data()
+        if not records:
+            # Rollback: delete the user node
+            await neo4j.delete_node(models.User, {'email': user.email})
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=(
+                    f'Organization {user_create.organization_slug!r}'
+                    f' or role {user_create.role_slug!r} not found'
+                ),
+            )
+        for record in records:
+            organizations.append(
+                models.OrgMembership(
+                    organization_name=record['org_name'],
+                    organization_slug=record['org_slug'],
+                    role=record['role'],
+                )
+            )
+
     # Return response model without password hash
     return models.UserResponse(
         email=user.email,
@@ -94,6 +130,7 @@ async def create_user(
         created_at=user.created_at,
         last_login=user.last_login,
         avatar_url=user.avatar_url,
+        organizations=organizations,
     )
 
 
@@ -209,7 +246,7 @@ async def get_user(
 @users_router.put('/{email}', response_model=models.UserResponse)
 async def update_user(
     email: str,
-    user_update: models.UserCreate,
+    user_update: models.UserUpdate,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:update')),

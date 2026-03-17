@@ -121,13 +121,23 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
             auth_settings=self.auth_settings,
         )
 
+        membership_records = [
+            {
+                'org_name': 'Acme Corp',
+                'org_slug': 'acme-corp',
+                'role': 'deployer',
+            },
+        ]
+
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
                 'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
+                side_effect=self._create_mock_run(
+                    membership_records=membership_records,
+                ),
             ),
             mock.patch('imbi_common.neo4j.create_node'),
         ):
@@ -142,6 +152,8 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
                     'slug': 'test-bot',
                     'display_name': 'Test Bot',
                     'description': 'A test service account',
+                    'organization_slug': 'acme-corp',
+                    'role_slug': 'deployer',
                 },
             )
 
@@ -155,6 +167,11 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
             )
             self.assertTrue(data['is_active'])
             self.assertIn('created_at', data)
+            self.assertEqual(len(data['organizations']), 1)
+            self.assertEqual(
+                data['organizations'][0]['organization_slug'],
+                'acme-corp',
+            )
 
     def test_create_service_account_duplicate(self) -> None:
         """Test creating duplicate service account returns 409."""
@@ -186,6 +203,8 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
                 json={
                     'slug': 'test-bot',
                     'display_name': 'Test Bot',
+                    'organization_slug': 'acme-corp',
+                    'role_slug': 'deployer',
                 },
             )
 
@@ -540,6 +559,226 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 204)
+
+    def test_create_service_account_rollback_on_missing_org_or_role(
+        self,
+    ) -> None:
+        """Test that the SA node is deleted when org or role not found."""
+        access_token = core.create_access_token(
+            self.test_user.email,
+            auth_settings=self.auth_settings,
+        )
+
+        run_queries: list[str] = []
+        original_side_effect = self._create_mock_run()
+
+        def tracking_run(query: str, **params):
+            run_queries.append(query)
+            return original_side_effect(query, **params)
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=tracking_run,
+            ),
+            mock.patch('imbi_common.neo4j.create_node'),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.post(
+                '/service-accounts',
+                headers={
+                    'Authorization': f'Bearer {access_token}',
+                },
+                json={
+                    'slug': 'orphan-bot',
+                    'display_name': 'Orphan Bot',
+                    'organization_slug': 'nonexistent-org',
+                    'role_slug': 'deployer',
+                },
+            )
+
+            self.assertEqual(response.status_code, 404)
+            self.assertIn(
+                'nonexistent-org',
+                response.json()['detail'],
+            )
+
+            # Verify the rollback DETACH DELETE ran
+            detach_queries = [q for q in run_queries if 'DETACH DELETE' in q]
+            self.assertEqual(
+                len(detach_queries),
+                1,
+                'Expected rollback DETACH DELETE query',
+            )
+
+    def test_create_service_account_rollback_detail_includes_role(
+        self,
+    ) -> None:
+        """Test that the 404 detail mentions the role slug."""
+        access_token = core.create_access_token(
+            self.test_user.email,
+            auth_settings=self.auth_settings,
+        )
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(),
+            ),
+            mock.patch('imbi_common.neo4j.create_node'),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.post(
+                '/service-accounts',
+                headers={
+                    'Authorization': f'Bearer {access_token}',
+                },
+                json={
+                    'slug': 'orphan-bot',
+                    'display_name': 'Orphan Bot',
+                    'organization_slug': 'acme-corp',
+                    'role_slug': 'nonexistent-role',
+                },
+            )
+
+            self.assertEqual(response.status_code, 404)
+            detail = response.json()['detail']
+            self.assertIn('nonexistent-role', detail)
+            self.assertIn('acme-corp', detail)
+
+    def test_create_service_account_missing_org(self) -> None:
+        """Test creating SA without organization_slug returns 422."""
+        access_token = core.create_access_token(
+            self.test_user.email,
+            auth_settings=self.auth_settings,
+        )
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(),
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.post(
+                '/service-accounts',
+                headers={
+                    'Authorization': f'Bearer {access_token}',
+                },
+                json={
+                    'slug': 'test-bot',
+                    'display_name': 'Test Bot',
+                    'role_slug': 'deployer',
+                },
+            )
+
+            self.assertEqual(response.status_code, 422)
+
+    def test_update_organization_role(self) -> None:
+        """Test changing a SA's role in an organization."""
+        access_token = core.create_access_token(
+            self.test_user.email,
+            auth_settings=self.auth_settings,
+        )
+
+        membership_records = [
+            {'s': {}, 'o': {}, 'r': {}},
+        ]
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(
+                    membership_records=membership_records,
+                ),
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.put(
+                '/service-accounts/test-bot/organizations/acme-corp',
+                headers={
+                    'Authorization': f'Bearer {access_token}',
+                },
+                json={'role_slug': 'admin'},
+            )
+
+            self.assertEqual(response.status_code, 204)
+
+    def test_update_organization_role_missing_slug(self) -> None:
+        """Test updating role without role_slug returns 400."""
+        access_token = core.create_access_token(
+            self.test_user.email,
+            auth_settings=self.auth_settings,
+        )
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(),
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.put(
+                '/service-accounts/test-bot/organizations/acme-corp',
+                headers={
+                    'Authorization': f'Bearer {access_token}',
+                },
+                json={},
+            )
+
+            self.assertEqual(response.status_code, 400)
+            self.assertIn(
+                'required',
+                response.json()['detail'],
+            )
+
+    def test_update_organization_role_not_found(self) -> None:
+        """Test updating role for non-existent membership."""
+        access_token = core.create_access_token(
+            self.test_user.email,
+            auth_settings=self.auth_settings,
+        )
+
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+            ) as mock_settings,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                side_effect=self._create_mock_run(),
+            ),
+        ):
+            mock_settings.return_value = self.auth_settings
+
+            response = self.client.put(
+                '/service-accounts/test-bot/organizations/nonexistent',
+                headers={
+                    'Authorization': f'Bearer {access_token}',
+                },
+                json={'role_slug': 'admin'},
+            )
+
+            self.assertEqual(response.status_code, 404)
 
     def test_remove_from_organization(self) -> None:
         """Test removing service account from org returns 204."""

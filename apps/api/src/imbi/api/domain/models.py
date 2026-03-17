@@ -33,6 +33,7 @@ __all__ = [
     'ServiceAccount',
     'ServiceAccountCreate',
     'ServiceAccountResponse',
+    'ServiceAccountUpdate',
     'ServiceApplicationCreate',
     'ServiceApplicationResponse',
     'ServiceApplicationSecrets',
@@ -49,6 +50,7 @@ __all__ = [
     'User',
     'UserCreate',
     'UserResponse',
+    'UserUpdate',
 ]
 
 
@@ -400,6 +402,19 @@ class UserCreate(pydantic.BaseModel):
     is_active: bool = True
     is_admin: bool = False
     is_service_account: bool = False
+    organization_slug: str
+    role_slug: str
+
+
+class UserUpdate(pydantic.BaseModel):
+    """Request model for updating users."""
+
+    email: pydantic.EmailStr
+    display_name: str
+    password: str | None = None
+    is_active: bool = True
+    is_admin: bool = False
+    is_service_account: bool = False
 
 
 class UserResponse(pydantic.BaseModel):
@@ -462,6 +477,22 @@ class ServiceAccount(pydantic.BaseModel):
 
 class ServiceAccountCreate(pydantic.BaseModel):
     """Request model for creating service accounts."""
+
+    slug: str = pydantic.Field(
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+        description='Unique slug identifier (lowercase, hyphens)',
+    )
+    display_name: str = pydantic.Field(min_length=1, max_length=128)
+    description: str | None = None
+    is_active: bool = True
+    organization_slug: str
+    role_slug: str
+
+
+class ServiceAccountUpdate(pydantic.BaseModel):
+    """Request model for updating service accounts."""
 
     slug: str = pydantic.Field(
         pattern=r'^[a-z][a-z0-9-]*$',

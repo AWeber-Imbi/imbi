@@ -477,6 +477,149 @@ class RoleEndpointsTestCase(unittest.TestCase):
                 response.json()['detail'],
             )
 
+    def test_list_role_users_success(self) -> None:
+        """Test listing users assigned a role via org membership."""
+        with mock.patch(
+            'imbi_common.neo4j.query',
+        ) as mock_query:
+            mock_query.return_value = [
+                {
+                    'r': {
+                        'name': 'Test Role',
+                        'slug': 'test-role',
+                    },
+                    'users': [
+                        {
+                            'email': 'user1@example.com',
+                            'display_name': 'User 1',
+                            'is_active': True,
+                            'is_admin': False,
+                            'is_service_account': False,
+                            'created_at': '2026-01-01T00:00:00+00:00',
+                        },
+                    ],
+                },
+            ]
+
+            response = self.client.get('/roles/test-role/users')
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(len(data), 1)
+            self.assertEqual(
+                data[0]['email'],
+                'user1@example.com',
+            )
+
+    def test_list_role_users_not_found(self) -> None:
+        """Test listing users for non-existent role returns 404."""
+        with mock.patch(
+            'imbi_common.neo4j.query',
+        ) as mock_query:
+            mock_query.return_value = [{'r': None, 'users': []}]
+
+            response = self.client.get(
+                '/roles/nonexistent/users',
+            )
+
+            self.assertEqual(response.status_code, 404)
+            self.assertIn(
+                'not found',
+                response.json()['detail'],
+            )
+
+    def test_list_role_users_empty(self) -> None:
+        """Test listing users when role exists but has no users."""
+        with mock.patch(
+            'imbi_common.neo4j.query',
+        ) as mock_query:
+            mock_query.return_value = [
+                {
+                    'r': {
+                        'name': 'Empty Role',
+                        'slug': 'empty-role',
+                    },
+                    'users': [],
+                },
+            ]
+
+            response = self.client.get('/roles/empty-role/users')
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), [])
+
+    def test_list_role_service_accounts_success(self) -> None:
+        """Test listing service accounts assigned a role."""
+        with mock.patch(
+            'imbi_common.neo4j.query',
+        ) as mock_query:
+            mock_query.return_value = [
+                {
+                    'r': {
+                        'name': 'Test Role',
+                        'slug': 'test-role',
+                    },
+                    'service_accounts': [
+                        {
+                            'slug': 'deploy-bot',
+                            'display_name': 'Deploy Bot',
+                            'is_active': True,
+                            'created_at': '2026-01-01T00:00:00+00:00',
+                        },
+                    ],
+                },
+            ]
+
+            response = self.client.get(
+                '/roles/test-role/service-accounts',
+            )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(len(data), 1)
+            self.assertEqual(data[0]['slug'], 'deploy-bot')
+
+    def test_list_role_service_accounts_not_found(self) -> None:
+        """Test listing SAs for non-existent role returns 404."""
+        with mock.patch(
+            'imbi_common.neo4j.query',
+        ) as mock_query:
+            mock_query.return_value = [
+                {'r': None, 'service_accounts': []},
+            ]
+
+            response = self.client.get(
+                '/roles/nonexistent/service-accounts',
+            )
+
+            self.assertEqual(response.status_code, 404)
+            self.assertIn(
+                'not found',
+                response.json()['detail'],
+            )
+
+    def test_list_role_service_accounts_empty(self) -> None:
+        """Test listing SAs when role has none assigned."""
+        with mock.patch(
+            'imbi_common.neo4j.query',
+        ) as mock_query:
+            mock_query.return_value = [
+                {
+                    'r': {
+                        'name': 'Empty Role',
+                        'slug': 'empty-role',
+                    },
+                    'service_accounts': [],
+                },
+            ]
+
+            response = self.client.get(
+                '/roles/empty-role/service-accounts',
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), [])
+
     def test_revoke_permission_not_granted(self) -> None:
         """Test revoking ungranted permission returns 404."""
         role = self.test_role

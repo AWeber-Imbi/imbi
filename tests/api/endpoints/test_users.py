@@ -62,13 +62,38 @@ class UserEndpointsTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
+    def _mock_membership_result(
+        self,
+        records: list[dict] | None = None,
+    ):
+        """Create a mock for the membership Cypher query."""
+        mock_result = mock.AsyncMock()
+        mock_result.data.return_value = records or []
+        mock_result.__aenter__.return_value = mock_result
+        mock_result.__aexit__.return_value = None
+        return mock_result
+
     def test_create_user_success_with_password(self) -> None:
         """Test successful user creation with password."""
+        membership_records = [
+            {
+                'org_name': 'Default',
+                'org_slug': 'default',
+                'role': 'developer',
+            }
+        ]
+
         with (
             mock.patch(
                 'imbi_api.auth.password.hash_password',
             ) as mock_hash,
             mock.patch('imbi_common.neo4j.create_node') as mock_create,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                return_value=self._mock_membership_result(
+                    membership_records,
+                ),
+            ),
         ):
             mock_hash.return_value = '$argon2id$hashed'
             mock_create.return_value = None
@@ -82,6 +107,8 @@ class UserEndpointsTestCase(unittest.TestCase):
                     'is_active': True,
                     'is_admin': False,
                     'is_service_account': False,
+                    'organization_slug': 'default',
+                    'role_slug': 'developer',
                 },
             )
 
@@ -89,13 +116,34 @@ class UserEndpointsTestCase(unittest.TestCase):
             data = response.json()
             self.assertEqual(data['email'], 'new@example.com')
             self.assertNotIn('password_hash', data)
+            self.assertEqual(len(data['organizations']), 1)
+            self.assertEqual(
+                data['organizations'][0]['organization_slug'],
+                'default',
+            )
             mock_hash.assert_called_once_with('SecurePass123!@#')
 
     def test_create_user_oauth_only(self) -> None:
         """Test creating user without password (OAuth-only)."""
-        with mock.patch(
-            'imbi_common.neo4j.create_node',
-        ) as mock_create:
+        membership_records = [
+            {
+                'org_name': 'Default',
+                'org_slug': 'default',
+                'role': 'developer',
+            }
+        ]
+
+        with (
+            mock.patch(
+                'imbi_common.neo4j.create_node',
+            ) as mock_create,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                return_value=self._mock_membership_result(
+                    membership_records,
+                ),
+            ),
+        ):
             mock_create.return_value = None
 
             response = self.client.post(
@@ -104,6 +152,8 @@ class UserEndpointsTestCase(unittest.TestCase):
                     'email': 'oauth@example.com',
                     'display_name': 'OAuth User',
                     'password': None,
+                    'organization_slug': 'default',
+                    'role_slug': 'developer',
                 },
             )
 
@@ -121,11 +171,70 @@ class UserEndpointsTestCase(unittest.TestCase):
                 json={
                     'email': 'dup@example.com',
                     'display_name': 'Duplicate User',
+                    'organization_slug': 'default',
+                    'role_slug': 'developer',
                 },
             )
 
             self.assertEqual(response.status_code, 409)
             self.assertIn('already exists', response.json()['detail'])
+
+    def test_create_user_missing_org_slug(self) -> None:
+        """Test creating user without organization_slug returns 422."""
+        response = self.client.post(
+            '/users/',
+            json={
+                'email': 'new@example.com',
+                'display_name': 'New User',
+                'role_slug': 'developer',
+            },
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_user_missing_role_slug(self) -> None:
+        """Test creating user without role_slug returns 422."""
+        response = self.client.post(
+            '/users/',
+            json={
+                'email': 'new@example.com',
+                'display_name': 'New User',
+                'organization_slug': 'default',
+            },
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_user_invalid_org_rollback(self) -> None:
+        """Test user is deleted when org/role not found."""
+        with (
+            mock.patch(
+                'imbi_common.neo4j.create_node',
+            ) as mock_create,
+            mock.patch(
+                'imbi_common.neo4j.run',
+                return_value=self._mock_membership_result([]),
+            ),
+            mock.patch(
+                'imbi_common.neo4j.delete_node',
+            ) as mock_delete,
+        ):
+            mock_create.return_value = None
+            mock_delete.return_value = True
+
+            response = self.client.post(
+                '/users/',
+                json={
+                    'email': 'new@example.com',
+                    'display_name': 'New User',
+                    'organization_slug': 'nonexistent',
+                    'role_slug': 'developer',
+                },
+            )
+
+            self.assertEqual(response.status_code, 404)
+            self.assertIn('not found', response.json()['detail'])
+            mock_delete.assert_called_once()
 
     def test_list_users(self) -> None:
         """Test listing all users."""
@@ -802,6 +911,8 @@ class ServiceAccountGuardRailsTestCase(unittest.TestCase):
                 'is_active': True,
                 'is_admin': False,
                 'is_service_account': True,
+                'organization_slug': 'default',
+                'role_slug': 'developer',
             },
         )
 
@@ -823,6 +934,8 @@ class ServiceAccountGuardRailsTestCase(unittest.TestCase):
                 'is_active': True,
                 'is_admin': True,
                 'is_service_account': True,
+                'organization_slug': 'default',
+                'role_slug': 'developer',
             },
         )
 
