@@ -632,10 +632,6 @@ _VALID_SERVICE_STATUSES = typing.Literal[
 class ThirdPartyServiceCreate(pydantic.BaseModel):
     """Request model for creating a third-party service."""
 
-    organization_slug: str = pydantic.Field(
-        min_length=1,
-        max_length=128,
-    )
     team_slug: str | None = None
     name: str = pydantic.Field(min_length=1, max_length=128)
     slug: str = pydantic.Field(

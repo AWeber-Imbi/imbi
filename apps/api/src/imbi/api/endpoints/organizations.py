@@ -14,6 +14,7 @@ from imbi_api.relationships import relationship_link
 from .environments import environments_router
 from .project_types import project_types_router
 from .teams import teams_router
+from .third_party_services import third_party_services_router
 
 LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +33,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     project_types_router,
     prefix='/{org_slug}/project-types',
+)
+organizations_router.include_router(
+    third_party_services_router,
+    prefix='/{org_slug}/third-party-services',
 )
 
 

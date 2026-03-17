@@ -97,12 +97,11 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.post(
-                '/third-party-services/',
+                '/organizations/engineering/third-party-services/',
                 json={
                     'name': 'Stripe',
                     'slug': 'stripe',
                     'vendor': 'Stripe Inc',
-                    'organization_slug': 'engineering',
                 },
             )
 
@@ -121,12 +120,11 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.post(
-                '/third-party-services/',
+                '/organizations/engineering/third-party-services/',
                 json={
                     'name': 'Stripe',
                     'slug': 'stripe',
                     'vendor': 'Stripe Inc',
-                    'organization_slug': 'engineering',
                     'team_slug': 'backend',
                 },
             )
@@ -135,58 +133,43 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         data = response.json()
         self.assertEqual(data['team']['slug'], 'backend')
 
-    def test_create_missing_org_slug(self) -> None:
-        response = self.client.post(
-            '/third-party-services/',
-            json={
-                'name': 'Stripe',
-                'slug': 'stripe',
-                'vendor': 'Stripe Inc',
-            },
-        )
-        self.assertEqual(response.status_code, 422)
-
     def test_create_missing_vendor(self) -> None:
         response = self.client.post(
-            '/third-party-services/',
+            '/organizations/engineering/third-party-services/',
             json={
                 'name': 'Stripe',
                 'slug': 'stripe',
-                'organization_slug': 'engineering',
             },
         )
         self.assertEqual(response.status_code, 422)
 
     def test_create_missing_name(self) -> None:
         response = self.client.post(
-            '/third-party-services/',
+            '/organizations/engineering/third-party-services/',
             json={
                 'slug': 'stripe',
                 'vendor': 'Stripe Inc',
-                'organization_slug': 'engineering',
             },
         )
         self.assertEqual(response.status_code, 422)
 
     def test_create_missing_slug(self) -> None:
         response = self.client.post(
-            '/third-party-services/',
+            '/organizations/engineering/third-party-services/',
             json={
                 'name': 'Stripe',
                 'vendor': 'Stripe Inc',
-                'organization_slug': 'engineering',
             },
         )
         self.assertEqual(response.status_code, 422)
 
     def test_create_invalid_status(self) -> None:
         response = self.client.post(
-            '/third-party-services/',
+            '/organizations/engineering/third-party-services/',
             json={
                 'name': 'Stripe',
                 'slug': 'stripe',
                 'vendor': 'Stripe Inc',
-                'organization_slug': 'engineering',
                 'status': 'bogus',
             },
         )
@@ -198,12 +181,11 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             side_effect=exceptions.ConstraintError(),
         ):
             response = self.client.post(
-                '/third-party-services/',
+                '/organizations/engineering/third-party-services/',
                 json={
                     'name': 'Stripe',
                     'slug': 'stripe',
                     'vendor': 'Stripe Inc',
-                    'organization_slug': 'engineering',
                 },
             )
 
@@ -217,12 +199,11 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.post(
-                '/third-party-services/',
+                '/organizations/nonexistent/third-party-services/',
                 json={
                     'name': 'Stripe',
                     'slug': 'stripe',
                     'vendor': 'Stripe Inc',
-                    'organization_slug': 'nonexistent',
                 },
             )
 
@@ -236,12 +217,11 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.post(
-                '/third-party-services/',
+                '/organizations/engineering/third-party-services/',
                 json={
                     'name': 'Stripe',
                     'slug': 'stripe',
                     'vendor': 'Stripe Inc',
-                    'organization_slug': 'engineering',
                     'team_slug': 'nonexistent',
                 },
             )
@@ -261,7 +241,9 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             'imbi_common.neo4j.run',
             return_value=result,
         ):
-            response = self.client.get('/third-party-services/')
+            response = self.client.get(
+                '/organizations/engineering/third-party-services/'
+            )
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -275,7 +257,9 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             'imbi_common.neo4j.run',
             return_value=result,
         ):
-            response = self.client.get('/third-party-services/')
+            response = self.client.get(
+                '/organizations/engineering/third-party-services/'
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), [])
@@ -290,7 +274,9 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             'imbi_common.neo4j.run',
             return_value=result,
         ):
-            response = self.client.get('/third-party-services/')
+            response = self.client.get(
+                '/organizations/engineering/third-party-services/'
+            )
 
         self.assertEqual(response.status_code, 200)
         data = response.json()[0]
@@ -314,7 +300,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/stripe',
+                '/organizations/engineering/third-party-services/stripe',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -329,7 +315,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/nonexistent',
+                '/organizations/engineering/third-party-services/nonexistent',
             )
 
         self.assertEqual(response.status_code, 404)
@@ -356,7 +342,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             side_effect=[fetch_result, update_result],
         ):
             response = self.client.put(
-                '/third-party-services/stripe',
+                '/organizations/engineering/third-party-services/stripe',
                 json=payload,
             )
 
@@ -385,7 +371,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             side_effect=[fetch_result, update_result],
         ):
             response = self.client.put(
-                '/third-party-services/stripe',
+                '/organizations/engineering/third-party-services/stripe',
                 json=payload,
             )
 
@@ -398,7 +384,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
     def test_update_missing_required_field(self) -> None:
         """Omitting a required field returns 422."""
         response = self.client.put(
-            '/third-party-services/stripe',
+            '/organizations/engineering/third-party-services/stripe',
             json={
                 'name': 'Stripe',
                 'vendor': 'Stripe Inc',
@@ -414,7 +400,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.put(
-                '/third-party-services/nonexistent',
+                '/organizations/engineering/third-party-services/nonexistent',
                 json=self.service_update_json,
             )
 
@@ -426,7 +412,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         payload['status'] = 'bogus'
 
         response = self.client.put(
-            '/third-party-services/stripe',
+            '/organizations/engineering/third-party-services/stripe',
             json=payload,
         )
 
@@ -448,7 +434,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             ],
         ):
             response = self.client.put(
-                '/third-party-services/stripe',
+                '/organizations/engineering/third-party-services/stripe',
                 json=payload,
             )
 
@@ -467,7 +453,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             side_effect=[fetch_result, empty_result],
         ):
             response = self.client.put(
-                '/third-party-services/stripe',
+                '/organizations/engineering/third-party-services/stripe',
                 json=self.service_update_json,
             )
 
@@ -482,7 +468,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.delete(
-                '/third-party-services/stripe',
+                '/organizations/engineering/third-party-services/stripe',
             )
 
         self.assertEqual(response.status_code, 204)
@@ -494,7 +480,7 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.delete(
-                '/third-party-services/nonexistent',
+                '/organizations/engineering/third-party-services/nonexistent',
             )
 
         self.assertEqual(response.status_code, 404)
@@ -599,7 +585,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/stripe/applications/',
+                '/organizations/engineering/third-party-services/stripe/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -618,7 +604,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/stripe/applications/',
+                '/organizations/engineering/third-party-services/stripe/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -635,7 +621,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/stripe/applications/',
+                '/organizations/engineering/third-party-services/stripe/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -659,7 +645,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             self._patch_encryption(),
         ):
             response = self.client.post(
-                '/third-party-services/stripe/applications/',
+                '/organizations/engineering/third-party-services/stripe/applications/',
                 json=self.app_create_json,
             )
 
@@ -679,7 +665,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             self._patch_encryption(),
         ):
             response = self.client.post(
-                '/third-party-services/stripe/applications/',
+                '/organizations/engineering/third-party-services/stripe/applications/',
                 json=self.app_create_json,
             )
 
@@ -698,7 +684,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             self._patch_encryption(),
         ):
             response = self.client.post(
-                '/third-party-services/nonexistent/applications/',
+                '/organizations/engineering/third-party-services/nonexistent/applications/',
                 json=self.app_create_json,
             )
 
@@ -719,7 +705,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             self._patch_encryption(),
         ):
             response = self.client.post(
-                '/third-party-services/stripe/applications/',
+                '/organizations/engineering/third-party-services/stripe/applications/',
                 json=self.app_create_json,
             )
 
@@ -754,7 +740,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             self._patch_encryption(),
         ):
             response = self.client.post(
-                '/third-party-services/stripe/applications/',
+                '/organizations/engineering/third-party-services/stripe/applications/',
                 json=payload,
             )
 
@@ -776,7 +762,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/stripe/applications/my-app',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -791,7 +777,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/stripe/applications/nonexistent',
+                '/organizations/engineering/third-party-services/stripe/applications/nonexistent',
             )
 
         self.assertEqual(response.status_code, 404)
@@ -811,7 +797,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             self._patch_encryption(),
         ):
             response = self.client.get(
-                '/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -851,7 +837,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
             )
 
         self.assertEqual(response.status_code, 403)
@@ -876,7 +862,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             payload = dict(self.app_update_json)
             payload['name'] = 'Updated App'
             response = self.client.put(
-                '/third-party-services/stripe/applications/my-app',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app',
                 json=payload,
             )
 
@@ -899,7 +885,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             side_effect=[fetch_result, update_result],
         ) as mock_run:
             response = self.client.put(
-                '/third-party-services/stripe/applications/my-app',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app',
                 json=self.app_update_json,
             )
 
@@ -923,7 +909,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.put(
-                '/third-party-services/stripe/applications/nonexistent',
+                '/organizations/engineering/third-party-services/stripe/applications/nonexistent',
                 json=self.app_update_json,
             )
 
@@ -942,7 +928,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             side_effect=[fetch_result, empty_result],
         ):
             response = self.client.put(
-                '/third-party-services/stripe/applications/my-app',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app',
                 json=self.app_update_json,
             )
 
@@ -957,7 +943,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.delete(
-                '/third-party-services/stripe/applications/my-app',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app',
             )
 
         self.assertEqual(response.status_code, 204)
@@ -969,7 +955,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.delete(
-                '/third-party-services/stripe/applications/nonexistent',
+                '/organizations/engineering/third-party-services/stripe/applications/nonexistent',
             )
 
         self.assertEqual(response.status_code, 404)
@@ -989,7 +975,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/stripe/applications/',
+                '/organizations/engineering/third-party-services/stripe/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -1009,7 +995,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.get(
-                '/third-party-services/stripe/applications/',
+                '/organizations/engineering/third-party-services/stripe/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -1037,7 +1023,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             self._patch_encryption(),
         ):
             response = self.client.put(
-                '/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
                 json={'client_secret': 'new-secret'},
             )
 
@@ -1064,7 +1050,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             self._patch_encryption(),
         ):
             response = self.client.put(
-                '/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
                 json={'webhook_secret': 'new-webhook'},
             )
 
@@ -1108,7 +1094,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             return_value=result,
         ):
             response = self.client.put(
-                '/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
                 json={'client_secret': 'new-secret'},
             )
 
@@ -1118,7 +1104,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     def test_update_secrets_empty_body_rejected(self) -> None:
         """At least one secret field must be provided."""
         response = self.client.put(
-            '/third-party-services/stripe/applications/my-app/secrets',
+            '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
             json={},
         )
         self.assertEqual(response.status_code, 422)
@@ -1137,7 +1123,7 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             self._patch_encryption(),
         ):
             response = self.client.put(
-                '/third-party-services/stripe/applications/missing/secrets',
+                '/organizations/engineering/third-party-services/stripe/applications/missing/secrets',
                 json={'client_secret': 'new-secret'},
             )
 
