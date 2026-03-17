@@ -29,10 +29,8 @@ def _build_service_response(
     record: dict[str, typing.Any],
 ) -> models.ThirdPartyServiceResponse:
     """Build a ThirdPartyServiceResponse from a Neo4j record."""
-    service = _deserialize_json_fields(
-        record['service'],
-        _SERVICE_JSON_FIELDS,
-    )
+    service = neo4j.convert_neo4j_types(record['service'])
+    service = _deserialize_json_fields(service, _SERVICE_JSON_FIELDS)
     return models.ThirdPartyServiceResponse(**service)
 
 
@@ -484,7 +482,8 @@ async def list_service_applications(
 
     apps: list[models.ServiceApplicationResponse] = []
     for record in records:
-        app = _deserialize_json_fields(record['app'], _APP_JSON_FIELDS)
+        app = neo4j.convert_neo4j_types(record['app'])
+        app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
         _strip_secrets(app)
         apps.append(models.ServiceApplicationResponse(**app))
     return apps
@@ -569,7 +568,8 @@ async def create_service_application(
             detail=(f'Third-party service with slug {slug!r} not found'),
         )
 
-    app = _deserialize_json_fields(records[0]['app'], _APP_JSON_FIELDS)
+    app = neo4j.convert_neo4j_types(records[0]['app'])
+    app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
     _strip_secrets(app)
     return models.ServiceApplicationResponse(**app)
 
@@ -601,10 +601,8 @@ async def _fetch_application(
                 f'Application {app_slug!r} not found in service {svc_slug!r}'
             ),
         )
-    return _deserialize_json_fields(
-        records[0]['app'],
-        _APP_JSON_FIELDS,
-    )
+    app = neo4j.convert_neo4j_types(records[0]['app'])
+    return _deserialize_json_fields(app, _APP_JSON_FIELDS)
 
 
 @third_party_services_router.get(
@@ -686,10 +684,8 @@ async def update_service_application(
             detail=(f'Application {app_slug!r} not found in service {slug!r}'),
         )
 
-    app = _deserialize_json_fields(
-        updated[0]['app'],
-        _APP_JSON_FIELDS,
-    )
+    app = neo4j.convert_neo4j_types(updated[0]['app'])
+    app = _deserialize_json_fields(app, _APP_JSON_FIELDS)
     _strip_secrets(app)
     return models.ServiceApplicationResponse(**app)
 
