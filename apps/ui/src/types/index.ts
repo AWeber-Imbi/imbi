@@ -512,7 +512,6 @@ export interface ThirdPartyServiceCreate {
   status?: string
   links?: Record<string, string>
   identifiers?: Record<string, string | number>
-  organization_slug: string
   team_slug?: string | null
   [key: string]: unknown
 }
