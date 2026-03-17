@@ -14,6 +14,15 @@ INDEXES: list[str] = [
     # Teams
     'CREATE CONSTRAINT team_slug_unique IF NOT EXISTS FOR (n:Team) '
     'REQUIRE n.slug IS UNIQUE;',
+    # Link Definitions
+    'CREATE CONSTRAINT link_definition_slug_unique '
+    'IF NOT EXISTS FOR (n:LinkDefinition) '
+    'REQUIRE n.slug IS UNIQUE;',
+    # Projects
+    'CREATE CONSTRAINT project_type_slug_unique IF NOT EXISTS '
+    'FOR (n:Project) '
+    'REQUIRE (n.project_type_slug, n.slug) IS UNIQUE;',
+    'CREATE INDEX project_name IF NOT EXISTS FOR (n:Project) ON (n.name);',
     # AI Assistant Conversations
     'CREATE CONSTRAINT conversation_id_unique IF NOT EXISTS '
     'FOR (n:Conversation) REQUIRE n.id IS UNIQUE;',

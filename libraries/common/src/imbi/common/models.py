@@ -12,6 +12,7 @@ __all__ = [
     'BlueprintAssignment',
     'BlueprintEdge',
     'Environment',
+    'LinkDefinition',
     'Node',
     'Organization',
     'Project',
@@ -143,27 +144,62 @@ class ProjectType(Node):
     ]
 
 
+class LinkDefinition(Node):
+    """Defines available link types for projects in an org.
+
+    Each definition describes one kind of external link
+    (e.g. GitHub repository, Grafana dashboard) including
+    display metadata and an optional URL template.
+
+    """
+
+    url_template: str | None = None
+    organization: typing.Annotated[
+        Organization,
+        cypherantic.Relationship(
+            rel_type='BELONGS_TO',
+            direction='OUTGOING',
+        ),
+    ]
+
+
 class Project(Node):
     team: typing.Annotated[
         Team,
-        cypherantic.Relationship(rel_type='OWNED_BY', direction='OUTGOING'),
+        cypherantic.Relationship(
+            rel_type='OWNED_BY',
+            direction='OUTGOING',
+        ),
     ]
     project_type: typing.Annotated[
         ProjectType,
-        cypherantic.Relationship(rel_type='TYPE', direction='OUTGOING'),
+        cypherantic.Relationship(
+            rel_type='TYPE',
+            direction='OUTGOING',
+        ),
     ]
     environments: typing.Annotated[
         list[Environment],
-        cypherantic.Relationship(rel_type='DEPLOYED_IN', direction='OUTGOING'),
+        cypherantic.Relationship(
+            rel_type='DEPLOYED_IN',
+            direction='OUTGOING',
+        ),
     ] = []
-    links: dict[str, pydantic.HttpUrl]
-    urls: dict[str, pydantic.HttpUrl]
-    identifiers: dict[str, int | str]
+    links: dict[str, pydantic.HttpUrl] = {}
+    identifiers: dict[str, int | str] = {}
+
+    # Denormalized for composite uniqueness constraint in Neo4j.
+    # Not exposed in API responses; kept in sync by the API layer.
+    project_type_slug: typing.Annotated[
+        str,
+        pydantic.Field(exclude=True),
+    ] = ''
 
 
 # Model type mapping for schema generation
 MODEL_TYPES: dict[str, type[pydantic.BaseModel]] = {
     'Environment': Environment,
+    'LinkDefinition': LinkDefinition,
     'Organization': Organization,
     'Project': Project,
     'ProjectType': ProjectType,
