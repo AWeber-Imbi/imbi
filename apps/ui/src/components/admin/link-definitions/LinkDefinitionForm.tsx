@@ -132,10 +132,11 @@ export function LinkDefinitionForm({
 
           <div className="space-y-4">
             <div>
-              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label htmlFor="link-def-org" className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
+                id="link-def-org"
                 value={orgSlug}
                 onChange={(e) => setOrgSlug(e.target.value)}
                 disabled={isEditing || isLoading || organizations.length <= 1}
@@ -166,10 +167,11 @@ export function LinkDefinitionForm({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="link-def-name" className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Name <span className="text-red-500">*</span>
                 </label>
                 <Input
+                  id="link-def-name"
                   value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., GitHub Repository"
@@ -189,10 +191,11 @@ export function LinkDefinitionForm({
               </div>
 
               <div>
-                <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label htmlFor="link-def-slug" className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   Slug <span className="text-red-500">*</span>
                 </label>
                 <Input
+                  id="link-def-slug"
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="e.g., github-repository"
@@ -213,10 +216,11 @@ export function LinkDefinitionForm({
             </div>
 
             <div>
-              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label htmlFor="link-def-description" className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 Description
               </label>
               <textarea
+                id="link-def-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
@@ -238,10 +242,11 @@ export function LinkDefinitionForm({
             </div>
 
             <div>
-              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label htmlFor="link-def-url-template" className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 URL Template
               </label>
               <Input
+                id="link-def-url-template"
                 value={urlTemplate}
                 onChange={(e) => setUrlTemplate(e.target.value)}
                 placeholder='e.g., https://github.com/{organization}/{project}'

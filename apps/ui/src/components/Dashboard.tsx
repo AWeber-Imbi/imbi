@@ -214,7 +214,7 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
   })
 
   const projectCount = projects?.length || 0
-  const teamCount = projects ? new Set(projects.map(p => p.team.slug)).size : 0
+  const teamCount = projects ? new Set(projects.map(p => p.team?.slug).filter(Boolean)).size : 0
   const namespaceCount = namespaces?.length || 0
 
   // Persist selections

@@ -1,7 +1,7 @@
 import { Github, Bug, Bell, ExternalLink, icons, type LucideIcon } from 'lucide-react'
-import { Button } from './ui/button'
-import { Input } from './ui/input'
-import { Card } from './ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card } from '@/components/ui/card'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -184,10 +184,11 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
             <div className="space-y-6">
               {/* Team */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-900">
+                <label htmlFor="new-project-team" className="text-sm font-medium text-slate-900">
                   Team <span className="text-red-500">*</span>
                 </label>
                 <select
+                  id="new-project-team"
                   value={teamSlug}
                   onChange={e => setTeamSlug(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm"
@@ -202,10 +203,11 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
 
               {/* Project Type */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-900">
+                <label htmlFor="new-project-type" className="text-sm font-medium text-slate-900">
                   Project Type <span className="text-red-500">*</span>
                 </label>
                 <select
+                  id="new-project-type"
                   value={projectTypeSlug}
                   onChange={e => setProjectTypeSlug(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm"
@@ -220,10 +222,11 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
 
               {/* Name */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-900">
+                <label htmlFor="new-project-name" className="text-sm font-medium text-slate-900">
                   Name <span className="text-red-500">*</span>
                 </label>
                 <Input
+                  id="new-project-name"
                   value={name}
                   onChange={e => handleNameChange(e.target.value)}
                   placeholder="e.g., My Service"
@@ -233,10 +236,11 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
 
               {/* Slug */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-900">
+                <label htmlFor="new-project-slug" className="text-sm font-medium text-slate-900">
                   Slug <span className="text-red-500">*</span>
                 </label>
                 <Input
+                  id="new-project-slug"
                   value={slug}
                   onChange={e => setSlug(e.target.value)}
                   placeholder="e.g., my-service"
@@ -246,8 +250,9 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
 
               {/* Description */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-900">Description</label>
+                <label htmlFor="new-project-description" className="text-sm font-medium text-slate-900">Description</label>
                 <textarea
+                  id="new-project-description"
                   value={description}
                   onChange={e => setDescription(e.target.value)}
                   placeholder="Provide a high-level purpose and context for the project"
@@ -389,6 +394,9 @@ function AutomationToggle({
         </div>
       </div>
       <button
+        role="switch"
+        aria-checked={checked}
+        aria-label={title}
         onClick={() => onChange(!checked)}
         className={`relative w-9 h-5 rounded-full transition-colors ${
           checked ? 'bg-blue-600' : 'bg-slate-300'
