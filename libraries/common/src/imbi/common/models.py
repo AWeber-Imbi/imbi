@@ -188,13 +188,6 @@ class Project(Node):
     links: dict[str, pydantic.HttpUrl] = {}
     identifiers: dict[str, int | str] = {}
 
-    # Denormalized for composite uniqueness constraint in Neo4j.
-    # Not exposed in API responses; kept in sync by the API layer.
-    project_type_slug: typing.Annotated[
-        str,
-        pydantic.Field(exclude=True),
-    ] = ''
-
 
 # Model type mapping for schema generation
 MODEL_TYPES: dict[str, type[pydantic.BaseModel]] = {

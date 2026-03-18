@@ -62,6 +62,32 @@ class Neo4j:
                 except exceptions.ConstraintError as err:
                     LOGGER.debug('Error creating index: %s', err)
                     continue
+        if constants.TRIGGERS:
+            async with self._neo4j.session(database='system') as session:
+                for trigger in constants.TRIGGERS:
+                    try:
+                        await session.run(
+                            'CALL apoc.trigger.install('
+                            '    $db, $name, $statement, $selector, $config'
+                            ')',
+                            db=self._settings.database,
+                            name=trigger['name'],
+                            statement=trigger['query'],
+                            selector=trigger['selector'],
+                            config=trigger.get('config', {}),
+                        )
+                        LOGGER.debug(
+                            'Installed APOC trigger %r', trigger['name']
+                        )
+                    except exceptions.ClientError as err:
+                        if 'ProcedureNotFound' in (err.code or ''):
+                            LOGGER.warning(
+                                'APOC not available, skipping trigger %r: %s',
+                                trigger['name'],
+                                err,
+                            )
+                        else:
+                            raise
 
     @contextlib.asynccontextmanager
     async def session(

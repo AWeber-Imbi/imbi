@@ -38,37 +38,97 @@ class Neo4jClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIs(instance1, instance2)
 
     async def test_initialize(self) -> None:
-        """Test graph initialization creates indexes."""
+        """Test graph initialization creates indexes and installs triggers."""
         graph = client.Neo4j.get_instance()
         await graph.initialize()
         self.mock_driver.session.assert_called()
-        self.assertEqual(
-            self.mock_session.run.call_count, len(client.constants.INDEXES)
+        expected_calls = len(client.constants.INDEXES) + len(
+            client.constants.TRIGGERS
         )
+        self.assertEqual(self.mock_session.run.call_count, expected_calls)
 
     async def test_initialize_with_constraint_error(self) -> None:
-        """Test initializing indexes handles constraint errors gracefully."""
+        """Test that ConstraintError during index creation is handled."""
         from neo4j import exceptions
 
-        # Mock the constants to have an index
-        with mock.patch(
-            'imbi_common.neo4j.constants.INDEXES',
-            [
-                'CREATE CONSTRAINT test IF NOT EXISTS FOR (n:Test) '
-                'REQUIRE n.id IS UNIQUE'
-            ],
+        with (
+            mock.patch(
+                'imbi_common.neo4j.constants.INDEXES',
+                [
+                    'CREATE CONSTRAINT test IF NOT EXISTS FOR (n:Test) '
+                    'REQUIRE n.id IS UNIQUE'
+                ],
+            ),
+            mock.patch('imbi_common.neo4j.constants.TRIGGERS', []),
         ):
-            # Mock session.run to raise ConstraintError
             self.mock_session.run.side_effect = exceptions.ConstraintError(
                 'Already exists'
             )
 
-            # Should not raise, should handle the error
             graph = client.Neo4j.get_instance()
             await graph.initialize()
 
-            # Verify session was called
             self.mock_driver.session.assert_called()
+
+    async def test_initialize_trigger_apoc_not_available(self) -> None:
+        """Test that a ProcedureNotFound error skips the trigger gracefully."""
+        from neo4j import exceptions
+
+        apoc_err = exceptions.Neo4jError._hydrate_neo4j(
+            code='Neo.ClientError.Procedure.ProcedureNotFound',
+            message='APOC not installed',
+        )
+
+        with (
+            mock.patch('imbi_common.neo4j.constants.INDEXES', []),
+            mock.patch(
+                'imbi_common.neo4j.constants.TRIGGERS',
+                [
+                    {
+                        'name': 'test_trigger',
+                        'query': 'RETURN null',
+                        'selector': {'phase': 'before'},
+                    }
+                ],
+            ),
+        ):
+            self.mock_session.run.side_effect = apoc_err
+
+            graph = client.Neo4j.get_instance()
+            with self.assertLogs(client.LOGGER, level='WARNING') as cm:
+                await graph.initialize()
+
+            self.assertTrue(
+                any('APOC not available' in msg for msg in cm.output)
+            )
+
+    async def test_initialize_trigger_other_client_error_raises(self) -> None:
+        """Test that non-ProcedureNotFound ClientErrors propagate."""
+        from neo4j import exceptions
+
+        err = exceptions.Neo4jError._hydrate_neo4j(
+            code='Neo.ClientError.Security.Forbidden',
+            message='Permission denied',
+        )
+
+        with (
+            mock.patch('imbi_common.neo4j.constants.INDEXES', []),
+            mock.patch(
+                'imbi_common.neo4j.constants.TRIGGERS',
+                [
+                    {
+                        'name': 'test_trigger',
+                        'query': 'RETURN null',
+                        'selector': {'phase': 'before'},
+                    }
+                ],
+            ),
+        ):
+            self.mock_session.run.side_effect = err
+
+            graph = client.Neo4j.get_instance()
+            with self.assertRaises(exceptions.ClientError):
+                await graph.initialize()
 
     async def test_aclose(self) -> None:
         """Test graph connection close."""
