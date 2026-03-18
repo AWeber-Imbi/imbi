@@ -61,6 +61,7 @@ export interface Project {
     environments?: RelationshipLink
     dependencies?: RelationshipLink
   }
+  dependency_uris?: string[]
   [key: string]: unknown
 }
 
@@ -70,7 +71,6 @@ export interface ProjectCreate {
   description?: string | null
   icon?: string | null
   team_slug: string
-  project_type_slug: string
   environment_slugs?: string[]
   links?: Record<string, string>
   identifiers?: Record<string, string | number>

@@ -1,13 +1,14 @@
-import { Search, Filter, Plus, Grid3x3, List } from 'lucide-react'
+import { Search, Plus, Grid3x3, List, Network } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getProjects } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { NewProjectDialog } from './NewProjectDialog'
+import { ProjectGraphView } from './ProjectGraphView'
 
 interface ProjectsViewProps {
   isDarkMode: boolean
@@ -15,11 +16,31 @@ interface ProjectsViewProps {
 
 export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
 
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [searchQuery, setSearchQuery] = useState('')
+  const rawView = searchParams.get('view')
+  const viewMode: 'grid' | 'list' | 'graph' =
+    rawView === 'grid' || rawView === 'list' || rawView === 'graph'
+      ? rawView
+      : 'grid'
+  const searchQuery = searchParams.get('q') ?? ''
+
+  const setViewMode = (v: 'grid' | 'list' | 'graph') =>
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('view', v)
+      return next
+    }, { replace: true })
+
+  const setSearchQuery = (q: string) =>
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      if (q) next.set('q', q); else next.delete('q')
+      return next
+    }, { replace: true })
+
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false)
 
   const { data: projects, isLoading } = useQuery({
@@ -59,8 +80,8 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
     return 70 + Math.abs(hash % 30)
   }
 
-  const handleProjectSelect = (slug: string) => {
-    navigate(`/projects/${slug}`)
+  const handleProjectSelect = (typeSlug: string, slug: string) => {
+    navigate(`/projects/${typeSlug}/${slug}`)
   }
 
   const filteredProjects = useMemo(() => {
@@ -120,11 +141,6 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
               />
             </div>
 
-            <Button variant="outline" size="sm">
-              <Filter className="w-4 h-4 mr-2" />
-              Filter
-            </Button>
-
             <div className={`flex items-center border rounded-lg ${
               isDarkMode ? 'border-gray-600' : 'border-slate-200'
             }`}>
@@ -133,6 +149,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                 size="sm"
                 onClick={() => setViewMode('grid')}
                 className="rounded-r-none"
+                aria-label="Grid view"
               >
                 <Grid3x3 className="w-4 h-4" />
               </Button>
@@ -140,17 +157,29 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                 variant={viewMode === 'list' ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setViewMode('list')}
-                className="rounded-l-none"
+                className="rounded-none"
+                aria-label="List view"
               >
                 <List className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'graph' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('graph')}
+                className="rounded-l-none"
+                aria-label="Graph view"
+              >
+                <Network className="w-4 h-4" />
               </Button>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Projects Grid/List */}
-      {viewMode === 'grid' ? (
+      {/* Projects Graph/Grid/List */}
+      {viewMode === 'graph' ? (
+        <ProjectGraphView projects={filteredProjects} isDarkMode={isDarkMode} />
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredProjects.map((project, index) => {
             const health = getMockHealth(project.slug)
@@ -160,7 +189,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                 className={`p-5 hover:shadow-md transition-shadow cursor-pointer ${
                   isDarkMode ? 'bg-gray-800 border-gray-700' : ''
                 }`}
-                onClick={() => handleProjectSelect(project.slug)}
+                onClick={() => handleProjectSelect(project.project_type.slug, project.slug)}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">
@@ -234,7 +263,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                       className={`transition-colors cursor-pointer ${
                         isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-50'
                       }`}
-                      onClick={() => handleProjectSelect(project.slug)}
+                      onClick={() => handleProjectSelect(project.project_type.slug, project.slug)}
                     >
                       <td className={`px-6 py-4 font-medium ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                         {project.name}
@@ -273,7 +302,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
         </Card>
       )}
 
-      {filteredProjects.length === 0 && (
+      {filteredProjects.length === 0 && viewMode !== 'graph' && (
         <div className="text-center py-12">
           <p className={isDarkMode ? 'text-gray-400' : 'text-slate-500'}>
             No projects found matching your criteria
@@ -284,7 +313,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
       <NewProjectDialog
         isOpen={newProjectDialogOpen}
         onClose={() => setNewProjectDialogOpen(false)}
-        onProjectCreated={(slug) => navigate(`/projects/${slug}`)}
+        onProjectCreated={(typeSlug, slug) => navigate(`/projects/${typeSlug}/${slug}`)}
       />
     </div>
   )

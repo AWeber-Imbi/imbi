@@ -93,7 +93,7 @@ function App() {
           }
         />
         <Route
-          path="/projects/:slug"
+          path="/projects/:typeSlug/:slug"
           element={
             <ProtectedRoute>
               <ProjectDetailPage />

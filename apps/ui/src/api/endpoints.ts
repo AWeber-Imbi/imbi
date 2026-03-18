@@ -85,26 +85,26 @@ export const getProjects = async (orgSlug: string): Promise<Project[]> => {
   return Array.isArray(response) ? response : []
 }
 
-export const getProject = (orgSlug: string, slug: string) =>
+export const getProject = (orgSlug: string, projectTypeSlug: string, slug: string) =>
   apiClient.get<Project>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`
   )
 
-export const createProject = (orgSlug: string, project: ProjectCreate) =>
+export const createProject = (orgSlug: string, projectTypeSlug: string, project: ProjectCreate) =>
   apiClient.post<Project>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}`,
     project
   )
 
-export const updateProject = (orgSlug: string, slug: string, project: Partial<ProjectCreate>) =>
+export const updateProject = (orgSlug: string, projectTypeSlug: string, slug: string, project: Partial<ProjectCreate>) =>
   apiClient.put<Project>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(slug)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`,
     project
   )
 
-export const deleteProject = (orgSlug: string, slug: string) =>
+export const deleteProject = (orgSlug: string, projectTypeSlug: string, slug: string) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`
   )
 
 // Link Definitions (org-scoped)

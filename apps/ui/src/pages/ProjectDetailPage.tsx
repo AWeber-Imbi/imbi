@@ -8,7 +8,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { getProject } from '@/api/endpoints'
 
 export function ProjectDetailPage() {
-  const { slug } = useParams<{ slug: string }>()
+  const { typeSlug, slug } = useParams<{ typeSlug: string; slug: string }>()
   const navigate = useNavigate()
   const { selectedOrganization } = useOrganization()
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -25,9 +25,9 @@ export function ProjectDetailPage() {
   const orgSlug = selectedOrganization?.slug || ''
 
   const { data: project, isLoading, error } = useQuery({
-    queryKey: ['project', orgSlug, slug],
-    queryFn: () => getProject(orgSlug, slug!),
-    enabled: !!orgSlug && !!slug,
+    queryKey: ['project', orgSlug, typeSlug, slug],
+    queryFn: () => getProject(orgSlug, typeSlug!, slug!),
+    enabled: !!orgSlug && !!typeSlug && !!slug,
   })
 
   return (
@@ -63,7 +63,7 @@ export function ProjectDetailPage() {
           {project && (
             <ProjectDetail
               project={project}
-              onBack={() => navigate('/projects')}
+              onBack={() => navigate(-1)}
               isDarkMode={isDarkMode}
             />
           )}

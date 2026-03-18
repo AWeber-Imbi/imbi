@@ -39,8 +39,8 @@ export function Navigation({
   // Memoize navItems to avoid array mutation on every render
   const navItems = useMemo(() => {
     const items = [
-      { id: 'deployments', label: 'Deployments', icon: Rocket, path: '/deployments' },
       { id: 'projects', label: 'Projects', icon: FolderKanban, path: '/projects' },
+      { id: 'deployments', label: 'Deployments', icon: Rocket, path: '/deployments' },
       { id: 'operations', label: 'Operations Log', icon: Activity, path: '/operations' },
       { id: 'reports', label: 'Reports', icon: BarChart3, path: '/reports' },
     ]

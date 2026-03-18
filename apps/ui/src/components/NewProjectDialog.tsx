@@ -18,7 +18,7 @@ import type { ProjectCreate } from '@/types'
 interface NewProjectDialogProps {
   isOpen: boolean
   onClose: () => void
-  onProjectCreated?: (slug: string) => void
+  onProjectCreated?: (typeSlug: string, slug: string) => void
 }
 
 export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProjectDialogProps) {
@@ -68,10 +68,11 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: ProjectCreate) => createProject(orgSlug, data),
-    onSuccess: (created) => {
+    mutationFn: ({ typeSlug, data }: { typeSlug: string; data: ProjectCreate }) =>
+      createProject(orgSlug, typeSlug, data),
+    onSuccess: (created, { typeSlug }) => {
       queryClient.invalidateQueries({ queryKey: ['projects', orgSlug] })
-      onProjectCreated?.(created.slug)
+      onProjectCreated?.(typeSlug, created.slug)
       handleClose()
     },
   })
@@ -103,17 +104,16 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
   }
 
   const handleSave = () => {
-    if (!orgSlug || createMutation.isPending) return
+    if (!orgSlug || !canProceed || createMutation.isPending) return
     const projectData: ProjectCreate = {
       name,
       slug,
       description: description || null,
       team_slug: teamSlug,
-      project_type_slug: projectTypeSlug,
       environment_slugs: selectedEnvSlugs.length > 0 ? selectedEnvSlugs : undefined,
       links: Object.keys(links).length > 0 ? links : undefined,
     }
-    createMutation.mutate(projectData)
+    createMutation.mutate({ typeSlug: projectTypeSlug, data: projectData })
   }
 
   const handleClose = () => {
