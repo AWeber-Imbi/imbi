@@ -101,13 +101,12 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/engineering/projects/',
+                '/organizations/engineering/projects/api-service',
                 json={
                     'name': 'My API',
                     'slug': 'my-api',
                     'description': 'An example API',
                     'team_slug': 'platform',
-                    'project_type_slug': 'api-service',
                 },
             )
 
@@ -144,12 +143,11 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/engineering/projects/',
+                '/organizations/engineering/projects/api-service',
                 json={
                     'name': 'My API',
                     'slug': 'my-api',
                     'team_slug': 'platform',
-                    'project_type_slug': 'api-service',
                     'environment_slugs': ['production'],
                 },
             )
@@ -166,7 +164,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/engineering/projects/',
+                '/organizations/engineering/projects/api-service',
                 json={},
             )
 
@@ -186,12 +184,11 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/nonexistent/projects/',
+                '/organizations/nonexistent/projects/api-service',
                 json={
                     'name': 'My API',
                     'slug': 'my-api',
                     'team_slug': 'platform',
-                    'project_type_slug': 'api-service',
                 },
             )
 
@@ -206,18 +203,20 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             ) as mock_get_model,
             mock.patch(
                 'imbi_common.neo4j.query',
-                side_effect=exceptions.ConstraintError(),
+                side_effect=exceptions.ClientError(
+                    'Project with slug "my-api" already exists'
+                    ' for project type "api-service"'
+                ),
             ),
         ):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/engineering/projects/',
+                '/organizations/engineering/projects/api-service',
                 json={
                     'name': 'My API',
                     'slug': 'my-api',
                     'team_slug': 'platform',
-                    'project_type_slug': 'api-service',
                 },
             )
 
@@ -280,7 +279,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             ],
         ):
             response = self.client.get(
-                '/organizations/engineering/projects/my-api',
+                '/organizations/engineering/projects/api-service/my-api',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -298,7 +297,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             return_value=[],
         ):
             response = self.client.get(
-                '/organizations/engineering/projects/nonexistent',
+                '/organizations/engineering/projects/api-service/nonexistent',
             )
 
         self.assertEqual(response.status_code, 404)
@@ -324,7 +323,6 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
-                            'current_pt_slug': 'api-service',
                         },
                     ],
                     [
@@ -339,7 +337,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/my-api',
+                '/organizations/engineering/projects/api-service/my-api',
                 json={'name': 'Updated API'},
             )
 
@@ -373,7 +371,6 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
-                            'current_pt_slug': 'api-service',
                         },
                     ],
                     [
@@ -388,7 +385,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/my-api',
+                '/organizations/engineering/projects/api-service/my-api',
                 json={'team_slug': 'backend'},
             )
 
@@ -421,7 +418,6 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
-                            'current_pt_slug': 'api-service',
                         },
                     ],
                     [
@@ -436,7 +432,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/my-api',
+                '/organizations/engineering/projects/api-service/my-api',
                 json={'environment_slugs': ['staging']},
             )
 
@@ -456,7 +452,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/nonexistent',
+                '/organizations/engineering/projects/api-service/nonexistent',
                 json={'name': 'Updated'},
             )
 
@@ -477,17 +473,19 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
-                            'current_pt_slug': 'api-service',
                         },
                     ],
-                    exceptions.ConstraintError(),
+                    exceptions.ClientError(
+                        'Project with slug "conflicting-slug" already'
+                        ' exists for project type "api-service"'
+                    ),
                 ],
             ),
         ):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/my-api',
+                '/organizations/engineering/projects/api-service/my-api',
                 json={'slug': 'conflicting-slug'},
             )
 
@@ -512,7 +510,6 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
-                            'current_pt_slug': 'api-service',
                         },
                     ],
                     [],
@@ -522,7 +519,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/my-api',
+                '/organizations/engineering/projects/api-service/my-api',
                 json={'name': 'Updated'},
             )
 
@@ -538,7 +535,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             return_value=[{'deleted': 1}],
         ):
             response = self.client.delete(
-                '/organizations/engineering/projects/my-api',
+                '/organizations/engineering/projects/api-service/my-api',
             )
 
         self.assertEqual(response.status_code, 204)
@@ -550,7 +547,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             return_value=[{'deleted': 0}],
         ):
             response = self.client.delete(
-                '/organizations/engineering/projects/nonexistent',
+                '/organizations/engineering/projects/api-service/nonexistent',
             )
 
         self.assertEqual(response.status_code, 404)

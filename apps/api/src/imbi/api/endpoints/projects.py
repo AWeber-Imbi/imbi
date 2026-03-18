@@ -67,7 +67,6 @@ class ProjectCreate(pydantic.BaseModel):
     description: str | None = None
     icon: pydantic.HttpUrl | str | None = None
     team_slug: str
-    project_type_slug: str
     environment_slugs: list[str] = []
     links: dict[str, pydantic.HttpUrl] = {}
     identifiers: dict[str, int | str] = {}
@@ -81,7 +80,6 @@ class ProjectUpdate(pydantic.BaseModel):
     description: str | None = None
     icon: pydantic.HttpUrl | str | None = None
     team_slug: str | None = None
-    project_type_slug: str | None = None
     environment_slugs: list[str] | None = None
     links: dict[str, pydantic.HttpUrl] | None = None
     identifiers: dict[str, int | str] | None = None
@@ -104,6 +102,7 @@ class ProjectResponse(pydantic.BaseModel):
     links: dict[str, pydantic.HttpUrl] = {}
     identifiers: dict[str, int | str] = {}
     relationships: dict[str, models.RelationshipLink] | None = None
+    dependency_uris: list[str] = []
 
     @pydantic.field_validator(
         'links',
@@ -131,19 +130,21 @@ def _add_relationships(
 ) -> dict[str, typing.Any]:
     """Attach relationships sub-object to a project dict."""
     slug = project['slug']
+    pt_slug = project['project_type']['slug']
     team = project.get('team', {})
     team_slug = team.get('slug', '') if team else ''
+    base = f'/api/organizations/{org_slug}/projects/{pt_slug}/{slug}'
     project['relationships'] = {
         'team': relationship_link(
             f'/api/organizations/{org_slug}/teams/{team_slug}',
             1 if team_slug else 0,
         ),
         'environments': relationship_link(
-            f'/api/organizations/{org_slug}/projects/{slug}/environments',
+            f'{base}/environments',
             len(project.get('environments') or []),
         ),
         'dependencies': relationship_link(
-            f'/api/organizations/{org_slug}/projects/{slug}/dependencies',
+            f'{base}/dependencies',
             dependency_count,
         ),
     }
@@ -153,9 +154,10 @@ def _add_relationships(
 # -- Endpoints ----------------------------------------------------------
 
 
-@projects_router.post('/', status_code=201)
+@projects_router.post('/{project_type_slug}', status_code=201)
 async def create_project(
     org_slug: str,
+    project_type_slug: str,
     data: ProjectCreate,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -179,7 +181,7 @@ async def create_project(
             ),
             project_type=models.ProjectType(
                 name='',
-                slug=data.project_type_slug,
+                slug=project_type_slug,
                 organization=models.Organization(
                     name='',
                     slug=org_slug,
@@ -209,7 +211,6 @@ async def create_project(
     props = project.model_dump(
         exclude={'team', 'project_type', 'environments'},
     )
-    props['project_type_slug'] = data.project_type_slug
 
     env_clause: typing.LiteralString = ''
     if data.environment_slugs:
@@ -253,11 +254,11 @@ async def create_project(
             query,
             org_slug=org_slug,
             team_slug=data.team_slug,
-            pt_slug=data.project_type_slug,
+            pt_slug=project_type_slug,
             props=props,
             env_slugs=data.environment_slugs,
         )
-    except exceptions.ConstraintError as e:
+    except (exceptions.ConstraintError, exceptions.ClientError) as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
@@ -272,7 +273,7 @@ async def create_project(
             detail=(
                 f'Organization {org_slug!r}, team'
                 f' {data.team_slug!r}, or project type'
-                f' {data.project_type_slug!r} not found'
+                f' {project_type_slug!r} not found'
             ),
         )
 
@@ -292,17 +293,37 @@ async def list_projects(
             permissions.require_permission('project:read'),
         ),
     ],
+    project_type_slug: str | None = None,
 ) -> list[ProjectResponse]:
-    """List all projects in an organization."""
-    query: typing.LiteralString = """
+    """List all projects in an organization, optionally filtered by type."""
+    type_filter: typing.LiteralString = (
+        'MATCH (p)-[:TYPE]->(pt:ProjectType {slug: $project_type_slug})'
+        if project_type_slug
+        else 'MATCH (p)-[:TYPE]->(pt:ProjectType)'
+    )
+    query: typing.LiteralString = (
+        """
     MATCH (p:Project)-[:OWNED_BY]->(t:Team)
           -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    MATCH (p)-[:TYPE]->(pt:ProjectType)
+    """
+        + type_filter
+        + """
     OPTIONAL MATCH (p)-[:DEPLOYED_IN]->(env:Environment)
     OPTIONAL MATCH (p)-[:DEPENDS_ON]->(dep:Project)
+          -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(depOrg:Organization)
+    OPTIONAL MATCH (dep)-[:TYPE]->(depPt:ProjectType)
     WITH p, t, pt, o,
          collect(DISTINCT env{.*, organization: o{.*}}) AS envs,
-         count(DISTINCT dep) AS dependency_count
+         count(DISTINCT dep) AS dependency_count,
+         [x IN collect(DISTINCT
+             CASE WHEN dep IS NOT NULL
+                       AND depPt IS NOT NULL
+                       AND depOrg IS NOT NULL
+                  THEN '/organizations/' + depOrg.slug
+                       + '/projects/' + depPt.slug
+                       + '/' + dep.slug
+             END
+         ) WHERE x IS NOT NULL] AS dependency_uris
     RETURN p{.*,
         team: t{.*,
             organization: o{.*}
@@ -310,13 +331,17 @@ async def list_projects(
         project_type: pt{.*,
             organization: o{.*}
         },
-        environments: envs
+        environments: envs,
+        dependency_uris: dependency_uris
     } AS project,
     dependency_count
     ORDER BY p.name
     """
+    )
     results: list[ProjectResponse] = []
-    records = await neo4j.query(query, org_slug=org_slug)
+    records = await neo4j.query(
+        query, org_slug=org_slug, project_type_slug=project_type_slug
+    )
     for record in records:
         proj = _add_relationships(
             record['project'],
@@ -327,9 +352,10 @@ async def list_projects(
     return results
 
 
-@projects_router.get('/{slug}')
+@projects_router.get('/{project_type_slug}/{slug}')
 async def get_project(
     org_slug: str,
+    project_type_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -338,17 +364,27 @@ async def get_project(
         ),
     ],
 ) -> ProjectResponse:
-    """Get a project by slug."""
+    """Get a project by project-type slug and slug."""
     query: typing.LiteralString = """
-    MATCH (p:Project {slug: $slug})
-          -[:OWNED_BY]->(t:Team)
+    MATCH (p:Project {slug: $slug})-[:OWNED_BY]->(t:Team)
           -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    MATCH (p)-[:TYPE]->(pt:ProjectType)
+    MATCH (p)-[:TYPE]->(pt:ProjectType {slug: $project_type_slug})
     OPTIONAL MATCH (p)-[:DEPLOYED_IN]->(env:Environment)
     OPTIONAL MATCH (p)-[:DEPENDS_ON]->(dep:Project)
+          -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(depOrg:Organization)
+    OPTIONAL MATCH (dep)-[:TYPE]->(depPt:ProjectType)
     WITH p, t, pt, o,
          collect(DISTINCT env{.*, organization: o{.*}}) AS envs,
-         count(DISTINCT dep) AS dependency_count
+         count(DISTINCT dep) AS dependency_count,
+         [x IN collect(DISTINCT
+             CASE WHEN dep IS NOT NULL
+                       AND depPt IS NOT NULL
+                       AND depOrg IS NOT NULL
+                  THEN '/organizations/' + depOrg.slug
+                       + '/projects/' + depPt.slug
+                       + '/' + dep.slug
+             END
+         ) WHERE x IS NOT NULL] AS dependency_uris
     RETURN p{.*,
         team: t{.*,
             organization: o{.*}
@@ -356,20 +392,22 @@ async def get_project(
         project_type: pt{.*,
             organization: o{.*}
         },
-        environments: envs
+        environments: envs,
+        dependency_uris: dependency_uris
     } AS project,
     dependency_count
     """
     records = await neo4j.query(
         query,
         slug=slug,
+        project_type_slug=project_type_slug,
         org_slug=org_slug,
     )
 
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Project with slug {slug!r} not found',
+            detail=(f'Project {project_type_slug!r}/{slug!r} not found'),
         )
     result = _add_relationships(
         records[0]['project'],
@@ -379,9 +417,10 @@ async def get_project(
     return ProjectResponse.model_validate(result)
 
 
-@projects_router.put('/{slug}')
+@projects_router.put('/{project_type_slug}/{slug}')
 async def update_project(
     org_slug: str,
+    project_type_slug: str,
     slug: str,
     data: ProjectUpdate,
     auth: typing.Annotated[
@@ -396,10 +435,9 @@ async def update_project(
 
     # Fetch existing project
     fetch_query: typing.LiteralString = """
-    MATCH (p:Project {slug: $slug})
-          -[:OWNED_BY]->(t:Team)
+    MATCH (p:Project {slug: $slug})-[:OWNED_BY]->(t:Team)
           -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    MATCH (p)-[:TYPE]->(pt:ProjectType)
+    MATCH (p)-[:TYPE]->(pt:ProjectType {slug: $project_type_slug})
     RETURN p{.*,
         team: t{.*,
             organization: o{.*}
@@ -408,24 +446,23 @@ async def update_project(
             organization: o{.*}
         }
     } AS project,
-    t.slug AS current_team_slug,
-    pt.slug AS current_pt_slug
+    t.slug AS current_team_slug
     """
     records = await neo4j.query(
         fetch_query,
         slug=slug,
+        project_type_slug=project_type_slug,
         org_slug=org_slug,
     )
 
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Project with slug {slug!r} not found',
+            detail=(f'Project {project_type_slug!r}/{slug!r} not found'),
         )
 
     existing = records[0]['project']
     effective_team_slug = data.team_slug or records[0]['current_team_slug']
-    effective_pt_slug = data.project_type_slug or records[0]['current_pt_slug']
 
     # Merge provided fields with existing values
     merged_name = data.name or existing.get('name', '')
@@ -457,7 +494,7 @@ async def update_project(
             ),
             project_type=models.ProjectType(
                 name='',
-                slug=effective_pt_slug,
+                slug=project_type_slug,
                 organization=models.Organization(
                     name='',
                     slug=org_slug,
@@ -486,7 +523,6 @@ async def update_project(
     props = project.model_dump(
         exclude={'team', 'project_type', 'environments'},
     )
-    props['project_type_slug'] = effective_pt_slug
 
     # Build update query with optional relationship changes
     rel_clauses: typing.LiteralString = ''
@@ -498,15 +534,6 @@ async def update_project(
     OPTIONAL MATCH (p)-[old_own:OWNED_BY]->(:Team)
     DELETE old_own
     CREATE (p)-[:OWNED_BY]->(new_t)
-    """
-    if data.project_type_slug:
-        rel_clauses += """
-    WITH p, o
-    MATCH (new_pt:ProjectType {slug: $new_pt_slug})
-          -[:BELONGS_TO]->(o)
-    OPTIONAL MATCH (p)-[old_type:TYPE]->(:ProjectType)
-    DELETE old_type
-    CREATE (p)-[:TYPE]->(new_pt)
     """
     if data.environment_slugs is not None:
         rel_clauses += """
@@ -529,9 +556,9 @@ async def update_project(
 
     update_query: typing.LiteralString = (
         """
-    MATCH (p:Project {slug: $slug})
-          -[:OWNED_BY]->(t:Team)
+    MATCH (p:Project {slug: $slug})-[:OWNED_BY]->(t:Team)
           -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    MATCH (p)-[:TYPE]->(pt_cur:ProjectType {slug: $project_type_slug})
     SET p = $props
     """
         + rel_clauses
@@ -541,9 +568,20 @@ async def update_project(
     MATCH (p)-[:TYPE]->(pt2:ProjectType)
     OPTIONAL MATCH (p)-[:DEPLOYED_IN]->(env:Environment)
     OPTIONAL MATCH (p)-[:DEPENDS_ON]->(dep:Project)
+          -[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(depOrg:Organization)
+    OPTIONAL MATCH (dep)-[:TYPE]->(depPt:ProjectType)
     WITH p, t2, pt2, o,
          collect(DISTINCT env{.*, organization: o{.*}}) AS envs,
-         count(DISTINCT dep) AS dependency_count
+         count(DISTINCT dep) AS dependency_count,
+         [x IN collect(DISTINCT
+             CASE WHEN dep IS NOT NULL
+                       AND depPt IS NOT NULL
+                       AND depOrg IS NOT NULL
+                  THEN '/organizations/' + depOrg.slug
+                       + '/projects/' + depPt.slug
+                       + '/' + dep.slug
+             END
+         ) WHERE x IS NOT NULL] AS dependency_uris
     RETURN p{.*,
         team: t2{.*,
             organization: o{.*}
@@ -551,7 +589,8 @@ async def update_project(
         project_type: pt2{.*,
             organization: o{.*}
         },
-        environments: envs
+        environments: envs,
+        dependency_uris: dependency_uris
     } AS project,
     dependency_count
     """
@@ -561,13 +600,13 @@ async def update_project(
         updated = await neo4j.query(
             update_query,
             slug=slug,
+            project_type_slug=project_type_slug,
             org_slug=org_slug,
             props=props,
             new_team_slug=data.team_slug or '',
-            new_pt_slug=data.project_type_slug or '',
             new_env_slugs=data.environment_slugs or [],
         )
-    except exceptions.ConstraintError as e:
+    except (exceptions.ConstraintError, exceptions.ClientError) as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
@@ -579,7 +618,7 @@ async def update_project(
     if not updated:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Project with slug {slug!r} not found',
+            detail=(f'Project {project_type_slug!r}/{slug!r} not found'),
         )
 
     result = _add_relationships(
@@ -590,9 +629,10 @@ async def update_project(
     return ProjectResponse.model_validate(result)
 
 
-@projects_router.delete('/{slug}', status_code=204)
+@projects_router.delete('/{project_type_slug}/{slug}', status_code=204)
 async def delete_project(
     org_slug: str,
+    project_type_slug: str,
     slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -603,20 +643,21 @@ async def delete_project(
 ) -> None:
     """Delete a project."""
     query: typing.LiteralString = """
-    MATCH (p:Project {slug: $slug})
-          -[:OWNED_BY]->(t:Team)
+    MATCH (p:Project {slug: $slug})-[:OWNED_BY]->(t:Team)
           -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    MATCH (p)-[:TYPE]->(pt:ProjectType {slug: $project_type_slug})
     DETACH DELETE p
     RETURN count(p) AS deleted
     """
     records = await neo4j.query(
         query,
         slug=slug,
+        project_type_slug=project_type_slug,
         org_slug=org_slug,
     )
 
     if not records or records[0].get('deleted', 0) == 0:
         raise fastapi.HTTPException(
             status_code=404,
-            detail=f'Project with slug {slug!r} not found',
+            detail=(f'Project {project_type_slug!r}/{slug!r} not found'),
         )

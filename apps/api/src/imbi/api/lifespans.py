@@ -10,9 +10,8 @@ import logging
 from collections import abc
 
 from imbi_common import clickhouse, neo4j
-from neo4j import exceptions as neo4j_exc
 
-from imbi_api import neo4j_indexes, openapi
+from imbi_api import openapi
 from imbi_api.email.client import EmailClient
 from imbi_api.email.templates import TemplateManager
 from imbi_api.storage.client import StorageClient
@@ -40,19 +39,11 @@ async def neo4j_hook() -> abc.AsyncIterator[None]:
 
 @contextlib.asynccontextmanager
 async def neo4j_setup_hook() -> abc.AsyncIterator[None]:
-    """Create indexes and refresh blueprint models.
+    """Refresh blueprint models after Neo4j is initialized.
 
-    Must run after :func:`neo4j_hook`.
+    Must run after :func:`neo4j_hook`. Index/constraint creation is
+    handled by :func:`imbi_common.neo4j.initialize`.
     """
-    async with neo4j.session() as sess:
-        for index in neo4j_indexes.INDEXES:
-            try:
-                await sess.run(index)
-            except neo4j_exc.ConstraintError as err:
-                LOGGER.debug('Index already exists: %s', err)
-            except Exception:
-                LOGGER.exception('Failed to create index: %s', index)
-                raise
     try:
         await openapi.refresh_blueprint_models()
     except Exception as err:  # noqa: BLE001

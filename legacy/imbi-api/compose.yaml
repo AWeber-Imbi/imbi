@@ -47,6 +47,10 @@ services:
     image: neo4j:latest
     environment:
       NEO4J_AUTH: none
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_apoc_trigger_enabled: 'true'
+      NEO4J_dbms_security_procedures_unrestricted: 'apoc.*'
+      NEO4J_dbms_security_procedures_allowlist: 'apoc.*'
     ports:
       - "7474"
       - "7687"
