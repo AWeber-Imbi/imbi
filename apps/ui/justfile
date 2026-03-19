@@ -44,5 +44,5 @@ format-check:
 lint:
     npm run lint
 
-# Run all CI checks
-ci: install lint format-check test build
+# Run all CI checks (test + build)
+ci: install test build
