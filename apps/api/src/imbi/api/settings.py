@@ -17,8 +17,16 @@ from imbi_common import settings
 # Re-export shared settings
 Clickhouse = settings.Clickhouse
 Neo4j = settings.Neo4j
-ServerConfig = settings.ServerConfig
 base_settings_config = settings.base_settings_config
+
+
+class ServerConfig(pydantic_settings.BaseSettings):
+    """API server bind configuration."""
+
+    model_config = settings.base_settings_config(env_prefix='IMBI_API_')
+    environment: str = 'development'
+    host: str = 'localhost'
+    port: int = 8000
 
 
 class Auth(settings.Auth):  # type: ignore[misc]
@@ -115,7 +123,7 @@ class Email(pydantic_settings.BaseSettings):
     @pydantic.model_validator(mode='after')
     def configure_mailpit_defaults(self) -> 'Email':
         """Auto-configure for Mailpit in development."""
-        if os.getenv('IMBI_ENVIRONMENT', 'development') != 'development':
+        if os.getenv('IMBI_API_ENVIRONMENT', 'development') != 'development':
             return self
         if self.smtp_host == 'localhost' and self.smtp_port == 587:
             mailpit_port = os.getenv('MAILPIT_SMTP_PORT')
@@ -177,7 +185,8 @@ def get_auth_settings() -> Auth:
 class APIConfiguration(settings.Configuration):  # type: ignore[misc]
     """Extended configuration for the API service.
 
-    Adds Email and Storage settings to the shared Configuration.
+    Adds ServerConfig, Email, and Storage settings to the shared
+    Configuration.
     """
 
     @pydantic.model_validator(mode='before')
@@ -189,7 +198,7 @@ class APIConfiguration(settings.Configuration):  # type: ignore[misc]
         settings_fields: dict[str, type[pydantic_settings.BaseSettings]] = {
             'clickhouse': settings.Clickhouse,
             'neo4j': settings.Neo4j,
-            'server': settings.ServerConfig,
+            'server': ServerConfig,
             'auth': Auth,
             'email': Email,
             'storage': Storage,
@@ -201,6 +210,7 @@ class APIConfiguration(settings.Configuration):  # type: ignore[misc]
                 data[field] = settings_cls(**data[field])
         return data
 
+    server: ServerConfig = pydantic.Field(default_factory=ServerConfig)
     auth: Auth = pydantic.Field(default_factory=Auth)  # pyright: ignore[reportIncompatibleVariableOverride]
     email: Email = pydantic.Field(default_factory=Email)
     storage: Storage = pydantic.Field(default_factory=Storage)
@@ -214,11 +224,13 @@ Configuration = APIConfiguration
 def load_config() -> APIConfiguration:
     """Load configuration from config.toml files.
 
-    Wraps the shared ``load_config`` to return an
-    ``APIConfiguration`` instance with email and storage sections.
+    Uses the shared ``load_config`` file-discovery logic but validates
+    the raw TOML data directly against ``APIConfiguration`` so that
+    API-specific sections (``[server]``, ``[email]``, ``[storage]``)
+    are included.
 
     """
-    data = settings.load_config().model_dump()
+    data = settings.load_config_data()
     return APIConfiguration.model_validate(  # type: ignore[no-any-return]
         data
     )

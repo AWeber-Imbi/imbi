@@ -38,25 +38,29 @@ class Neo4jClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIs(instance1, instance2)
 
     async def test_initialize(self) -> None:
-        """Test graph initialization creates indexes."""
+        """Test graph initialization creates indexes and triggers."""
         graph = client.Neo4j.get_instance()
         await graph.initialize()
         self.mock_driver.session.assert_called()
-        self.assertEqual(
-            self.mock_session.run.call_count, len(client.constants.INDEXES)
+        expected = len(client.constants.INDEXES) + len(
+            client.constants.TRIGGERS
         )
+        self.assertEqual(self.mock_session.run.call_count, expected)
 
     async def test_initialize_with_constraint_error(self) -> None:
         """Test initializing indexes handles constraint errors gracefully."""
         from neo4j import exceptions
 
-        # Mock the constants to have an index
-        with mock.patch(
-            'imbi_common.neo4j.constants.INDEXES',
-            [
-                'CREATE CONSTRAINT test IF NOT EXISTS FOR (n:Test) '
-                'REQUIRE n.id IS UNIQUE'
-            ],
+        # Mock the constants to have an index and no triggers
+        with (
+            mock.patch(
+                'imbi_common.neo4j.constants.INDEXES',
+                [
+                    'CREATE CONSTRAINT test IF NOT EXISTS FOR (n:Test) '
+                    'REQUIRE n.id IS UNIQUE'
+                ],
+            ),
+            mock.patch('imbi_common.neo4j.constants.TRIGGERS', []),
         ):
             # Mock session.run to raise ConstraintError
             self.mock_session.run.side_effect = exceptions.ConstraintError(

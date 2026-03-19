@@ -1,76 +1,16 @@
 import asyncio
 import datetime
 import getpass
-import pathlib
-import typing
 
 import typer
-import uvicorn
-from imbi_common import clickhouse, logging, neo4j
+from imbi_common import clickhouse, neo4j, server
 
-from imbi_api import models, settings, version
+from imbi_api import models
 from imbi_api.auth import password as password_auth
 from imbi_api.auth import seed
 
-main = typer.Typer()
-
-
-class UvicornParameters(typing.TypedDict):
-    factory: bool
-    host: str
-    log_config: dict[str, typing.Any]
-    port: int
-    reload: typing.NotRequired[bool]
-    reload_dirs: typing.NotRequired[list[str]]
-    reload_excludes: typing.NotRequired[list[str]]
-    proxy_headers: typing.NotRequired[bool]
-    headers: typing.NotRequired[list[tuple[str, str]]]
-    date_header: typing.NotRequired[bool]
-    server_header: typing.NotRequired[bool]
-    ws: typing.Literal[
-        'auto', 'none', 'websockets', 'websockets-sansio', 'wsproto'
-    ]
-
-
-@main.command()
-def serve(
-    *,
-    dev: bool = False,
-) -> None:
-    """Start the Imbi HTTP server"""
-    config = settings.ServerConfig()
-    log_config = logging.get_log_config()
-    logging.configure_logging(log_config)
-
-    params: UvicornParameters = {
-        'factory': True,
-        'host': config.host,
-        'port': config.port,
-        'log_config': typing.cast('dict[str, typing.Any]', log_config),
-        'proxy_headers': True,
-        'headers': [('Server', f'imbi/{version}')],
-        'date_header': True,
-        'server_header': False,
-        'ws': 'none',
-    }
-
-    if dev or config.environment == 'development':
-        loggers = typing.cast(
-            'dict[str, dict[str, object]]',
-            log_config.setdefault('loggers', {}),
-        )
-        loggers.setdefault('imbi', {})
-        loggers['imbi']['level'] = 'DEBUG'
-
-        params.update(
-            {
-                'reload': True,
-                'reload_dirs': [str(pathlib.Path.cwd() / 'src' / 'imbi_api')],
-                'reload_excludes': ['**/*.pyc'],
-            }
-        )
-
-    uvicorn.run('imbi_api.app:create_app', **params)
+main = typer.Typer(no_args_is_help=True)
+main.command('serve')(server.bind_entrypoint('imbi_api.app:create_app'))
 
 
 @main.command()
