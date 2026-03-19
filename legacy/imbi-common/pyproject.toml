@@ -85,6 +85,7 @@ allow-direct-references = true
 config-file = "mkdocs.yml"
 
 [tool.mypy]
+python_executable = ".venv/bin/python"
 strict = true
 show_error_codes = true
 

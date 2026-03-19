@@ -203,26 +203,6 @@ class AuthSettingsTestCase(unittest.TestCase):
         self.assertGreater(len(config.encryption_key), 0)
 
 
-class ServerConfigSettingsTestCase(unittest.TestCase):
-    """Test cases for ServerConfig settings."""
-
-    def test_default_settings(self) -> None:
-        """Test ServerConfig settings with defaults."""
-        config = settings.ServerConfig()
-        self.assertEqual(config.environment, 'development')
-        self.assertEqual(config.host, 'localhost')
-        self.assertEqual(config.port, 8000)
-
-    def test_custom_settings(self) -> None:
-        """Test ServerConfig with custom values."""
-        config = settings.ServerConfig(
-            environment='production', host='0.0.0.0', port=9000
-        )
-        self.assertEqual(config.environment, 'production')
-        self.assertEqual(config.host, '0.0.0.0')
-        self.assertEqual(config.port, 9000)
-
-
 class ConfigurationTestCase(unittest.TestCase):
     """Test cases for Configuration class."""
 
@@ -232,20 +212,16 @@ class ConfigurationTestCase(unittest.TestCase):
 
         self.assertIsInstance(config.clickhouse, settings.Clickhouse)
         self.assertIsInstance(config.neo4j, settings.Neo4j)
-        self.assertIsInstance(config.server, settings.ServerConfig)
         self.assertIsInstance(config.auth, settings.Auth)
 
     def test_configuration_from_dict(self) -> None:
         """Test Configuration from dictionary data."""
         data = {
-            'server': {'environment': 'production', 'host': '0.0.0.0'},
             'neo4j': {'url': 'neo4j://neo4j-prod:7687'},
         }
 
         config = settings.Configuration.model_validate(data)
 
-        self.assertEqual(config.server.environment, 'production')
-        self.assertEqual(config.server.host, '0.0.0.0')
         # URL may or may not have trailing slash depending on pydantic version
         self.assertIn(
             str(config.neo4j.url),
@@ -258,11 +234,9 @@ class ConfigurationTestCase(unittest.TestCase):
             original_cwd = os.getcwd()
             try:
                 os.chdir(tmpdir)
-                # Should work fine with defaults
                 config = settings.load_config()
 
                 self.assertIsInstance(config, settings.Configuration)
-                self.assertEqual(config.server.environment, 'development')
             finally:
                 os.chdir(original_cwd)
 
@@ -274,11 +248,6 @@ class ConfigurationTestCase(unittest.TestCase):
                 config_path = pathlib.Path(tmpdir) / 'config.toml'
                 config_path.write_text(
                     """
-[server]
-environment = "testing"
-host = "127.0.0.1"
-port = 9000
-
 [neo4j]
 database = "test-db"
 
@@ -287,40 +256,11 @@ access_token_expire_seconds = 7200
 """
                 )
 
-                # Save current directory and change to temp directory
                 os.chdir(tmpdir)
                 config = settings.load_config()
 
-                self.assertEqual(config.server.environment, 'testing')
-                self.assertEqual(config.server.host, '127.0.0.1')
-                self.assertEqual(config.server.port, 9000)
                 self.assertEqual(config.neo4j.database, 'test-db')
                 self.assertEqual(config.auth.access_token_expire_seconds, 7200)
-        finally:
-            os.chdir(original_cwd)
-
-    def test_configuration_toml_values_used(self) -> None:
-        """Test that config.toml values are loaded correctly."""
-        original_cwd = os.getcwd()
-        try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                config_path = pathlib.Path(tmpdir) / 'config.toml'
-                config_path.write_text(
-                    """
-[server]
-environment = "testing"
-port = 9000
-host = "127.0.0.1"
-"""
-                )
-
-                os.chdir(tmpdir)
-                config = settings.load_config()
-
-                # TOML values should be loaded
-                self.assertEqual(config.server.environment, 'testing')
-                self.assertEqual(config.server.port, 9000)
-                self.assertEqual(config.server.host, '127.0.0.1')
         finally:
             os.chdir(original_cwd)
 

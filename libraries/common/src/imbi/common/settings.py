@@ -87,13 +87,6 @@ class Neo4j(pydantic_settings.BaseSettings):
         return self
 
 
-class ServerConfig(pydantic_settings.BaseSettings):
-    model_config = base_settings_config(env_prefix='IMBI_')
-    environment: str = 'development'
-    host: str = 'localhost'
-    port: int = 8000
-
-
 class Auth(pydantic_settings.BaseSettings):
     """Authentication settings shared across Imbi services.
 
@@ -153,11 +146,6 @@ class Configuration(pydantic.BaseModel):
     Environment variables always take precedence over config file values.
 
     Example config.toml:
-        [server]
-        environment = "production"
-        host = "0.0.0.0"
-        port = 8080
-
         [neo4j]
         url = "neo4j://neo4j-prod:7687"
         user = "admin"
@@ -188,7 +176,6 @@ class Configuration(pydantic.BaseModel):
         settings_fields: dict[str, type[pydantic_settings.BaseSettings]] = {
             'clickhouse': Clickhouse,
             'neo4j': Neo4j,
-            'server': ServerConfig,
             'auth': Auth,
         }
         for field, settings_cls in settings_fields.items():
@@ -201,22 +188,22 @@ class Configuration(pydantic.BaseModel):
 
     clickhouse: Clickhouse = pydantic.Field(default_factory=Clickhouse)
     neo4j: Neo4j = pydantic.Field(default_factory=Neo4j)
-    server: ServerConfig = pydantic.Field(default_factory=ServerConfig)
     auth: Auth = pydantic.Field(default_factory=Auth)
 
 
-def load_config() -> Configuration:
-    """Load configuration from config.toml files with environment overrides.
+def load_config_data() -> dict[str, typing.Any]:
+    """Load raw configuration data from config.toml files.
 
     Checks for config files in priority order:
     1. ./config.toml (project root)
     2. ~/.config/imbi/config.toml (user config)
     3. /etc/imbi/config.toml (system config)
 
-    Environment variables always override config file values.
+    Returns the merged dictionary without validation so that callers
+    can validate against their own Configuration subclass.
 
     Returns:
-        Configuration object with merged settings
+        Merged configuration dictionary
 
     """
     config_paths = [
@@ -246,7 +233,24 @@ def load_config() -> Configuration:
                 LOGGER.warning('Failed to load %s: %s', config_path, e)
                 continue
 
-    return Configuration.model_validate(config_data)
+    return config_data
+
+
+def load_config() -> Configuration:
+    """Load configuration from config.toml files with environment overrides.
+
+    Checks for config files in priority order:
+    1. ./config.toml (project root)
+    2. ~/.config/imbi/config.toml (user config)
+    3. /etc/imbi/config.toml (system config)
+
+    Environment variables always override config file values.
+
+    Returns:
+        Configuration object with merged settings
+
+    """
+    return Configuration.model_validate(load_config_data())
 
 
 # Module-level singleton for Auth settings to ensure stable JWT secret
