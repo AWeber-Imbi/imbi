@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import { Plus, Search, Trash2, Users, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '../ui/button'
@@ -71,7 +72,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams', orgSlug] })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to delete team: ${error.response?.data?.detail || error.message}`,
       )

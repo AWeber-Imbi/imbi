@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import {
   ArrowLeft,
   Edit2,
@@ -61,7 +62,7 @@ export function TeamDetail({
       setNewMemberEmail('')
       setShowAddMember(false)
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to add member: ${error.response?.data?.detail || error.message}`,
       )
@@ -76,7 +77,7 @@ export function TeamDetail({
         queryKey: ['teamMembers', team.organization.slug, team.slug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to remove member: ${error.response?.data?.detail || error.message}`,
       )
@@ -278,8 +279,8 @@ export function TeamDetail({
                   }`}
                 >
                   <AlertCircle className="h-3 w-3" />
-                  {(addMemberMutation.error as any)?.response?.data?.detail ||
-                    'Failed to add member'}
+                  {(addMemberMutation.error as AxiosError<{ detail?: string }>)
+                    ?.response?.data?.detail || 'Failed to add member'}
                 </div>
               )}
             </div>

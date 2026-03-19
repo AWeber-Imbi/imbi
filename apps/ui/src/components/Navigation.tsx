@@ -250,11 +250,9 @@ export function Navigation({
                 size="icon"
                 className={`rounded-full p-0 ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
               >
-                {user?.email_address || (user as any)?.email ? (
+                {user?.email_address ? (
                   <Gravatar
-                    email={
-                      (user?.email_address || (user as any)?.email) as string
-                    }
+                    email={user.email_address}
                     size={32}
                     alt={user?.display_name || user?.username || 'User'}
                     className="h-8 w-8 rounded-full"

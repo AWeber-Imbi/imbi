@@ -16,7 +16,7 @@ interface ThirdPartyServiceFormProps {
   onCancel: () => void
   isDarkMode: boolean
   isLoading?: boolean
-  error?: any
+  error?: { response?: { data?: { detail?: string } }; message?: string } | null
 }
 
 const STATUS_OPTIONS = [

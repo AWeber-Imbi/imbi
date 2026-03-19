@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import {
   ArrowLeft,
   Edit2,
@@ -103,7 +104,7 @@ export function RoleDetail({
       setShowAddPermission(false)
       setSelectedPermission('')
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to grant permission: ${error.response?.data?.detail || error.message}`,
       )
@@ -116,7 +117,7 @@ export function RoleDetail({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['role', slug] })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to revoke permission: ${error.response?.data?.detail || error.message}`,
       )

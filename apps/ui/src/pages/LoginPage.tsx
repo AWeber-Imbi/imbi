@@ -74,11 +74,15 @@ export function LoginPage() {
       await login(credentials)
       // Remember email on successful login
       localStorage.setItem(REMEMBERED_EMAIL_KEY, credentials.email)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[Login] Password login failed:', error)
+      const axiosErr = error as {
+        response?: { data?: { message?: string } }
+        message?: string
+      }
       setLoginError(
-        error.response?.data?.message ||
-          error.message ||
+        axiosErr.response?.data?.message ||
+          axiosErr.message ||
           'Login failed. Please check your credentials.',
       )
     }

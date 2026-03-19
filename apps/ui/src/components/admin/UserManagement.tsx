@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import {
   Plus,
   Search,
@@ -62,7 +63,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to delete user: ${error.response?.data?.detail || error.message}`,
       )
@@ -76,7 +77,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to update user: ${error.response?.data?.detail || error.message}`,
       )
@@ -90,7 +91,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       goToList()
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       // Error will be displayed in the UserForm component
       console.error('Failed to create user:', error)
     },
@@ -104,7 +105,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       goToList()
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       // Error will be displayed in the UserForm component
       console.error('Failed to update user:', error)
     },

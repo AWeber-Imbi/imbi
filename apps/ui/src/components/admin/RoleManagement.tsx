@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import {
   Plus,
   Search,
@@ -58,7 +59,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to delete role: ${error.response?.data?.detail || error.message}`,
       )
@@ -98,7 +99,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
       goToList()
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       console.error('Failed to create role:', error)
     },
   })
@@ -122,7 +123,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['role'] })
       goToList()
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       console.error('Failed to update role:', error)
     },
   })

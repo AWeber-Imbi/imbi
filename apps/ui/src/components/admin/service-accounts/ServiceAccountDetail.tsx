@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import {
   ArrowLeft,
   Edit2,
@@ -103,7 +104,7 @@ export function ServiceAccountDetail({
       setNewOrgSlug('')
       setNewRoleSlug('')
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to add to organization: ${error.response?.data?.detail || error.message}`,
       )
@@ -127,7 +128,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccount', account.slug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to update role: ${error.response?.data?.detail || error.message}`,
       )
@@ -143,7 +144,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccount', account.slug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to remove from organization: ${error.response?.data?.detail || error.message}`,
       )
@@ -199,7 +200,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to create API key: ${error.response?.data?.detail || error.message}`,
       )
@@ -214,7 +215,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to revoke API key: ${error.response?.data?.detail || error.message}`,
       )
@@ -230,7 +231,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to rotate API key: ${error.response?.data?.detail || error.message}`,
       )
@@ -249,7 +250,7 @@ export function ServiceAccountDetail({
         queryKey: ['clientCredentials', account.slug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to create credential: ${error.response?.data?.detail || error.message}`,
       )
@@ -264,7 +265,7 @@ export function ServiceAccountDetail({
         queryKey: ['clientCredentials', account.slug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to revoke credential: ${error.response?.data?.detail || error.message}`,
       )
@@ -280,7 +281,7 @@ export function ServiceAccountDetail({
         queryKey: ['clientCredentials', account.slug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to rotate credential: ${error.response?.data?.detail || error.message}`,
       )

@@ -1,1 +1,32 @@
+#!/bin/sh
+
+# Check for merge conflict markers in staged files
+conflict_files=$(git diff --cached --diff-filter=ACM --name-only)
+if [ -n "$conflict_files" ]; then
+  echo "$conflict_files" | while read -r file; do
+    if git show ":$file" 2>/dev/null | grep -qE '^(<{7}|>{7}|={7})'; then
+      echo "Error: merge conflict markers found in $file"
+      exit 1
+    fi
+  done || exit 1
+fi
+
+# Check for large files (>500KB) among staged files
+git diff --cached --diff-filter=ACM --name-only | while read -r file; do
+  size=$(git cat-file -s ":$file" 2>/dev/null || echo 0)
+  if [ "$size" -gt 512000 ]; then
+    echo "Error: $file is too large ($((size / 1024))KB, limit 500KB)"
+    exit 1
+  fi
+done || exit 1
+
+# Check for debugger statements in staged JS/TS files
+git diff --cached --diff-filter=ACM --name-only -- '*.ts' '*.tsx' '*.js' '*.jsx' | while read -r file; do
+  if git show ":$file" 2>/dev/null | grep -qn '\bdebugger\b'; then
+    echo "Error: debugger statement found in $file"
+    exit 1
+  fi
+done || exit 1
+
+# Lint and format staged files
 npx lint-staged

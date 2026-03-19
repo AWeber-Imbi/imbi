@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import Ajv from 'ajv'
 import addFormats from 'ajv-formats'
 import { AlertCircle } from 'lucide-react'

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import { Plus, Trash2, Key, AlertCircle, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -100,7 +101,7 @@ export function OAuth2ApplicationList({
         queryKey: ['service-applications', orgSlug, serviceSlug],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to delete application: ${error.response?.data?.detail || error.message}`,
       )

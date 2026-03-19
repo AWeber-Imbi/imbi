@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import { Plus, Search, Trash2, Power, Bot, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
@@ -58,7 +59,7 @@ export function ServiceAccountManagement({
         queryKey: ['serviceAccounts'],
       })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to delete service account: ${error.response?.data?.detail || error.message}`,
       )
@@ -74,7 +75,7 @@ export function ServiceAccountManagement({
       })
       goToList()
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       console.error('Failed to create service account:', error)
     },
   })
@@ -94,7 +95,7 @@ export function ServiceAccountManagement({
       })
       goToList()
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       console.error('Failed to update service account:', error)
     },
   })

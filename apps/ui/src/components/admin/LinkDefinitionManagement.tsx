@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import { Plus, Search, Trash2, Link2, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
@@ -80,7 +81,7 @@ export function LinkDefinitionManagement({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['linkDefinitions', orgSlug] })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to delete link definition: ${error.response?.data?.detail || error.message}`,
       )

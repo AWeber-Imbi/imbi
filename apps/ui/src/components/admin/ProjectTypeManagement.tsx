@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import { Plus, Search, Trash2, Layers, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
@@ -77,7 +78,7 @@ export function ProjectTypeManagement({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projectTypes', orgSlug] })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to delete project type: ${error.response?.data?.detail || error.message}`,
       )

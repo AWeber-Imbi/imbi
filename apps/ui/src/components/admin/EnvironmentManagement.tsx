@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import { Plus, Search, Trash2, Globe, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
@@ -82,7 +83,7 @@ export function EnvironmentManagement({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['environments', orgSlug] })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to delete environment: ${error.response?.data?.detail || error.message}`,
       )

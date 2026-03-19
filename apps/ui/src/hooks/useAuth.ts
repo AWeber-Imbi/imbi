@@ -36,12 +36,15 @@ export function useAuth(): UseAuthReturn {
       }
       try {
         return await getUserByUsername(username)
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[Auth] Error fetching user:', error)
         // Check if it's a "user not found or inactive" error
+        const axiosErr = error as {
+          response?: { status?: number; data?: { detail?: string } }
+        }
         if (
-          error.response?.status === 401 &&
-          error.response?.data?.detail?.includes('not found or inactive')
+          axiosErr.response?.status === 401 &&
+          axiosErr.response?.data?.detail?.includes('not found or inactive')
         ) {
           console.log('[Auth] User not found or inactive, clearing tokens')
           clearTokens()
@@ -108,7 +111,7 @@ export function useAuth(): UseAuthReturn {
         await refetch()
         // This redirect is now handled in LoginPage
         // to be consistent with OAuth flow
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('[Auth] Failed to fetch user after login:', error)
         // Re-throw to show error on login page
         throw error

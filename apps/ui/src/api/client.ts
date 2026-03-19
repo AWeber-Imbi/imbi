@@ -1,4 +1,8 @@
-import axios, { AxiosError, AxiosInstance } from 'axios'
+import axios, {
+  AxiosError,
+  AxiosInstance,
+  InternalAxiosRequestConfig,
+} from 'axios'
 import { useAuthStore } from '@/stores/authStore'
 import type { TokenResponse } from '@/types'
 
@@ -115,7 +119,9 @@ class ApiClient {
           error.message,
         )
 
-        const originalRequest = error.config as any
+        const originalRequest = error.config as InternalAxiosRequestConfig & {
+          _retry?: boolean
+        }
 
         if (error.response?.status === 401 && !originalRequest._retry) {
           console.log('[API] Got 401, attempting token refresh...')

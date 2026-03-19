@@ -11,7 +11,7 @@ interface OrganizationFormProps {
   onCancel: () => void
   isDarkMode: boolean
   isLoading?: boolean
-  error?: any
+  error?: { response?: { data?: { detail?: string } }; message?: string } | null
 }
 
 export function OrganizationForm({
