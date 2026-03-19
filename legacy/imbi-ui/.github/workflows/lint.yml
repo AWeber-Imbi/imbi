@@ -20,14 +20,11 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install just
-        uses: extractions/setup-just@v2
-
       - name: Install dependencies
-        run: just install
+        run: npm ci
 
       - name: Lint
-        run: just lint
+        run: npm run lint
 
       - name: Check formatting
-        run: just format-check
+        run: npm run format:check
