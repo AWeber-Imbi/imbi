@@ -58,7 +58,7 @@ export function LocalLoginForm({
 
     try {
       await onSubmit({ email: email.trim(), password })
-    } catch (err) {
+    } catch (_err) {
       // Error handling done by parent
     }
   }

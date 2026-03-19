@@ -21,7 +21,6 @@ Object.defineProperty(globalThis, 'localStorage', {
   writable: true,
 })
 
-// @ts-ignore - global is available in vitest
 globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
   unobserve: vi.fn(),

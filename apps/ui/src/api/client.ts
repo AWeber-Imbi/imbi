@@ -83,7 +83,7 @@ class ApiClient {
           console.log('[API] Token expired, refreshing...')
           try {
             token = await refreshAccessToken(this.client)
-          } catch (error) {
+          } catch (_error) {
             console.error(
               '[API] Token refresh failed, proceeding without token',
             )
