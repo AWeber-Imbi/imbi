@@ -1,9 +1,5 @@
 import { useEffect, useState } from 'react'
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   Edit2,
@@ -65,8 +61,9 @@ export function ServiceAccountDetail({
   // API Keys state
   const [newKeyName, setNewKeyName] = useState('')
   const [showCreateKey, setShowCreateKey] = useState(false)
-  const [newlyCreatedKey, setNewlyCreatedKey] =
-    useState<ApiKeyCreated | null>(null)
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState<ApiKeyCreated | null>(
+    null,
+  )
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
   // Client Credentials state
@@ -89,33 +86,51 @@ export function ServiceAccountDetail({
     queryFn: getRoles,
   })
 
-  const memberOrgSlugs = new Set((account.organizations ?? []).map(o => o.organization_slug))
-  const availableOrgs = allOrgs.filter(o => !memberOrgSlugs.has(o.slug))
+  const memberOrgSlugs = new Set(
+    (account.organizations ?? []).map((o) => o.organization_slug),
+  )
+  const availableOrgs = allOrgs.filter((o) => !memberOrgSlugs.has(o.slug))
 
   const addOrgMutation = useMutation({
     mutationFn: (data: { organization_slug: string; role_slug: string }) =>
       addServiceAccountToOrg(account.slug, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
-      queryClient.invalidateQueries({ queryKey: ['serviceAccount', account.slug] })
+      queryClient.invalidateQueries({
+        queryKey: ['serviceAccount', account.slug],
+      })
       setShowAddOrg(false)
       setNewOrgSlug('')
       setNewRoleSlug('')
     },
     onError: (error: any) => {
-      alert(`Failed to add to organization: ${error.response?.data?.detail || error.message}`)
+      alert(
+        `Failed to add to organization: ${error.response?.data?.detail || error.message}`,
+      )
     },
   })
 
   const updateOrgRoleMutation = useMutation({
-    mutationFn: ({ orgSlug, roleSlug }: { orgSlug: string; roleSlug: string }) =>
-      updateServiceAccountOrgRole(account.slug, orgSlug, { role_slug: roleSlug }),
+    mutationFn: ({
+      orgSlug,
+      roleSlug,
+    }: {
+      orgSlug: string
+      roleSlug: string
+    }) =>
+      updateServiceAccountOrgRole(account.slug, orgSlug, {
+        role_slug: roleSlug,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
-      queryClient.invalidateQueries({ queryKey: ['serviceAccount', account.slug] })
+      queryClient.invalidateQueries({
+        queryKey: ['serviceAccount', account.slug],
+      })
     },
     onError: (error: any) => {
-      alert(`Failed to update role: ${error.response?.data?.detail || error.message}`)
+      alert(
+        `Failed to update role: ${error.response?.data?.detail || error.message}`,
+      )
     },
   })
 
@@ -124,10 +139,14 @@ export function ServiceAccountDetail({
       removeServiceAccountFromOrg(account.slug, orgSlug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceAccounts'] })
-      queryClient.invalidateQueries({ queryKey: ['serviceAccount', account.slug] })
+      queryClient.invalidateQueries({
+        queryKey: ['serviceAccount', account.slug],
+      })
     },
     onError: (error: any) => {
-      alert(`Failed to remove from organization: ${error.response?.data?.detail || error.message}`)
+      alert(
+        `Failed to remove from organization: ${error.response?.data?.detail || error.message}`,
+      )
     },
   })
 
@@ -182,7 +201,7 @@ export function ServiceAccountDetail({
     },
     onError: (error: any) => {
       alert(
-        `Failed to create API key: ${error.response?.data?.detail || error.message}`
+        `Failed to create API key: ${error.response?.data?.detail || error.message}`,
       )
     },
   })
@@ -197,7 +216,7 @@ export function ServiceAccountDetail({
     },
     onError: (error: any) => {
       alert(
-        `Failed to revoke API key: ${error.response?.data?.detail || error.message}`
+        `Failed to revoke API key: ${error.response?.data?.detail || error.message}`,
       )
     },
   })
@@ -213,7 +232,7 @@ export function ServiceAccountDetail({
     },
     onError: (error: any) => {
       alert(
-        `Failed to rotate API key: ${error.response?.data?.detail || error.message}`
+        `Failed to rotate API key: ${error.response?.data?.detail || error.message}`,
       )
     },
   })
@@ -232,7 +251,7 @@ export function ServiceAccountDetail({
     },
     onError: (error: any) => {
       alert(
-        `Failed to create credential: ${error.response?.data?.detail || error.message}`
+        `Failed to create credential: ${error.response?.data?.detail || error.message}`,
       )
     },
   })
@@ -247,7 +266,7 @@ export function ServiceAccountDetail({
     },
     onError: (error: any) => {
       alert(
-        `Failed to revoke credential: ${error.response?.data?.detail || error.message}`
+        `Failed to revoke credential: ${error.response?.data?.detail || error.message}`,
       )
     },
   })
@@ -263,7 +282,7 @@ export function ServiceAccountDetail({
     },
     onError: (error: any) => {
       alert(
-        `Failed to rotate credential: ${error.response?.data?.detail || error.message}`
+        `Failed to rotate credential: ${error.response?.data?.detail || error.message}`,
       )
     },
   })
@@ -304,7 +323,7 @@ export function ServiceAccountDetail({
   const handleRevokeKey = (keyId: string) => {
     if (
       confirm(
-        'Are you sure you want to revoke this API key? This action cannot be undone.'
+        'Are you sure you want to revoke this API key? This action cannot be undone.',
       )
     ) {
       revokeKeyMutation.mutate(keyId)
@@ -314,7 +333,7 @@ export function ServiceAccountDetail({
   const handleRotateKey = (keyId: string) => {
     if (
       confirm(
-        'Are you sure you want to rotate this API key? The old key will stop working immediately.'
+        'Are you sure you want to rotate this API key? The old key will stop working immediately.',
       )
     ) {
       rotateKeyMutation.mutate(keyId)
@@ -327,9 +346,7 @@ export function ServiceAccountDetail({
       .map((s) => s.trim())
       .filter(Boolean)
     const expiresInDays =
-      credentialExpiresDays.trim() === ''
-        ? null
-        : Number(credentialExpiresDays)
+      credentialExpiresDays.trim() === '' ? null : Number(credentialExpiresDays)
 
     if (
       expiresInDays !== null &&
@@ -351,7 +368,7 @@ export function ServiceAccountDetail({
   const handleRevokeCredential = (clientId: string) => {
     if (
       confirm(
-        'Are you sure you want to revoke this credential? This action cannot be undone.'
+        'Are you sure you want to revoke this credential? This action cannot be undone.',
       )
     ) {
       revokeCredentialMutation.mutate(clientId)
@@ -361,7 +378,7 @@ export function ServiceAccountDetail({
   const handleRotateCredential = (clientId: string) => {
     if (
       confirm(
-        'Are you sure you want to rotate this credential? The old secret will stop working immediately.'
+        'Are you sure you want to rotate this credential? The old secret will stop working immediately.',
       )
     ) {
       rotateCredentialMutation.mutate(clientId)
@@ -381,11 +398,9 @@ export function ServiceAccountDetail({
           <Button
             variant="outline"
             onClick={onBack}
-            className={
-              isDarkMode ? 'border-gray-600 text-gray-300' : ''
-            }
+            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
+            <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
           <div>
@@ -403,19 +418,19 @@ export function ServiceAccountDetail({
         </div>
         <Button
           onClick={onEdit}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
         >
-          <Edit2 className="w-4 h-4 mr-2" />
+          <Edit2 className="mr-2 h-4 w-4" />
           Edit Account
         </Button>
       </div>
 
       {/* Account Status */}
       <div
-        className={`p-6 rounded-lg border ${
+        className={`rounded-lg border p-6 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <h3
@@ -425,7 +440,7 @@ export function ServiceAccountDetail({
         </h3>
         <div className="flex items-center gap-6">
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 rounded ${
+            className={`flex items-center gap-2 rounded px-3 py-1.5 ${
               account.is_active
                 ? isDarkMode
                   ? 'bg-green-900/30 text-green-400'
@@ -435,11 +450,11 @@ export function ServiceAccountDetail({
                   : 'bg-gray-100 text-gray-600'
             }`}
           >
-            <Power className="w-4 h-4" />
+            <Power className="h-4 w-4" />
             {account.is_active ? 'Active' : 'Inactive'}
           </div>
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 rounded ${
+            className={`flex items-center gap-2 rounded px-3 py-1.5 ${
               isDarkMode
                 ? 'bg-purple-900/30 text-purple-400'
                 : 'bg-purple-100 text-purple-700'
@@ -452,16 +467,16 @@ export function ServiceAccountDetail({
 
       {/* Organization Memberships */}
       <div
-        className={`p-6 rounded-lg border ${
+        className={`rounded-lg border p-6 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Building2
-              className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              className={`h-5 w-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             />
             <h3
               className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
@@ -480,7 +495,7 @@ export function ServiceAccountDetail({
                   : ''
               }
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="mr-2 h-4 w-4" />
               Add to Organization
             </Button>
           )}
@@ -489,26 +504,26 @@ export function ServiceAccountDetail({
         {/* Add to Organization Form */}
         {showAddOrg && (
           <div
-            className={`mb-4 p-4 rounded-lg border ${
+            className={`mb-4 rounded-lg border p-4 ${
               isDarkMode
                 ? 'bg-gray-750 border-gray-600'
-                : 'bg-gray-50 border-gray-200'
+                : 'border-gray-200 bg-gray-50'
             }`}
           >
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label
-                  className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
                   Organization
                 </label>
                 <select
                   value={newOrgSlug}
                   onChange={(e) => setNewOrgSlug(e.target.value)}
-                  className={`w-full px-3 py-2 rounded-md border text-sm ${
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${
                     isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
+                      ? 'border-gray-600 bg-gray-700 text-white'
+                      : 'border-gray-300 bg-white text-gray-900'
                   }`}
                 >
                   <option value="">Select...</option>
@@ -521,17 +536,17 @@ export function ServiceAccountDetail({
               </div>
               <div>
                 <label
-                  className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
                   Role
                 </label>
                 <select
                   value={newRoleSlug}
                   onChange={(e) => setNewRoleSlug(e.target.value)}
-                  className={`w-full px-3 py-2 rounded-md border text-sm ${
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${
                     isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
+                      ? 'border-gray-600 bg-gray-700 text-white'
+                      : 'border-gray-300 bg-white text-gray-900'
                   }`}
                 >
                   <option value="">Select...</option>
@@ -543,7 +558,7 @@ export function ServiceAccountDetail({
                 </select>
               </div>
             </div>
-            <div className="flex items-center gap-2 mt-3">
+            <div className="mt-3 flex items-center gap-2">
               <Button
                 onClick={() =>
                   addOrgMutation.mutate({
@@ -552,11 +567,9 @@ export function ServiceAccountDetail({
                   })
                 }
                 disabled={
-                  !newOrgSlug ||
-                  !newRoleSlug ||
-                  addOrgMutation.isPending
+                  !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
                 }
-                className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+                className="bg-[#2A4DD0] text-white hover:bg-blue-700"
                 size="sm"
               >
                 {addOrgMutation.isPending ? 'Adding...' : 'Add'}
@@ -569,11 +582,7 @@ export function ServiceAccountDetail({
                   setNewOrgSlug('')
                   setNewRoleSlug('')
                 }}
-                className={
-                  isDarkMode
-                    ? 'border-gray-600 text-gray-300'
-                    : ''
-                }
+                className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
               >
                 Cancel
               </Button>
@@ -584,88 +593,84 @@ export function ServiceAccountDetail({
         {/* Memberships List */}
         {(account.organizations ?? []).length > 0 ? (
           <div className="space-y-2">
-            {(account.organizations ?? []).map(
-              (membership: OrgMembership) => (
-                <div
-                  key={membership.organization_slug}
-                  className={`flex items-center justify-between p-3 rounded-lg border ${
-                    isDarkMode
-                      ? 'bg-gray-750 border-gray-600'
-                      : 'bg-gray-50 border-gray-200'
-                  }`}
-                >
-                  <div className="flex-1">
-                    <div
-                      className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                    >
-                      {membership.organization_name}
-                    </div>
-                    <div
-                      className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
-                    >
-                      {membership.organization_slug}
-                    </div>
+            {(account.organizations ?? []).map((membership: OrgMembership) => (
+              <div
+                key={membership.organization_slug}
+                className={`flex items-center justify-between rounded-lg border p-3 ${
+                  isDarkMode
+                    ? 'bg-gray-750 border-gray-600'
+                    : 'border-gray-200 bg-gray-50'
+                }`}
+              >
+                <div className="flex-1">
+                  <div
+                    className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    {membership.organization_name}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={membership.role}
-                      onChange={(e) =>
-                        updateOrgRoleMutation.mutate({
-                          orgSlug: membership.organization_slug,
-                          roleSlug: e.target.value,
-                        })
-                      }
-                      disabled={updateOrgRoleMutation.isPending}
-                      className={`px-2 py-1 rounded border text-xs ${
-                        isDarkMode
-                          ? 'bg-gray-700 border-gray-600 text-white'
-                          : 'bg-white border-gray-300 text-gray-900'
-                      }`}
-                    >
-                      {availableRoles.map((role) => (
-                        <option key={role.slug} value={role.slug}>
-                          {role.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => {
-                        if (
-                          confirm(
-                            `Remove ${account.display_name} from ${membership.organization_name}?`
-                          )
-                        ) {
-                          removeOrgMutation.mutate(
-                            membership.organization_slug
-                          )
-                        }
-                      }}
-                      disabled={removeOrgMutation.isPending}
-                      className={`p-1.5 rounded ${
-                        isDarkMode
-                          ? 'text-red-400 hover:text-red-300 hover:bg-gray-700'
-                          : 'text-red-600 hover:text-red-700 hover:bg-gray-100'
-                      }`}
-                      title="Remove from organization"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div
+                    className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                  >
+                    {membership.organization_slug}
                   </div>
                 </div>
-              )
-            )}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={membership.role}
+                    onChange={(e) =>
+                      updateOrgRoleMutation.mutate({
+                        orgSlug: membership.organization_slug,
+                        roleSlug: e.target.value,
+                      })
+                    }
+                    disabled={updateOrgRoleMutation.isPending}
+                    className={`rounded border px-2 py-1 text-xs ${
+                      isDarkMode
+                        ? 'border-gray-600 bg-gray-700 text-white'
+                        : 'border-gray-300 bg-white text-gray-900'
+                    }`}
+                  >
+                    {availableRoles.map((role) => (
+                      <option key={role.slug} value={role.slug}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Remove ${account.display_name} from ${membership.organization_name}?`,
+                        )
+                      ) {
+                        removeOrgMutation.mutate(membership.organization_slug)
+                      }
+                    }}
+                    disabled={removeOrgMutation.isPending}
+                    className={`rounded p-1.5 ${
+                      isDarkMode
+                        ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                        : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
+                    }`}
+                    title="Remove from organization"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           <div
-            className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
           >
             <Building2
-              className={`w-8 h-8 mx-auto mb-2 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
+              className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
             />
             <div>Not a member of any organization</div>
-            <div className="text-sm mt-1">
-              This service account has no permissions until added to
-              an organization
+            <div className="mt-1 text-sm">
+              This service account has no permissions until added to an
+              organization
             </div>
           </div>
         )}
@@ -673,16 +678,16 @@ export function ServiceAccountDetail({
 
       {/* Client Credentials */}
       <div
-        className={`p-6 rounded-lg border ${
+        className={`rounded-lg border p-6 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Shield
-              className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              className={`h-5 w-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             />
             <h3
               className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
@@ -691,9 +696,7 @@ export function ServiceAccountDetail({
             </h3>
           </div>
           <Button
-            onClick={() =>
-              setShowCreateCredential(!showCreateCredential)
-            }
+            onClick={() => setShowCreateCredential(!showCreateCredential)}
             variant="outline"
             size="sm"
             className={
@@ -702,7 +705,7 @@ export function ServiceAccountDetail({
                 : ''
             }
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="mr-2 h-4 w-4" />
             Create Credential
           </Button>
         </div>
@@ -710,16 +713,16 @@ export function ServiceAccountDetail({
         {/* Create Credential Form */}
         {showCreateCredential && (
           <div
-            className={`mb-4 p-4 rounded-lg border ${
+            className={`mb-4 rounded-lg border p-4 ${
               isDarkMode
                 ? 'bg-gray-750 border-gray-600'
-                : 'bg-gray-50 border-gray-200'
+                : 'border-gray-200 bg-gray-50'
             }`}
           >
             <div className="space-y-3">
               <div>
                 <label
-                  className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
                   Name <span className="text-red-500">*</span>
                 </label>
@@ -728,34 +731,28 @@ export function ServiceAccountDetail({
                   onChange={(e) => setCredentialName(e.target.value)}
                   placeholder="e.g., production-api"
                   className={
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : ''
+                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
                   }
                 />
               </div>
               <div>
                 <label
-                  className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
                   Description
                 </label>
                 <Input
                   value={credentialDescription}
-                  onChange={(e) =>
-                    setCredentialDescription(e.target.value)
-                  }
+                  onChange={(e) => setCredentialDescription(e.target.value)}
                   placeholder="What is this credential used for?"
                   className={
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : ''
+                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
                   }
                 />
               </div>
               <div>
                 <label
-                  className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
                   Scopes{' '}
                   <span
@@ -769,15 +766,13 @@ export function ServiceAccountDetail({
                   onChange={(e) => setCredentialScopes(e.target.value)}
                   placeholder="e.g., read:projects, write:projects"
                   className={
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : ''
+                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
                   }
                 />
               </div>
               <div>
                 <label
-                  className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
                   Expires in (days){' '}
                   <span
@@ -790,14 +785,10 @@ export function ServiceAccountDetail({
                   type="number"
                   min="1"
                   value={credentialExpiresDays}
-                  onChange={(e) =>
-                    setCredentialExpiresDays(e.target.value)
-                  }
+                  onChange={(e) => setCredentialExpiresDays(e.target.value)}
                   placeholder="e.g., 90"
                   className={
-                    isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : ''
+                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
                   }
                 />
               </div>
@@ -805,10 +796,9 @@ export function ServiceAccountDetail({
                 <Button
                   onClick={handleCreateCredential}
                   disabled={
-                    !credentialName.trim() ||
-                    createCredentialMutation.isPending
+                    !credentialName.trim() || createCredentialMutation.isPending
                   }
-                  className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+                  className="bg-[#2A4DD0] text-white hover:bg-blue-700"
                 >
                   {createCredentialMutation.isPending
                     ? 'Creating...'
@@ -820,11 +810,7 @@ export function ServiceAccountDetail({
                     setShowCreateCredential(false)
                     resetCredentialForm()
                   }}
-                  className={
-                    isDarkMode
-                      ? 'border-gray-600 text-gray-300'
-                      : ''
-                  }
+                  className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
                 >
                   Cancel
                 </Button>
@@ -836,17 +822,17 @@ export function ServiceAccountDetail({
         {/* Newly Created Credential Banner */}
         {newlyCreatedCredential && (
           <div
-            className={`mb-4 p-4 rounded-lg border ${
+            className={`mb-4 rounded-lg border p-4 ${
               isDarkMode
-                ? 'bg-green-900/20 border-green-700'
-                : 'bg-green-50 border-green-200'
+                ? 'border-green-700 bg-green-900/20'
+                : 'border-green-200 bg-green-50'
             }`}
           >
             <div
-              className={`font-medium mb-2 ${isDarkMode ? 'text-green-400' : 'text-green-800'}`}
+              className={`mb-2 font-medium ${isDarkMode ? 'text-green-400' : 'text-green-800'}`}
             >
-              Client Credential Created - Copy the secret now, it will
-              not be shown again!
+              Client Credential Created - Copy the secret now, it will not be
+              shown again!
             </div>
             <div className="space-y-2">
               <div>
@@ -857,10 +843,10 @@ export function ServiceAccountDetail({
                 </span>
                 <div className="flex items-center gap-2">
                   <code
-                    className={`flex-1 text-sm px-3 py-2 rounded border ${
+                    className={`flex-1 rounded border px-3 py-2 text-sm ${
                       isDarkMode
-                        ? 'bg-gray-800 border-gray-600 text-green-300'
-                        : 'bg-white border-gray-200 text-green-700'
+                        ? 'border-gray-600 bg-gray-800 text-green-300'
+                        : 'border-gray-200 bg-white text-green-700'
                     }`}
                   >
                     {newlyCreatedCredential.client_id}
@@ -869,19 +855,19 @@ export function ServiceAccountDetail({
                     onClick={() =>
                       copyToClipboard(
                         newlyCreatedCredential.client_id,
-                        'cred-id'
+                        'cred-id',
                       )
                     }
-                    className={`p-2 rounded-lg ${
+                    className={`rounded-lg p-2 ${
                       copiedId === 'cred-id'
                         ? 'bg-green-600 text-white'
                         : isDarkMode
-                          ? 'hover:bg-gray-700 text-gray-400'
-                          : 'hover:bg-gray-200 text-gray-600'
+                          ? 'text-gray-400 hover:bg-gray-700'
+                          : 'text-gray-600 hover:bg-gray-200'
                     }`}
                     title="Copy to clipboard"
                   >
-                    <Copy className="w-4 h-4" />
+                    <Copy className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -893,10 +879,10 @@ export function ServiceAccountDetail({
                 </span>
                 <div className="flex items-center gap-2">
                   <code
-                    className={`flex-1 text-sm px-3 py-2 rounded border ${
+                    className={`flex-1 rounded border px-3 py-2 text-sm ${
                       isDarkMode
-                        ? 'bg-gray-800 border-gray-600 text-green-300'
-                        : 'bg-white border-gray-200 text-green-700'
+                        ? 'border-gray-600 bg-gray-800 text-green-300'
+                        : 'border-gray-200 bg-white text-green-700'
                     }`}
                   >
                     {newlyCreatedCredential.client_secret}
@@ -905,26 +891,26 @@ export function ServiceAccountDetail({
                     onClick={() =>
                       copyToClipboard(
                         newlyCreatedCredential.client_secret,
-                        'cred-secret'
+                        'cred-secret',
                       )
                     }
-                    className={`p-2 rounded-lg ${
+                    className={`rounded-lg p-2 ${
                       copiedId === 'cred-secret'
                         ? 'bg-green-600 text-white'
                         : isDarkMode
-                          ? 'hover:bg-gray-700 text-gray-400'
-                          : 'hover:bg-gray-200 text-gray-600'
+                          ? 'text-gray-400 hover:bg-gray-700'
+                          : 'text-gray-600 hover:bg-gray-200'
                     }`}
                     title="Copy to clipboard"
                   >
-                    <Copy className="w-4 h-4" />
+                    <Copy className="h-4 w-4" />
                   </button>
                 </div>
               </div>
             </div>
             <button
               onClick={() => setNewlyCreatedCredential(null)}
-              className={`text-sm mt-2 ${isDarkMode ? 'text-green-400 hover:text-green-300' : 'text-green-700 hover:text-green-800'}`}
+              className={`mt-2 text-sm ${isDarkMode ? 'text-green-400 hover:text-green-300' : 'text-green-700 hover:text-green-800'}`}
             >
               Dismiss
             </button>
@@ -934,32 +920,30 @@ export function ServiceAccountDetail({
         {/* Credentials List */}
         {credentialsLoading ? (
           <div
-            className={`text-sm py-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            className={`py-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
           >
             Loading client credentials...
           </div>
         ) : credentialsError ? (
           <div
-            className={`flex items-center gap-2 p-3 rounded-lg ${
+            className={`flex items-center gap-2 rounded-lg p-3 ${
               isDarkMode
                 ? 'bg-red-900/20 text-red-400'
                 : 'bg-red-50 text-red-700'
             }`}
           >
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span className="text-sm">
-              Failed to load client credentials
-            </span>
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <span className="text-sm">Failed to load client credentials</span>
           </div>
         ) : credentials.length === 0 ? (
           <div
-            className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
           >
             <Shield
-              className={`w-8 h-8 mx-auto mb-2 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
+              className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
             />
             <div>No client credentials created yet</div>
-            <div className="text-sm mt-1">
+            <div className="mt-1 text-sm">
               Create a credential for OAuth2 client_credentials flow
             </div>
           </div>
@@ -968,14 +952,14 @@ export function ServiceAccountDetail({
             {credentials.map((cred: ClientCredential) => (
               <div
                 key={cred.client_id}
-                className={`flex items-center justify-between p-3 rounded-lg border ${
+                className={`flex items-center justify-between rounded-lg border p-3 ${
                   cred.revoked
                     ? isDarkMode
                       ? 'bg-gray-750 border-gray-600 opacity-50'
-                      : 'bg-gray-50 border-gray-200 opacity-50'
+                      : 'border-gray-200 bg-gray-50 opacity-50'
                     : isDarkMode
                       ? 'bg-gray-750 border-gray-600'
-                      : 'bg-gray-50 border-gray-200'
+                      : 'border-gray-200 bg-gray-50'
                 }`}
               >
                 <div className="flex-1">
@@ -986,7 +970,7 @@ export function ServiceAccountDetail({
                       {cred.name}
                     </span>
                     <code
-                      className={`text-xs px-2 py-0.5 rounded ${
+                      className={`rounded px-2 py-0.5 text-xs ${
                         isDarkMode
                           ? 'bg-gray-700 text-gray-400'
                           : 'bg-gray-100 text-gray-600'
@@ -996,7 +980,7 @@ export function ServiceAccountDetail({
                     </code>
                     {cred.revoked && (
                       <span
-                        className={`text-xs px-2 py-0.5 rounded ${
+                        className={`rounded px-2 py-0.5 text-xs ${
                           isDarkMode
                             ? 'bg-red-900/30 text-red-400'
                             : 'bg-red-100 text-red-600'
@@ -1005,17 +989,16 @@ export function ServiceAccountDetail({
                         Revoked
                       </span>
                     )}
-                    {cred.scopes.length > 0 &&
-                      cred.scopes[0] !== '*' && (
-                        <span
-                          className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                        >
-                          {cred.scopes.join(', ')}
-                        </span>
-                      )}
+                    {cred.scopes.length > 0 && cred.scopes[0] !== '*' && (
+                      <span
+                        className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                      >
+                        {cred.scopes.join(', ')}
+                      </span>
+                    )}
                   </div>
                   <div
-                    className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                    className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
                   >
                     Created {formatDate(cred.created_at)}
                     {cred.last_used &&
@@ -1027,32 +1010,28 @@ export function ServiceAccountDetail({
                 {!cred.revoked && (
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() =>
-                        handleRotateCredential(cred.client_id)
-                      }
+                      onClick={() => handleRotateCredential(cred.client_id)}
                       disabled={rotateCredentialMutation.isPending}
-                      className={`p-1.5 rounded ${
+                      className={`rounded p-1.5 ${
                         isDarkMode
-                          ? 'text-blue-400 hover:text-blue-300 hover:bg-gray-700'
-                          : 'text-blue-600 hover:text-blue-700 hover:bg-gray-100'
+                          ? 'text-blue-400 hover:bg-gray-700 hover:text-blue-300'
+                          : 'text-blue-600 hover:bg-gray-100 hover:text-blue-700'
                       }`}
                       title="Rotate credential"
                     >
-                      <RotateCw className="w-4 h-4" />
+                      <RotateCw className="h-4 w-4" />
                     </button>
                     <button
-                      onClick={() =>
-                        handleRevokeCredential(cred.client_id)
-                      }
+                      onClick={() => handleRevokeCredential(cred.client_id)}
                       disabled={revokeCredentialMutation.isPending}
-                      className={`p-1.5 rounded ${
+                      className={`rounded p-1.5 ${
                         isDarkMode
-                          ? 'text-red-400 hover:text-red-300 hover:bg-gray-700'
-                          : 'text-red-600 hover:text-red-700 hover:bg-gray-100'
+                          ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                          : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
                       }`}
                       title="Revoke credential"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 )}
@@ -1064,16 +1043,16 @@ export function ServiceAccountDetail({
 
       {/* API Keys */}
       <div
-        className={`p-6 rounded-lg border ${
+        className={`rounded-lg border p-6 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Key
-              className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              className={`h-5 w-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             />
             <h3
               className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
@@ -1091,7 +1070,7 @@ export function ServiceAccountDetail({
                 : ''
             }
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="mr-2 h-4 w-4" />
             Create API Key
           </Button>
         </div>
@@ -1099,16 +1078,16 @@ export function ServiceAccountDetail({
         {/* Create Key Form */}
         {showCreateKey && (
           <div
-            className={`mb-4 p-4 rounded-lg border ${
+            className={`mb-4 rounded-lg border p-4 ${
               isDarkMode
                 ? 'bg-gray-750 border-gray-600'
-                : 'bg-gray-50 border-gray-200'
+                : 'border-gray-200 bg-gray-50'
             }`}
           >
             <div className="flex items-end gap-3">
               <div className="flex-1">
                 <label
-                  className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
                   Key Name
                 </label>
@@ -1117,21 +1096,19 @@ export function ServiceAccountDetail({
                   value={newKeyName}
                   onChange={(e) => setNewKeyName(e.target.value)}
                   placeholder="e.g., production, staging"
-                  className={`w-full px-3 py-2 rounded-lg border text-sm ${
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${
                     isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder:text-gray-400'
-                      : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-500'
+                      ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
+                      : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
                   }`}
                 />
               </div>
               <Button
                 onClick={handleCreateKey}
                 disabled={createKeyMutation.isPending}
-                className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+                className="bg-[#2A4DD0] text-white hover:bg-blue-700"
               >
-                {createKeyMutation.isPending
-                  ? 'Creating...'
-                  : 'Create'}
+                {createKeyMutation.isPending ? 'Creating...' : 'Create'}
               </Button>
               <Button
                 variant="outline"
@@ -1139,11 +1116,7 @@ export function ServiceAccountDetail({
                   setShowCreateKey(false)
                   setNewKeyName('')
                 }}
-                className={
-                  isDarkMode
-                    ? 'border-gray-600 text-gray-300'
-                    : ''
-                }
+                className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
               >
                 Cancel
               </Button>
@@ -1154,24 +1127,23 @@ export function ServiceAccountDetail({
         {/* Newly Created Key Banner */}
         {newlyCreatedKey && (
           <div
-            className={`mb-4 p-4 rounded-lg border ${
+            className={`mb-4 rounded-lg border p-4 ${
               isDarkMode
-                ? 'bg-green-900/20 border-green-700'
-                : 'bg-green-50 border-green-200'
+                ? 'border-green-700 bg-green-900/20'
+                : 'border-green-200 bg-green-50'
             }`}
           >
             <div
-              className={`font-medium mb-2 ${isDarkMode ? 'text-green-400' : 'text-green-800'}`}
+              className={`mb-2 font-medium ${isDarkMode ? 'text-green-400' : 'text-green-800'}`}
             >
-              API Key Created - Copy it now, it will not be shown
-              again!
+              API Key Created - Copy it now, it will not be shown again!
             </div>
             <div className="flex items-center gap-2">
               <code
-                className={`flex-1 text-sm px-3 py-2 rounded border ${
+                className={`flex-1 rounded border px-3 py-2 text-sm ${
                   isDarkMode
-                    ? 'bg-gray-800 border-gray-600 text-green-300'
-                    : 'bg-white border-gray-200 text-green-700'
+                    ? 'border-gray-600 bg-gray-800 text-green-300'
+                    : 'border-gray-200 bg-white text-green-700'
                 }`}
               >
                 {newlyCreatedKey.key_secret}
@@ -1180,21 +1152,21 @@ export function ServiceAccountDetail({
                 onClick={() =>
                   copyToClipboard(newlyCreatedKey.key_secret, 'new-key')
                 }
-                className={`p-2 rounded-lg ${
+                className={`rounded-lg p-2 ${
                   copiedId === 'new-key'
                     ? 'bg-green-600 text-white'
                     : isDarkMode
-                      ? 'hover:bg-gray-700 text-gray-400'
-                      : 'hover:bg-gray-200 text-gray-600'
+                      ? 'text-gray-400 hover:bg-gray-700'
+                      : 'text-gray-600 hover:bg-gray-200'
                 }`}
                 title="Copy to clipboard"
               >
-                <Copy className="w-4 h-4" />
+                <Copy className="h-4 w-4" />
               </button>
             </div>
             <button
               onClick={() => setNewlyCreatedKey(null)}
-              className={`text-sm mt-2 ${isDarkMode ? 'text-green-400 hover:text-green-300' : 'text-green-700 hover:text-green-800'}`}
+              className={`mt-2 text-sm ${isDarkMode ? 'text-green-400 hover:text-green-300' : 'text-green-700 hover:text-green-800'}`}
             >
               Dismiss
             </button>
@@ -1204,30 +1176,30 @@ export function ServiceAccountDetail({
         {/* Keys List */}
         {keysLoading ? (
           <div
-            className={`text-sm py-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            className={`py-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
           >
             Loading API keys...
           </div>
         ) : keysError ? (
           <div
-            className={`flex items-center gap-2 p-3 rounded-lg ${
+            className={`flex items-center gap-2 rounded-lg p-3 ${
               isDarkMode
                 ? 'bg-red-900/20 text-red-400'
                 : 'bg-red-50 text-red-700'
             }`}
           >
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
             <span className="text-sm">Failed to load API keys</span>
           </div>
         ) : apiKeys.length === 0 ? (
           <div
-            className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
           >
             <Key
-              className={`w-8 h-8 mx-auto mb-2 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
+              className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
             />
             <div>No API keys created yet</div>
-            <div className="text-sm mt-1">
+            <div className="mt-1 text-sm">
               Create an API key to enable programmatic access
             </div>
           </div>
@@ -1236,14 +1208,14 @@ export function ServiceAccountDetail({
             {apiKeys.map((key: ApiKey) => (
               <div
                 key={key.key_id}
-                className={`flex items-center justify-between p-3 rounded-lg border ${
+                className={`flex items-center justify-between rounded-lg border p-3 ${
                   key.revoked
                     ? isDarkMode
                       ? 'bg-gray-750 border-gray-600 opacity-50'
-                      : 'bg-gray-50 border-gray-200 opacity-50'
+                      : 'border-gray-200 bg-gray-50 opacity-50'
                     : isDarkMode
                       ? 'bg-gray-750 border-gray-600'
-                      : 'bg-gray-50 border-gray-200'
+                      : 'border-gray-200 bg-gray-50'
                 }`}
               >
                 <div className="flex-1">
@@ -1254,7 +1226,7 @@ export function ServiceAccountDetail({
                       {key.name}
                     </span>
                     <code
-                      className={`text-xs px-2 py-0.5 rounded ${
+                      className={`rounded px-2 py-0.5 text-xs ${
                         isDarkMode
                           ? 'bg-gray-700 text-gray-400'
                           : 'bg-gray-100 text-gray-600'
@@ -1264,7 +1236,7 @@ export function ServiceAccountDetail({
                     </code>
                     {key.revoked && (
                       <span
-                        className={`text-xs px-2 py-0.5 rounded ${
+                        className={`rounded px-2 py-0.5 text-xs ${
                           isDarkMode
                             ? 'bg-red-900/30 text-red-400'
                             : 'bg-red-100 text-red-600'
@@ -1275,7 +1247,7 @@ export function ServiceAccountDetail({
                     )}
                   </div>
                   <div
-                    className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                    className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
                   >
                     Created {formatDate(key.created_at)}
                     {key.last_used &&
@@ -1289,26 +1261,26 @@ export function ServiceAccountDetail({
                     <button
                       onClick={() => handleRotateKey(key.key_id)}
                       disabled={rotateKeyMutation.isPending}
-                      className={`p-1.5 rounded ${
+                      className={`rounded p-1.5 ${
                         isDarkMode
-                          ? 'text-blue-400 hover:text-blue-300 hover:bg-gray-700'
-                          : 'text-blue-600 hover:text-blue-700 hover:bg-gray-100'
+                          ? 'text-blue-400 hover:bg-gray-700 hover:text-blue-300'
+                          : 'text-blue-600 hover:bg-gray-100 hover:text-blue-700'
                       }`}
                       title="Rotate API key"
                     >
-                      <RotateCw className="w-4 h-4" />
+                      <RotateCw className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleRevokeKey(key.key_id)}
                       disabled={revokeKeyMutation.isPending}
-                      className={`p-1.5 rounded ${
+                      className={`rounded p-1.5 ${
                         isDarkMode
-                          ? 'text-red-400 hover:text-red-300 hover:bg-gray-700'
-                          : 'text-red-600 hover:text-red-700 hover:bg-gray-100'
+                          ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                          : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
                       }`}
                       title="Revoke API key"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 )}
@@ -1320,10 +1292,10 @@ export function ServiceAccountDetail({
 
       {/* Basic Information */}
       <div
-        className={`p-6 rounded-lg border ${
+        className={`rounded-lg border p-6 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <h3
@@ -1335,31 +1307,23 @@ export function ServiceAccountDetail({
         <div className="grid grid-cols-2 gap-6">
           <div>
             <div
-              className={`flex items-center gap-2 text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             >
-              <Tag className="w-4 h-4" />
+              <Tag className="h-4 w-4" />
               Slug
             </div>
-            <div
-              className={
-                isDarkMode ? 'text-white' : 'text-gray-900'
-              }
-            >
+            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
               {account.slug}
             </div>
           </div>
 
           <div>
             <div
-              className={`flex items-center gap-2 text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             >
               Display Name
             </div>
-            <div
-              className={
-                isDarkMode ? 'text-white' : 'text-gray-900'
-              }
-            >
+            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
               {account.display_name}
             </div>
           </div>
@@ -1367,15 +1331,11 @@ export function ServiceAccountDetail({
           {account.description && (
             <div className="col-span-2">
               <div
-                className={`flex items-center gap-2 text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
                 Description
               </div>
-              <div
-                className={
-                  isDarkMode ? 'text-white' : 'text-gray-900'
-                }
-              >
+              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
                 {account.description}
               </div>
             </div>
@@ -1383,32 +1343,24 @@ export function ServiceAccountDetail({
 
           <div>
             <div
-              className={`flex items-center gap-2 text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             >
-              <Calendar className="w-4 h-4" />
+              <Calendar className="h-4 w-4" />
               Created
             </div>
-            <div
-              className={
-                isDarkMode ? 'text-white' : 'text-gray-900'
-              }
-            >
+            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
               {formatDate(account.created_at)}
             </div>
           </div>
 
           <div>
             <div
-              className={`flex items-center gap-2 text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             >
-              <Clock className="w-4 h-4" />
+              <Clock className="h-4 w-4" />
               Last Authenticated
             </div>
-            <div
-              className={
-                isDarkMode ? 'text-white' : 'text-gray-900'
-              }
-            >
+            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
               {formatDate(account.last_authenticated)}
             </div>
           </div>

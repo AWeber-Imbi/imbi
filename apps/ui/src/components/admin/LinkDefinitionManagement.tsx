@@ -7,29 +7,51 @@ import { Input } from '@/components/ui/input'
 import { LinkDefinitionForm } from './link-definitions/LinkDefinitionForm'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAdminNav } from '@/hooks/useAdminNav'
-import { listLinkDefinitions, deleteLinkDefinition, createLinkDefinition, updateLinkDefinition } from '@/api/endpoints'
+import {
+  listLinkDefinitions,
+  deleteLinkDefinition,
+  createLinkDefinition,
+  updateLinkDefinition,
+} from '@/api/endpoints'
 import type { LinkDefinitionCreate } from '@/types'
 
 interface LinkDefinitionManagementProps {
   isDarkMode: boolean
 }
 
-export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagementProps) {
+export function LinkDefinitionManagement({
+  isDarkMode,
+}: LinkDefinitionManagementProps) {
   const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
-  const { viewMode, slug: selectedSlug, goToList, goToCreate, goToEdit } = useAdminNav()
+  const {
+    viewMode,
+    slug: selectedSlug,
+    goToList,
+    goToCreate,
+    goToEdit,
+  } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
-  const { data: linkDefinitions = [], isLoading, error } = useQuery({
+  const {
+    data: linkDefinitions = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['linkDefinitions', orgSlug],
     queryFn: () => listLinkDefinitions(orgSlug!),
     enabled: !!orgSlug,
   })
 
   const createMutation = useMutation({
-    mutationFn: ({ orgSlug, data }: { orgSlug: string; data: LinkDefinitionCreate }) =>
-      createLinkDefinition(orgSlug, data),
+    mutationFn: ({
+      orgSlug,
+      data,
+    }: {
+      orgSlug: string
+      data: LinkDefinitionCreate
+    }) => createLinkDefinition(orgSlug, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['linkDefinitions', orgSlug] })
       goToList()
@@ -37,8 +59,15 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ orgSlug, slug, data }: { orgSlug: string; slug: string; data: LinkDefinitionCreate }) =>
-      updateLinkDefinition(orgSlug, slug, data),
+    mutationFn: ({
+      orgSlug,
+      slug,
+      data,
+    }: {
+      orgSlug: string
+      slug: string
+      data: LinkDefinitionCreate
+    }) => updateLinkDefinition(orgSlug, slug, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['linkDefinitions', orgSlug] })
       goToList()
@@ -52,7 +81,9 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
       queryClient.invalidateQueries({ queryKey: ['linkDefinitions', orgSlug] })
     },
     onError: (error: any) => {
-      alert(`Failed to delete link definition: ${error.response?.data?.detail || error.message}`)
+      alert(
+        `Failed to delete link definition: ${error.response?.data?.detail || error.message}`,
+      )
     },
   })
 
@@ -75,7 +106,12 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
 
   const handleDelete = (slug: string) => {
     const ld = linkDefinitions.find((l) => l.slug === slug)
-    if (ld && confirm(`Delete link definition "${ld.name}"? This action cannot be undone.`)) {
+    if (
+      ld &&
+      confirm(
+        `Delete link definition "${ld.name}"? This action cannot be undone.`,
+      )
+    ) {
       deleteMutation.mutate({ orgSlug: ld.organization.slug, slug })
     }
   }
@@ -99,7 +135,9 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <div
+          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+        >
           Loading link definitions...
         </div>
       </div>
@@ -108,13 +146,19 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
 
   if (error) {
     return (
-      <div className={`flex items-center gap-3 p-4 rounded-lg border ${
-        isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
-      }`}>
-        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+      <div
+        className={`flex items-center gap-3 rounded-lg border p-4 ${
+          isDarkMode
+            ? 'border-red-700 bg-red-900/20 text-red-400'
+            : 'border-red-200 bg-red-50 text-red-700'
+        }`}
+      >
+        <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load link definitions</div>
-          <div className="text-sm mt-1">{error instanceof Error ? error.message : 'An error occurred'}</div>
+          <div className="mt-1 text-sm">
+            {error instanceof Error ? error.message : 'An error occurred'}
+          </div>
         </div>
       </div>
     )
@@ -122,7 +166,9 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
 
   if (!orgSlug) {
     return (
-      <div className={`text-center py-12 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+      <div
+        className={`py-12 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+      >
         Select an organization to manage link definitions.
       </div>
     )
@@ -160,67 +206,89 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <div className="relative max-w-md">
-            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`} />
+            <Search
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            />
             <Input
               placeholder="Search link definitions..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
             />
           </div>
         </div>
         <Button
           onClick={goToCreate}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="mr-2 h-4 w-4" />
           New Link Definition
         </Button>
       </div>
 
       {/* Link Definitions Table */}
-      <div className={`rounded-lg border ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
+      <div
+        className={`rounded-lg border ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <thead
+              className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+            >
               <tr>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                }`}>
+                <th
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                  }`}
+                >
                   Name
                 </th>
-                <th className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                }`}>
+                <th
+                  className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                  }`}
+                >
                   Slug
                 </th>
-                <th className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                }`}>
+                <th
+                  className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                  }`}
+                >
                   Icon
                 </th>
-                <th className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                }`}>
+                <th
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                  }`}
+                >
                   URL Template
                 </th>
-                <th className={`px-6 py-3 text-center text-xs uppercase tracking-wider whitespace-nowrap ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                }`}>
+                <th
+                  className={`whitespace-nowrap px-6 py-3 text-center text-xs uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                  }`}
+                >
                   Last Updated
                 </th>
-                <th className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                }`}>
+                <th
+                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                  }`}
+                >
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+            <tbody
+              className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
+            >
               {filteredLinkDefinitions.map((ld) => (
                 <tr
                   key={ld.slug}
@@ -238,50 +306,84 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
                 >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'
-                      }`}>
-                        <Link2 className={`w-4 h-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                      <div
+                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
+                          isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'
+                        }`}
+                      >
+                        <Link2
+                          className={`h-4 w-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
+                        />
                       </div>
                       <div>
-                        <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                        <div
+                          className={
+                            isDarkMode ? 'text-white' : 'text-gray-900'
+                          }
+                        >
                           {ld.name}
                         </div>
                         {ld.description && (
-                          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <div
+                            className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                          >
                             {ld.description}
                           </div>
                         )}
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm whitespace-nowrap text-center">
-                    <code className={`px-2 py-1 rounded ${
-                      isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-                    }`}>
+                  <td className="whitespace-nowrap px-6 py-4 text-center text-sm">
+                    <code
+                      className={`rounded px-2 py-1 ${
+                        isDarkMode
+                          ? 'bg-gray-700 text-gray-300'
+                          : 'bg-gray-100 text-gray-700'
+                      }`}
+                    >
                       {ld.slug}
                     </code>
                   </td>
-                  <td className={`px-6 py-4 text-sm whitespace-nowrap text-center ${
-                    isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                  }`}>
+                  <td
+                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${
+                      isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                    }`}
+                  >
                     {ld.icon || '--'}
                   </td>
-                  <td className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <td
+                    className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                  >
                     {ld.url_template ? (
-                      <code className={`text-xs px-2 py-1 rounded ${
-                        isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'
-                      }`}>
+                      <code
+                        className={`rounded px-2 py-1 text-xs ${
+                          isDarkMode
+                            ? 'bg-gray-700 text-gray-300'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
                         {ld.url_template}
                       </code>
                     ) : (
-                      <span className={isDarkMode ? 'text-gray-600' : 'text-gray-400'}>--</span>
+                      <span
+                        className={
+                          isDarkMode ? 'text-gray-600' : 'text-gray-400'
+                        }
+                      >
+                        --
+                      </span>
                     )}
                   </td>
-                  <td className={`px-6 py-4 text-sm whitespace-nowrap text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <td
+                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                  >
                     {formatRelativeDate(ld.updated_at ?? ld.created_at)}
                   </td>
-                  <td className="px-6 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                  <td
+                    className="whitespace-nowrap px-6 py-4 text-right"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         variant="ghost"
@@ -289,9 +391,13 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
                         aria-label={`Delete link definition ${ld.name}`}
                         onClick={() => handleDelete(ld.slug)}
                         disabled={deleteMutation.isPending}
-                        className={isDarkMode ? 'text-red-400 hover:text-red-300 hover:bg-red-900/20' : 'text-red-600 hover:text-red-700 hover:bg-red-50'}
+                        className={
+                          isDarkMode
+                            ? 'text-red-400 hover:bg-red-900/20 hover:text-red-300'
+                            : 'text-red-600 hover:bg-red-50 hover:text-red-700'
+                        }
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </td>
@@ -301,7 +407,9 @@ export function LinkDefinitionManagement({ isDarkMode }: LinkDefinitionManagemen
           </table>
 
           {filteredLinkDefinitions.length === 0 && (
-            <div className={`text-center py-12 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div
+              className={`py-12 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            >
               {searchQuery
                 ? 'No link definitions found matching your search.'
                 : selectedOrganization

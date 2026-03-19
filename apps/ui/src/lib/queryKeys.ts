@@ -10,13 +10,9 @@ export function getQueryKeysForResource(
     case 'projects':
       return [['projects']]
     case 'project_types':
-      return orgSlug
-        ? [['projectTypes', orgSlug]]
-        : [['projectTypes']]
+      return orgSlug ? [['projectTypes', orgSlug]] : [['projectTypes']]
     case 'environments':
-      return orgSlug
-        ? [['environments', orgSlug]]
-        : [['environments']]
+      return orgSlug ? [['environments', orgSlug]] : [['environments']]
     case 'teams':
       return orgSlug ? [['teams', orgSlug]] : [['teams']]
     case 'organizations':

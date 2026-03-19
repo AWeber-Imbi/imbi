@@ -50,7 +50,7 @@ const availableWidgets: WidgetConfig[] = [
     description: 'Total number of projects',
     icon: '📁',
     category: 'stats',
-    columnSpan: 1
+    columnSpan: 1,
   },
   {
     id: 'stat-active-deployments',
@@ -58,7 +58,7 @@ const availableWidgets: WidgetConfig[] = [
     description: 'Number of active deployments',
     icon: '🚀',
     category: 'stats',
-    columnSpan: 1
+    columnSpan: 1,
   },
   {
     id: 'stat-teams',
@@ -66,7 +66,7 @@ const availableWidgets: WidgetConfig[] = [
     description: 'Total number of teams',
     icon: '👥',
     category: 'stats',
-    columnSpan: 1
+    columnSpan: 1,
   },
   {
     id: 'team-activity',
@@ -74,7 +74,7 @@ const availableWidgets: WidgetConfig[] = [
     description: 'Overview of team projects and deployments',
     icon: '👥',
     category: 'activity',
-    columnSpan: 2
+    columnSpan: 2,
   },
   {
     id: 'recent-activity',
@@ -82,7 +82,7 @@ const availableWidgets: WidgetConfig[] = [
     description: 'Latest actions and updates across projects',
     icon: '📝',
     category: 'activity',
-    columnSpan: 2
+    columnSpan: 2,
   },
   {
     id: 'recent-deployments',
@@ -90,7 +90,7 @@ const availableWidgets: WidgetConfig[] = [
     description: 'Latest deployment activity across environments',
     icon: '🚀',
     category: 'activity',
-    columnSpan: 2
+    columnSpan: 2,
   },
   {
     id: 'my-pull-requests',
@@ -98,7 +98,7 @@ const availableWidgets: WidgetConfig[] = [
     description: 'Your pending code reviews and PR status',
     icon: '🔀',
     category: 'development',
-    columnSpan: 2
+    columnSpan: 2,
   },
   {
     id: 'outdated-components',
@@ -106,8 +106,8 @@ const availableWidgets: WidgetConfig[] = [
     description: 'Dependencies that need updating',
     icon: '📦',
     category: 'health',
-    columnSpan: 2
-  }
+    columnSpan: 2,
+  },
 ]
 
 const defaultWidgets = [
@@ -116,7 +116,7 @@ const defaultWidgets = [
   'stat-teams',
   'team-activity',
   'recent-activity',
-  'my-pull-requests'
+  'my-pull-requests',
 ]
 
 interface SortableWidgetProps {
@@ -145,17 +145,19 @@ function SortableWidget({ id, children, isDarkMode }: SortableWidgetProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className="group relative break-inside-avoid mb-4"
+      className="group relative mb-4 break-inside-avoid"
     >
       {/* Drag handle - appears on hover */}
       <div
         {...attributes}
         {...listeners}
-        className={`absolute top-2 left-2 z-20 p-1 rounded cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity ${
-          isDarkMode ? 'bg-gray-700/80 text-gray-400 hover:text-gray-200' : 'bg-white/80 text-gray-400 hover:text-gray-600'
+        className={`absolute left-2 top-2 z-20 cursor-grab rounded p-1 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100 ${
+          isDarkMode
+            ? 'bg-gray-700/80 text-gray-400 hover:text-gray-200'
+            : 'bg-white/80 text-gray-400 hover:text-gray-600'
         }`}
       >
-        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+        <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
         </svg>
       </div>
@@ -164,7 +166,12 @@ function SortableWidget({ id, children, isDarkMode }: SortableWidgetProps) {
   )
 }
 
-export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkMode }: DashboardProps) {
+export function Dashboard({
+  onViewChange,
+  onUserSelect,
+  onProjectSelect,
+  isDarkMode,
+}: DashboardProps) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
   const [showWidgetSelector, setShowWidgetSelector] = useState(false)
@@ -189,7 +196,7 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   )
 
   // Fetch real data for stats
@@ -200,7 +207,9 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
   })
 
   const projectCount = projects?.length || 0
-  const teamCount = projects ? new Set(projects.map(p => p.team.slug)).size : 0
+  const teamCount = projects
+    ? new Set(projects.map((p) => p.team.slug)).size
+    : 0
 
   // Persist selections
   useEffect(() => {
@@ -208,10 +217,10 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
   }, [selectedWidgets])
 
   const handleToggleWidget = (widgetId: string) => {
-    setSelectedWidgets(prev =>
+    setSelectedWidgets((prev) =>
       prev.includes(widgetId)
-        ? prev.filter(id => id !== widgetId)
-        : [...prev, widgetId]
+        ? prev.filter((id) => id !== widgetId)
+        : [...prev, widgetId],
     )
   }
 
@@ -230,39 +239,90 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
   const renderWidget = (widgetId: string) => {
     switch (widgetId) {
       case 'stat-total-projects':
-        return <StatWidget title="Total Projects" value={projectCount.toLocaleString()} icon="📁" isDarkMode={isDarkMode} />
+        return (
+          <StatWidget
+            title="Total Projects"
+            value={projectCount.toLocaleString()}
+            icon="📁"
+            isDarkMode={isDarkMode}
+          />
+        )
       case 'stat-active-deployments':
-        return <StatWidget title="Active Deployments" value="1,429" icon="🚀" isDarkMode={isDarkMode} />
+        return (
+          <StatWidget
+            title="Active Deployments"
+            value="1,429"
+            icon="🚀"
+            isDarkMode={isDarkMode}
+          />
+        )
       case 'stat-teams':
-        return <StatWidget title="Teams" value={teamCount.toLocaleString()} icon="👥" isDarkMode={isDarkMode} />
+        return (
+          <StatWidget
+            title="Teams"
+            value={teamCount.toLocaleString()}
+            icon="👥"
+            isDarkMode={isDarkMode}
+          />
+        )
       case 'team-activity':
-        return <TeamActivityWidget isDarkMode={isDarkMode} onViewChange={onViewChange} />
+        return (
+          <TeamActivityWidget
+            isDarkMode={isDarkMode}
+            onViewChange={onViewChange}
+          />
+        )
       case 'recent-activity':
-        return <RecentActivityWidget isDarkMode={isDarkMode} onUserSelect={onUserSelect} onProjectSelect={onProjectSelect} />
+        return (
+          <RecentActivityWidget
+            isDarkMode={isDarkMode}
+            onUserSelect={onUserSelect}
+            onProjectSelect={onProjectSelect}
+          />
+        )
       case 'recent-deployments':
-        return <RecentDeploymentsWidget isDarkMode={isDarkMode} onProjectSelect={onProjectSelect} />
+        return (
+          <RecentDeploymentsWidget
+            isDarkMode={isDarkMode}
+            onProjectSelect={onProjectSelect}
+          />
+        )
       case 'my-pull-requests':
-        return <MyPullRequestsWidget isDarkMode={isDarkMode} onUserSelect={onUserSelect} />
+        return (
+          <MyPullRequestsWidget
+            isDarkMode={isDarkMode}
+            onUserSelect={onUserSelect}
+          />
+        )
       case 'outdated-components':
-        return <OutdatedComponentsWidget isDarkMode={isDarkMode} onProjectSelect={onProjectSelect} />
+        return (
+          <OutdatedComponentsWidget
+            isDarkMode={isDarkMode}
+            onProjectSelect={onProjectSelect}
+          />
+        )
       default:
         return null
     }
   }
 
   // Separate stat widgets from other widgets for layout
-  const statWidgets = selectedWidgets.filter(id => id.startsWith('stat-'))
-  const otherWidgets = selectedWidgets.filter(id => !id.startsWith('stat-'))
+  const statWidgets = selectedWidgets.filter((id) => id.startsWith('stat-'))
+  const otherWidgets = selectedWidgets.filter((id) => !id.startsWith('stat-'))
 
   return (
-    <div className="max-w-[1400px] mx-auto px-6 py-8">
+    <div className="mx-auto max-w-[1400px] px-6 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className={`text-3xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h1
+            className={`text-3xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             Dashboard
           </h1>
-          <p className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p
+            className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+          >
             Welcome back! Here's what's happening across your projects.
           </p>
         </div>
@@ -271,28 +331,38 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
           variant="outline"
           className={`gap-2 ${isDarkMode ? 'border-gray-600 text-gray-300' : ''}`}
         >
-          <Settings className="w-4 h-4" />
+          <Settings className="h-4 w-4" />
           Customize
         </Button>
       </div>
 
       {/* Widgets */}
       {selectedWidgets.length === 0 ? (
-        <div className={`p-12 rounded-lg border text-center ${
-          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        }`}>
-          <div className={`text-6xl mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}>
+        <div
+          className={`rounded-lg border p-12 text-center ${
+            isDarkMode
+              ? 'border-gray-700 bg-gray-800'
+              : 'border-gray-200 bg-white'
+          }`}
+        >
+          <div
+            className={`mb-4 text-6xl ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}
+          >
             📊
           </div>
-          <h3 className={`text-xl font-medium mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h3
+            className={`mb-2 text-xl font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             No Widgets Selected
           </h3>
-          <p className={`max-w-md mx-auto mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p
+            className={`mx-auto mb-4 max-w-md ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+          >
             Customize your dashboard by selecting widgets to display
           </p>
           <Button
             onClick={() => setShowWidgetSelector(true)}
-            className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
           >
             Add Widgets
           </Button>
@@ -306,10 +376,17 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
           <div className="space-y-4">
             {/* Stats Row - always in a grid row, also sortable */}
             {statWidgets.length > 0 && (
-              <SortableContext items={statWidgets} strategy={rectSortingStrategy}>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <SortableContext
+                items={statWidgets}
+                strategy={rectSortingStrategy}
+              >
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                   {statWidgets.map((widgetId) => (
-                    <SortableWidget key={widgetId} id={widgetId} isDarkMode={isDarkMode}>
+                    <SortableWidget
+                      key={widgetId}
+                      id={widgetId}
+                      isDarkMode={isDarkMode}
+                    >
                       {renderWidget(widgetId)}
                     </SortableWidget>
                   ))}
@@ -319,13 +396,20 @@ export function Dashboard({ onViewChange, onUserSelect, onProjectSelect, isDarkM
 
             {/* Other widgets - CSS columns for true masonry */}
             {otherWidgets.length > 0 && (
-              <SortableContext items={otherWidgets} strategy={rectSortingStrategy}>
+              <SortableContext
+                items={otherWidgets}
+                strategy={rectSortingStrategy}
+              >
                 <div
-                  className="columns-1 md:columns-2 gap-4"
+                  className="columns-1 gap-4 md:columns-2"
                   style={{ columnFill: 'balance' }}
                 >
                   {otherWidgets.map((widgetId) => (
-                    <SortableWidget key={widgetId} id={widgetId} isDarkMode={isDarkMode}>
+                    <SortableWidget
+                      key={widgetId}
+                      id={widgetId}
+                      isDarkMode={isDarkMode}
+                    >
                       {renderWidget(widgetId)}
                     </SortableWidget>
                   ))}

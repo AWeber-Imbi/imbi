@@ -67,7 +67,9 @@ describe('LocalLoginForm', () => {
     await user.tab()
 
     await waitFor(() => {
-      expect(screen.getByText(/please enter a valid email address/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/please enter a valid email address/i),
+      ).toBeInTheDocument()
     })
   })
 
@@ -79,7 +81,9 @@ describe('LocalLoginForm', () => {
 
     await user.type(emailInput, 'invalid')
 
-    expect(screen.queryByText(/please enter a valid email address/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/please enter a valid email address/i),
+    ).not.toBeInTheDocument()
   })
 
   it('should highlight email field in red when invalid after blur', async () => {

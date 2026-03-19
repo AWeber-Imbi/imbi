@@ -1,6 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Save, X, AlertCircle, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
+import {
+  Save,
+  X,
+  AlertCircle,
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -27,7 +34,7 @@ function toSlug(value: string): string {
 
 // Group permissions by resource_type dynamically
 function groupPermissionsByResource(
-  permissions: Permission[]
+  permissions: Permission[],
 ): Record<string, Permission[]> {
   const grouped: Record<string, Permission[]> = {}
   for (const perm of permissions) {
@@ -40,17 +47,30 @@ function groupPermissionsByResource(
 
 // Generate a human-readable label from a resource_type key
 function resourceLabel(resource: string): string {
-  return resource
-    .split(/[-_]/)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ') + ' Management'
+  return (
+    resource
+      .split(/[-_]/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ') + ' Management'
+  )
 }
 
-export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = false, error }: RoleFormProps) {
+export function RoleForm({
+  roleSlug,
+  onSave,
+  onCancel,
+  isDarkMode,
+  isLoading = false,
+  error,
+}: RoleFormProps) {
   const isEditing = !!roleSlug
 
   // Fetch existing role when editing
-  const { data: existingRole, isLoading: roleLoading, error: roleError } = useQuery({
+  const {
+    data: existingRole,
+    isLoading: roleLoading,
+    error: roleError,
+  } = useQuery({
     queryKey: ['role', roleSlug],
     queryFn: () => getRole(roleSlug!),
     enabled: isEditing,
@@ -71,24 +91,28 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState(0)
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
-  const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set())
+  const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(
+    new Set(),
+  )
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   // Validation
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+  const [validationErrors, setValidationErrors] = useState<
+    Record<string, string>
+  >({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   // Group available permissions by resource_type
   const groupedPermissions = useMemo(
     () => groupPermissionsByResource(adminSettings?.permissions || []),
-    [adminSettings?.permissions]
+    [adminSettings?.permissions],
   )
 
   // Expand all groups by default when permissions load
   useEffect(() => {
     if (adminSettings?.permissions) {
       const groups = new Set(
-        adminSettings.permissions.map(p => p.resource_type)
+        adminSettings.permissions.map((p) => p.resource_type),
       )
       setExpandedGroups(groups)
     }
@@ -103,7 +127,7 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
       setPriority(existingRole.priority)
       setSlugManuallyEdited(true)
       setSelectedPermissions(
-        new Set(existingRole.permissions?.map(p => p.name) || [])
+        new Set(existingRole.permissions?.map((p) => p.name) || []),
       )
     }
   }, [existingRole])
@@ -192,8 +216,8 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
   }
 
   const toggleAllInGroup = (resource: string) => {
-    const groupPerms = groupedPermissions[resource]?.map(p => p.name) || []
-    const allSelected = groupPerms.every(p => selectedPermissions.has(p))
+    const groupPerms = groupedPermissions[resource]?.map((p) => p.name) || []
+    const allSelected = groupPerms.every((p) => selectedPermissions.has(p))
 
     const next = new Set(selectedPermissions)
     if (allSelected) {
@@ -211,7 +235,9 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
   if (isEditing && roleLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <div
+          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+        >
           Loading role...
         </div>
       </div>
@@ -220,14 +246,20 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
 
   if (isEditing && roleError) {
     return (
-      <div className={`flex items-center gap-3 p-4 rounded-lg border ${
-        isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
-      }`}>
-        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+      <div
+        className={`flex items-center gap-3 rounded-lg border p-4 ${
+          isDarkMode
+            ? 'border-red-700 bg-red-900/20 text-red-400'
+            : 'border-red-200 bg-red-50 text-red-700'
+        }`}
+      >
+        <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load role</div>
-          <div className="text-sm mt-1">
-            {roleError instanceof Error ? roleError.message : 'An error occurred'}
+          <div className="mt-1 text-sm">
+            {roleError instanceof Error
+              ? roleError.message
+              : 'An error occurred'}
           </div>
         </div>
       </div>
@@ -239,10 +271,14 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h2
+            className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             {isEditing ? 'Edit Role' : 'Create New Role'}
           </h2>
-          <p className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p
+            className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+          >
             {isEditing
               ? 'Update role information and permissions'
               : 'Create a new role and define its permissions'}
@@ -255,17 +291,24 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
             disabled={isLoading}
             className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
           >
-            <X className="w-4 h-4 mr-2" />
+            <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           {!isSystemRole && (
             <Button
               onClick={handleSave}
-              disabled={isLoading || (!isEditing && (adminSettingsLoading || !!adminSettingsError))}
-              className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+              disabled={
+                isLoading ||
+                (!isEditing && (adminSettingsLoading || !!adminSettingsError))
+              }
+              className="bg-[#2A4DD0] text-white hover:bg-blue-700"
             >
-              <Save className="w-4 h-4 mr-2" />
-              {isLoading ? 'Saving...' : (isEditing ? 'Save Changes' : 'Create Role')}
+              <Save className="mr-2 h-4 w-4" />
+              {isLoading
+                ? 'Saving...'
+                : isEditing
+                  ? 'Save Changes'
+                  : 'Create Role'}
             </Button>
           )}
         </div>
@@ -273,19 +316,30 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
 
       {/* System Role Warning */}
       {isSystemRole && (
-        <div className={`rounded-lg border p-4 ${
-          isDarkMode ? 'bg-amber-900/20 border-amber-700' : 'bg-amber-50 border-amber-200'
-        }`}>
+        <div
+          className={`rounded-lg border p-4 ${
+            isDarkMode
+              ? 'border-amber-700 bg-amber-900/20'
+              : 'border-amber-200 bg-amber-50'
+          }`}
+        >
           <div className="flex items-start gap-3">
-            <AlertTriangle className={`w-5 h-5 flex-shrink-0 ${
-              isDarkMode ? 'text-amber-400' : 'text-amber-600'
-            }`} />
+            <AlertTriangle
+              className={`h-5 w-5 flex-shrink-0 ${
+                isDarkMode ? 'text-amber-400' : 'text-amber-600'
+              }`}
+            />
             <div>
-              <div className={`font-medium ${isDarkMode ? 'text-amber-400' : 'text-amber-800'}`}>
+              <div
+                className={`font-medium ${isDarkMode ? 'text-amber-400' : 'text-amber-800'}`}
+              >
                 System Role
               </div>
-              <div className={`text-sm mt-1 ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}>
-                This is a system role and cannot be modified. System roles are managed automatically.
+              <div
+                className={`mt-1 text-sm ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}
+              >
+                This is a system role and cannot be modified. System roles are
+                managed automatically.
               </div>
             </div>
           </div>
@@ -294,19 +348,31 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
 
       {/* API Error Display */}
       {error && (
-        <div className={`rounded-lg border p-4 ${
-          isDarkMode ? 'bg-red-900/20 border-red-700' : 'bg-red-50 border-red-200'
-        }`}>
+        <div
+          className={`rounded-lg border p-4 ${
+            isDarkMode
+              ? 'border-red-700 bg-red-900/20'
+              : 'border-red-200 bg-red-50'
+          }`}
+        >
           <div className="flex items-start gap-3">
-            <AlertCircle className={`w-5 h-5 flex-shrink-0 ${
-              isDarkMode ? 'text-red-400' : 'text-red-600'
-            }`} />
+            <AlertCircle
+              className={`h-5 w-5 flex-shrink-0 ${
+                isDarkMode ? 'text-red-400' : 'text-red-600'
+              }`}
+            />
             <div>
-              <div className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}>
+              <div
+                className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}
+              >
                 Failed to save role
               </div>
-              <div className={`text-sm mt-1 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>
-                {error?.response?.data?.detail || error?.message || 'An error occurred'}
+              <div
+                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
+              >
+                {error?.response?.data?.detail ||
+                  error?.message ||
+                  'An error occurred'}
               </div>
             </div>
           </div>
@@ -314,17 +380,25 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
       )}
 
       {/* Role Details */}
-      <div className={`p-6 rounded-lg border ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
-        <h3 className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+      <div
+        className={`rounded-lg border p-6 ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
+        <h3
+          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+        >
           Role Information
         </h3>
 
         <div className="grid grid-cols-2 gap-4">
           {/* Name */}
           <div className="col-span-2">
-            <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+            >
               Name <span className="text-red-500">*</span>
             </label>
             <Input
@@ -337,18 +411,22 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
               }}
               disabled={isLoading || isSystemRole}
               placeholder="e.g. Project Manager"
-              className={`${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} ${
-                isSystemRole ? 'opacity-60 cursor-not-allowed' : ''
+              className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                isSystemRole ? 'cursor-not-allowed opacity-60' : ''
               }`}
             />
             {touched.name && validationErrors.name && (
-              <p className="text-sm text-red-600 mt-1">{validationErrors.name}</p>
+              <p className="mt-1 text-sm text-red-600">
+                {validationErrors.name}
+              </p>
             )}
           </div>
 
           {/* Slug */}
           <div className="col-span-2">
-            <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+            >
               Slug <span className="text-red-500">*</span>
             </label>
             <Input
@@ -361,23 +439,29 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
               }}
               disabled={isLoading || isSystemRole}
               placeholder="e.g. project-manager"
-              className={`font-mono ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} ${
-                isSystemRole ? 'opacity-60 cursor-not-allowed' : ''
+              className={`font-mono ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                isSystemRole ? 'cursor-not-allowed opacity-60' : ''
               }`}
             />
             {!isEditing && !slugManuallyEdited && name && (
-              <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p
+                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              >
                 Auto-generated from name
               </p>
             )}
             {touched.slug && validationErrors.slug && (
-              <p className="text-sm text-red-600 mt-1">{validationErrors.slug}</p>
+              <p className="mt-1 text-sm text-red-600">
+                {validationErrors.slug}
+              </p>
             )}
           </div>
 
           {/* Description */}
           <div className="col-span-2">
-            <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+            >
               Description
             </label>
             <textarea
@@ -386,17 +470,19 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
               disabled={isLoading || isSystemRole}
               placeholder="Brief description of this role's purpose and scope"
               rows={3}
-              className={`w-full px-3 py-2 rounded-md border text-sm resize-none ${
+              className={`w-full resize-none rounded-md border px-3 py-2 text-sm ${
                 isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-              } ${isSystemRole ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
+                  : 'border-gray-300 bg-white text-gray-900 placeholder-gray-500'
+              } ${isSystemRole ? 'cursor-not-allowed opacity-60' : ''}`}
             />
           </div>
 
           {/* Priority */}
           <div className="col-span-2 sm:col-span-1">
-            <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+            >
               Priority
             </label>
             <Input
@@ -405,11 +491,13 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
               onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
               disabled={isLoading || isSystemRole}
               placeholder="0"
-              className={`${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} ${
-                isSystemRole ? 'opacity-60 cursor-not-allowed' : ''
+              className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                isSystemRole ? 'cursor-not-allowed opacity-60' : ''
               }`}
             />
-            <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            <p
+              className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+            >
               Higher priority roles take precedence. System roles use 100-1000.
             </p>
           </div>
@@ -417,24 +505,37 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
       </div>
 
       {/* Permissions Selection */}
-      <div className={`p-6 rounded-lg border ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+      <div
+        className={`rounded-lg border p-6 ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3
+            className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             Permissions
           </h3>
-          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <div
+            className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+          >
             {selectedPermissions.size} selected
           </div>
         </div>
 
-        <div className={`mb-4 p-3 rounded-lg flex items-start gap-2 ${
-          isDarkMode ? 'bg-blue-900/20 text-blue-400' : 'bg-blue-50 text-blue-700'
-        }`}>
-          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <div
+          className={`mb-4 flex items-start gap-2 rounded-lg p-3 ${
+            isDarkMode
+              ? 'bg-blue-900/20 text-blue-400'
+              : 'bg-blue-50 text-blue-700'
+          }`}
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div className="text-xs">
-            Select the permissions this role should have. Permissions are grouped by resource type for easier management.
+            Select the permissions this role should have. Permissions are
+            grouped by resource type for easier management.
             {isEditing && existingRole && (
               <> Changes will affect all users and groups with this role.</>
             )}
@@ -443,12 +544,16 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
 
         <div className="space-y-3">
           {adminSettingsLoading && (
-            <div className={`text-center py-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            <div
+              className={`py-6 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            >
               Loading permissions...
             </div>
           )}
           {adminSettingsError && (
-            <div className={`text-center py-6 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
+            <div
+              className={`py-6 text-center ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+            >
               Failed to load permissions. Please retry.
             </div>
           )}
@@ -456,15 +561,20 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([resource, perms]) => {
               const isExpanded = expandedGroups.has(resource)
-              const selectedCount = perms.filter(p => selectedPermissions.has(p.name)).length
+              const selectedCount = perms.filter((p) =>
+                selectedPermissions.has(p.name),
+              ).length
               const allSelected = selectedCount === perms.length
-              const someSelected = selectedCount > 0 && selectedCount < perms.length
+              const someSelected =
+                selectedCount > 0 && selectedCount < perms.length
 
               return (
                 <div
                   key={resource}
                   className={`rounded-lg border ${
-                    isDarkMode ? 'bg-gray-750 border-gray-600' : 'bg-gray-50 border-gray-200'
+                    isDarkMode
+                      ? 'bg-gray-750 border-gray-600'
+                      : 'border-gray-200 bg-gray-50'
                   }`}
                 >
                   {/* Group Header */}
@@ -472,23 +582,37 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
                     <button
                       type="button"
                       onClick={() => toggleGroup(resource)}
-                      aria-label={isExpanded ? 'Collapse permissions group' : 'Expand permissions group'}
+                      aria-label={
+                        isExpanded
+                          ? 'Collapse permissions group'
+                          : 'Expand permissions group'
+                      }
                       aria-expanded={isExpanded}
-                      className={`p-0.5 rounded ${
+                      className={`rounded p-0.5 ${
                         isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-200'
                       }`}
                     >
                       {isExpanded ? (
-                        <ChevronDown className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+                        <ChevronDown
+                          className={`h-4 w-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                        />
                       ) : (
-                        <ChevronRight className={`w-4 h-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
+                        <ChevronRight
+                          className={`h-4 w-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                        />
                       )}
                     </button>
 
-                    <div className="flex items-center gap-2 flex-1">
+                    <div className="flex flex-1 items-center gap-2">
                       <Checkbox
                         id={`group-${resource}`}
-                        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                        checked={
+                          allSelected
+                            ? true
+                            : someSelected
+                              ? 'indeterminate'
+                              : false
+                        }
                         disabled={isSystemRole}
                         onCheckedChange={() => toggleAllInGroup(resource)}
                       />
@@ -500,15 +624,17 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
                       >
                         {resourceLabel(resource)}
                       </label>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        selectedCount > 0
-                          ? isDarkMode
-                            ? 'bg-blue-900/40 text-blue-400'
-                            : 'bg-blue-100 text-blue-700'
-                          : isDarkMode
-                            ? 'bg-gray-700 text-gray-400'
-                            : 'bg-gray-200 text-gray-600'
-                      }`}>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs ${
+                          selectedCount > 0
+                            ? isDarkMode
+                              ? 'bg-blue-900/40 text-blue-400'
+                              : 'bg-blue-100 text-blue-700'
+                            : isDarkMode
+                              ? 'bg-gray-700 text-gray-400'
+                              : 'bg-gray-200 text-gray-600'
+                        }`}
+                      >
                         {selectedCount}/{perms.length}
                       </span>
                     </div>
@@ -516,37 +642,51 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
 
                   {/* Group Permissions */}
                   {isExpanded && (
-                    <div className={`px-3 pb-3 space-y-2 border-t ${
-                      isDarkMode ? 'border-gray-600' : 'border-gray-200'
-                    }`}>
+                    <div
+                      className={`space-y-2 border-t px-3 pb-3 ${
+                        isDarkMode ? 'border-gray-600' : 'border-gray-200'
+                      }`}
+                    >
                       {perms
                         .sort((a, b) => a.action.localeCompare(b.action))
                         .map((perm) => (
                           <div
                             key={perm.name}
-                            className={`flex items-start gap-3 p-2.5 rounded ${
-                              isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-white'
+                            className={`flex items-start gap-3 rounded p-2.5 ${
+                              isDarkMode
+                                ? 'hover:bg-gray-700'
+                                : 'hover:bg-white'
                             }`}
                           >
                             <Checkbox
                               id={perm.name}
                               checked={selectedPermissions.has(perm.name)}
                               disabled={isSystemRole}
-                              onCheckedChange={() => togglePermission(perm.name)}
+                              onCheckedChange={() =>
+                                togglePermission(perm.name)
+                              }
                               className="mt-0.5"
                             />
                             <label
                               htmlFor={perm.name}
                               className="flex-1 cursor-pointer select-none"
                             >
-                              <div className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                <code className={`px-1.5 py-0.5 rounded text-xs ${
-                                  isDarkMode ? 'bg-gray-700 text-blue-400' : 'bg-gray-200 text-[#2A4DD0]'
-                                }`}>
+                              <div
+                                className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                              >
+                                <code
+                                  className={`rounded px-1.5 py-0.5 text-xs ${
+                                    isDarkMode
+                                      ? 'bg-gray-700 text-blue-400'
+                                      : 'bg-gray-200 text-[#2A4DD0]'
+                                  }`}
+                                >
                                   {perm.action}
                                 </code>
                               </div>
-                              <div className={`text-xs mt-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                              <div
+                                className={`mt-0.5 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                              >
                                 {perm.description || perm.name}
                               </div>
                             </label>
@@ -558,13 +698,19 @@ export function RoleForm({ roleSlug, onSave, onCancel, isDarkMode, isLoading = f
               )
             })}
 
-          {!adminSettingsLoading && !adminSettingsError &&
-            (!adminSettings?.permissions || adminSettings.permissions.length === 0) && (
-            <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              <div>No permissions available</div>
-              <div className="text-sm mt-1">Permissions are configured in the backend</div>
-            </div>
-          )}
+          {!adminSettingsLoading &&
+            !adminSettingsError &&
+            (!adminSettings?.permissions ||
+              adminSettings.permissions.length === 0) && (
+              <div
+                className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+              >
+                <div>No permissions available</div>
+                <div className="mt-1 text-sm">
+                  Permissions are configured in the backend
+                </div>
+              </div>
+            )}
         </div>
       </div>
     </div>

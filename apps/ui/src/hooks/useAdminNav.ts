@@ -32,10 +32,7 @@ export function useAdminNav(): AdminNavState {
 
   const base = section ? `/admin/${section}` : '/admin'
 
-  const goToList = useCallback(
-    () => navigate(base),
-    [navigate, base],
-  )
+  const goToList = useCallback(() => navigate(base), [navigate, base])
 
   const goToCreate = useCallback(
     () => navigate(`${base}/new`),
@@ -48,8 +45,7 @@ export function useAdminNav(): AdminNavState {
   )
 
   const goToEdit = useCallback(
-    (s: string) =>
-      navigate(`${base}/${encodeURIComponent(s)}/edit`),
+    (s: string) => navigate(`${base}/${encodeURIComponent(s)}/edit`),
     [navigate, base],
   )
 

@@ -59,16 +59,19 @@ export const getStatus = () => apiClient.get<ApiStatus>('/status')
 
 // User/Auth
 export const getAuthProviders = () =>
-  apiClient.get<{ providers: AuthProvider[], default_redirect: string }>('/auth/providers')
+  apiClient.get<{ providers: AuthProvider[]; default_redirect: string }>(
+    '/auth/providers',
+  )
 
 export const loginWithPassword = (credentials: LoginRequest) =>
   apiClient.post<TokenResponse>('/auth/login', credentials)
 
 export const refreshToken = (refreshToken: string) =>
-  apiClient.post<TokenResponse>('/auth/token/refresh', { refresh_token: refreshToken })
+  apiClient.post<TokenResponse>('/auth/token/refresh', {
+    refresh_token: refreshToken,
+  })
 
-export const logoutAuth = () =>
-  apiClient.post<void>('/auth/logout', {})
+export const logoutAuth = () => apiClient.post<void>('/auth/logout', {})
 
 export const getUserByUsername = (username: string) =>
   apiClient.get<UserResponse>(`/users/${username}`)
@@ -80,61 +83,87 @@ export const logout = () => apiClient.get<void>('/ui/logout')
 // Projects (org-scoped)
 export const getProjects = async (orgSlug: string): Promise<Project[]> => {
   const response = await apiClient.get<Project[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/`
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/`,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getProject = (orgSlug: string, projectTypeSlug: string, slug: string) =>
+export const getProject = (
+  orgSlug: string,
+  projectTypeSlug: string,
+  slug: string,
+) =>
   apiClient.get<Project>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`,
   )
 
-export const createProject = (orgSlug: string, projectTypeSlug: string, project: ProjectCreate) =>
+export const createProject = (
+  orgSlug: string,
+  projectTypeSlug: string,
+  project: ProjectCreate,
+) =>
   apiClient.post<Project>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}`,
-    project
+    project,
   )
 
-export const updateProject = (orgSlug: string, projectTypeSlug: string, slug: string, project: Partial<ProjectCreate>) =>
+export const updateProject = (
+  orgSlug: string,
+  projectTypeSlug: string,
+  slug: string,
+  project: Partial<ProjectCreate>,
+) =>
   apiClient.put<Project>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`,
-    project
+    project,
   )
 
-export const deleteProject = (orgSlug: string, projectTypeSlug: string, slug: string) =>
+export const deleteProject = (
+  orgSlug: string,
+  projectTypeSlug: string,
+  slug: string,
+) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`,
   )
 
 // Link Definitions (org-scoped)
-export const listLinkDefinitions = async (orgSlug: string): Promise<LinkDefinition[]> => {
+export const listLinkDefinitions = async (
+  orgSlug: string,
+): Promise<LinkDefinition[]> => {
   const response = await apiClient.get<LinkDefinition[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/`
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/`,
   )
   return Array.isArray(response) ? response : []
 }
 
 export const getLinkDefinition = (orgSlug: string, slug: string) =>
   apiClient.get<LinkDefinition>(
-    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
   )
 
-export const createLinkDefinition = (orgSlug: string, data: LinkDefinitionCreate) =>
+export const createLinkDefinition = (
+  orgSlug: string,
+  data: LinkDefinitionCreate,
+) =>
   apiClient.post<LinkDefinition>(
     `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/`,
-    data
+    data,
   )
 
-export const updateLinkDefinition = (orgSlug: string, slug: string, data: Partial<LinkDefinitionCreate>) =>
+export const updateLinkDefinition = (
+  orgSlug: string,
+  slug: string,
+  data: Partial<LinkDefinitionCreate>,
+) =>
   apiClient.put<LinkDefinition>(
     `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
-    data
+    data,
   )
 
 export const deleteLinkDefinition = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/link-definitions/${encodeURIComponent(slug)}`,
   )
 
 // Activity Feed
@@ -144,7 +173,10 @@ export const getActivityFeed = async (params?: {
   token?: string
 }): Promise<ActivityFeedEntry[]> => {
   try {
-    const response = await apiClient.get<ActivityFeedEntry[]>('/activity-feed', params)
+    const response = await apiClient.get<ActivityFeedEntry[]>(
+      '/activity-feed',
+      params,
+    )
     // Activity feed returns array directly, not wrapped in { data: [] }
     console.log('[API] Activity feed response:', response)
     console.log('[API] First activity item:', response?.[0])
@@ -157,76 +189,90 @@ export const getActivityFeed = async (params?: {
 
 // Metadata
 export const getEnvironments = async (): Promise<Environment[]> => {
-  const response = await apiClient.get<CollectionResponse<Environment>>('/environments')
+  const response =
+    await apiClient.get<CollectionResponse<Environment>>('/environments')
   return response.data
 }
 
 export const getProjectTypes = async (): Promise<ProjectType[]> => {
-  const response = await apiClient.get<CollectionResponse<ProjectType>>('/project-types')
+  const response =
+    await apiClient.get<CollectionResponse<ProjectType>>('/project-types')
   return response.data
 }
 
 // Admin - Environments
-export const listEnvironments = async (orgSlug: string): Promise<Environment[]> => {
+export const listEnvironments = async (
+  orgSlug: string,
+): Promise<Environment[]> => {
   const response = await apiClient.get<Environment[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/environments/`
+    `/organizations/${encodeURIComponent(orgSlug)}/environments/`,
   )
   return Array.isArray(response) ? response : []
 }
 
 export const getEnvironment = (orgSlug: string, slug: string) =>
   apiClient.get<Environment>(
-    `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`,
   )
 
 export const createEnvironment = (orgSlug: string, env: EnvironmentCreate) =>
   apiClient.post<Environment>(
     `/organizations/${encodeURIComponent(orgSlug)}/environments/`,
-    env
+    env,
   )
 
-export const updateEnvironment = (orgSlug: string, slug: string, env: EnvironmentCreate) =>
+export const updateEnvironment = (
+  orgSlug: string,
+  slug: string,
+  env: EnvironmentCreate,
+) =>
   apiClient.put<Environment>(
     `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`,
-    env
+    env,
   )
 
 export const deleteEnvironment = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/environments/${encodeURIComponent(slug)}`,
   )
 
 export const getEnvironmentSchema = () =>
   getDynamicSchema('EnvironmentWithBlueprints', ENVIRONMENT_BASE_FIELDS)
 
 // Admin - Project Types
-export const listProjectTypes = async (orgSlug: string): Promise<ProjectType[]> => {
+export const listProjectTypes = async (
+  orgSlug: string,
+): Promise<ProjectType[]> => {
   const response = await apiClient.get<ProjectType[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/project-types/`
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/`,
   )
   return Array.isArray(response) ? response : []
 }
 
 export const getProjectType = (orgSlug: string, slug: string) =>
   apiClient.get<ProjectType>(
-    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`,
   )
 
 export const createProjectType = (orgSlug: string, pt: ProjectTypeCreate) =>
   apiClient.post<ProjectType>(
     `/organizations/${encodeURIComponent(orgSlug)}/project-types/`,
-    pt
+    pt,
   )
 
-export const updateProjectType = (orgSlug: string, slug: string, pt: ProjectTypeCreate) =>
+export const updateProjectType = (
+  orgSlug: string,
+  slug: string,
+  pt: ProjectTypeCreate,
+) =>
   apiClient.put<ProjectType>(
     `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`,
-    pt
+    pt,
   )
 
 export const deleteProjectType = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/project-types/${encodeURIComponent(slug)}`,
   )
 
 export const getProjectTypeSchema = () =>
@@ -263,26 +309,22 @@ export const deleteAdminUser = (email: string) =>
 // User organization membership
 export const addUserToOrg = (
   email: string,
-  data: { organization_slug: string; role_slug: string }
-) =>
-  apiClient.post(
-    `/users/${encodeURIComponent(email)}/organizations`,
-    data
-  )
+  data: { organization_slug: string; role_slug: string },
+) => apiClient.post(`/users/${encodeURIComponent(email)}/organizations`, data)
 
 export const updateUserOrgRole = (
   email: string,
   orgSlug: string,
-  data: { role_slug: string }
+  data: { role_slug: string },
 ) =>
   apiClient.put(
     `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`,
-    data
+    data,
   )
 
 export const removeUserFromOrg = (email: string, orgSlug: string) =>
   apiClient.delete(
-    `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`
+    `/users/${encodeURIComponent(email)}/organizations/${encodeURIComponent(orgSlug)}`,
   )
 
 // Admin - Roles Management
@@ -311,31 +353,35 @@ export const deleteRole = (slug: string) =>
 
 export const grantPermission = (slug: string, permissionName: string) =>
   apiClient.post<void>(`/roles/${encodeURIComponent(slug)}/permissions`, {
-    permission_name: permissionName
+    permission_name: permissionName,
   })
 
 export const revokePermission = (slug: string, permissionName: string) =>
   apiClient.delete<void>(
-    `/roles/${encodeURIComponent(slug)}/permissions/${encodeURIComponent(permissionName)}`
+    `/roles/${encodeURIComponent(slug)}/permissions/${encodeURIComponent(permissionName)}`,
   )
 
 export const getRoleUsers = async (slug: string): Promise<RoleUser[]> => {
   const response = await apiClient.get<RoleUser[]>(
-    `/roles/${encodeURIComponent(slug)}/users`
+    `/roles/${encodeURIComponent(slug)}/users`,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getRoleServiceAccounts = async (slug: string): Promise<ServiceAccount[]> => {
+export const getRoleServiceAccounts = async (
+  slug: string,
+): Promise<ServiceAccount[]> => {
   const response = await apiClient.get<ServiceAccount[]>(
-    `/roles/${encodeURIComponent(slug)}/service-accounts`
+    `/roles/${encodeURIComponent(slug)}/service-accounts`,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getRoleGroups = async (slug: string): Promise<{ name: string; slug: string }[]> => {
+export const getRoleGroups = async (
+  slug: string,
+): Promise<{ name: string; slug: string }[]> => {
   const response = await apiClient.get<{ name: string; slug: string }[]>(
-    `/roles/${encodeURIComponent(slug)}/groups`
+    `/roles/${encodeURIComponent(slug)}/groups`,
   )
   return Array.isArray(response) ? response : []
 }
@@ -354,18 +400,18 @@ export const listBlueprints = async (params?: {
 
 export const listBlueprintsByType = async (
   type: string,
-  params?: { enabled?: boolean }
+  params?: { enabled?: boolean },
 ): Promise<Blueprint[]> => {
   const response = await apiClient.get<Blueprint[]>(
     `/blueprints/${encodeURIComponent(type)}`,
-    params
+    params,
   )
   return Array.isArray(response) ? response : []
 }
 
 export const getBlueprint = (type: string, slug: string) =>
   apiClient.get<Blueprint>(
-    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`
+    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`,
   )
 
 export const createBlueprint = (blueprint: BlueprintCreate) =>
@@ -374,16 +420,16 @@ export const createBlueprint = (blueprint: BlueprintCreate) =>
 export const updateBlueprint = (
   type: string,
   slug: string,
-  blueprint: BlueprintCreate
+  blueprint: BlueprintCreate,
 ) =>
   apiClient.put<Blueprint>(
     `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`,
-    blueprint
+    blueprint,
   )
 
 export const deleteBlueprint = (type: string, slug: string) =>
   apiClient.delete<void>(
-    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`
+    `/blueprints/${encodeURIComponent(type)}/${encodeURIComponent(slug)}`,
   )
 
 // Admin - Organizations
@@ -426,7 +472,9 @@ export interface DynamicSchema {
 
 // Flatten Pydantic/OpenAPI 3.1 anyOf nullable patterns.
 // e.g. { anyOf: [{type:"string",format:"email"},{type:"null"}] } → {type:"string",format:"email"}
-function flattenNullableAnyOf(prop: Record<string, unknown>): DynamicFieldSchema {
+function flattenNullableAnyOf(
+  prop: Record<string, unknown>,
+): DynamicFieldSchema {
   const anyOf = prop.anyOf as Record<string, unknown>[] | undefined
   if (!Array.isArray(anyOf)) return prop as DynamicFieldSchema
   const nonNull = anyOf.filter((v) => v.type !== 'null')
@@ -439,10 +487,13 @@ function flattenNullableAnyOf(prop: Record<string, unknown>): DynamicFieldSchema
 
 interface OpenApiResponse {
   components?: {
-    schemas?: Record<string, {
-      properties?: Record<string, Record<string, unknown>>
-      required?: string[]
-    }>
+    schemas?: Record<
+      string,
+      {
+        properties?: Record<string, Record<string, unknown>>
+        required?: string[]
+      }
+    >
   }
 }
 
@@ -452,7 +503,7 @@ interface OpenApiResponse {
  */
 export const getDynamicSchema = async (
   schemaName: string,
-  baseFields: string[]
+  baseFields: string[],
 ): Promise<DynamicSchema | null> => {
   const response = await apiClient.get<OpenApiResponse>('/openapi.json')
   const schema = response.components?.schemas?.[schemaName]
@@ -480,36 +531,39 @@ export const getTeamSchema = () =>
 // Admin - Teams
 export const listTeams = async (orgSlug: string): Promise<Team[]> => {
   const response = await apiClient.get<Team[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/teams/`
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/`,
   )
   return Array.isArray(response) ? response : []
 }
 
 export const getTeam = (orgSlug: string, slug: string) =>
   apiClient.get<Team>(
-    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`,
   )
 
 export const createTeam = (orgSlug: string, team: TeamCreate) =>
   apiClient.post<Team>(
     `/organizations/${encodeURIComponent(orgSlug)}/teams/`,
-    team
+    team,
   )
 
 export const updateTeam = (orgSlug: string, slug: string, team: TeamCreate) =>
   apiClient.put<Team>(
     `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`,
-    team
+    team,
   )
 
 export const deleteTeam = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}`,
   )
 
-export const getTeamMembers = async (orgSlug: string, slug: string): Promise<TeamMember[]> => {
+export const getTeamMembers = async (
+  orgSlug: string,
+  slug: string,
+): Promise<TeamMember[]> => {
   const response = await apiClient.get<TeamMember[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members`
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members`,
   )
   return Array.isArray(response) ? response : []
 }
@@ -517,94 +571,126 @@ export const getTeamMembers = async (orgSlug: string, slug: string): Promise<Tea
 export const addTeamMember = (orgSlug: string, slug: string, email: string) =>
   apiClient.post<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members`,
-    { email }
+    { email },
   )
 
-export const removeTeamMember = (orgSlug: string, slug: string, email: string) =>
+export const removeTeamMember = (
+  orgSlug: string,
+  slug: string,
+  email: string,
+) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members/${encodeURIComponent(email)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/teams/${encodeURIComponent(slug)}/members/${encodeURIComponent(email)}`,
   )
 
 // Admin - Third-Party Services
-export const listThirdPartyServices = async (orgSlug: string): Promise<ThirdPartyService[]> => {
+export const listThirdPartyServices = async (
+  orgSlug: string,
+): Promise<ThirdPartyService[]> => {
   const response = await apiClient.get<ThirdPartyService[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/`,
   )
   return Array.isArray(response) ? response : []
 }
 
 export const getThirdPartyService = (orgSlug: string, slug: string) =>
   apiClient.get<ThirdPartyService>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`,
   )
 
-export const createThirdPartyService = (orgSlug: string, svc: ThirdPartyServiceCreate) =>
+export const createThirdPartyService = (
+  orgSlug: string,
+  svc: ThirdPartyServiceCreate,
+) =>
   apiClient.post<ThirdPartyService>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/`,
-    svc
+    svc,
   )
 
-export const updateThirdPartyService = (orgSlug: string, slug: string, svc: ThirdPartyServiceCreate) =>
+export const updateThirdPartyService = (
+  orgSlug: string,
+  slug: string,
+  svc: ThirdPartyServiceCreate,
+) =>
   apiClient.put<ThirdPartyService>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`,
-    svc
+    svc,
   )
 
 export const deleteThirdPartyService = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(slug)}`,
   )
 
 // Service Applications (nested under Third-Party Services)
-export const listServiceApplications = async (orgSlug: string, serviceSlug: string): Promise<ServiceApplication[]> => {
+export const listServiceApplications = async (
+  orgSlug: string,
+  serviceSlug: string,
+): Promise<ServiceApplication[]> => {
   const response = await apiClient.get<ServiceApplication[]>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`,
   )
   return Array.isArray(response) ? response : []
 }
 
-export const getServiceApplication = (orgSlug: string, serviceSlug: string, appSlug: string) =>
+export const getServiceApplication = (
+  orgSlug: string,
+  serviceSlug: string,
+  appSlug: string,
+) =>
   apiClient.get<ServiceApplication>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
   )
 
-export const createServiceApplication = (orgSlug: string, serviceSlug: string, data: ServiceApplicationCreate) =>
+export const createServiceApplication = (
+  orgSlug: string,
+  serviceSlug: string,
+  data: ServiceApplicationCreate,
+) =>
   apiClient.post<ServiceApplication>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/`,
-    data
+    data,
   )
 
 export const updateServiceApplication = (
   orgSlug: string,
   serviceSlug: string,
   appSlug: string,
-  data: ServiceApplicationUpdate
+  data: ServiceApplicationUpdate,
 ) =>
   apiClient.put<ServiceApplication>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
-    data
+    data,
   )
 
-export const deleteServiceApplication = (orgSlug: string, serviceSlug: string, appSlug: string) =>
+export const deleteServiceApplication = (
+  orgSlug: string,
+  serviceSlug: string,
+  appSlug: string,
+) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}`,
   )
 
 // Service Application Secrets
-export const getApplicationSecrets = (orgSlug: string, serviceSlug: string, appSlug: string) =>
+export const getApplicationSecrets = (
+  orgSlug: string,
+  serviceSlug: string,
+  appSlug: string,
+) =>
   apiClient.get<ServiceApplicationSecrets>(
-    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
   )
 
 export const updateApplicationSecrets = (
   orgSlug: string,
   serviceSlug: string,
   appSlug: string,
-  data: ServiceApplicationSecretsUpdate
+  data: ServiceApplicationSecretsUpdate,
 ) =>
   apiClient.put<ServiceApplicationSecrets>(
     `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/applications/${encodeURIComponent(appSlug)}/secrets`,
-    data
+    data,
   )
 
 // Uploads
@@ -630,7 +716,7 @@ export const deleteUpload = (id: string) =>
 // API Keys
 export const listApiKeys = async (email: string): Promise<ApiKey[]> => {
   const response = await apiClient.get<ApiKey[]>(
-    `/users/${encodeURIComponent(email)}/api-keys`
+    `/users/${encodeURIComponent(email)}/api-keys`,
   )
   return Array.isArray(response) ? response : []
 }
@@ -638,12 +724,12 @@ export const listApiKeys = async (email: string): Promise<ApiKey[]> => {
 export const createApiKey = (email: string, name?: string) =>
   apiClient.post<ApiKeyCreated>(
     `/users/${encodeURIComponent(email)}/api-keys`,
-    { name: name || 'default' }
+    { name: name || 'default' },
   )
 
 export const deleteApiKey = (email: string, keyId: string) =>
   apiClient.delete<void>(
-    `/users/${encodeURIComponent(email)}/api-keys/${encodeURIComponent(keyId)}`
+    `/users/${encodeURIComponent(email)}/api-keys/${encodeURIComponent(keyId)}`,
   )
 
 // Service Accounts
@@ -656,65 +742,71 @@ export const getServiceAccount = (slug: string) =>
 export const createServiceAccount = (data: ServiceAccountCreate) =>
   apiClient.post<ServiceAccount>('/service-accounts', data)
 
-export const updateServiceAccount = (slug: string, data: ServiceAccountUpdate) =>
-  apiClient.put<ServiceAccount>(`/service-accounts/${encodeURIComponent(slug)}`, data)
+export const updateServiceAccount = (
+  slug: string,
+  data: ServiceAccountUpdate,
+) =>
+  apiClient.put<ServiceAccount>(
+    `/service-accounts/${encodeURIComponent(slug)}`,
+    data,
+  )
 
 export const deleteServiceAccount = (slug: string) =>
   apiClient.delete(`/service-accounts/${encodeURIComponent(slug)}`)
 
 export const addServiceAccountToOrg = (
   slug: string,
-  data: { organization_slug: string; role_slug: string }
+  data: { organization_slug: string; role_slug: string },
 ) =>
   apiClient.post(
     `/service-accounts/${encodeURIComponent(slug)}/organizations`,
-    data
+    data,
   )
 
 export const updateServiceAccountOrgRole = (
   slug: string,
   orgSlug: string,
-  data: { role_slug: string }
+  data: { role_slug: string },
 ) =>
   apiClient.put(
     `/service-accounts/${encodeURIComponent(slug)}/organizations/${encodeURIComponent(orgSlug)}`,
-    data
+    data,
   )
 
 export const removeServiceAccountFromOrg = (slug: string, orgSlug: string) =>
   apiClient.delete(
-    `/service-accounts/${encodeURIComponent(slug)}/organizations/${encodeURIComponent(orgSlug)}`
+    `/service-accounts/${encodeURIComponent(slug)}/organizations/${encodeURIComponent(orgSlug)}`,
   )
 
 // Service Account Client Credentials
 export const listClientCredentials = (slug: string) =>
   apiClient.get<ClientCredential[]>(
-    `/service-accounts/${encodeURIComponent(slug)}/client-credentials`
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials`,
   )
 
 export const createClientCredential = (
   slug: string,
-  data: ClientCredentialCreate
+  data: ClientCredentialCreate,
 ) =>
   apiClient.post<ClientCredentialCreated>(
     `/service-accounts/${encodeURIComponent(slug)}/client-credentials`,
-    data
+    data,
   )
 
 export const revokeClientCredential = (slug: string, clientId: string) =>
   apiClient.delete(
-    `/service-accounts/${encodeURIComponent(slug)}/client-credentials/${encodeURIComponent(clientId)}`
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials/${encodeURIComponent(clientId)}`,
   )
 
 export const rotateClientCredential = (slug: string, clientId: string) =>
   apiClient.post<ClientCredentialCreated>(
-    `/service-accounts/${encodeURIComponent(slug)}/client-credentials/${encodeURIComponent(clientId)}/rotate`
+    `/service-accounts/${encodeURIComponent(slug)}/client-credentials/${encodeURIComponent(clientId)}/rotate`,
   )
 
 // Service Account API Keys
 export const listServiceAccountApiKeys = (slug: string) =>
   apiClient.get<ApiKey[]>(
-    `/service-accounts/${encodeURIComponent(slug)}/api-keys`
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys`,
   )
 
 export const createServiceAccountApiKey = (
@@ -724,19 +816,19 @@ export const createServiceAccountApiKey = (
     description?: string
     scopes?: string[]
     expires_in_days?: number
-  }
+  },
 ) =>
   apiClient.post<ApiKeyCreated>(
     `/service-accounts/${encodeURIComponent(slug)}/api-keys`,
-    data
+    data,
   )
 
 export const revokeServiceAccountApiKey = (slug: string, keyId: string) =>
   apiClient.delete(
-    `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}`
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}`,
   )
 
 export const rotateServiceAccountApiKey = (slug: string, keyId: string) =>
   apiClient.post<ApiKeyCreated>(
-    `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}/rotate`
+    `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}/rotate`,
   )

@@ -1,8 +1,14 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Plus, Search, Edit2, Trash2, FileJson, AlertCircle,
-  CheckCircle, XCircle
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  FileJson,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +17,10 @@ import { BlueprintDetail } from './blueprints/BlueprintDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { useOpenApiSpec, getSchemaEnum } from '@/api/openapi'
 import {
-  listBlueprints, deleteBlueprint, createBlueprint, updateBlueprint,
+  listBlueprints,
+  deleteBlueprint,
+  createBlueprint,
+  updateBlueprint,
 } from '@/api/endpoints'
 import type { Blueprint, BlueprintCreate } from '@/types'
 
@@ -25,7 +34,14 @@ interface BlueprintKey {
 }
 
 const TYPE_COLORS = [
-  'purple', 'blue', 'green', 'orange', 'pink', 'cyan', 'amber', 'rose'
+  'purple',
+  'blue',
+  'green',
+  'orange',
+  'pink',
+  'cyan',
+  'amber',
+  'rose',
 ]
 
 const TYPE_COLOR_CLASSES: Record<string, { light: string; dark: string }> = {
@@ -71,7 +87,7 @@ export function getTypeColor(type: string, allTypes: string[]): string {
 export function getTypeBadgeClasses(
   type: string,
   allTypes: string[],
-  isDarkMode: boolean
+  isDarkMode: boolean,
 ): string {
   const color = getTypeColor(type, allTypes)
   const classes = TYPE_COLOR_CLASSES[color] || TYPE_COLOR_CLASSES.blue
@@ -80,7 +96,14 @@ export function getTypeBadgeClasses(
 
 export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   const queryClient = useQueryClient()
-  const { viewMode, slug: selectedSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
+  const {
+    viewMode,
+    slug: selectedSlug,
+    goToList,
+    goToCreate,
+    goToDetail,
+    goToEdit,
+  } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [enabledFilter, setEnabledFilter] = useState<string>('')
@@ -97,7 +120,11 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   }, [selectedSlug])
 
   // Fetch blueprints
-  const { data: blueprints = [], isLoading, error } = useQuery({
+  const {
+    data: blueprints = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['blueprints'],
     queryFn: () => listBlueprints(),
   })
@@ -128,7 +155,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onError: (error: any) => {
       alert(
-        `Failed to delete blueprint: ${error.response?.data?.detail || error.message}`
+        `Failed to delete blueprint: ${error.response?.data?.detail || error.message}`,
       )
     },
   })
@@ -182,19 +209,21 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   })
 
   // Check for priority conflicts
-  const priorityConflicts = (type: string, priority: number, excludeSlug?: string) => {
+  const priorityConflicts = (
+    type: string,
+    priority: number,
+    excludeSlug?: string,
+  ) => {
     return blueprints.filter(
       (bp: Blueprint) =>
-        bp.type === type &&
-        bp.priority === priority &&
-        bp.slug !== excludeSlug
+        bp.type === type && bp.priority === priority && bp.slug !== excludeSlug,
     )
   }
 
   const handleDelete = (key: BlueprintKey) => {
     if (
       confirm(
-        'Are you sure you want to delete this blueprint? This action cannot be undone.'
+        'Are you sure you want to delete this blueprint? This action cannot be undone.',
       )
     ) {
       deleteMutation.mutate(key)
@@ -246,16 +275,16 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 p-4 rounded-lg border ${
+        className={`flex items-center gap-3 rounded-lg border p-4 ${
           isDarkMode
-            ? 'bg-red-900/20 border-red-700 text-red-400'
-            : 'bg-red-50 border-red-200 text-red-700'
+            ? 'border-red-700 bg-red-900/20 text-red-400'
+            : 'border-red-200 bg-red-50 text-red-700'
         }`}
       >
-        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load blueprints</div>
-          <div className="text-sm mt-1">
+          <div className="mt-1 text-sm">
             {error instanceof Error ? error.message : 'An error occurred'}
           </div>
         </div>
@@ -264,9 +293,15 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   }
 
   // Guard for invalid blueprint URL slugs
-  if ((viewMode === 'edit' || viewMode === 'detail') && !!selectedSlug && !selectedKey) {
+  if (
+    (viewMode === 'edit' || viewMode === 'detail') &&
+    !!selectedSlug &&
+    !selectedKey
+  ) {
     return (
-      <div className={`p-4 rounded-lg border ${isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'}`}>
+      <div
+        className={`rounded-lg border p-4 ${isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'}`}
+      >
         Invalid blueprint URL. Please reopen from the list.
       </div>
     )
@@ -311,25 +346,27 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex-1 flex items-center gap-3">
+        <div className="flex flex-1 items-center gap-3">
           <div className="relative max-w-md flex-1">
-            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`} />
+            <Search
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            />
             <Input
               placeholder="Search blueprints..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
             />
           </div>
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className={`px-3 py-2 rounded-lg border text-sm ${
+            className={`rounded-lg border px-3 py-2 text-sm ${
               isDarkMode
-                ? 'bg-gray-700 border-gray-600 text-white'
-                : 'bg-white border-gray-300 text-gray-900'
+                ? 'border-gray-600 bg-gray-700 text-white'
+                : 'border-gray-300 bg-white text-gray-900'
             }`}
           >
             <option value="">All Types</option>
@@ -342,10 +379,10 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
           <select
             value={enabledFilter}
             onChange={(e) => setEnabledFilter(e.target.value)}
-            className={`px-3 py-2 rounded-lg border text-sm ${
+            className={`rounded-lg border px-3 py-2 text-sm ${
               isDarkMode
-                ? 'bg-gray-700 border-gray-600 text-white'
-                : 'bg-white border-gray-300 text-gray-900'
+                ? 'border-gray-600 bg-gray-700 text-white'
+                : 'border-gray-300 bg-white text-gray-900'
             }`}
           >
             <option value="">All Status</option>
@@ -355,9 +392,9 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
         </div>
         <Button
           onClick={handleCreateClick}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="mr-2 h-4 w-4" />
           New Blueprint
         </Button>
       </div>
@@ -366,178 +403,180 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
       <div
         className={`rounded-lg border ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead
-            className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'bg-gray-50 border-b border-gray-200'}`}
-          >
-            <tr>
-              <th
-                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Name
-              </th>
-              <th
-                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Slug
-              </th>
-              <th
-                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Type
-              </th>
-              <th
-                className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Enabled
-              </th>
-              <th
-                className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Priority
-              </th>
-              <th
-                className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Version
-              </th>
-              <th
-                className={`px-4 py-3 text-right text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody
-            className={
-              isDarkMode
-                ? 'divide-y divide-gray-700'
-                : 'divide-y divide-gray-200'
-            }
-          >
-            {filteredBlueprints.length === 0 ? (
+          <table className="w-full">
+            <thead
+              className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
+            >
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center">
-                  <div
-                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                  >
-                    {searchQuery || typeFilter || enabledFilter
-                      ? 'No blueprints match your filters'
-                      : 'No blueprints created yet'}
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              filteredBlueprints.map((bp: Blueprint) => (
-                <tr
-                  key={`${bp.type}/${bp.slug}`}
-                  onClick={() =>
-                    handleViewClick({ type: bp.type, slug: bp.slug })
-                  }
-                  className={`cursor-pointer ${
-                    isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'
-                  }`}
+                <th
+                  className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <FileJson
-                        className={`w-4 h-4 flex-shrink-0 ${
-                          isDarkMode ? 'text-blue-400' : 'text-blue-600'
-                        }`}
-                      />
-                      <div>
-                        <span
-                          className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                        >
-                          {bp.name}
-                        </span>
-                        {bp.description && (
-                          <div
-                            className={`text-xs mt-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                          >
-                            {bp.description}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className={`px-4 py-3 text-sm font-mono whitespace-nowrap ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    {bp.slug}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span
-                      className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getTypeBadgeClasses(bp.type, blueprintTypes, isDarkMode)}`}
+                  Name
+                </th>
+                <th
+                  className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Slug
+                </th>
+                <th
+                  className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Type
+                </th>
+                <th
+                  className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Enabled
+                </th>
+                <th
+                  className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Priority
+                </th>
+                <th
+                  className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Version
+                </th>
+                <th
+                  className={`px-4 py-3 text-right text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody
+              className={
+                isDarkMode
+                  ? 'divide-y divide-gray-700'
+                  : 'divide-y divide-gray-200'
+              }
+            >
+              {filteredBlueprints.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center">
+                    <div
+                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                     >
-                      {bp.type}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center whitespace-nowrap">
-                    {bp.enabled ? (
-                      <CheckCircle
-                        className={`w-4 h-4 mx-auto ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}
-                      />
-                    ) : (
-                      <XCircle
-                        className={`w-4 h-4 mx-auto ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                      />
-                    )}
-                  </td>
-                  <td
-                    className={`px-4 py-3 text-center text-sm whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                  >
-                    {bp.priority}
-                  </td>
-                  <td
-                    className={`px-4 py-3 text-center text-sm font-mono whitespace-nowrap ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                  >
-                    v{bp.version}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleEditClick({
-                            type: bp.type,
-                            slug: bp.slug,
-                          })
-                        }}
-                        className={`p-1.5 rounded ${
-                          isDarkMode
-                            ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
-                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                        }`}
-                        title="Edit"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDelete({ type: bp.type, slug: bp.slug })
-                        }}
-                        disabled={deleteMutation.isPending}
-                        className={`p-1.5 rounded ${
-                          isDarkMode
-                            ? 'text-red-400 hover:text-red-300 hover:bg-gray-700'
-                            : 'text-red-600 hover:text-red-700 hover:bg-gray-100'
-                        }`}
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {searchQuery || typeFilter || enabledFilter
+                        ? 'No blueprints match your filters'
+                        : 'No blueprints created yet'}
                     </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filteredBlueprints.map((bp: Blueprint) => (
+                  <tr
+                    key={`${bp.type}/${bp.slug}`}
+                    onClick={() =>
+                      handleViewClick({ type: bp.type, slug: bp.slug })
+                    }
+                    className={`cursor-pointer ${
+                      isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <FileJson
+                          className={`h-4 w-4 flex-shrink-0 ${
+                            isDarkMode ? 'text-blue-400' : 'text-blue-600'
+                          }`}
+                        />
+                        <div>
+                          <span
+                            className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                          >
+                            {bp.name}
+                          </span>
+                          {bp.description && (
+                            <div
+                              className={`mt-0.5 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                            >
+                              {bp.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td
+                      className={`whitespace-nowrap px-4 py-3 font-mono text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                    >
+                      {bp.slug}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span
+                        className={`inline-flex items-center rounded px-2 py-1 text-xs font-medium ${getTypeBadgeClasses(bp.type, blueprintTypes, isDarkMode)}`}
+                      >
+                        {bp.type}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-center">
+                      {bp.enabled ? (
+                        <CheckCircle
+                          className={`mx-auto h-4 w-4 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}
+                        />
+                      ) : (
+                        <XCircle
+                          className={`mx-auto h-4 w-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                        />
+                      )}
+                    </td>
+                    <td
+                      className={`whitespace-nowrap px-4 py-3 text-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                    >
+                      {bp.priority}
+                    </td>
+                    <td
+                      className={`whitespace-nowrap px-4 py-3 text-center font-mono text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                    >
+                      v{bp.version}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleEditClick({
+                              type: bp.type,
+                              slug: bp.slug,
+                            })
+                          }}
+                          className={`rounded p-1.5 ${
+                            isDarkMode
+                              ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                          }`}
+                          title="Edit"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDelete({ type: bp.type, slug: bp.slug })
+                          }}
+                          disabled={deleteMutation.isPending}
+                          className={`rounded p-1.5 ${
+                            isDarkMode
+                              ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                              : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
+                          }`}
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

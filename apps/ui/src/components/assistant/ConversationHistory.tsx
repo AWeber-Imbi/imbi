@@ -1,9 +1,5 @@
 import { useState } from 'react'
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MessageSquare, Plus, Archive, Trash2 } from 'lucide-react'
 import {
   listConversations,
@@ -43,26 +39,19 @@ export function ConversationHistory({
   })
 
   const archiveMutation = useMutation({
-    mutationFn: (id: string) =>
-      updateConversation(id, { is_archived: true }),
+    mutationFn: (id: string) => updateConversation(id, { is_archived: true }),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: ['assistant', 'conversations'],
       }),
   })
 
-  const handleDelete = (
-    e: React.MouseEvent,
-    id: string,
-  ) => {
+  const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     deleteMutation.mutate(id)
   }
 
-  const handleArchive = (
-    e: React.MouseEvent,
-    id: string,
-  ) => {
+  const handleArchive = (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
     archiveMutation.mutate(id)
   }
@@ -71,13 +60,13 @@ export function ConversationHistory({
     return (
       <button
         onClick={() => setShowHistory(true)}
-        className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${
+        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
           isDarkMode
-            ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-700'
-            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+            ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-300'
+            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
         }`}
       >
-        <MessageSquare className="w-3 h-3" />
+        <MessageSquare className="h-3 w-3" />
         History
       </button>
     )
@@ -85,10 +74,8 @@ export function ConversationHistory({
 
   return (
     <div
-      className={`absolute top-full left-0 right-0 mt-1 rounded-lg border shadow-lg z-50 max-h-64 overflow-y-auto ${
-        isDarkMode
-          ? 'bg-gray-800 border-gray-700'
-          : 'bg-white border-gray-200'
+      className={`absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border shadow-lg ${
+        isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
       }`}
     >
       <div className="p-2">
@@ -97,13 +84,13 @@ export function ConversationHistory({
             onNewConversation()
             setShowHistory(false)
           }}
-          className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm ${
+          className={`flex w-full items-center gap-2 rounded px-3 py-2 text-sm ${
             isDarkMode
               ? 'text-gray-300 hover:bg-gray-700'
               : 'text-gray-700 hover:bg-gray-100'
           }`}
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
           New Conversation
         </button>
         {conversations.map((conv: Conversation) => (
@@ -122,7 +109,7 @@ export function ConversationHistory({
                 setShowHistory(false)
               }
             }}
-            className={`flex items-center justify-between px-3 py-2 rounded text-sm cursor-pointer ${
+            className={`flex cursor-pointer items-center justify-between rounded px-3 py-2 text-sm ${
               conv.id === currentConversationId
                 ? isDarkMode
                   ? 'bg-gray-700 text-white'
@@ -132,31 +119,27 @@ export function ConversationHistory({
                   : 'text-gray-700 hover:bg-gray-100'
             }`}
           >
-            <span className="truncate flex-1">
-              {conv.title ?? 'Untitled'}
-            </span>
-            <div className="flex items-center gap-1 ml-2">
+            <span className="flex-1 truncate">{conv.title ?? 'Untitled'}</span>
+            <div className="ml-2 flex items-center gap-1">
               <button
                 onClick={(e) => handleArchive(e, conv.id)}
                 aria-label={`Archive ${conv.title ?? 'conversation'}`}
-                className={`p-1 rounded ${
-                  isDarkMode
-                    ? 'hover:bg-gray-600'
-                    : 'hover:bg-gray-200'
+                className={`rounded p-1 ${
+                  isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'
                 }`}
               >
-                <Archive className="w-3 h-3" />
+                <Archive className="h-3 w-3" />
               </button>
               <button
                 onClick={(e) => handleDelete(e, conv.id)}
                 aria-label={`Delete ${conv.title ?? 'conversation'}`}
-                className={`p-1 rounded ${
+                className={`rounded p-1 ${
                   isDarkMode
-                    ? 'hover:bg-gray-600 text-red-400'
-                    : 'hover:bg-gray-200 text-red-500'
+                    ? 'text-red-400 hover:bg-gray-600'
+                    : 'text-red-500 hover:bg-gray-200'
                 }`}
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="h-3 w-3" />
               </button>
             </div>
           </div>
@@ -167,7 +150,7 @@ export function ConversationHistory({
       >
         <button
           onClick={() => setShowHistory(false)}
-          className={`w-full text-xs px-3 py-1 rounded ${
+          className={`w-full rounded px-3 py-1 text-xs ${
             isDarkMode
               ? 'text-gray-500 hover:text-gray-400'
               : 'text-gray-400 hover:text-gray-600'

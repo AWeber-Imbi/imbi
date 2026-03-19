@@ -19,16 +19,15 @@ export function ToolUseIndicator({
   toolName,
   isDarkMode,
 }: ToolUseIndicatorProps) {
-  const friendlyName =
-    TOOL_FRIENDLY_NAMES[toolName] ?? `Running ${toolName}`
+  const friendlyName = TOOL_FRIENDLY_NAMES[toolName] ?? `Running ${toolName}`
 
   return (
     <div
-      className={`flex items-center gap-2 pl-4 py-1 text-xs font-mono ${
+      className={`flex items-center gap-2 py-1 pl-4 font-mono text-xs ${
         isDarkMode ? 'text-yellow-500/70' : 'text-amber-600/70'
       }`}
     >
-      <Loader2 className="w-3 h-3 animate-spin" />
+      <Loader2 className="h-3 w-3 animate-spin" />
       <span>{friendlyName}...</span>
     </div>
   )

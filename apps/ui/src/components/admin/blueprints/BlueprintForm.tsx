@@ -1,8 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Save, X, AlertCircle, AlertTriangle, Plus, Trash2,
-  ChevronUp, ChevronDown, Code, List
+  Save,
+  X,
+  AlertCircle,
+  AlertTriangle,
+  Plus,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Code,
+  List,
 } from 'lucide-react'
 import Ajv from 'ajv'
 import { Button } from '@/components/ui/button'
@@ -25,19 +33,32 @@ interface BlueprintFormProps {
   checkPriorityConflict: (
     type: string,
     priority: number,
-    excludeSlug?: string
+    excludeSlug?: string,
   ) => Blueprint[]
 }
 
 type SchemaEditorMode = 'visual' | 'code'
 
 const PROPERTY_TYPES: SchemaProperty['type'][] = [
-  'string', 'integer', 'number', 'boolean', 'array', 'object',
+  'string',
+  'integer',
+  'number',
+  'boolean',
+  'array',
+  'object',
 ]
 
 const STRING_FORMATS = [
-  '', 'date', 'date-time', 'email', 'uri', 'uri-reference', 'hostname',
-  'ipv4', 'ipv6', 'uuid',
+  '',
+  'date',
+  'date-time',
+  'email',
+  'uri',
+  'uri-reference',
+  'hostname',
+  'ipv4',
+  'ipv6',
+  'uuid',
 ]
 
 function toSlug(value: string): string {
@@ -53,7 +74,9 @@ function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
 }
 
-function buildJsonSchema(properties: SchemaProperty[]): Record<string, unknown> {
+function buildJsonSchema(
+  properties: SchemaProperty[],
+): Record<string, unknown> {
   const schema: Record<string, unknown> = {
     type: 'object',
     properties: {} as Record<string, unknown>,
@@ -95,9 +118,7 @@ function buildJsonSchema(properties: SchemaProperty[]): Record<string, unknown> 
   return schema
 }
 
-function schemaToProperties(
-  schema: Record<string, unknown>
-): SchemaProperty[] {
+function schemaToProperties(schema: Record<string, unknown>): SchemaProperty[] {
   const props = (schema.properties || {}) as Record<
     string,
     Record<string, unknown>
@@ -163,7 +184,9 @@ export function BlueprintForm({
   // Schema editor state
   const [editorMode, setEditorMode] = useState<SchemaEditorMode>('visual')
   const [schemaProperties, setSchemaProperties] = useState<SchemaProperty[]>([])
-  const [rawSchema, setRawSchema] = useState('{\n  "type": "object",\n  "properties": {}\n}')
+  const [rawSchema, setRawSchema] = useState(
+    '{\n  "type": "object",\n  "properties": {}\n}',
+  )
   const [enumRawText, setEnumRawText] = useState<Record<string, string>>({})
   const [schemaError, setSchemaError] = useState<string | null>(null)
   const [expandedProps, setExpandedProps] = useState<Set<string>>(new Set())
@@ -205,7 +228,7 @@ export function BlueprintForm({
               p.minimum !== undefined ||
               p.maximum !== undefined ||
               p.minLength !== undefined ||
-              p.maxLength !== undefined
+              p.maxLength !== undefined,
           )
           .map((p) => p.id)
         if (toExpand.length > 0) {
@@ -215,7 +238,7 @@ export function BlueprintForm({
         setRawSchema(
           typeof existingBlueprint.json_schema === 'string'
             ? existingBlueprint.json_schema
-            : '{}'
+            : '{}',
         )
       }
     }
@@ -245,14 +268,11 @@ export function BlueprintForm({
   }
 
   // Sync visual -> code
-  const syncVisualToCode = useCallback(
-    (props: SchemaProperty[]) => {
-      const schema = buildJsonSchema(props)
-      setRawSchema(JSON.stringify(schema, null, 2))
-      setSchemaError(null)
-    },
-    []
-  )
+  const syncVisualToCode = useCallback((props: SchemaProperty[]) => {
+    const schema = buildJsonSchema(props)
+    setRawSchema(JSON.stringify(schema, null, 2))
+    setSchemaError(null)
+  }, [])
 
   // Sync code -> visual
   const syncCodeToVisual = useCallback((raw: string) => {
@@ -271,11 +291,11 @@ export function BlueprintForm({
       const hasNested = Object.values(props).some(
         (p: unknown) =>
           (p as Record<string, unknown>).type === 'object' &&
-          (p as Record<string, unknown>).properties
+          (p as Record<string, unknown>).properties,
       )
       if (hasNested) {
         setSchemaError(
-          'Visual editor does not support nested object properties. Use code mode to edit.'
+          'Visual editor does not support nested object properties. Use code mode to edit.',
         )
         return false
       }
@@ -318,12 +338,9 @@ export function BlueprintForm({
     syncVisualToCode(updated)
   }
 
-  const updateProperty = (
-    id: string,
-    updates: Partial<SchemaProperty>
-  ) => {
+  const updateProperty = (id: string, updates: Partial<SchemaProperty>) => {
     const updated = schemaProperties.map((p) =>
-      p.id === id ? { ...p, ...updates } : p
+      p.id === id ? { ...p, ...updates } : p,
     )
     setSchemaProperties(updated)
     syncVisualToCode(updated)
@@ -333,10 +350,7 @@ export function BlueprintForm({
     const newIndex = direction === 'up' ? index - 1 : index + 1
     if (newIndex < 0 || newIndex >= schemaProperties.length) return
     const updated = [...schemaProperties]
-    ;[updated[index], updated[newIndex]] = [
-      updated[newIndex],
-      updated[index],
-    ]
+    ;[updated[index], updated[newIndex]] = [updated[newIndex], updated[index]]
     setSchemaProperties(updated)
     syncVisualToCode(updated)
   }
@@ -423,7 +437,7 @@ export function BlueprintForm({
     ? checkPriorityConflict(
         type,
         priority,
-        isEditing ? blueprintKey?.slug : undefined
+        isEditing ? blueprintKey?.slug : undefined,
       )
     : []
 
@@ -442,16 +456,16 @@ export function BlueprintForm({
   if (isEditing && bpError) {
     return (
       <div
-        className={`flex items-center gap-3 p-4 rounded-lg border ${
+        className={`flex items-center gap-3 rounded-lg border p-4 ${
           isDarkMode
-            ? 'bg-red-900/20 border-red-700 text-red-400'
-            : 'bg-red-50 border-red-200 text-red-700'
+            ? 'border-red-700 bg-red-900/20 text-red-400'
+            : 'border-red-200 bg-red-50 text-red-700'
         }`}
       >
-        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load blueprint</div>
-          <div className="text-sm mt-1">
+          <div className="mt-1 text-sm">
             {bpError instanceof Error ? bpError.message : 'An error occurred'}
           </div>
         </div>
@@ -484,15 +498,15 @@ export function BlueprintForm({
             disabled={isLoading}
             className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
           >
-            <X className="w-4 h-4 mr-2" />
+            <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={isLoading}
-            className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
           >
-            <Save className="w-4 h-4 mr-2" />
+            <Save className="mr-2 h-4 w-4" />
             {isLoading
               ? 'Saving...'
               : isEditing
@@ -507,13 +521,13 @@ export function BlueprintForm({
         <div
           className={`rounded-lg border p-4 ${
             isDarkMode
-              ? 'bg-red-900/20 border-red-700'
-              : 'bg-red-50 border-red-200'
+              ? 'border-red-700 bg-red-900/20'
+              : 'border-red-200 bg-red-50'
           }`}
         >
           <div className="flex items-start gap-3">
             <AlertCircle
-              className={`w-5 h-5 flex-shrink-0 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+              className={`h-5 w-5 flex-shrink-0 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
             />
             <div>
               <div
@@ -522,7 +536,7 @@ export function BlueprintForm({
                 Failed to save blueprint
               </div>
               <div
-                className={`text-sm mt-1 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
+                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
               >
                 {error?.response?.data?.detail ||
                   error?.message ||
@@ -538,13 +552,13 @@ export function BlueprintForm({
         <div
           className={`rounded-lg border p-4 ${
             isDarkMode
-              ? 'bg-amber-900/20 border-amber-700'
-              : 'bg-amber-50 border-amber-200'
+              ? 'border-amber-700 bg-amber-900/20'
+              : 'border-amber-200 bg-amber-50'
           }`}
         >
           <div className="flex items-start gap-3">
             <AlertTriangle
-              className={`w-5 h-5 flex-shrink-0 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
+              className={`h-5 w-5 flex-shrink-0 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
             />
             <div>
               <div
@@ -553,7 +567,7 @@ export function BlueprintForm({
                 Priority conflict
               </div>
               <div
-                className={`text-sm mt-1 ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}
+                className={`mt-1 text-sm ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}
               >
                 Another {type} blueprint ({conflicts[0].name}) already has
                 priority {priority}. Blueprints of the same type with the same
@@ -566,10 +580,10 @@ export function BlueprintForm({
 
       {/* Basic Information */}
       <div
-        className={`p-6 rounded-lg border ${
+        className={`rounded-lg border p-6 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <h3
@@ -582,7 +596,7 @@ export function BlueprintForm({
           {/* Name */}
           <div>
             <label
-              className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
             >
               Name <span className="text-red-500">*</span>
             </label>
@@ -599,10 +613,12 @@ export function BlueprintForm({
               }}
               disabled={isLoading}
               placeholder="e.g. AWS Metadata"
-              className={isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}
+              className={
+                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+              }
             />
             {touched.name && validationErrors.name && (
-              <p className="text-sm text-red-600 mt-1">
+              <p className="mt-1 text-sm text-red-600">
                 {validationErrors.name}
               </p>
             )}
@@ -611,7 +627,7 @@ export function BlueprintForm({
           {/* Slug */}
           <div>
             <label
-              className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
             >
               Slug
             </label>
@@ -620,17 +636,17 @@ export function BlueprintForm({
               onChange={(e) => handleSlugChange(e.target.value)}
               disabled={isLoading}
               placeholder="auto-generated"
-              className={`font-mono ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`font-mono ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
             />
             {!isEditing && !slugManuallyEdited && name && (
               <p
-                className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
               >
                 Auto-generated from name
               </p>
             )}
             {touched.slug && validationErrors.slug && (
-              <p className="text-sm text-red-600 mt-1">
+              <p className="mt-1 text-sm text-red-600">
                 {validationErrors.slug}
               </p>
             )}
@@ -639,7 +655,7 @@ export function BlueprintForm({
           {/* Type */}
           <div>
             <label
-              className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
             >
               Type <span className="text-red-500">*</span>
             </label>
@@ -650,11 +666,11 @@ export function BlueprintForm({
                 handleFieldChange('type')
               }}
               disabled={isLoading || isEditing}
-              className={`w-full px-3 py-2 rounded-md border text-sm ${
+              className={`w-full rounded-md border px-3 py-2 text-sm ${
                 isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white'
-                  : 'bg-white border-gray-300 text-gray-900'
-              } ${isEditing ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  ? 'border-gray-600 bg-gray-700 text-white'
+                  : 'border-gray-300 bg-white text-gray-900'
+              } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
             >
               <option value="">Select a type...</option>
               {blueprintTypes.map((t) => (
@@ -665,13 +681,13 @@ export function BlueprintForm({
             </select>
             {isEditing && (
               <p
-                className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
               >
                 Type cannot be changed after creation
               </p>
             )}
             {touched.type && validationErrors.type && (
-              <p className="text-sm text-red-600 mt-1">
+              <p className="mt-1 text-sm text-red-600">
                 {validationErrors.type}
               </p>
             )}
@@ -680,7 +696,7 @@ export function BlueprintForm({
           {/* Priority */}
           <div>
             <label
-              className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
             >
               Priority
             </label>
@@ -690,10 +706,12 @@ export function BlueprintForm({
               onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
               disabled={isLoading}
               placeholder="0"
-              className={isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}
+              className={
+                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+              }
             />
             <p
-              className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
             >
               Higher priority blueprints are applied later and can override
               lower priority ones
@@ -703,7 +721,7 @@ export function BlueprintForm({
           {/* Description */}
           <div className="col-span-2">
             <label
-              className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
             >
               Description
             </label>
@@ -713,10 +731,10 @@ export function BlueprintForm({
               disabled={isLoading}
               placeholder="Brief description of what this blueprint defines"
               rows={3}
-              className={`w-full px-3 py-2 rounded-md border text-sm resize-none ${
+              className={`w-full resize-none rounded-md border px-3 py-2 text-sm ${
                 isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                  ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
+                  : 'border-gray-300 bg-white text-gray-900 placeholder-gray-500'
               }`}
             />
           </div>
@@ -727,20 +745,18 @@ export function BlueprintForm({
               <Checkbox
                 id="blueprint-enabled"
                 checked={enabled}
-                onCheckedChange={(checked) =>
-                  setEnabled(checked === true)
-                }
+                onCheckedChange={(checked) => setEnabled(checked === true)}
                 disabled={isLoading}
               />
               <label
                 htmlFor="blueprint-enabled"
-                className={`text-sm cursor-pointer select-none ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                className={`cursor-pointer select-none text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
               >
                 Enabled
               </label>
             </div>
             <p
-              className={`text-xs mt-1 ml-6 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              className={`ml-6 mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
             >
               Disabled blueprints are not applied to entities
             </p>
@@ -750,13 +766,13 @@ export function BlueprintForm({
 
       {/* JSON Schema Editor */}
       <div
-        className={`p-6 rounded-lg border ${
+        className={`rounded-lg border p-6 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <h3
             className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
@@ -769,7 +785,7 @@ export function BlueprintForm({
           >
             <button
               onClick={() => handleEditorModeSwitch('visual')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-l-lg transition-colors ${
+              className={`flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 text-sm transition-colors ${
                 editorMode === 'visual'
                   ? isDarkMode
                     ? 'bg-blue-900/40 text-blue-400'
@@ -779,12 +795,12 @@ export function BlueprintForm({
                     : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <List className="w-3.5 h-3.5" />
+              <List className="h-3.5 w-3.5" />
               Visual
             </button>
             <button
               onClick={() => handleEditorModeSwitch('code')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-r-lg transition-colors ${
+              className={`flex items-center gap-1.5 rounded-r-lg px-3 py-1.5 text-sm transition-colors ${
                 editorMode === 'code'
                   ? isDarkMode
                     ? 'bg-blue-900/40 text-blue-400'
@@ -794,7 +810,7 @@ export function BlueprintForm({
                     : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <Code className="w-3.5 h-3.5" />
+              <Code className="h-3.5 w-3.5" />
               Code
             </button>
           </div>
@@ -803,13 +819,13 @@ export function BlueprintForm({
         {/* Schema Error */}
         {(schemaError || (touched.schema && validationErrors.schema)) && (
           <div
-            className={`mb-4 p-3 rounded-lg flex items-start gap-2 ${
+            className={`mb-4 flex items-start gap-2 rounded-lg p-3 ${
               isDarkMode
                 ? 'bg-red-900/20 text-red-400'
                 : 'bg-red-50 text-red-700'
             }`}
           >
-            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <div className="text-xs">
               {schemaError || validationErrors.schema}
             </div>
@@ -821,10 +837,10 @@ export function BlueprintForm({
           <div className="space-y-3">
             {schemaProperties.length === 0 ? (
               <div
-                className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
               >
                 <div>No properties defined</div>
-                <div className="text-sm mt-1">
+                <div className="mt-1 text-sm">
                   Add properties to define the schema
                 </div>
               </div>
@@ -837,7 +853,7 @@ export function BlueprintForm({
                     className={`rounded-lg border ${
                       isDarkMode
                         ? 'bg-gray-750 border-gray-600'
-                        : 'bg-gray-50 border-gray-200'
+                        : 'border-gray-200 bg-gray-50'
                     }`}
                   >
                     {/* Property Row */}
@@ -846,32 +862,30 @@ export function BlueprintForm({
                         <button
                           onClick={() => moveProperty(index, 'up')}
                           disabled={index === 0}
-                          className={`p-0.5 rounded ${
+                          className={`rounded p-0.5 ${
                             index === 0
-                              ? 'opacity-30 cursor-not-allowed'
+                              ? 'cursor-not-allowed opacity-30'
                               : isDarkMode
-                                ? 'hover:bg-gray-700 text-gray-400'
-                                : 'hover:bg-gray-200 text-gray-600'
+                                ? 'text-gray-400 hover:bg-gray-700'
+                                : 'text-gray-600 hover:bg-gray-200'
                           }`}
                           title="Move up"
                         >
-                          <ChevronUp className="w-3 h-3" />
+                          <ChevronUp className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => moveProperty(index, 'down')}
-                          disabled={
+                          disabled={index === schemaProperties.length - 1}
+                          className={`rounded p-0.5 ${
                             index === schemaProperties.length - 1
-                          }
-                          className={`p-0.5 rounded ${
-                            index === schemaProperties.length - 1
-                              ? 'opacity-30 cursor-not-allowed'
+                              ? 'cursor-not-allowed opacity-30'
                               : isDarkMode
-                                ? 'hover:bg-gray-700 text-gray-400'
-                                : 'hover:bg-gray-200 text-gray-600'
+                                ? 'text-gray-400 hover:bg-gray-700'
+                                : 'text-gray-600 hover:bg-gray-200'
                           }`}
                           title="Move down"
                         >
-                          <ChevronDown className="w-3 h-3" />
+                          <ChevronDown className="h-3 w-3" />
                         </button>
                       </div>
 
@@ -883,7 +897,7 @@ export function BlueprintForm({
                           })
                         }
                         placeholder="Property name"
-                        className={`flex-1 font-mono text-sm ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                        className={`flex-1 font-mono text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                       />
 
                       <select
@@ -893,10 +907,10 @@ export function BlueprintForm({
                             type: e.target.value as SchemaProperty['type'],
                           })
                         }
-                        className={`w-28 px-2 py-2 rounded-md border text-sm ${
+                        className={`w-28 rounded-md border px-2 py-2 text-sm ${
                           isDarkMode
-                            ? 'bg-gray-700 border-gray-600 text-white'
-                            : 'bg-white border-gray-300 text-gray-900'
+                            ? 'border-gray-600 bg-gray-700 text-white'
+                            : 'border-gray-300 bg-white text-gray-900'
                         }`}
                       >
                         {PROPERTY_TYPES.map((t) => (
@@ -918,7 +932,7 @@ export function BlueprintForm({
                         />
                         <label
                           htmlFor={`req-${prop.id}`}
-                          className={`text-xs cursor-pointer select-none ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                          className={`cursor-pointer select-none text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                         >
                           Required
                         </label>
@@ -926,7 +940,7 @@ export function BlueprintForm({
 
                       <button
                         onClick={() => toggleExpandProp(prop.id)}
-                        className={`p-1.5 rounded text-xs ${
+                        className={`rounded p-1.5 text-xs ${
                           isDarkMode
                             ? 'text-gray-400 hover:bg-gray-700'
                             : 'text-gray-600 hover:bg-gray-200'
@@ -934,38 +948,36 @@ export function BlueprintForm({
                         title="Advanced options"
                       >
                         {isExpanded ? (
-                          <ChevronUp className="w-3.5 h-3.5" />
+                          <ChevronUp className="h-3.5 w-3.5" />
                         ) : (
-                          <ChevronDown className="w-3.5 h-3.5" />
+                          <ChevronDown className="h-3.5 w-3.5" />
                         )}
                       </button>
 
                       <button
                         onClick={() => removeProperty(prop.id)}
-                        className={`p-1.5 rounded ${
+                        className={`rounded p-1.5 ${
                           isDarkMode
                             ? 'text-red-400 hover:bg-red-900/20'
                             : 'text-red-600 hover:bg-red-50'
                         }`}
                         title="Remove property"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
 
                     {/* Advanced Options */}
                     {isExpanded && (
                       <div
-                        className={`px-3 pb-3 pt-2 border-t space-y-3 ${
-                          isDarkMode
-                            ? 'border-gray-600'
-                            : 'border-gray-200'
+                        className={`space-y-3 border-t px-3 pb-3 pt-2 ${
+                          isDarkMode ? 'border-gray-600' : 'border-gray-200'
                         }`}
                       >
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label
-                              className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                              className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                             >
                               Description
                             </label>
@@ -977,12 +989,12 @@ export function BlueprintForm({
                                 })
                               }
                               placeholder="Property description"
-                              className={`text-sm ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                              className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                             />
                           </div>
                           <div>
                             <label
-                              className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                              className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                             >
                               Default Value
                             </label>
@@ -990,12 +1002,11 @@ export function BlueprintForm({
                               value={prop.defaultValue || ''}
                               onChange={(e) =>
                                 updateProperty(prop.id, {
-                                  defaultValue:
-                                    e.target.value || undefined,
+                                  defaultValue: e.target.value || undefined,
                                 })
                               }
                               placeholder="Default value"
-                              className={`text-sm ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                              className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                             />
                           </div>
                         </div>
@@ -1004,7 +1015,7 @@ export function BlueprintForm({
                           <div className="grid grid-cols-3 gap-3">
                             <div>
                               <label
-                                className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                               >
                                 Format
                               </label>
@@ -1012,14 +1023,13 @@ export function BlueprintForm({
                                 value={prop.format || ''}
                                 onChange={(e) =>
                                   updateProperty(prop.id, {
-                                    format:
-                                      e.target.value || undefined,
+                                    format: e.target.value || undefined,
                                   })
                                 }
-                                className={`w-full px-2 py-2 rounded-md border text-sm ${
+                                className={`w-full rounded-md border px-2 py-2 text-sm ${
                                   isDarkMode
-                                    ? 'bg-gray-700 border-gray-600 text-white'
-                                    : 'bg-white border-gray-300 text-gray-900'
+                                    ? 'border-gray-600 bg-gray-700 text-white'
+                                    : 'border-gray-300 bg-white text-gray-900'
                                 }`}
                               >
                                 {STRING_FORMATS.map((f) => (
@@ -1031,7 +1041,7 @@ export function BlueprintForm({
                             </div>
                             <div>
                               <label
-                                className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                               >
                                 Min Length
                               </label>
@@ -1045,12 +1055,12 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={`text-sm ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                                className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                               />
                             </div>
                             <div>
                               <label
-                                className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                               >
                                 Max Length
                               </label>
@@ -1064,7 +1074,7 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={`text-sm ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                                className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                               />
                             </div>
                           </div>
@@ -1075,7 +1085,7 @@ export function BlueprintForm({
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <label
-                                className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                               >
                                 Minimum
                               </label>
@@ -1089,12 +1099,12 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={`text-sm ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                                className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                               />
                             </div>
                             <div>
                               <label
-                                className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                               >
                                 Maximum
                               </label>
@@ -1108,7 +1118,7 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={`text-sm ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                                className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                               />
                             </div>
                           </div>
@@ -1116,7 +1126,7 @@ export function BlueprintForm({
 
                         <div>
                           <label
-                            className={`block text-xs mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                            className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                           >
                             Enum Values (comma-separated)
                           </label>
@@ -1153,7 +1163,7 @@ export function BlueprintForm({
                               }
                             }}
                             placeholder="e.g. small, medium, large"
-                            className={`text-sm ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                            className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                           />
                         </div>
                       </div>
@@ -1168,7 +1178,7 @@ export function BlueprintForm({
               variant="outline"
               className={`w-full ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
             >
-              <Plus className="w-4 h-4 mr-2" />
+              <Plus className="mr-2 h-4 w-4" />
               Add Property
             </Button>
           </div>
@@ -1185,10 +1195,10 @@ export function BlueprintForm({
             onBlur={() => syncCodeToVisual(rawSchema)}
             rows={20}
             spellCheck={false}
-            className={`w-full px-4 py-3 rounded-md border text-sm font-mono resize-y ${
+            className={`w-full resize-y rounded-md border px-4 py-3 font-mono text-sm ${
               isDarkMode
-                ? 'bg-gray-900 border-gray-600 text-gray-200'
-                : 'bg-gray-50 border-gray-300 text-gray-900'
+                ? 'border-gray-600 bg-gray-900 text-gray-200'
+                : 'border-gray-300 bg-gray-50 text-gray-900'
             }`}
           />
         )}

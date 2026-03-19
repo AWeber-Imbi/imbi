@@ -24,7 +24,11 @@ export function ProjectDetailPage() {
 
   const orgSlug = selectedOrganization?.slug || ''
 
-  const { data: project, isLoading, error } = useQuery({
+  const {
+    data: project,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['project', orgSlug, typeSlug, slug],
     queryFn: () => getProject(orgSlug, typeSlug!, slug!),
     enabled: !!orgSlug && !!typeSlug && !!slug,
@@ -32,30 +36,35 @@ export function ProjectDetailPage() {
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
-      <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}>
+      <div
+        className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}
+      >
         <Navigation
           currentView="projects"
           isDarkMode={isDarkMode}
           onThemeToggle={handleThemeToggle}
         />
-        <main className="pt-16" style={{ paddingBottom: 'var(--assistant-height, 64px)' }}>
+        <main
+          className="pt-16"
+          style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
+        >
           {!orgSlug && (
-            <div className="max-w-7xl mx-auto px-6 py-8">
-              <div className="text-center py-12 text-amber-600">
+            <div className="mx-auto max-w-7xl px-6 py-8">
+              <div className="py-12 text-center text-amber-600">
                 Select an organization to view this project.
               </div>
             </div>
           )}
           {isLoading && (
-            <div className="max-w-7xl mx-auto px-6 py-8">
-              <div className="flex items-center justify-center h-64">
+            <div className="mx-auto max-w-7xl px-6 py-8">
+              <div className="flex h-64 items-center justify-center">
                 <div className="text-lg">Loading project...</div>
               </div>
             </div>
           )}
           {error && (
-            <div className="max-w-7xl mx-auto px-6 py-8">
-              <div className="text-center py-12 text-red-600">
+            <div className="mx-auto max-w-7xl px-6 py-8">
+              <div className="py-12 text-center text-red-600">
                 Failed to load project
               </div>
             </div>

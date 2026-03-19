@@ -18,15 +18,11 @@ export function useOpenApiSpec() {
 export function getSchemaEnum(
   spec: OpenApiSpec,
   schemaName: string,
-  propertyName: string
+  propertyName: string,
 ): string[] {
   const schemas = spec?.components?.schemas || {}
   // Try exact name first, then common OpenAPI suffixed variants
-  const candidates = [
-    schemaName,
-    `${schemaName}-Output`,
-    `${schemaName}-Input`,
-  ]
+  const candidates = [schemaName, `${schemaName}-Output`, `${schemaName}-Input`]
   for (const name of candidates) {
     const enumValues = schemas[name]?.properties?.[propertyName]?.enum
     if (Array.isArray(enumValues)) return enumValues
@@ -36,7 +32,7 @@ export function getSchemaEnum(
 
 export function getSchemaProperties(
   spec: OpenApiSpec,
-  schemaName: string
+  schemaName: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, any> {
   return spec?.components?.schemas?.[schemaName]?.properties || {}

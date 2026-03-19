@@ -19,7 +19,11 @@ function parseLinkHeader(linkHeader: string | null): string | undefined {
   return url.searchParams.get('token') || undefined
 }
 
-async function fetchActivityFeed({ pageParam }: { pageParam?: string }): Promise<ActivityFeedResponse> {
+async function fetchActivityFeed({
+  pageParam,
+}: {
+  pageParam?: string
+}): Promise<ActivityFeedResponse> {
   try {
     const params: Record<string, unknown> = { limit: 20 }
     if (pageParam) {
@@ -27,15 +31,23 @@ async function fetchActivityFeed({ pageParam }: { pageParam?: string }): Promise
     }
 
     const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
-    const response = await axios.get<ActivityFeedEntry[]>(`${API_BASE_URL}/activity-feed`, {
-      params,
-      withCredentials: true,
-    })
+    const response = await axios.get<ActivityFeedEntry[]>(
+      `${API_BASE_URL}/activity-feed`,
+      {
+        params,
+        withCredentials: true,
+      },
+    )
 
     const data = Array.isArray(response.data) ? response.data : []
     const nextToken = parseLinkHeader(response.headers.link)
 
-    console.log('[Infinite Activity] Fetched', data.length, 'items, next token:', nextToken)
+    console.log(
+      '[Infinite Activity] Fetched',
+      data.length,
+      'items, next token:',
+      nextToken,
+    )
 
     return {
       data,
@@ -57,7 +69,7 @@ export function useInfiniteActivityFeed() {
       pages: data.pages,
       pageParams: data.pageParams,
       // Flatten all pages into a single array
-      activities: data.pages.flatMap(page => page.data),
+      activities: data.pages.flatMap((page) => page.data),
     }),
   })
 }

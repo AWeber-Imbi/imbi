@@ -1,4 +1,11 @@
-import { Github, Bug, Bell, ExternalLink, icons, type LucideIcon } from 'lucide-react'
+import {
+  Github,
+  Bug,
+  Bell,
+  ExternalLink,
+  icons,
+  type LucideIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -21,7 +28,11 @@ interface NewProjectDialogProps {
   onProjectCreated?: (typeSlug: string, slug: string) => void
 }
 
-export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProjectDialogProps) {
+export function NewProjectDialog({
+  isOpen,
+  onClose,
+  onProjectCreated,
+}: NewProjectDialogProps) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
   const queryClient = useQueryClient()
@@ -68,8 +79,13 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
   })
 
   const createMutation = useMutation({
-    mutationFn: ({ typeSlug, data }: { typeSlug: string; data: ProjectCreate }) =>
-      createProject(orgSlug, typeSlug, data),
+    mutationFn: ({
+      typeSlug,
+      data,
+    }: {
+      typeSlug: string
+      data: ProjectCreate
+    }) => createProject(orgSlug, typeSlug, data),
     onSuccess: (created, { typeSlug }) => {
       queryClient.invalidateQueries({ queryKey: ['projects', orgSlug] })
       onProjectCreated?.(typeSlug, created.slug)
@@ -85,7 +101,7 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
   }
 
   const handleLinkChange = (key: string, value: string) => {
-    setLinks(prev => {
+    setLinks((prev) => {
       if (!value) {
         const next = { ...prev }
         delete next[key]
@@ -96,10 +112,10 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
   }
 
   const toggleEnv = (envSlug: string) => {
-    setSelectedEnvSlugs(prev =>
+    setSelectedEnvSlugs((prev) =>
       prev.includes(envSlug)
-        ? prev.filter(s => s !== envSlug)
-        : [...prev, envSlug]
+        ? prev.filter((s) => s !== envSlug)
+        : [...prev, envSlug],
     )
   }
 
@@ -110,7 +126,8 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
       slug,
       description: description || null,
       team_slug: teamSlug,
-      environment_slugs: selectedEnvSlugs.length > 0 ? selectedEnvSlugs : undefined,
+      environment_slugs:
+        selectedEnvSlugs.length > 0 ? selectedEnvSlugs : undefined,
       links: Object.keys(links).length > 0 ? links : undefined,
     }
     createMutation.mutate({ typeSlug: projectTypeSlug, data: projectData })
@@ -135,10 +152,10 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
 
   if (!isOpen) return null
 
-  const linkFields = linkDefs.map(ld => {
+  const linkFields = linkDefs.map((ld) => {
     const pascalName = (ld.icon || '')
       .split('-')
-      .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
       .join('') as keyof typeof icons
     const Icon = icons[pascalName] || ExternalLink
     const placeholder = ld.url_template || 'https://example.com/...'
@@ -151,34 +168,42 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
       role="dialog"
       aria-modal="true"
       aria-label="Create New Project"
-      onKeyDown={(e) => { if (e.key === 'Escape') handleClose() }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') handleClose()
+      }}
     >
       <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
-      <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] flex flex-col">
+      <div className="relative mx-4 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
         {/* Header */}
-        <div className="p-6 border-b">
-          <h2 className="text-lg font-semibold text-slate-900">Create New Project</h2>
-          <p className="text-sm text-slate-500 mt-1">
+        <div className="border-b p-6">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Create New Project
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
             Create a new project with the following details.
           </p>
         </div>
 
         {/* Tab Switcher */}
         <div className="px-6 pt-4">
-          <div className="grid grid-cols-2 gap-1 bg-slate-100 rounded-lg p-1">
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">
             <button
               onClick={() => setStep('basic')}
-              className={`px-4 py-2 text-sm rounded-md transition-colors ${
-                step === 'basic' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
+              className={`rounded-md px-4 py-2 text-sm transition-colors ${
+                step === 'basic'
+                  ? 'bg-white text-slate-900 shadow'
+                  : 'text-slate-600'
               }`}
             >
               Basic Information
             </button>
             <button
               onClick={() => canProceed && setStep('urls')}
-              className={`px-4 py-2 text-sm rounded-md transition-colors ${
-                step === 'urls' ? 'bg-white shadow text-slate-900' : 'text-slate-600'
-              } ${!canProceed ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`rounded-md px-4 py-2 text-sm transition-colors ${
+                step === 'urls'
+                  ? 'bg-white text-slate-900 shadow'
+                  : 'text-slate-600'
+              } ${!canProceed ? 'cursor-not-allowed opacity-50' : ''}`}
             >
               URLs & Links
             </button>
@@ -191,95 +216,126 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
             <div className="space-y-6">
               {/* Team */}
               <div className="space-y-2">
-                <label htmlFor="new-project-team" className="text-sm font-medium text-slate-900">
+                <label
+                  htmlFor="new-project-team"
+                  className="text-sm font-medium text-slate-900"
+                >
                   Team <span className="text-red-500">*</span>
                 </label>
                 <select
                   id="new-project-team"
                   value={teamSlug}
-                  onChange={e => setTeamSlug(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm"
+                  onChange={(e) => setTeamSlug(e.target.value)}
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
                 >
                   <option value="">Select team...</option>
-                  {teams.map(t => (
-                    <option key={t.slug} value={t.slug}>{t.name}</option>
+                  {teams.map((t) => (
+                    <option key={t.slug} value={t.slug}>
+                      {t.name}
+                    </option>
                   ))}
                 </select>
-                <p className="text-sm text-slate-500">Team that owns this project</p>
+                <p className="text-sm text-slate-500">
+                  Team that owns this project
+                </p>
               </div>
 
               {/* Project Type */}
               <div className="space-y-2">
-                <label htmlFor="new-project-type" className="text-sm font-medium text-slate-900">
+                <label
+                  htmlFor="new-project-type"
+                  className="text-sm font-medium text-slate-900"
+                >
                   Project Type <span className="text-red-500">*</span>
                 </label>
                 <select
                   id="new-project-type"
                   value={projectTypeSlug}
-                  onChange={e => setProjectTypeSlug(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm"
+                  onChange={(e) => setProjectTypeSlug(e.target.value)}
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
                 >
                   <option value="">Select project type...</option>
-                  {projectTypes.map(pt => (
-                    <option key={pt.slug} value={pt.slug}>{pt.name}</option>
+                  {projectTypes.map((pt) => (
+                    <option key={pt.slug} value={pt.slug}>
+                      {pt.name}
+                    </option>
                   ))}
                 </select>
-                <p className="text-sm text-slate-500">Type of the new project</p>
+                <p className="text-sm text-slate-500">
+                  Type of the new project
+                </p>
               </div>
 
               {/* Name */}
               <div className="space-y-2">
-                <label htmlFor="new-project-name" className="text-sm font-medium text-slate-900">
+                <label
+                  htmlFor="new-project-name"
+                  className="text-sm font-medium text-slate-900"
+                >
                   Name <span className="text-red-500">*</span>
                 </label>
                 <Input
                   id="new-project-name"
                   value={name}
-                  onChange={e => handleNameChange(e.target.value)}
+                  onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., My Service"
                 />
-                <p className="text-sm text-slate-500">Human-readable name for this project</p>
+                <p className="text-sm text-slate-500">
+                  Human-readable name for this project
+                </p>
               </div>
 
               {/* Slug */}
               <div className="space-y-2">
-                <label htmlFor="new-project-slug" className="text-sm font-medium text-slate-900">
+                <label
+                  htmlFor="new-project-slug"
+                  className="text-sm font-medium text-slate-900"
+                >
                   Slug <span className="text-red-500">*</span>
                 </label>
                 <Input
                   id="new-project-slug"
                   value={slug}
-                  onChange={e => setSlug(e.target.value)}
+                  onChange={(e) => setSlug(e.target.value)}
                   placeholder="e.g., my-service"
                 />
-                <p className="text-sm text-slate-500">URL-friendly identifier for this project</p>
+                <p className="text-sm text-slate-500">
+                  URL-friendly identifier for this project
+                </p>
               </div>
 
               {/* Description */}
               <div className="space-y-2">
-                <label htmlFor="new-project-description" className="text-sm font-medium text-slate-900">Description</label>
+                <label
+                  htmlFor="new-project-description"
+                  className="text-sm font-medium text-slate-900"
+                >
+                  Description
+                </label>
                 <textarea
                   id="new-project-description"
                   value={description}
-                  onChange={e => setDescription(e.target.value)}
+                  onChange={(e) => setDescription(e.target.value)}
                   placeholder="Provide a high-level purpose and context for the project"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm min-h-[120px] resize-none"
+                  className="min-h-[120px] w-full resize-none rounded-md border border-slate-200 px-3 py-2 text-sm"
                 />
               </div>
 
               {/* Environments */}
               {environments.length > 0 && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900">Environments</label>
+                  <label className="text-sm font-medium text-slate-900">
+                    Environments
+                  </label>
                   <div className="flex flex-wrap gap-2">
-                    {environments.map(env => (
+                    {environments.map((env) => (
                       <button
                         key={env.slug}
                         onClick={() => toggleEnv(env.slug)}
-                        className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                        className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
                           selectedEnvSlugs.includes(env.slug)
-                            ? 'bg-blue-50 border-blue-300 text-blue-700'
-                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                         }`}
                       >
                         {env.name}
@@ -290,8 +346,10 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
               )}
 
               {/* Automations (mocked) */}
-              <div className="space-y-2 pt-4 border-t">
-                <label className="text-sm font-medium text-slate-900">Automations</label>
+              <div className="space-y-2 border-t pt-4">
+                <label className="text-sm font-medium text-slate-900">
+                  Automations
+                </label>
                 <AutomationToggle
                   icon={Github}
                   title="Create GitHub Repository"
@@ -318,18 +376,19 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
           ) : (
             <div className="space-y-6">
               <p className="text-sm text-slate-500">
-                Configure external links and integrations for this project. All fields are optional.
+                Configure external links and integrations for this project. All
+                fields are optional.
               </p>
               {linkFields.map(({ key, label, icon: Icon, placeholder }) => (
                 <div key={key} className="space-y-2">
-                  <label className="text-sm font-medium text-slate-900 flex items-center gap-2">
-                    <Icon className="w-4 h-4 text-slate-500" />
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-900">
+                    <Icon className="h-4 w-4 text-slate-500" />
                     {label}
                   </label>
                   <Input
                     type="url"
                     value={links[key] || ''}
-                    onChange={e => handleLinkChange(key, e.target.value)}
+                    onChange={(e) => handleLinkChange(key, e.target.value)}
                     placeholder={placeholder}
                   />
                 </div>
@@ -341,7 +400,7 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
         {/* Error display */}
         {createMutation.error && (
           <div className="px-6 py-2">
-            <Card className="p-3 bg-red-50 border-red-200">
+            <Card className="border-red-200 bg-red-50 p-3">
               <p className="text-sm text-red-700">
                 Failed to create project: {String(createMutation.error)}
               </p>
@@ -350,7 +409,7 @@ export function NewProjectDialog({ isOpen, onClose, onProjectCreated }: NewProje
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t">
+        <div className="flex items-center justify-between border-t p-6">
           <div>
             {step === 'urls' && (
               <Button variant="ghost" onClick={() => setStep('basic')}>
@@ -392,9 +451,9 @@ function AutomationToggle({
   onChange: (val: boolean) => void
 }) {
   return (
-    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-center gap-3">
-        <Icon className="w-5 h-5 text-slate-600" />
+        <Icon className="h-5 w-5 text-slate-600" />
         <div>
           <p className="text-sm text-slate-900">{title}</p>
           <p className="text-xs text-slate-500">{description}</p>
@@ -405,13 +464,15 @@ function AutomationToggle({
         aria-checked={checked}
         aria-label={title}
         onClick={() => onChange(!checked)}
-        className={`relative w-9 h-5 rounded-full transition-colors ${
+        className={`relative h-5 w-9 rounded-full transition-colors ${
           checked ? 'bg-blue-600' : 'bg-slate-300'
         }`}
       >
-        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-          checked ? 'translate-x-4' : 'translate-x-0'
-        }`} />
+        <span
+          className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+            checked ? 'translate-x-4' : 'translate-x-0'
+          }`}
+        />
       </button>
     </div>
   )

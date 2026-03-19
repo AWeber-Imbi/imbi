@@ -8,7 +8,8 @@ describe('authStore', () => {
 
   describe('setAccessToken', () => {
     it('should decode and store a valid JWT token', () => {
-      const validToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjoxNzM1NzQ3MjAwLCJpYXQiOjE3MzU3NDcyMDB9.test'
+      const validToken =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjoxNzM1NzQ3MjAwLCJpYXQiOjE3MzU3NDcyMDB9.test'
 
       useAuthStore.getState().setAccessToken(validToken)
 
@@ -30,7 +31,8 @@ describe('authStore', () => {
 
   describe('clearTokens', () => {
     it('should clear all token data', () => {
-      const validToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjoxNzM1NzQ3MjAwLCJpYXQiOjE3MzU3NDcyMDB9.test'
+      const validToken =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjoxNzM1NzQ3MjAwLCJpYXQiOjE3MzU3NDcyMDB9.test'
       useAuthStore.getState().setAccessToken(validToken)
 
       useAuthStore.getState().clearTokens()
@@ -48,7 +50,8 @@ describe('authStore', () => {
     })
 
     it('should return true if token expiry is in the past', () => {
-      const expiredToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjoxNjAwMDAwMDAwLCJpYXQiOjE2MDAwMDAwMDB9.test'
+      const expiredToken =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjoxNjAwMDAwMDAwLCJpYXQiOjE2MDAwMDAwMDB9.test'
 
       useAuthStore.getState().setAccessToken(expiredToken)
 
@@ -62,7 +65,7 @@ describe('authStore', () => {
 
       useAuthStore.setState({
         accessToken: futureToken,
-        tokenExpiry: futureTimestamp * 1000
+        tokenExpiry: futureTimestamp * 1000,
       })
 
       const isExpired = useAuthStore.getState().isTokenExpired()
@@ -74,7 +77,7 @@ describe('authStore', () => {
 
       useAuthStore.setState({
         accessToken: 'token',
-        tokenExpiry: soonTimestamp * 1000
+        tokenExpiry: soonTimestamp * 1000,
       })
 
       const isExpired = useAuthStore.getState().isTokenExpired()
@@ -89,7 +92,8 @@ describe('authStore', () => {
     })
 
     it('should extract username from valid JWT', () => {
-      const validToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjoxNzM1NzQ3MjAwLCJpYXQiOjE3MzU3NDcyMDB9.test'
+      const validToken =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjoxNzM1NzQ3MjAwLCJpYXQiOjE3MzU3NDcyMDB9.test'
 
       useAuthStore.getState().setAccessToken(validToken)
 

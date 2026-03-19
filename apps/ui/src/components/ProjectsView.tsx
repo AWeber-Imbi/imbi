@@ -28,18 +28,25 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
   const searchQuery = searchParams.get('q') ?? ''
 
   const setViewMode = (v: 'grid' | 'list' | 'graph') =>
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.set('view', v)
-      return next
-    }, { replace: true })
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('view', v)
+        return next
+      },
+      { replace: true },
+    )
 
   const setSearchQuery = (q: string) =>
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      if (q) next.set('q', q); else next.delete('q')
-      return next
-    }, { replace: true })
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (q) next.set('q', q)
+        else next.delete('q')
+        return next
+      },
+      { replace: true },
+    )
 
   const [newProjectDialogOpen, setNewProjectDialogOpen] = useState(false)
 
@@ -88,18 +95,20 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
     const all = projects || []
     if (!searchQuery) return all
     const query = searchQuery.toLowerCase()
-    return all.filter(p => {
-      return p.name.toLowerCase().includes(query) ||
+    return all.filter((p) => {
+      return (
+        p.name.toLowerCase().includes(query) ||
         p.description?.toLowerCase().includes(query) ||
         p.team.name.toLowerCase().includes(query) ||
         p.project_type.name.toLowerCase().includes(query)
+      )
     })
   }, [projects, searchQuery])
 
   if (isLoading) {
     return (
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-center h-64">
+      <div className="mx-auto max-w-7xl px-6 py-8">
+        <div className="flex h-64 items-center justify-center">
           <div className="text-lg">Loading projects...</div>
         </div>
       </div>
@@ -107,10 +116,12 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
+    <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+        <div className="mb-4 flex items-center justify-between">
+          <h1
+            className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
+          >
             Projects
           </h1>
           <Button
@@ -118,32 +129,40 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
             className="bg-green-600 hover:bg-green-700"
             onClick={() => setNewProjectDialogOpen(true)}
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="mr-2 h-4 w-4" />
             New Project
           </Button>
         </div>
 
         {/* Search and Filters */}
-        <Card className={`p-4 ${isDarkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
+        <Card
+          className={`p-4 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
+        >
           <div className="flex items-center gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-                isDarkMode ? 'text-gray-400' : 'text-slate-400'
-              }`} />
+            <div className="relative max-w-md flex-1">
+              <Search
+                className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
+                  isDarkMode ? 'text-gray-400' : 'text-slate-400'
+                }`}
+              />
               <Input
                 type="text"
                 placeholder="Search projects..."
                 className={`pl-9 ${
-                  isDarkMode ? 'bg-gray-700 border-gray-600 text-white placeholder:text-gray-400' : ''
+                  isDarkMode
+                    ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
+                    : ''
                 }`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
 
-            <div className={`flex items-center border rounded-lg ${
-              isDarkMode ? 'border-gray-600' : 'border-slate-200'
-            }`}>
+            <div
+              className={`flex items-center rounded-lg border ${
+                isDarkMode ? 'border-gray-600' : 'border-slate-200'
+              }`}
+            >
               <Button
                 variant={viewMode === 'grid' ? 'default' : 'ghost'}
                 size="sm"
@@ -151,7 +170,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                 className="rounded-r-none"
                 aria-label="Grid view"
               >
-                <Grid3x3 className="w-4 h-4" />
+                <Grid3x3 className="h-4 w-4" />
               </Button>
               <Button
                 variant={viewMode === 'list' ? 'default' : 'ghost'}
@@ -160,7 +179,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                 className="rounded-none"
                 aria-label="List view"
               >
-                <List className="w-4 h-4" />
+                <List className="h-4 w-4" />
               </Button>
               <Button
                 variant={viewMode === 'graph' ? 'default' : 'ghost'}
@@ -169,7 +188,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                 className="rounded-l-none"
                 aria-label="Graph view"
               >
-                <Network className="w-4 h-4" />
+                <Network className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -180,55 +199,67 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
       {viewMode === 'graph' ? (
         <ProjectGraphView projects={filteredProjects} isDarkMode={isDarkMode} />
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProjects.map((project, index) => {
             const health = getMockHealth(project.slug)
             return (
               <Card
                 key={`${index}-${project.project_type.slug}/${project.slug}`}
-                className={`p-5 hover:shadow-md transition-shadow cursor-pointer ${
-                  isDarkMode ? 'bg-gray-800 border-gray-700' : ''
+                className={`cursor-pointer p-5 transition-shadow hover:shadow-md ${
+                  isDarkMode ? 'border-gray-700 bg-gray-800' : ''
                 }`}
-                onClick={() => handleProjectSelect(project.project_type.slug, project.slug)}
+                onClick={() =>
+                  handleProjectSelect(project.project_type.slug, project.slug)
+                }
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1 min-w-0">
-                    <h3 className={`mb-1 truncate font-medium ${
-                      isDarkMode ? 'text-white' : 'text-slate-900'
-                    }`}>
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <h3
+                      className={`mb-1 truncate font-medium ${
+                        isDarkMode ? 'text-white' : 'text-slate-900'
+                      }`}
+                    >
                       {project.name}
                     </h3>
-                    <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                    <p
+                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
+                    >
                       {project.project_type.name}
                     </p>
                   </div>
-                  <div className={`flex items-center justify-center w-12 h-12 rounded-full ring-4 ${
-                    getHealthRingColor(health)
-                  } ${getHealthColor(health)} flex-shrink-0 ml-3`}>
+                  <div
+                    className={`flex h-12 w-12 items-center justify-center rounded-full ring-4 ${getHealthRingColor(
+                      health,
+                    )} ${getHealthColor(health)} ml-3 flex-shrink-0`}
+                  >
                     <span className="text-sm font-semibold">{health}</span>
                   </div>
                 </div>
 
                 {project.description && (
-                  <p className={`text-sm mb-3 line-clamp-2 ${
-                    isDarkMode ? 'text-gray-300' : 'text-slate-600'
-                  }`}>
+                  <p
+                    className={`mb-3 line-clamp-2 text-sm ${
+                      isDarkMode ? 'text-gray-300' : 'text-slate-600'
+                    }`}
+                  >
                     {project.description}
                   </p>
                 )}
 
                 <div className="mb-3">
-                  <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-slate-500'}`}>
+                  <p
+                    className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-slate-500'}`}
+                  >
                     {project.team.name}
                   </p>
                 </div>
 
                 {project.environments && project.environments.length > 0 && (
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex flex-wrap items-center gap-2">
                     {project.environments.map((env, envIdx) => (
                       <span
                         key={envIdx}
-                        className={`px-2 py-1 rounded text-xs ${getEnvironmentBadgeColor(env.name)}`}
+                        className={`rounded px-2 py-1 text-xs ${getEnvironmentBadgeColor(env.name)}`}
                       >
                         {env.name}
                       </span>
@@ -240,57 +271,101 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
           })}
         </div>
       ) : (
-        <Card className={`overflow-hidden ${isDarkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
+        <Card
+          className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className={`border-b ${
-                isDarkMode ? 'bg-gray-750 border-gray-700' : 'bg-slate-50 border-slate-200'
-              }`}>
+              <thead
+                className={`border-b ${
+                  isDarkMode
+                    ? 'bg-gray-750 border-gray-700'
+                    : 'border-slate-200 bg-slate-50'
+                }`}
+              >
                 <tr>
-                  <th className={`text-left px-6 py-3 text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}>Project</th>
-                  <th className={`text-left px-6 py-3 text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}>Type</th>
-                  <th className={`text-left px-6 py-3 text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}>Team</th>
-                  <th className={`text-left px-6 py-3 text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}>Environments</th>
-                  <th className={`text-left px-6 py-3 text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}>Health</th>
+                  <th
+                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                  >
+                    Project
+                  </th>
+                  <th
+                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                  >
+                    Type
+                  </th>
+                  <th
+                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                  >
+                    Team
+                  </th>
+                  <th
+                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                  >
+                    Environments
+                  </th>
+                  <th
+                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                  >
+                    Health
+                  </th>
                 </tr>
               </thead>
-              <tbody className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-slate-200'}`}>
+              <tbody
+                className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-slate-200'}`}
+              >
                 {filteredProjects.map((project, index) => {
                   const health = getMockHealth(project.slug)
                   return (
                     <tr
                       key={`${index}-${project.project_type.slug}/${project.slug}`}
-                      className={`transition-colors cursor-pointer ${
+                      className={`cursor-pointer transition-colors ${
                         isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-50'
                       }`}
-                      onClick={() => handleProjectSelect(project.project_type.slug, project.slug)}
+                      onClick={() =>
+                        handleProjectSelect(
+                          project.project_type.slug,
+                          project.slug,
+                        )
+                      }
                     >
-                      <td className={`px-6 py-4 font-medium ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                      <td
+                        className={`px-6 py-4 font-medium ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
+                      >
                         {project.name}
                       </td>
-                      <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-slate-600'}`}>
+                      <td
+                        className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-slate-600'}`}
+                      >
                         {project.project_type.name}
                       </td>
-                      <td className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-slate-600'}`}>
+                      <td
+                        className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-slate-600'}`}
+                      >
                         {project.team.name}
                       </td>
                       <td className="px-6 py-4">
-                        {project.environments && project.environments.length > 0 && (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {project.environments.map((env, envIdx) => (
-                              <span
-                                key={envIdx}
-                                className={`px-2 py-1 rounded text-xs ${getEnvironmentBadgeColor(env.name)}`}
-                              >
-                                {env.name}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                        {project.environments &&
+                          project.environments.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              {project.environments.map((env, envIdx) => (
+                                <span
+                                  key={envIdx}
+                                  className={`rounded px-2 py-1 text-xs ${getEnvironmentBadgeColor(env.name)}`}
+                                >
+                                  {env.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                       </td>
                       <td className="px-6 py-4">
-                        <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full ${getHealthColor(health)}`}>
-                          <span className="text-sm font-semibold">{health}</span>
+                        <div
+                          className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${getHealthColor(health)}`}
+                        >
+                          <span className="text-sm font-semibold">
+                            {health}
+                          </span>
                         </div>
                       </td>
                     </tr>
@@ -303,7 +378,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
       )}
 
       {filteredProjects.length === 0 && viewMode !== 'graph' && (
-        <div className="text-center py-12">
+        <div className="py-12 text-center">
           <p className={isDarkMode ? 'text-gray-400' : 'text-slate-500'}>
             No projects found matching your criteria
           </p>
@@ -313,7 +388,9 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
       <NewProjectDialog
         isOpen={newProjectDialogOpen}
         onClose={() => setNewProjectDialogOpen(false)}
-        onProjectCreated={(typeSlug, slug) => navigate(`/projects/${typeSlug}/${slug}`)}
+        onProjectCreated={(typeSlug, slug) =>
+          navigate(`/projects/${typeSlug}/${slug}`)
+        }
       />
     </div>
   )

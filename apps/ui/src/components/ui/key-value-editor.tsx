@@ -54,12 +54,12 @@ export function KeyValueEditor({
           <Input
             value={k}
             disabled
-            className={`flex-1 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} opacity-70`}
+            className={`flex-1 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} opacity-70`}
           />
           <Input
             value={String(v)}
             disabled
-            className={`flex-1 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} opacity-70`}
+            className={`flex-1 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} opacity-70`}
           />
           <Button
             type="button"
@@ -67,9 +67,13 @@ export function KeyValueEditor({
             size="sm"
             onClick={() => handleRemove(k)}
             disabled={disabled}
-            className={isDarkMode ? 'text-red-400 hover:text-red-300 hover:bg-red-900/20' : 'text-red-600 hover:text-red-700 hover:bg-red-50'}
+            className={
+              isDarkMode
+                ? 'text-red-400 hover:bg-red-900/20 hover:text-red-300'
+                : 'text-red-600 hover:bg-red-50 hover:text-red-700'
+            }
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       ))}
@@ -81,7 +85,7 @@ export function KeyValueEditor({
           onKeyDown={handleKeyDown}
           placeholder={keyPlaceholder}
           disabled={disabled}
-          className={`flex-1 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+          className={`flex-1 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
         />
         <Input
           value={newValue}
@@ -89,7 +93,7 @@ export function KeyValueEditor({
           onKeyDown={handleKeyDown}
           placeholder={valuePlaceholder}
           disabled={disabled}
-          className={`flex-1 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+          className={`flex-1 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
         />
         <Button
           type="button"
@@ -97,9 +101,13 @@ export function KeyValueEditor({
           size="sm"
           onClick={handleAdd}
           disabled={disabled || !newKey.trim() || !newValue.trim()}
-          className={isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}
+          className={
+            isDarkMode
+              ? 'text-blue-400 hover:text-blue-300'
+              : 'text-blue-600 hover:text-blue-700'
+          }
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
         </Button>
       </div>
     </div>

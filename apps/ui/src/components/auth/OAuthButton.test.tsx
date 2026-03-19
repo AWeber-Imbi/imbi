@@ -19,7 +19,9 @@ describe('OAuthButton', () => {
   it('should render button with provider name', () => {
     render(<OAuthButton provider={defaultProvider} onClick={mockOnClick} />)
 
-    expect(screen.getByRole('button', { name: /continue with google/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /continue with google/i }),
+    ).toBeInTheDocument()
   })
 
   it('should render correct icon for Google', () => {
@@ -34,14 +36,18 @@ describe('OAuthButton', () => {
     const githubProvider = { id: 'github', name: 'GitHub', icon: 'github' }
     render(<OAuthButton provider={githubProvider} onClick={mockOnClick} />)
 
-    expect(screen.getByRole('button', { name: /continue with github/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /continue with github/i }),
+    ).toBeInTheDocument()
   })
 
   it('should render correct icon for OIDC', () => {
     const oidcProvider = { id: 'oidc', name: 'OIDC', icon: 'oidc' }
     render(<OAuthButton provider={oidcProvider} onClick={mockOnClick} />)
 
-    expect(screen.getByRole('button', { name: /continue with oidc/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /continue with oidc/i }),
+    ).toBeInTheDocument()
   })
 
   it('should call onClick when clicked', async () => {
@@ -55,7 +61,13 @@ describe('OAuthButton', () => {
   })
 
   it('should be disabled when disabled prop is true', () => {
-    render(<OAuthButton provider={defaultProvider} onClick={mockOnClick} disabled={true} />)
+    render(
+      <OAuthButton
+        provider={defaultProvider}
+        onClick={mockOnClick}
+        disabled={true}
+      />,
+    )
 
     const button = screen.getByRole('button')
     expect(button).toBeDisabled()
@@ -63,7 +75,13 @@ describe('OAuthButton', () => {
 
   it('should not call onClick when disabled', async () => {
     const user = userEvent.setup()
-    render(<OAuthButton provider={defaultProvider} onClick={mockOnClick} disabled={true} />)
+    render(
+      <OAuthButton
+        provider={defaultProvider}
+        onClick={mockOnClick}
+        disabled={true}
+      />,
+    )
 
     const button = screen.getByRole('button')
     await user.click(button)

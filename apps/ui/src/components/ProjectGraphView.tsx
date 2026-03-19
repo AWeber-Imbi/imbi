@@ -1,10 +1,29 @@
 import { useRef, useState, useMemo, useCallback, useEffect } from 'react'
-import { GraphCanvas, GraphCanvasRef, LayoutTypes, lightTheme, darkTheme, useSelection } from 'reagraph'
-import { ZoomIn, ZoomOut, Maximize2, ChevronDown, Expand, Shrink } from 'lucide-react'
+import {
+  GraphCanvas,
+  GraphCanvasRef,
+  LayoutTypes,
+  lightTheme,
+  darkTheme,
+  useSelection,
+} from 'reagraph'
+import {
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  ChevronDown,
+  Expand,
+  Shrink,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import type { Project } from '@/types'
 import type { InternalGraphNode } from 'reagraph'
 
@@ -22,14 +41,20 @@ const ZOOM_100_DISTANCE = 1800
 const DEFAULT_ZOOM_PERCENT = 10
 
 const TYPE_COLORS = [
-  '#2563EB', '#DC2626', '#16A34A', '#D97706',
-  '#7C3AED', '#0891B2', '#DB2777', '#65A30D',
+  '#2563EB',
+  '#DC2626',
+  '#16A34A',
+  '#D97706',
+  '#7C3AED',
+  '#0891B2',
+  '#DB2777',
+  '#65A30D',
 ]
 
 /** Returns the IDs of the largest connected component in the graph. */
 function largestComponent(
   nodeIds: string[],
-  edges: { source: string; target: string }[]
+  edges: { source: string; target: string }[],
 ): string[] {
   const adj = new Map<string, Set<string>>()
   for (const id of nodeIds) adj.set(id, new Set())
@@ -70,7 +95,10 @@ interface ProjectGraphViewProps {
   isDarkMode: boolean
 }
 
-export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps) {
+export function ProjectGraphView({
+  projects,
+  isDarkMode,
+}: ProjectGraphViewProps) {
   const navigate = useNavigate()
   const ref = useRef<GraphCanvasRef | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -85,9 +113,13 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
   // Uses composite "typeSlug/slug" keys so two projects with the same slug
   // but different project types produce distinct hashes.
   const graphKey = useMemo(() => {
-    const ids = projects.map(p => `${p.project_type.slug}/${p.slug}`).sort().join('|')
+    const ids = projects
+      .map((p) => `${p.project_type.slug}/${p.slug}`)
+      .sort()
+      .join('|')
     let h = 5381
-    for (let i = 0; i < ids.length; i++) h = (((h << 5) + h) ^ ids.charCodeAt(i)) >>> 0
+    for (let i = 0; i < ids.length; i++)
+      h = (((h << 5) + h) ^ ids.charCodeAt(i)) >>> 0
     return `${layout}-${h}`
   }, [layout, projects])
 
@@ -95,7 +127,8 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
   useEffect(() => {
     const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement)
     document.addEventListener('fullscreenchange', handleFsChange)
-    return () => document.removeEventListener('fullscreenchange', handleFsChange)
+    return () =>
+      document.removeEventListener('fullscreenchange', handleFsChange)
   }, [])
 
   // Fit all nodes in view after layout settles. Depends on graphKey so it fires
@@ -104,12 +137,16 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
     if (projects.length === 0) return
     setIsRendering(true)
     const clusterIds = largestComponent(
-      nodes.map(n => n.id),
-      edges
+      nodes.map((n) => n.id),
+      edges,
     )
     const fitTimer = setTimeout(() => {
-      ref.current?.fitNodesInView(clusterIds.length > 1 ? clusterIds : undefined)
-      ref.current?.getControls().dollyTo(ZOOM_100_DISTANCE / (DEFAULT_ZOOM_PERCENT / 100), true)
+      ref.current?.fitNodesInView(
+        clusterIds.length > 1 ? clusterIds : undefined,
+      )
+      ref.current
+        ?.getControls()
+        .dollyTo(ZOOM_100_DISTANCE / (DEFAULT_ZOOM_PERCENT / 100), true)
       setIsRendering(false)
     }, 600)
 
@@ -120,7 +157,9 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
       if (!controls) return
       setCurrentZoom(Math.round((ZOOM_100_DISTANCE / controls.distance) * 100))
       const onUpdate = () => {
-        setCurrentZoom(Math.round((ZOOM_100_DISTANCE / controls.distance) * 100))
+        setCurrentZoom(
+          Math.round((ZOOM_100_DISTANCE / controls.distance) * 100),
+        )
       }
       controls.addEventListener('update', onUpdate)
       removeListener = () => controls.removeEventListener('update', onUpdate)
@@ -131,8 +170,8 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
       clearTimeout(listenTimer)
       removeListener?.()
     }
-  // graphKey already encodes layout + node set — no need to list them separately
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // graphKey already encodes layout + node set — no need to list them separately
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphKey])
 
   const toggleFullscreen = useCallback(() => {
@@ -143,14 +182,15 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
     }
   }, [])
 
-  const nodes = useMemo(() =>
-    projects.map(p => ({
-      id: `${p.project_type.slug}/${p.slug}`,
-      label: p.name,
-      fill: getTypeColor(p.project_type.slug),
-      data: p,
-    })),
-    [projects]
+  const nodes = useMemo(
+    () =>
+      projects.map((p) => ({
+        id: `${p.project_type.slug}/${p.slug}`,
+        label: p.name,
+        fill: getTypeColor(p.project_type.slug),
+        data: p,
+      })),
+    [projects],
   )
 
   // Map composite "typeSlug/slug" → node ID for edge resolution.
@@ -158,7 +198,7 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
   // projects share the same slug but belong to different project types.
   const compositeToNodeId = useMemo(() => {
     const map = new Map<string, string>()
-    projects.forEach(p => {
+    projects.forEach((p) => {
       const composite = `${p.project_type.slug}/${p.slug}`
       map.set(composite, composite)
     })
@@ -167,9 +207,9 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
 
   const edges = useMemo(() => {
     const seen = new Set<string>()
-    return projects.flatMap(p => {
+    return projects.flatMap((p) => {
       const sourceId = `${p.project_type.slug}/${p.slug}`
-      return [...new Set(p.dependency_uris ?? [])].flatMap(uri => {
+      return [...new Set(p.dependency_uris ?? [])].flatMap((uri) => {
         // URI format: /organizations/<org>/projects/<typeSlug>/<slug>
         const parts = uri.split('/')
         // Extract the last two path segments as the composite key
@@ -181,12 +221,24 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
         const edgeId = `${sourceId}->${targetId}`
         if (seen.has(edgeId)) return []
         seen.add(edgeId)
-        return [{ id: edgeId, source: sourceId, target: targetId, label: 'depends on' }]
+        return [
+          {
+            id: edgeId,
+            source: sourceId,
+            target: targetId,
+            label: 'depends on',
+          },
+        ]
       })
     })
   }, [projects, compositeToNodeId])
 
-  const { selections, actives, onNodeClick: selectNode, onCanvasClick } = useSelection({
+  const {
+    selections,
+    actives,
+    onNodeClick: selectNode,
+    onCanvasClick,
+  } = useSelection({
     ref,
     nodes,
     edges,
@@ -197,7 +249,7 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
 
   const handleNodeClick = useCallback(
     (node: InternalGraphNode) => selectNode?.(node),
-    [selectNode]
+    [selectNode],
   )
 
   const handleNodeDoubleClick = useCallback(
@@ -205,35 +257,46 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
       const p = node.data as Project
       navigate(`/projects/${p.project_type.slug}/${p.slug}`)
     },
-    [navigate]
+    [navigate],
   )
 
   const currentLayoutLabel =
-    LAYOUT_OPTIONS.find(l => l.value === layout)?.label ?? LAYOUT_OPTIONS[0].label
+    LAYOUT_OPTIONS.find((l) => l.value === layout)?.label ??
+    LAYOUT_OPTIONS[0].label
 
   const btnClass = isDarkMode
     ? 'border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700'
     : ''
 
   return (
-    <div ref={containerRef} className={isFullscreen ? 'flex flex-col h-screen' : ''}>
-      <Card className={`flex flex-col overflow-hidden ${
-        isFullscreen ? 'h-full rounded-none border-0' : ''
-      } ${isDarkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
-
+    <div
+      ref={containerRef}
+      className={isFullscreen ? 'flex h-screen flex-col' : ''}
+    >
+      <Card
+        className={`flex flex-col overflow-hidden ${
+          isFullscreen ? 'h-full rounded-none border-0' : ''
+        } ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
+      >
         {/* Toolbar */}
-        <div className={`flex flex-shrink-0 items-center gap-2 px-4 py-3 border-b ${
-          isDarkMode ? 'border-gray-700' : 'border-gray-200'
-        }`}>
+        <div
+          className={`flex flex-shrink-0 items-center gap-2 border-b px-4 py-3 ${
+            isDarkMode ? 'border-gray-700' : 'border-gray-200'
+          }`}
+        >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className={`gap-2 ${btnClass}`}>
+              <Button
+                variant="outline"
+                size="sm"
+                className={`gap-2 ${btnClass}`}
+              >
                 {currentLayoutLabel}
-                <ChevronDown className="w-3 h-3" />
+                <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              {LAYOUT_OPTIONS.map(opt => (
+              {LAYOUT_OPTIONS.map((opt) => (
                 <DropdownMenuItem
                   key={opt.value}
                   className={layout === opt.value ? 'font-medium' : ''}
@@ -246,54 +309,102 @@ export function ProjectGraphView({ projects, isDarkMode }: ProjectGraphViewProps
           </DropdownMenu>
 
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" title="Zoom in" aria-label="Zoom in" onClick={() => ref.current?.zoomIn()} className={btnClass}>
-              <ZoomIn className="w-4 h-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              title="Zoom in"
+              aria-label="Zoom in"
+              onClick={() => ref.current?.zoomIn()}
+              className={btnClass}
+            >
+              <ZoomIn className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" title="Zoom out" aria-label="Zoom out" onClick={() => ref.current?.zoomOut()} className={btnClass}>
-              <ZoomOut className="w-4 h-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              title="Zoom out"
+              aria-label="Zoom out"
+              onClick={() => ref.current?.zoomOut()}
+              className={btnClass}
+            >
+              <ZoomOut className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"
               size="sm"
               title="Reset to 100% zoom"
               disabled={currentZoom === 100}
-              onClick={() => ref.current?.getControls().dollyTo(ZOOM_100_DISTANCE, true)}
+              onClick={() =>
+                ref.current?.getControls().dollyTo(ZOOM_100_DISTANCE, true)
+              }
               className={btnClass}
             >
               {currentZoom}%
             </Button>
-            <Button variant="outline" size="sm" title="Fit to view" aria-label="Fit to view" onClick={() => ref.current?.fitNodesInView()} className={btnClass}>
-              <Maximize2 className="w-4 h-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              title="Fit to view"
+              aria-label="Fit to view"
+              onClick={() => ref.current?.fitNodesInView()}
+              className={btnClass}
+            >
+              <Maximize2 className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} onClick={toggleFullscreen} className={btnClass}>
-              {isFullscreen ? <Shrink className="w-4 h-4" /> : <Expand className="w-4 h-4" />}
+            <Button
+              variant="outline"
+              size="sm"
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              onClick={toggleFullscreen}
+              className={btnClass}
+            >
+              {isFullscreen ? (
+                <Shrink className="h-4 w-4" />
+              ) : (
+                <Expand className="h-4 w-4" />
+              )}
             </Button>
           </div>
 
-          <span className={`ml-auto text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            {nodes.length} projects · {edges.length} dependencies · Double-click to open
+          <span
+            className={`ml-auto text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+          >
+            {nodes.length} projects · {edges.length} dependencies · Double-click
+            to open
           </span>
         </div>
 
         {/* Canvas */}
         <div
           className={`relative ${isFullscreen ? 'flex-1' : 'min-h-[400px]'}`}
-          style={isFullscreen ? undefined : { height: 'calc(100vh - 250px - var(--assistant-height, 64px) - 16px)' }}
+          style={
+            isFullscreen
+              ? undefined
+              : {
+                  height:
+                    'calc(100vh - 250px - var(--assistant-height, 64px) - 16px)',
+                }
+          }
         >
           {isRendering && nodes.length > 0 && (
-            <div className={`absolute inset-0 z-10 flex items-center justify-center ${
-              isDarkMode ? 'bg-gray-800/80' : 'bg-white/80'
-            }`}>
+            <div
+              className={`absolute inset-0 z-10 flex items-center justify-center ${
+                isDarkMode ? 'bg-gray-800/80' : 'bg-white/80'
+              }`}
+            >
               <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin opacity-50" />
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
+                <p
+                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
+                >
                   Rendering graph…
                 </p>
               </div>
             </div>
           )}
           {nodes.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
+            <div className="flex h-full items-center justify-center">
               <p className={isDarkMode ? 'text-gray-400' : 'text-slate-500'}>
                 No projects to display
               </p>

@@ -7,7 +7,11 @@ interface RecentActivityWidgetProps {
   onProjectSelect?: (projectId: string) => void
 }
 
-export function RecentActivityWidget({ isDarkMode, onUserSelect, onProjectSelect }: RecentActivityWidgetProps) {
+export function RecentActivityWidget({
+  isDarkMode,
+  onUserSelect,
+  onProjectSelect,
+}: RecentActivityWidgetProps) {
   const {
     data: activityData,
     fetchNextPage,

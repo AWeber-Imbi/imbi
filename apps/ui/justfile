@@ -32,6 +32,14 @@ build:
 preview:
     npm run preview
 
+# Format code with Prettier
+format:
+    npm run format
+
+# Check code formatting
+format-check:
+    npm run format:check
+
 # Run linter
 lint:
     npm run lint

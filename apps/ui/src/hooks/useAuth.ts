@@ -5,7 +5,7 @@ import {
   loginWithPassword,
   logoutAuth,
   refreshToken as refreshTokenApi,
-  getUserByUsername
+  getUserByUsername,
 } from '@/api/endpoints'
 import type { UserResponse, LoginRequest, UseAuthReturn } from '@/types'
 
@@ -13,9 +13,21 @@ export function useAuth(): UseAuthReturn {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const { accessToken, refreshToken, setTokens, clearTokens, getUsername, isTokenExpired } = useAuthStore()
+  const {
+    accessToken,
+    refreshToken,
+    setTokens,
+    clearTokens,
+    getUsername,
+    isTokenExpired,
+  } = useAuthStore()
 
-  const { data: user, isLoading, error, refetch } = useQuery<UserResponse>({
+  const {
+    data: user,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<UserResponse>({
     queryKey: ['currentUser', getUsername()],
     queryFn: async () => {
       const username = getUsername()
@@ -27,10 +39,15 @@ export function useAuth(): UseAuthReturn {
       } catch (error: any) {
         console.error('[Auth] Error fetching user:', error)
         // Check if it's a "user not found or inactive" error
-        if (error.response?.status === 401 && error.response?.data?.detail?.includes('not found or inactive')) {
+        if (
+          error.response?.status === 401 &&
+          error.response?.data?.detail?.includes('not found or inactive')
+        ) {
           console.log('[Auth] User not found or inactive, clearing tokens')
           clearTokens()
-          throw new Error('Your account is not active. Please contact your administrator.')
+          throw new Error(
+            'Your account is not active. Please contact your administrator.',
+          )
         }
         // For other 401 errors, let the API client handle the redirect
         // Don't interfere with the redirect flow
@@ -61,7 +78,10 @@ export function useAuth(): UseAuthReturn {
           setTokens(response.access_token, response.refresh_token)
           await refetch()
         } catch (error) {
-          console.error('[Auth] Token refresh failed during initialization:', error)
+          console.error(
+            '[Auth] Token refresh failed during initialization:',
+            error,
+          )
           clearTokens()
           if (location.pathname !== '/login') {
             // Save current path before redirecting to login
@@ -96,7 +116,7 @@ export function useAuth(): UseAuthReturn {
     },
     onError: (error) => {
       console.error('[Auth] Login failed:', error)
-    }
+    },
   })
 
   const logoutMutation = useMutation({
@@ -117,7 +137,7 @@ export function useAuth(): UseAuthReturn {
 
       // Use window.location to ensure navigation happens even if React state is clearing
       window.location.href = '/login'
-    }
+    },
   })
 
   const refreshTokenMutation = useMutation({
@@ -139,7 +159,7 @@ export function useAuth(): UseAuthReturn {
         sessionStorage.setItem('imbi_redirect_after_login', currentPath)
         navigate('/login', { replace: true })
       }
-    }
+    },
   })
 
   const loginWithOAuth = (providerId: string) => {

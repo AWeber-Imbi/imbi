@@ -19,13 +19,18 @@ export function AdminPage() {
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
-      <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}>
+      <div
+        className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}
+      >
         <Navigation
           currentView="admin"
           isDarkMode={isDarkMode}
           onThemeToggle={handleThemeToggle}
         />
-        <main className="pt-16" style={{ paddingBottom: 'var(--assistant-height, 64px)' }}>
+        <main
+          className="pt-16"
+          style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
+        >
           <Admin isDarkMode={isDarkMode} />
         </main>
         <CommandBar isDarkMode={isDarkMode} />

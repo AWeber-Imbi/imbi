@@ -19,9 +19,7 @@ export function formatDate(dateString?: string | null): string {
  * Format an ISO date string as a relative time (e.g. "2 hours ago").
  * Returns '—' for null/undefined values.
  */
-export function formatRelativeDate(
-  dateString?: string | null,
-): string {
+export function formatRelativeDate(dateString?: string | null): string {
   if (!dateString) return '—'
   try {
     const date = new Date(dateString)

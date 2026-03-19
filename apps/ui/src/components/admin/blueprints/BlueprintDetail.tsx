@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import {
-  ArrowLeft, Edit2, FileJson, AlertCircle, CheckCircle, XCircle
+  ArrowLeft,
+  Edit2,
+  FileJson,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getBlueprint } from '@/api/endpoints'
@@ -17,7 +22,7 @@ interface BlueprintDetailProps {
 
 function parseSchemaProperties(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: any
+  schema: any,
 ): { properties: SchemaProperty[]; raw: string } {
   let parsed = schema
   if (typeof schema === 'string') {
@@ -42,8 +47,7 @@ function parseSchemaProperties(
       format: ps.format as string | undefined,
       description: ps.description as string | undefined,
       required: required.includes(name),
-      defaultValue:
-        ps.default !== undefined ? String(ps.default) : undefined,
+      defaultValue: ps.default !== undefined ? String(ps.default) : undefined,
       enumValues: ps.enum as string[] | undefined,
       minimum: ps.minimum as number | undefined,
       maximum: ps.maximum as number | undefined,
@@ -62,7 +66,11 @@ export function BlueprintDetail({
   onBack,
   isDarkMode,
 }: BlueprintDetailProps) {
-  const { data: blueprint, isLoading, error } = useQuery({
+  const {
+    data: blueprint,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['blueprint', blueprintKey.type, blueprintKey.slug],
     queryFn: () => getBlueprint(blueprintKey.type, blueprintKey.slug),
   })
@@ -82,16 +90,16 @@ export function BlueprintDetail({
   if (error || !blueprint) {
     return (
       <div
-        className={`flex items-center gap-3 p-4 rounded-lg border ${
+        className={`flex items-center gap-3 rounded-lg border p-4 ${
           isDarkMode
-            ? 'bg-red-900/20 border-red-700 text-red-400'
-            : 'bg-red-50 border-red-200 text-red-700'
+            ? 'border-red-700 bg-red-900/20 text-red-400'
+            : 'border-red-200 bg-red-50 text-red-700'
         }`}
       >
-        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load blueprint</div>
-          <div className="text-sm mt-1">
+          <div className="mt-1 text-sm">
             {error instanceof Error ? error.message : 'Blueprint not found'}
           </div>
         </div>
@@ -111,15 +119,15 @@ export function BlueprintDetail({
             onClick={onBack}
             className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
+            <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
           <div className="flex items-center gap-3">
             <div
-              className={`p-2 rounded-lg ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100'}`}
+              className={`rounded-lg p-2 ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100'}`}
             >
               <FileJson
-                className={`w-6 h-6 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
+                className={`h-6 w-6 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
               />
             </div>
             <div>
@@ -130,7 +138,7 @@ export function BlueprintDetail({
                   {blueprint.name}
                 </h2>
                 <span
-                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getTypeBadgeClasses(blueprint.type, blueprintTypes, isDarkMode)}`}
+                  className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.type, blueprintTypes, isDarkMode)}`}
                 >
                   {blueprint.type}
                 </span>
@@ -145,19 +153,19 @@ export function BlueprintDetail({
         </div>
         <Button
           onClick={onEdit}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
         >
-          <Edit2 className="w-4 h-4 mr-2" />
+          <Edit2 className="mr-2 h-4 w-4" />
           Edit Blueprint
         </Button>
       </div>
 
       {/* Metadata */}
       <div
-        className={`flex items-center gap-6 p-4 rounded-lg border ${
+        className={`flex items-center gap-6 rounded-lg border p-4 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <div>
@@ -167,13 +175,13 @@ export function BlueprintDetail({
             Slug
           </div>
           <div
-            className={`text-sm font-mono ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+            className={`font-mono text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
           >
             {blueprint.slug}
           </div>
         </div>
         <div
-          className={`border-l h-8 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
         />
         <div>
           <div
@@ -184,7 +192,7 @@ export function BlueprintDetail({
           <div className="flex items-center gap-1.5">
             {blueprint.enabled ? (
               <>
-                <CheckCircle className="w-4 h-4 text-green-500" />
+                <CheckCircle className="h-4 w-4 text-green-500" />
                 <span
                   className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
                 >
@@ -193,7 +201,7 @@ export function BlueprintDetail({
               </>
             ) : (
               <>
-                <XCircle className="w-4 h-4 text-gray-400" />
+                <XCircle className="h-4 w-4 text-gray-400" />
                 <span
                   className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
                 >
@@ -204,7 +212,7 @@ export function BlueprintDetail({
           </div>
         </div>
         <div
-          className={`border-l h-8 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
         />
         <div>
           <div
@@ -219,7 +227,7 @@ export function BlueprintDetail({
           </div>
         </div>
         <div
-          className={`border-l h-8 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
         />
         <div>
           <div
@@ -234,7 +242,7 @@ export function BlueprintDetail({
           </div>
         </div>
         <div
-          className={`border-l h-8 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
         />
         <div>
           <div
@@ -254,12 +262,12 @@ export function BlueprintDetail({
       <div
         className={`rounded-lg border ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <div
-          className={`px-6 py-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          className={`border-b px-6 py-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
         >
           <h3
             className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
@@ -270,9 +278,9 @@ export function BlueprintDetail({
 
         {properties.length === 0 ? (
           <div
-            className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
           >
-            <FileJson className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <FileJson className="mx-auto mb-2 h-8 w-8 opacity-50" />
             <div>No properties defined</div>
           </div>
         ) : (
@@ -284,7 +292,7 @@ export function BlueprintDetail({
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <code
-                      className={`px-2 py-1 rounded text-sm font-medium ${
+                      className={`rounded px-2 py-1 text-sm font-medium ${
                         isDarkMode
                           ? 'bg-gray-750 text-blue-400'
                           : 'bg-gray-100 text-[#2A4DD0]'
@@ -293,7 +301,7 @@ export function BlueprintDetail({
                       {prop.name}
                     </code>
                     <span
-                      className={`px-2 py-0.5 rounded text-xs ${
+                      className={`rounded px-2 py-0.5 text-xs ${
                         isDarkMode
                           ? 'bg-gray-700 text-gray-300'
                           : 'bg-gray-200 text-gray-700'
@@ -304,7 +312,7 @@ export function BlueprintDetail({
                     </span>
                     {prop.required && (
                       <span
-                        className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        className={`rounded px-2 py-0.5 text-xs font-medium ${
                           isDarkMode
                             ? 'bg-red-900/30 text-red-400'
                             : 'bg-red-100 text-red-700'
@@ -323,7 +331,7 @@ export function BlueprintDetail({
                   </p>
                 )}
                 {/* Constraints */}
-                <div className="flex flex-wrap gap-3 mt-2">
+                <div className="mt-2 flex flex-wrap gap-3">
                   {prop.defaultValue !== undefined && (
                     <span
                       className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
@@ -377,12 +385,12 @@ export function BlueprintDetail({
       <div
         className={`rounded-lg border ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <div
-          className={`px-6 py-4 border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          className={`border-b px-6 py-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
         >
           <h3
             className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
@@ -391,7 +399,7 @@ export function BlueprintDetail({
           </h3>
         </div>
         <pre
-          className={`px-6 py-4 text-sm font-mono overflow-x-auto ${
+          className={`overflow-x-auto px-6 py-4 font-mono text-sm ${
             isDarkMode ? 'text-gray-300' : 'text-gray-800'
           }`}
         >

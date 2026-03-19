@@ -1,17 +1,6 @@
 import { useState } from 'react'
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from '@tanstack/react-query'
-import {
-  Plus,
-  Search,
-  Trash2,
-  Power,
-  Bot,
-  AlertCircle,
-} from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, Search, Trash2, Power, Bot, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { ServiceAccountForm } from './service-accounts/ServiceAccountForm'
@@ -24,7 +13,11 @@ import {
   updateServiceAccount,
   deleteServiceAccount,
 } from '@/api/endpoints'
-import type { ServiceAccount, ServiceAccountCreate, ServiceAccountUpdate } from '@/types'
+import type {
+  ServiceAccount,
+  ServiceAccountCreate,
+  ServiceAccountUpdate,
+} from '@/types'
 
 interface ServiceAccountManagementProps {
   isDarkMode: boolean
@@ -36,10 +29,16 @@ export function ServiceAccountManagement({
   isDarkMode,
 }: ServiceAccountManagementProps) {
   const queryClient = useQueryClient()
-  const { viewMode, slug: selectedAccountSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
+  const {
+    viewMode,
+    slug: selectedAccountSlug,
+    goToList,
+    goToCreate,
+    goToDetail,
+    goToEdit,
+  } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] =
-    useState<StatusFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   // Fetch service accounts from dedicated endpoint
   const {
@@ -61,7 +60,7 @@ export function ServiceAccountManagement({
     },
     onError: (error: any) => {
       alert(
-        `Failed to delete service account: ${error.response?.data?.detail || error.message}`
+        `Failed to delete service account: ${error.response?.data?.detail || error.message}`,
       )
     },
   })
@@ -101,39 +100,34 @@ export function ServiceAccountManagement({
   })
 
   // Filter service accounts
-  const filteredAccounts = serviceAccounts.filter(
-    (account: ServiceAccount) => {
-      if (statusFilter === 'active' && !account.is_active)
-        return false
-      if (statusFilter === 'inactive' && account.is_active)
-        return false
+  const filteredAccounts = serviceAccounts.filter((account: ServiceAccount) => {
+    if (statusFilter === 'active' && !account.is_active) return false
+    if (statusFilter === 'inactive' && account.is_active) return false
 
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase()
-        return (
-          account.display_name.toLowerCase().includes(query) ||
-          account.slug.toLowerCase().includes(query)
-        )
-      }
-
-      return true
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      return (
+        account.display_name.toLowerCase().includes(query) ||
+        account.slug.toLowerCase().includes(query)
+      )
     }
-  )
+
+    return true
+  })
 
   // Fetch full SA detail (with orgs) when viewing/editing a specific account
   const { data: selectedAccount = null } = useQuery({
     queryKey: ['serviceAccount', selectedAccountSlug],
     queryFn: () => getServiceAccount(selectedAccountSlug!),
-    enabled: !!selectedAccountSlug && (viewMode === 'detail' || viewMode === 'edit'),
+    enabled:
+      !!selectedAccountSlug && (viewMode === 'detail' || viewMode === 'edit'),
   })
 
   const handleDelete = (slug: string) => {
-    const account = serviceAccounts.find(
-      (a: ServiceAccount) => a.slug === slug
-    )
+    const account = serviceAccounts.find((a: ServiceAccount) => a.slug === slug)
     if (
       confirm(
-        `Are you sure you want to delete "${account?.display_name}"? This will revoke all API access and cannot be undone.`
+        `Are you sure you want to delete "${account?.display_name}"? This will revoke all API access and cannot be undone.`,
       )
     ) {
       deleteMutation.mutate(slug)
@@ -190,21 +184,17 @@ export function ServiceAccountManagement({
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 p-4 rounded-lg border ${
+        className={`flex items-center gap-3 rounded-lg border p-4 ${
           isDarkMode
-            ? 'bg-red-900/20 border-red-700 text-red-400'
-            : 'bg-red-50 border-red-200 text-red-700'
+            ? 'border-red-700 bg-red-900/20 text-red-400'
+            : 'border-red-200 bg-red-50 text-red-700'
         }`}
       >
-        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
-          <div className="font-medium">
-            Failed to load service accounts
-          </div>
-          <div className="text-sm mt-1">
-            {error instanceof Error
-              ? error.message
-              : 'An error occurred'}
+          <div className="font-medium">Failed to load service accounts</div>
+          <div className="mt-1 text-sm">
+            {error instanceof Error ? error.message : 'An error occurred'}
           </div>
         </div>
       </div>
@@ -219,9 +209,7 @@ export function ServiceAccountManagement({
         onSave={handleSave}
         onCancel={handleCancel}
         isDarkMode={isDarkMode}
-        isLoading={
-          createMutation.isPending || updateMutation.isPending
-        }
+        isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
       />
     )
@@ -244,25 +232,27 @@ export function ServiceAccountManagement({
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex-1 flex items-center gap-3">
+        <div className="flex flex-1 items-center gap-3">
           <div className="relative max-w-md flex-1">
-            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`} />
+            <Search
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            />
             <Input
               placeholder="Search service accounts..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className={`px-3 py-2 rounded-lg border text-sm ${
+            className={`rounded-lg border px-3 py-2 text-sm ${
               isDarkMode
-                ? 'bg-gray-700 border-gray-600 text-white'
-                : 'bg-white border-gray-300 text-gray-900'
+                ? 'border-gray-600 bg-gray-700 text-white'
+                : 'border-gray-300 bg-white text-gray-900'
             }`}
           >
             <option value="all">All Status</option>
@@ -272,24 +262,24 @@ export function ServiceAccountManagement({
         </div>
         <Button
           onClick={goToCreate}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="mr-2 h-4 w-4" />
           New Service Account
         </Button>
       </div>
 
       {/* Service Accounts Table */}
       <div
-        className={`rounded-lg border overflow-hidden ${
+        className={`overflow-hidden rounded-lg border ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <table className="w-full">
           <thead
-            className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'bg-gray-50 border-b border-gray-200'}`}
+            className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
           >
             <tr>
               <th
@@ -328,10 +318,7 @@ export function ServiceAccountManagement({
           >
             {filteredAccounts.length === 0 ? (
               <tr>
-                <td
-                  colSpan={5}
-                  className="px-4 py-12 text-center"
-                >
+                <td colSpan={5} className="px-4 py-12 text-center">
                   <div
                     className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                   >
@@ -342,7 +329,7 @@ export function ServiceAccountManagement({
                   {!searchQuery && statusFilter === 'all' && (
                     <Button
                       onClick={goToCreate}
-                      className="mt-4 bg-[#2A4DD0] hover:bg-blue-700 text-white"
+                      className="mt-4 bg-[#2A4DD0] text-white hover:bg-blue-700"
                     >
                       Create Your First Service Account
                     </Button>
@@ -350,102 +337,96 @@ export function ServiceAccountManagement({
                 </td>
               </tr>
             ) : (
-              filteredAccounts.map(
-                (account: ServiceAccount) => (
-                  <tr
-                    key={account.slug}
-                    onClick={() => handleViewClick(account)}
-                    className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'} ${
-                      !account.is_active ? 'opacity-60' : ''
-                    }`}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
+              filteredAccounts.map((account: ServiceAccount) => (
+                <tr
+                  key={account.slug}
+                  onClick={() => handleViewClick(account)}
+                  className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'} ${
+                    !account.is_active ? 'opacity-60' : ''
+                  }`}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                          isDarkMode ? 'bg-purple-900/30' : 'bg-purple-100'
+                        }`}
+                      >
+                        <Bot
+                          className={`h-4 w-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
+                        />
+                      </div>
+                      <div>
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                            isDarkMode
-                              ? 'bg-purple-900/30'
-                              : 'bg-purple-100'
-                          }`}
+                          className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
                         >
-                          <Bot
-                            className={`w-4 h-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
-                          />
+                          {account.display_name}
                         </div>
-                        <div>
+                        {account.description && (
                           <div
-                            className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                            className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
                           >
-                            {account.display_name}
+                            {account.description}
                           </div>
-                          {account.description && (
-                            <div
-                              className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                            >
-                              {account.description}
-                            </div>
-                          )}
-                        </div>
+                        )}
                       </div>
-                    </td>
-                    <td
-                      className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                    </div>
+                  </td>
+                  <td
+                    className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  >
+                    <code
+                      className={`rounded px-2 py-0.5 text-xs ${
+                        isDarkMode
+                          ? 'bg-gray-700 text-gray-300'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
                     >
-                      <code
-                        className={`text-xs px-2 py-0.5 rounded ${
-                          isDarkMode
-                            ? 'bg-gray-700 text-gray-300'
+                      {account.slug}
+                    </code>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
+                        account.is_active
+                          ? isDarkMode
+                            ? 'bg-green-900/30 text-green-400'
+                            : 'bg-green-100 text-green-700'
+                          : isDarkMode
+                            ? 'bg-gray-700 text-gray-400'
                             : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {account.slug}
-                      </code>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${
-                          account.is_active
-                            ? isDarkMode
-                              ? 'bg-green-900/30 text-green-400'
-                              : 'bg-green-100 text-green-700'
-                            : isDarkMode
-                              ? 'bg-gray-700 text-gray-400'
-                              : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        <Power className="w-3 h-3" />
-                        {account.is_active
-                          ? 'Active'
-                          : 'Inactive'}
-                      </span>
-                    </td>
-                    <td
-                      className={`px-4 py-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                      }`}
                     >
-                      {formatDate(account.last_authenticated)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDelete(account.slug)
-                          }}
-                          disabled={deleteMutation.isPending}
-                          className={`p-1.5 rounded ${
-                            isDarkMode
-                              ? 'text-red-400 hover:text-red-300 hover:bg-gray-700'
-                              : 'text-red-600 hover:text-red-700 hover:bg-gray-100'
-                          }`}
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              )
+                      <Power className="h-3 w-3" />
+                      {account.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td
+                    className={`px-4 py-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    {formatDate(account.last_authenticated)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDelete(account.slug)
+                        }}
+                        disabled={deleteMutation.isPending}
+                        className={`rounded p-1.5 ${
+                          isDarkMode
+                            ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                            : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
+                        }`}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
@@ -456,8 +437,8 @@ export function ServiceAccountManagement({
         <div
           className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
         >
-          Showing {filteredAccounts.length} of{' '}
-          {serviceAccounts.length} service account(s)
+          Showing {filteredAccounts.length} of {serviceAccounts.length} service
+          account(s)
         </div>
       )}
     </div>

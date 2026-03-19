@@ -184,7 +184,16 @@ export interface OperationsLogEntry {
   project_id?: number | null
   project_name?: string | null
   environment: string
-  change_type: 'Configured' | 'Decommissioned' | 'Deployed' | 'Migrated' | 'Provisioned' | 'Restarted' | 'Rolled Back' | 'Scaled' | 'Upgraded'
+  change_type:
+    | 'Configured'
+    | 'Decommissioned'
+    | 'Deployed'
+    | 'Migrated'
+    | 'Provisioned'
+    | 'Restarted'
+    | 'Rolled Back'
+    | 'Scaled'
+    | 'Upgraded'
   description: string
   link?: string | null
   notes?: string | null
@@ -325,7 +334,12 @@ export interface AdminUser {
   created_at: string
   last_login?: string | null
   avatar_url?: string | null
-  groups: { name: string; slug: string; description?: string | null; roles: Role[] }[]
+  groups: {
+    name: string
+    slug: string
+    description?: string | null
+    roles: Role[]
+  }[]
   roles: Role[]
   organizations?: OrgMembership[]
 }

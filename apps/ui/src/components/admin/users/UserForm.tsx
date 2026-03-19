@@ -1,6 +1,15 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Save, X, AlertTriangle, Eye, EyeOff, Check, X as XIcon, AlertCircle } from 'lucide-react'
+import {
+  Save,
+  X,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  Check,
+  X as XIcon,
+  AlertCircle,
+} from 'lucide-react'
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { Gravatar } from '../../ui/gravatar'
@@ -17,7 +26,14 @@ interface UserFormProps {
   error?: any
 }
 
-export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false, error }: UserFormProps) {
+export function UserForm({
+  user,
+  onSave,
+  onCancel,
+  isDarkMode,
+  isLoading = false,
+  error,
+}: UserFormProps) {
   const isEditing = !!user
 
   // Basic info
@@ -33,27 +49,33 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
   // Account type
   const [isActive, setIsActive] = useState(user?.is_active ?? true)
   const [isAdmin, setIsAdmin] = useState(user?.is_admin ?? false)
-  const [isServiceAccount, setIsServiceAccount] = useState(user?.is_service_account ?? false)
+  const [isServiceAccount, setIsServiceAccount] = useState(
+    user?.is_service_account ?? false,
+  )
 
   // Organization membership (for creation only)
   const { organizations } = useOrganization()
   const [organizationSlug, setOrganizationSlug] = useState(
-    organizations.length === 1 ? organizations[0].slug : ''
+    organizations.length === 1 ? organizations[0].slug : '',
   )
   const [roleSlug, setRoleSlug] = useState('')
 
   // Fetch available roles
   const { data: availableRoles = [], isLoading: rolesLoading } = useQuery({
     queryKey: ['roles'],
-    queryFn: getRoles
+    queryFn: getRoles,
   })
 
   // Validation state
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+  const [validationErrors, setValidationErrors] = useState<
+    Record<string, string>
+  >({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   // Password strength
-  const getPasswordStrength = (pwd: string): { score: number; label: string; color: string } => {
+  const getPasswordStrength = (
+    pwd: string,
+  ): { score: number; label: string; color: string } => {
     if (!pwd) return { score: 0, label: '', color: '' }
 
     let score = 0
@@ -118,7 +140,8 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
     }
 
     if (!isEditing) {
-      if (!organizationSlug) errors.organization_slug = 'Organization is required'
+      if (!organizationSlug)
+        errors.organization_slug = 'Organization is required'
       if (!roleSlug) errors.role_slug = 'Role is required'
     }
 
@@ -174,11 +197,17 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h2
+            className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             {isEditing ? 'Edit User' : 'Create New User'}
           </h2>
-          <p className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            {isEditing ? `Editing ${user?.display_name}` : 'Add a new user account to the system'}
+          <p
+            className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+          >
+            {isEditing
+              ? `Editing ${user?.display_name}`
+              : 'Add a new user account to the system'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -188,35 +217,51 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
             disabled={isLoading}
             className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
           >
-            <X className="w-4 h-4 mr-2" />
+            <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={isLoading}
-            className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
           >
-            <Save className="w-4 h-4 mr-2" />
-            {isLoading ? 'Saving...' : (isEditing ? 'Save Changes' : 'Create User')}
+            <Save className="mr-2 h-4 w-4" />
+            {isLoading
+              ? 'Saving...'
+              : isEditing
+                ? 'Save Changes'
+                : 'Create User'}
           </Button>
         </div>
       </div>
 
       {/* API Error Display */}
       {error && (
-        <div className={`rounded-lg border p-4 ${
-          isDarkMode ? 'bg-red-900/20 border-red-700' : 'bg-red-50 border-red-200'
-        }`}>
+        <div
+          className={`rounded-lg border p-4 ${
+            isDarkMode
+              ? 'border-red-700 bg-red-900/20'
+              : 'border-red-200 bg-red-50'
+          }`}
+        >
           <div className="flex items-start gap-3">
-            <AlertCircle className={`w-5 h-5 flex-shrink-0 ${
-              isDarkMode ? 'text-red-400' : 'text-red-600'
-            }`} />
+            <AlertCircle
+              className={`h-5 w-5 flex-shrink-0 ${
+                isDarkMode ? 'text-red-400' : 'text-red-600'
+              }`}
+            />
             <div>
-              <div className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}>
+              <div
+                className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}
+              >
                 Failed to save user
               </div>
-              <div className={`text-sm mt-1 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>
-                {error?.response?.data?.detail || error?.message || 'An error occurred'}
+              <div
+                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
+              >
+                {error?.response?.data?.detail ||
+                  error?.message ||
+                  'An error occurred'}
               </div>
             </div>
           </div>
@@ -224,17 +269,25 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
       )}
 
       {/* Section 1: Basic Information */}
-      <div className={`p-6 rounded-lg border ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
-        <h3 className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+      <div
+        className={`rounded-lg border p-6 ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
+        <h3
+          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+        >
           Basic Information
         </h3>
 
         <div className="grid grid-cols-2 gap-4">
           {/* Email */}
           <div className="col-span-2">
-            <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+            >
               Email <span className="text-red-500">*</span>
             </label>
             <Input
@@ -253,23 +306,29 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
               }}
               disabled={isEditing || isLoading}
               placeholder="john.doe@company.com"
-              className={`${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} ${
-                isEditing ? 'opacity-60 cursor-not-allowed' : ''
+              className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                isEditing ? 'cursor-not-allowed opacity-60' : ''
               }`}
             />
             {isEditing && (
-              <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+              <p
+                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              >
                 Email cannot be changed after creation
               </p>
             )}
             {touched.email && validationErrors.email && (
-              <p className="text-sm text-red-600 mt-1">{validationErrors.email}</p>
+              <p className="mt-1 text-sm text-red-600">
+                {validationErrors.email}
+              </p>
             )}
           </div>
 
           {/* Display Name */}
           <div className="col-span-2">
-            <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+            >
               Display Name <span className="text-red-500">*</span>
             </label>
             <Input
@@ -282,32 +341,52 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                 setTouched({ ...touched, display_name: true })
                 const error = validateDisplayName(displayName)
                 if (error) {
-                  setValidationErrors({ ...validationErrors, display_name: error })
+                  setValidationErrors({
+                    ...validationErrors,
+                    display_name: error,
+                  })
                 }
               }}
               disabled={isLoading}
               placeholder="John Doe"
-              className={isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}
+              className={
+                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+              }
             />
             {touched.display_name && validationErrors.display_name && (
-              <p className="text-sm text-red-600 mt-1">{validationErrors.display_name}</p>
+              <p className="mt-1 text-sm text-red-600">
+                {validationErrors.display_name}
+              </p>
             )}
           </div>
 
           {/* Gravatar Preview */}
           {email && validateEmail(email) === '' && (
             <div className="col-span-2">
-              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Avatar (Gravatar)
               </label>
               <div className="flex items-center gap-3">
                 <Gravatar
                   email={email}
                   size={64}
-                  className="w-16 h-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
+                  className="h-16 w-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
                 />
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Avatar will be loaded from <a href="https://gravatar.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">Gravatar</a> based on email address
+                <p
+                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                >
+                  Avatar will be loaded from{' '}
+                  <a
+                    href="https://gravatar.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-500 hover:underline"
+                  >
+                    Gravatar
+                  </a>{' '}
+                  based on email address
                 </p>
               </div>
             </div>
@@ -316,7 +395,7 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
           {/* Password Section */}
           {isEditing && (
             <div className="col-span-2">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={changePassword}
@@ -324,7 +403,9 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                   disabled={isLoading}
                   className="rounded"
                 />
-                <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+                <span
+                  className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}
+                >
                   Change Password
                 </span>
               </label>
@@ -334,7 +415,9 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
           {(changePassword || !isEditing) && (
             <>
               <div className="col-span-2">
-                <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
                   Password <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
@@ -349,67 +432,118 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                       setTouched({ ...touched, password: true })
                       const error = validatePassword(password)
                       if (error) {
-                        setValidationErrors({ ...validationErrors, password: error })
+                        setValidationErrors({
+                          ...validationErrors,
+                          password: error,
+                        })
                       }
                     }}
                     disabled={isLoading}
                     placeholder="Minimum 12 characters"
-                    className={`pr-10 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+                    className={`pr-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={isLoading}
                     className={`absolute right-3 top-1/2 -translate-y-1/2 ${
-                      isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                      isDarkMode
+                        ? 'text-gray-400 hover:text-gray-200'
+                        : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
                 {touched.password && validationErrors.password && (
-                  <p className="text-sm text-red-600 mt-1">{validationErrors.password}</p>
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.password}
+                  </p>
                 )}
                 {password && !validationErrors.password && (
                   <div className="mt-2">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div className="mb-1 flex items-center gap-2">
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
                         <div
                           className={`h-full transition-all ${
-                            passwordStrength.color === 'red' ? 'bg-red-500' :
-                            passwordStrength.color === 'yellow' ? 'bg-yellow-500' :
-                            'bg-green-500'
+                            passwordStrength.color === 'red'
+                              ? 'bg-red-500'
+                              : passwordStrength.color === 'yellow'
+                                ? 'bg-yellow-500'
+                                : 'bg-green-500'
                           }`}
-                          style={{ width: `${(passwordStrength.score / 6) * 100}%` }}
+                          style={{
+                            width: `${(passwordStrength.score / 6) * 100}%`,
+                          }}
                         />
                       </div>
-                      <span className={`text-xs ${
-                        passwordStrength.color === 'red' ? 'text-red-500' :
-                        passwordStrength.color === 'yellow' ? 'text-yellow-500' :
-                        'text-green-500'
-                      }`}>
+                      <span
+                        className={`text-xs ${
+                          passwordStrength.color === 'red'
+                            ? 'text-red-500'
+                            : passwordStrength.color === 'yellow'
+                              ? 'text-yellow-500'
+                              : 'text-green-500'
+                        }`}
+                      >
                         {passwordStrength.label}
                       </span>
                     </div>
-                    <ul className={`text-xs space-y-0.5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                      <li className={`flex items-center gap-1 ${password.length >= 12 ? 'text-green-600 dark:text-green-400' : ''}`}>
-                        {password.length >= 12 ? <Check className="w-3 h-3" /> : <XIcon className="w-3 h-3" />}
+                    <ul
+                      className={`space-y-0.5 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                    >
+                      <li
+                        className={`flex items-center gap-1 ${password.length >= 12 ? 'text-green-600 dark:text-green-400' : ''}`}
+                      >
+                        {password.length >= 12 ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <XIcon className="h-3 w-3" />
+                        )}
                         At least 12 characters
                       </li>
-                      <li className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}>
-                        {/[A-Z]/.test(password) ? <Check className="w-3 h-3" /> : <XIcon className="w-3 h-3" />}
+                      <li
+                        className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
+                      >
+                        {/[A-Z]/.test(password) ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <XIcon className="h-3 w-3" />
+                        )}
                         Uppercase letter
                       </li>
-                      <li className={`flex items-center gap-1 ${/[a-z]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}>
-                        {/[a-z]/.test(password) ? <Check className="w-3 h-3" /> : <XIcon className="w-3 h-3" />}
+                      <li
+                        className={`flex items-center gap-1 ${/[a-z]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
+                      >
+                        {/[a-z]/.test(password) ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <XIcon className="h-3 w-3" />
+                        )}
                         Lowercase letter
                       </li>
-                      <li className={`flex items-center gap-1 ${/[0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}>
-                        {/[0-9]/.test(password) ? <Check className="w-3 h-3" /> : <XIcon className="w-3 h-3" />}
+                      <li
+                        className={`flex items-center gap-1 ${/[0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
+                      >
+                        {/[0-9]/.test(password) ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <XIcon className="h-3 w-3" />
+                        )}
                         Number
                       </li>
-                      <li className={`flex items-center gap-1 ${/[^a-zA-Z0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}>
-                        {/[^a-zA-Z0-9]/.test(password) ? <Check className="w-3 h-3" /> : <XIcon className="w-3 h-3" />}
+                      <li
+                        className={`flex items-center gap-1 ${/[^a-zA-Z0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
+                      >
+                        {/[^a-zA-Z0-9]/.test(password) ? (
+                          <Check className="h-3 w-3" />
+                        ) : (
+                          <XIcon className="h-3 w-3" />
+                        )}
                         Special character
                       </li>
                     </ul>
@@ -418,7 +552,9 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
               </div>
 
               <div className="col-span-2">
-                <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
                   Confirm Password <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -432,16 +568,24 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                     setTouched({ ...touched, confirmPassword: true })
                     const error = validateConfirmPassword(confirmPassword)
                     if (error) {
-                      setValidationErrors({ ...validationErrors, confirmPassword: error })
+                      setValidationErrors({
+                        ...validationErrors,
+                        confirmPassword: error,
+                      })
                     }
                   }}
                   disabled={isLoading}
                   placeholder="Re-enter password"
-                  className={isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}
+                  className={
+                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+                  }
                 />
-                {touched.confirmPassword && validationErrors.confirmPassword && (
-                  <p className="text-sm text-red-600 mt-1">{validationErrors.confirmPassword}</p>
-                )}
+                {touched.confirmPassword &&
+                  validationErrors.confirmPassword && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {validationErrors.confirmPassword}
+                    </p>
+                  )}
               </div>
             </>
           )}
@@ -449,24 +593,38 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
       </div>
 
       {/* Section 2: Account Type */}
-      <div className={`p-6 rounded-lg border ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
-        <h3 className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+      <div
+        className={`rounded-lg border p-6 ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
+        <h3
+          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+        >
           Account Type & Status
         </h3>
 
         <div className="space-y-4">
           <div>
-            <label className={`block text-sm mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label
+              className={`mb-2 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+            >
               Account Type
             </label>
             <div className="space-y-2">
-              <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
-                !isAdmin && !isServiceAccount
-                  ? isDarkMode ? 'border-blue-700 bg-blue-900/20' : 'border-blue-300 bg-blue-50'
-                  : isDarkMode ? 'border-gray-600' : 'border-gray-200'
-              }`}>
+              <label
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
+                  !isAdmin && !isServiceAccount
+                    ? isDarkMode
+                      ? 'border-blue-700 bg-blue-900/20'
+                      : 'border-blue-300 bg-blue-50'
+                    : isDarkMode
+                      ? 'border-gray-600'
+                      : 'border-gray-200'
+                }`}
+              >
                 <input
                   type="radio"
                   name="accountType"
@@ -479,18 +637,28 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>Regular User</div>
-                  <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                    Regular User
+                  </div>
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
                     Standard user account with role-based permissions
                   </div>
                 </div>
               </label>
 
-              <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
-                isServiceAccount
-                  ? isDarkMode ? 'border-purple-700 bg-purple-900/20' : 'border-purple-300 bg-purple-50'
-                  : isDarkMode ? 'border-gray-600' : 'border-gray-200'
-              }`}>
+              <label
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
+                  isServiceAccount
+                    ? isDarkMode
+                      ? 'border-purple-700 bg-purple-900/20'
+                      : 'border-purple-300 bg-purple-50'
+                    : isDarkMode
+                      ? 'border-gray-600'
+                      : 'border-gray-200'
+                }`}
+              >
                 <input
                   type="radio"
                   name="accountType"
@@ -503,18 +671,28 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>Service Account</div>
-                  <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                    Service Account
+                  </div>
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
                     Automated system account for API access
                   </div>
                 </div>
               </label>
 
-              <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
-                isAdmin
-                  ? isDarkMode ? 'border-red-700 bg-red-900/20' : 'border-red-300 bg-red-50'
-                  : isDarkMode ? 'border-gray-600' : 'border-gray-200'
-              }`}>
+              <label
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
+                  isAdmin
+                    ? isDarkMode
+                      ? 'border-red-700 bg-red-900/20'
+                      : 'border-red-300 bg-red-50'
+                    : isDarkMode
+                      ? 'border-gray-600'
+                      : 'border-gray-200'
+                }`}
+              >
                 <input
                   type="radio"
                   name="accountType"
@@ -527,12 +705,17 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <div className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                  <div
+                    className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                  >
                     Administrator
-                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                    <AlertTriangle className="h-4 w-4 text-red-500" />
                   </div>
-                  <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    Super-user with full system access (bypasses all permission checks)
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Super-user with full system access (bypasses all permission
+                    checks)
                   </div>
                 </div>
               </label>
@@ -540,7 +723,7 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
           </div>
 
           <div>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={isActive}
@@ -552,7 +735,9 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                 Account Active
               </span>
             </label>
-            <p className={`text-sm mt-1 ml-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            <p
+              className={`ml-6 mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
               Inactive accounts cannot authenticate
             </p>
           </div>
@@ -561,20 +746,31 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
 
       {/* Section 3: Organization Membership (creation only) */}
       {!isEditing && (
-        <div className={`p-6 rounded-lg border ${
-          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        }`}>
-          <h3 className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+        <div
+          className={`rounded-lg border p-6 ${
+            isDarkMode
+              ? 'border-gray-700 bg-gray-800'
+              : 'border-gray-200 bg-white'
+          }`}
+        >
+          <h3
+            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             Organization Membership
           </h3>
-          <p className={`text-sm mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-            Users must belong to at least one organization with a role to have any permissions.
+          <p
+            className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+          >
+            Users must belong to at least one organization with a role to have
+            any permissions.
           </p>
 
           <div className="grid grid-cols-2 gap-4">
             {/* Organization */}
             <div>
-              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
@@ -584,11 +780,11 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                   handleFieldChange('organization_slug')
                 }}
                 disabled={isLoading}
-                className={`w-full px-3 py-2 rounded-md border text-sm ${
+                className={`w-full rounded-md border px-3 py-2 text-sm ${
                   isDarkMode
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300 text-gray-900'
-                } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                    ? 'border-gray-600 bg-gray-700 text-white'
+                    : 'border-gray-300 bg-white text-gray-900'
+                } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
               >
                 <option value="">Select an organization...</option>
                 {organizations.map((org) => (
@@ -597,18 +793,25 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                   </option>
                 ))}
               </select>
-              {touched.organization_slug && validationErrors.organization_slug && (
-                <p className="text-sm text-red-600 mt-1">{validationErrors.organization_slug}</p>
-              )}
+              {touched.organization_slug &&
+                validationErrors.organization_slug && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.organization_slug}
+                  </p>
+                )}
             </div>
 
             {/* Role */}
             <div>
-              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Role <span className="text-red-500">*</span>
               </label>
               {rolesLoading ? (
-                <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <p
+                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                >
                   Loading roles...
                 </p>
               ) : (
@@ -619,11 +822,11 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                     handleFieldChange('role_slug')
                   }}
                   disabled={isLoading}
-                  className={`w-full px-3 py-2 rounded-md border text-sm ${
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${
                     isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                      ? 'border-gray-600 bg-gray-700 text-white'
+                      : 'border-gray-300 bg-white text-gray-900'
+                  } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
                 >
                   <option value="">Select a role...</option>
                   {availableRoles.map((role) => (
@@ -634,7 +837,9 @@ export function UserForm({ user, onSave, onCancel, isDarkMode, isLoading = false
                 </select>
               )}
               {touched.role_slug && validationErrors.role_slug && (
-                <p className="text-sm text-red-600 mt-1">{validationErrors.role_slug}</p>
+                <p className="mt-1 text-sm text-red-600">
+                  {validationErrors.role_slug}
+                </p>
               )}
             </div>
           </div>

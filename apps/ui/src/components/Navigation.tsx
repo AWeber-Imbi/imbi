@@ -1,7 +1,27 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Settings, User, Rocket, FolderKanban, Activity, BarChart3, Plus, ChevronDown, UserCircle, LogOut, Moon, Sun, Building2 } from 'lucide-react'
+import {
+  Settings,
+  User,
+  Rocket,
+  FolderKanban,
+  Activity,
+  BarChart3,
+  Plus,
+  ChevronDown,
+  UserCircle,
+  LogOut,
+  Moon,
+  Sun,
+  Building2,
+} from 'lucide-react'
 import { Button } from './ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu'
 import { Gravatar } from './ui/gravatar'
 import { useAuth } from '@/hooks/useAuth'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -26,10 +46,11 @@ export function Navigation({
   onNewDeployment,
   onNewProject,
   isDarkMode,
-  onThemeToggle
+  onThemeToggle,
 }: NavigationProps) {
   const { user, logout } = useAuth()
-  const { organizations, selectedOrganization, setSelectedOrganization } = useOrganization()
+  const { organizations, selectedOrganization, setSelectedOrganization } =
+    useOrganization()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -39,48 +60,69 @@ export function Navigation({
   // Memoize navItems to avoid array mutation on every render
   const navItems = useMemo(() => {
     const items = [
-      { id: 'projects', label: 'Projects', icon: FolderKanban, path: '/projects' },
-      { id: 'deployments', label: 'Deployments', icon: Rocket, path: '/deployments' },
-      { id: 'operations', label: 'Operations Log', icon: Activity, path: '/operations' },
+      {
+        id: 'projects',
+        label: 'Projects',
+        icon: FolderKanban,
+        path: '/projects',
+      },
+      {
+        id: 'deployments',
+        label: 'Deployments',
+        icon: Rocket,
+        path: '/deployments',
+      },
+      {
+        id: 'operations',
+        label: 'Operations Log',
+        icon: Activity,
+        path: '/operations',
+      },
       { id: 'reports', label: 'Reports', icon: BarChart3, path: '/reports' },
     ]
 
     // Add Admin nav item if user is admin
     if (isAdmin) {
-      items.push({ id: 'admin', label: 'Admin', icon: Settings, path: '/admin' })
+      items.push({
+        id: 'admin',
+        label: 'Admin',
+        icon: Settings,
+        path: '/admin',
+      })
     }
 
     return items
   }, [isAdmin])
 
   // Determine active view from route if not explicitly provided
-  const activeView = currentView || navItems.find(item => location.pathname === item.path)?.id || 'dashboard'
+  const activeView =
+    currentView ||
+    navItems.find((item) => location.pathname === item.path)?.id ||
+    'dashboard'
 
   return (
-    <nav className={`fixed top-0 left-0 right-0 z-50 border-b transition-colors ${
-      isDarkMode
-        ? 'bg-gray-800 border-gray-700'
-        : 'bg-white border-gray-200'
-    }`}>
-      <div className="flex items-center justify-between px-6 h-16">
+    <nav
+      className={`fixed left-0 right-0 top-0 z-50 border-b transition-colors ${
+        isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
+      }`}
+    >
+      <div className="flex h-16 items-center justify-between px-6">
         {/* Logo and Brand */}
         <div className="flex items-center gap-8">
           <button
             onClick={() => navigate('/dashboard')}
-            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all ${
-              isDarkMode
-                ? 'hover:bg-gray-700'
-                : 'hover:bg-gray-100'
+            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all ${
+              isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
             }`}
           >
-            <img src={imbiLogo} alt="Imbi" className="w-8 h-8" />
+            <img src={imbiLogo} alt="Imbi" className="h-8 w-8" />
             <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
               Imbi
             </span>
           </button>
 
           {/* Navigation Items */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden items-center gap-1 md:flex">
             {navItems.map((item) => {
               const Icon = item.icon
               const isActive = activeView === item.id
@@ -88,7 +130,7 @@ export function Navigation({
                 <button
                   key={item.id}
                   onClick={() => navigate(item.path)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                     isActive
                       ? isDarkMode
                         ? 'bg-blue-900 text-blue-300'
@@ -98,7 +140,7 @@ export function Navigation({
                         : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="h-4 w-4" />
                   <span>{item.label}</span>
                 </button>
               )
@@ -115,21 +157,23 @@ export function Navigation({
                 <Button
                   variant="outline"
                   size="sm"
-                  className={`gap-2 max-w-[200px] ${
+                  className={`max-w-[200px] gap-2 ${
                     isDarkMode
-                      ? 'border-gray-600 text-gray-300 hover:bg-gray-700 bg-gray-800'
-                      : 'border-gray-300 text-gray-700 hover:bg-gray-50 bg-white'
+                      ? 'border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                   }`}
                 >
                   {selectedOrganization.icon ? (
-                    <img src={selectedOrganization.icon} alt="" className="w-4 h-4 flex-shrink-0 rounded object-cover" />
+                    <img
+                      src={selectedOrganization.icon}
+                      alt=""
+                      className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                    />
                   ) : (
-                    <Building2 className="w-4 h-4 flex-shrink-0" />
+                    <Building2 className="h-4 w-4 flex-shrink-0" />
                   )}
-                  <span className="truncate">
-                    {selectedOrganization.name}
-                  </span>
-                  <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                  <span className="truncate">{selectedOrganization.name}</span>
+                  <ChevronDown className="h-3 w-3 flex-shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -137,17 +181,27 @@ export function Navigation({
                   <DropdownMenuItem
                     key={org.slug}
                     onClick={() => setSelectedOrganization(org)}
-                    className={selectedOrganization.slug === org.slug ? 'font-medium' : ''}
+                    className={
+                      selectedOrganization.slug === org.slug
+                        ? 'font-medium'
+                        : ''
+                    }
                   >
                     <div className="flex items-center gap-2">
                       {org.icon ? (
-                        <img src={org.icon} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
+                        <img
+                          src={org.icon}
+                          alt=""
+                          className="h-4 w-4 flex-shrink-0 rounded object-cover"
+                        />
                       ) : (
-                        <Building2 className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                        <Building2 className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                       )}
                       <div className="flex flex-col">
                         <span>{org.name}</span>
-                        <span className="text-xs text-muted-foreground">{org.slug}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {org.slug}
+                        </span>
                       </div>
                     </div>
                   </DropdownMenuItem>
@@ -164,12 +218,12 @@ export function Navigation({
                 size="sm"
                 className={`gap-2 ${
                   isDarkMode
-                    ? 'border-blue-500 text-blue-400 hover:bg-gray-700 bg-gray-800'
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50 bg-white'
+                    ? 'border-blue-500 bg-gray-800 text-blue-400 hover:bg-gray-700'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                <Plus className="w-4 h-4" />
-                <ChevronDown className="w-3 h-3" />
+                <Plus className="h-4 w-4" />
+                <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
@@ -196,15 +250,17 @@ export function Navigation({
                 size="icon"
                 className={`rounded-full p-0 ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
               >
-                {(user?.email_address || (user as any)?.email) ? (
+                {user?.email_address || (user as any)?.email ? (
                   <Gravatar
-                    email={(user?.email_address || (user as any)?.email) as string}
+                    email={
+                      (user?.email_address || (user as any)?.email) as string
+                    }
                     size={32}
                     alt={user?.display_name || user?.username || 'User'}
-                    className="w-8 h-8 rounded-full"
+                    className="h-8 w-8 rounded-full"
                   />
                 ) : (
-                  <User className="w-4 h-4" />
+                  <User className="h-4 w-4" />
                 )}
               </Button>
             </DropdownMenuTrigger>
@@ -239,9 +295,9 @@ export function Navigation({
             onClick={onThemeToggle}
           >
             {isDarkMode ? (
-              <Sun className="w-4 h-4" />
+              <Sun className="h-4 w-4" />
             ) : (
-              <Moon className="w-4 h-4" />
+              <Moon className="h-4 w-4" />
             )}
           </Button>
         </div>

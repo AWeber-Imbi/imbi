@@ -6,7 +6,14 @@ interface GravatarProps {
   size?: number
   className?: string
   alt?: string
-  defaultImage?: 'mp' | '404' | 'identicon' | 'monsterid' | 'wavatar' | 'retro' | 'robohash'
+  defaultImage?:
+    | 'mp'
+    | '404'
+    | 'identicon'
+    | 'monsterid'
+    | 'wavatar'
+    | 'retro'
+    | 'robohash'
 }
 
 /**
@@ -23,7 +30,7 @@ export function Gravatar({
   size = 80,
   className = '',
   alt,
-  defaultImage = 'mp'
+  defaultImage = 'mp',
 }: GravatarProps) {
   const gravatarUrl = useMemo(() => {
     const hash = SparkMD5.hash(email.toLowerCase().trim())
@@ -49,7 +56,7 @@ export function Gravatar({
 export function useGravatarUrl(
   email: string,
   size: number = 80,
-  defaultImage: string = 'mp'
+  defaultImage: string = 'mp',
 ): string {
   return useMemo(() => {
     const hash = SparkMD5.hash(email.toLowerCase().trim())

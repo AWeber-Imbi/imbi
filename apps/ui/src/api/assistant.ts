@@ -44,7 +44,8 @@ export const listConversations = (params?: {
   include_archived?: boolean
 }) => {
   const searchParams = params
-    ? '?' + new URLSearchParams(
+    ? '?' +
+      new URLSearchParams(
         Object.entries(params)
           .filter(([, v]) => v !== undefined)
           .map(([k, v]) => [k, String(v)]),
@@ -74,10 +75,7 @@ export type SSEEventHandler = {
   onToolUseStart?: (id: string, name: string) => void
   onToolInput?: (partialJson: string) => void
   onContentBlockStop?: () => void
-  onClientAction?: (
-    action: string,
-    params: Record<string, string>,
-  ) => void
+  onClientAction?: (action: string, params: Record<string, string>) => void
   onDone?: (
     messageId: string,
     usage: { input_tokens: number; output_tokens: number },
@@ -93,8 +91,7 @@ export async function sendMessageSSE(
 ): Promise<void> {
   const token = useAuthStore.getState().accessToken
   const url =
-    `${ASSISTANT_BASE_URL}/conversations/` +
-    `${conversationId}/messages`
+    `${ASSISTANT_BASE_URL}/conversations/` + `${conversationId}/messages`
 
   const response = await fetch(url, {
     method: 'POST',
@@ -136,11 +133,8 @@ export async function sendMessageSSE(
 
       for (const chunk of chunks) {
         const lines = chunk.split('\n')
-        const eventLine = lines.find((l) =>
-          l.startsWith('event: '),
-        )
-        const currentEvent =
-          eventLine?.slice(7).trim() ?? ''
+        const eventLine = lines.find((l) => l.startsWith('event: '))
+        const currentEvent = eventLine?.slice(7).trim() ?? ''
         const data = lines
           .filter((l) => l.startsWith('data: '))
           .map((l) => l.slice(6))
@@ -153,10 +147,7 @@ export async function sendMessageSSE(
               handlers.onText?.(parsed.text)
               break
             case 'tool_use_start':
-              handlers.onToolUseStart?.(
-                parsed.id,
-                parsed.name,
-              )
+              handlers.onToolUseStart?.(parsed.id, parsed.name)
               break
             case 'tool_input':
               handlers.onToolInput?.(parsed.partial_json)
@@ -165,10 +156,7 @@ export async function sendMessageSSE(
               handlers.onContentBlockStop?.()
               break
             case 'done':
-              handlers.onDone?.(
-                parsed.message_id,
-                parsed.usage,
-              )
+              handlers.onDone?.(parsed.message_id, parsed.usage)
               break
             case 'client_action': {
               if (

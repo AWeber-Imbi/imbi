@@ -34,7 +34,7 @@ export function OAuthButton({ provider, onClick, disabled }: OAuthButtonProps) {
       onClick={onClick}
       disabled={disabled}
     >
-      <Icon className="w-4 h-4" />
+      <Icon className="h-4 w-4" />
       Continue with {provider.name}
     </Button>
   )

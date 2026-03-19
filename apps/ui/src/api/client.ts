@@ -25,7 +25,7 @@ async function refreshAccessToken(client: AxiosInstance): Promise<string> {
       }
 
       const response = await client.post<TokenResponse>('/auth/token/refresh', {
-        refresh_token: currentRefreshToken
+        refresh_token: currentRefreshToken,
       })
       const { access_token, refresh_token } = response.data
 
@@ -61,10 +61,12 @@ class ApiClient {
       async (config) => {
         console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`)
 
-        if (config.url?.includes('/auth/login') ||
-            config.url?.includes('/auth/providers') ||
-            config.url?.includes('/auth/token/refresh') ||
-            config.url?.includes('/status')) {
+        if (
+          config.url?.includes('/auth/login') ||
+          config.url?.includes('/auth/providers') ||
+          config.url?.includes('/auth/token/refresh') ||
+          config.url?.includes('/status')
+        ) {
           return config
         }
 
@@ -74,7 +76,7 @@ class ApiClient {
         console.log('[API] Request interceptor state:', {
           hasToken: !!token,
           hasRefreshToken: !!authStore.refreshToken,
-          isExpired: authStore.isTokenExpired()
+          isExpired: authStore.isTokenExpired(),
         })
 
         if (authStore.isTokenExpired()) {
@@ -82,7 +84,9 @@ class ApiClient {
           try {
             token = await refreshAccessToken(this.client)
           } catch (error) {
-            console.error('[API] Token refresh failed, proceeding without token')
+            console.error(
+              '[API] Token refresh failed, proceeding without token',
+            )
           }
         }
 
@@ -95,16 +99,21 @@ class ApiClient {
 
         return config
       },
-      (error) => Promise.reject(error)
+      (error) => Promise.reject(error),
     )
 
     this.client.interceptors.response.use(
       (response) => {
-        console.log(`[API] Response ${response.status} for ${response.config.url}`)
+        console.log(
+          `[API] Response ${response.status} for ${response.config.url}`,
+        )
         return response
       },
       async (error: AxiosError) => {
-        console.error(`[API] Error ${error.response?.status || 'network'} for ${error.config?.url}:`, error.message)
+        console.error(
+          `[API] Error ${error.response?.status || 'network'} for ${error.config?.url}:`,
+          error.message,
+        )
 
         const originalRequest = error.config as any
 
@@ -114,10 +123,13 @@ class ApiClient {
 
           // Don't try to refresh if this IS the refresh request
           if (originalRequest.url?.includes('/auth/token/refresh')) {
-            console.error('[API] Refresh token request failed, clearing tokens and redirecting')
+            console.error(
+              '[API] Refresh token request failed, clearing tokens and redirecting',
+            )
             useAuthStore.getState().clearTokens()
 
-            const currentPath = window.location.pathname + window.location.search
+            const currentPath =
+              window.location.pathname + window.location.search
             if (currentPath !== '/login') {
               console.log('[API] Saving redirect path:', currentPath)
               sessionStorage.setItem('imbi_redirect_after_login', currentPath)
@@ -129,16 +141,22 @@ class ApiClient {
 
           try {
             const newToken = await refreshAccessToken(this.client)
-            console.log('[API] Token refresh successful, retrying original request')
+            console.log(
+              '[API] Token refresh successful, retrying original request',
+            )
 
             originalRequest.headers.Authorization = `Bearer ${newToken}`
             return this.client(originalRequest)
           } catch (refreshError) {
-            console.error('[API] Token refresh failed, redirecting to login', refreshError)
+            console.error(
+              '[API] Token refresh failed, redirecting to login',
+              refreshError,
+            )
             useAuthStore.getState().clearTokens()
 
             // Save current path to redirect back after login
-            const currentPath = window.location.pathname + window.location.search
+            const currentPath =
+              window.location.pathname + window.location.search
             if (currentPath !== '/login') {
               console.log('[API] Saving redirect path:', currentPath)
               sessionStorage.setItem('imbi_redirect_after_login', currentPath)
@@ -150,7 +168,7 @@ class ApiClient {
         }
 
         return Promise.reject(error)
-      }
+      },
     )
   }
 

@@ -1,13 +1,27 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Edit2, Trash2, Power, Crown, AlertCircle } from 'lucide-react'
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  Power,
+  Crown,
+  AlertCircle,
+} from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Gravatar } from '../ui/gravatar'
 import { UserForm } from './users/UserForm'
 import { UserDetail } from './users/UserDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
-import { listAdminUsers, getAdminUser, deleteAdminUser, updateAdminUser, createAdminUser } from '@/api/endpoints'
+import {
+  listAdminUsers,
+  getAdminUser,
+  deleteAdminUser,
+  updateAdminUser,
+  createAdminUser,
+} from '@/api/endpoints'
 import type { AdminUser, AdminUserCreate, AdminUserUpdate } from '@/types'
 
 interface UserManagementProps {
@@ -19,14 +33,25 @@ type StatusFilter = 'all' | 'active' | 'inactive'
 
 export function UserManagement({ isDarkMode }: UserManagementProps) {
   const queryClient = useQueryClient()
-  const { viewMode, slug: selectedUserEmail, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
+  const {
+    viewMode,
+    slug: selectedUserEmail,
+    goToList,
+    goToCreate,
+    goToDetail,
+    goToEdit,
+  } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
   const [userFilter, setUserFilter] = useState<UserFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set())
 
   // Fetch users from API
-  const { data: users = [], isLoading, error } = useQuery({
+  const {
+    data: users = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['adminUsers'],
     queryFn: () => listAdminUsers(),
   })
@@ -38,20 +63,24 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
     },
     onError: (error: any) => {
-      alert(`Failed to delete user: ${error.response?.data?.detail || error.message}`)
-    }
+      alert(
+        `Failed to delete user: ${error.response?.data?.detail || error.message}`,
+      )
+    },
   })
 
   // Toggle active mutation
   const toggleActiveMutation = useMutation({
-    mutationFn: ({ email, user }: { email: string, user: AdminUserUpdate }) =>
+    mutationFn: ({ email, user }: { email: string; user: AdminUserUpdate }) =>
       updateAdminUser(email, user),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
     },
     onError: (error: any) => {
-      alert(`Failed to update user: ${error.response?.data?.detail || error.message}`)
-    }
+      alert(
+        `Failed to update user: ${error.response?.data?.detail || error.message}`,
+      )
+    },
   })
 
   // Create user mutation
@@ -64,12 +93,12 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     onError: (error: any) => {
       // Error will be displayed in the UserForm component
       console.error('Failed to create user:', error)
-    }
+    },
   })
 
   // Update user mutation
   const updateMutation = useMutation({
-    mutationFn: ({ email, user }: { email: string, user: AdminUserUpdate }) =>
+    mutationFn: ({ email, user }: { email: string; user: AdminUserUpdate }) =>
       updateAdminUser(email, user),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
@@ -78,11 +107,11 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     onError: (error: any) => {
       // Error will be displayed in the UserForm component
       console.error('Failed to update user:', error)
-    }
+    },
   })
 
   // Filter users locally - exclude service accounts (managed separately)
-  const filteredUsers = users.filter(user => {
+  const filteredUsers = users.filter((user) => {
     // Exclude service accounts - they have their own management section
     if (user.is_service_account) return false
 
@@ -115,25 +144,33 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
         is_active: !user.is_active,
         is_admin: user.is_admin,
         is_service_account: user.is_service_account,
-      }
+      },
     })
   }
 
   const handleDelete = (email: string) => {
-    if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+    if (
+      confirm(
+        'Are you sure you want to delete this user? This action cannot be undone.',
+      )
+    ) {
       deleteMutation.mutate(email)
     }
   }
 
   const handleBulkActivate = (activate: boolean) => {
     // TODO: Implement when bulk API endpoints are available
-    alert(`Bulk ${activate ? 'activation' : 'deactivation'} will be available once the API endpoints are implemented`)
+    alert(
+      `Bulk ${activate ? 'activation' : 'deactivation'} will be available once the API endpoints are implemented`,
+    )
     setSelectedEmails(new Set())
   }
 
   const handleBulkDelete = () => {
     // TODO: Implement when bulk API endpoints are available
-    alert('Bulk operations will be available once the API endpoints are implemented')
+    alert(
+      'Bulk operations will be available once the API endpoints are implemented',
+    )
     setSelectedEmails(new Set())
   }
 
@@ -151,7 +188,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     if (selectedEmails.size === filteredUsers.length) {
       setSelectedEmails(new Set())
     } else {
-      setSelectedEmails(new Set(filteredUsers.map(u => u.email)))
+      setSelectedEmails(new Set(filteredUsers.map((u) => u.email)))
     }
   }
 
@@ -162,20 +199,21 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     })
   }
 
   const getGroupNames = (user: AdminUser): string => {
     if (!user.groups || user.groups.length === 0) return '-'
-    return user.groups.map(g => g.name).join(', ')
+    return user.groups.map((g) => g.name).join(', ')
   }
 
   // Fetch full user detail (with orgs) when viewing/editing a specific user
   const { data: selectedUser = null } = useQuery({
     queryKey: ['adminUser', selectedUserEmail],
     queryFn: () => getAdminUser(selectedUserEmail!),
-    enabled: !!selectedUserEmail && (viewMode === 'detail' || viewMode === 'edit'),
+    enabled:
+      !!selectedUserEmail && (viewMode === 'detail' || viewMode === 'edit'),
   })
 
   // View handlers
@@ -209,7 +247,9 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <div
+          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+        >
           Loading users...
         </div>
       </div>
@@ -219,22 +259,34 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
   // Error state
   if (error) {
     return (
-      <div className={`flex items-center gap-3 p-4 rounded-lg border ${
-        isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
-      }`}>
-        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+      <div
+        className={`flex items-center gap-3 rounded-lg border p-4 ${
+          isDarkMode
+            ? 'border-red-700 bg-red-900/20 text-red-400'
+            : 'border-red-200 bg-red-50 text-red-700'
+        }`}
+      >
+        <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load users</div>
-          <div className="text-sm mt-1">{error instanceof Error ? error.message : 'An error occurred'}</div>
+          <div className="mt-1 text-sm">
+            {error instanceof Error ? error.message : 'An error occurred'}
+          </div>
         </div>
       </div>
     )
   }
 
   // Guard for invalid user email in URL
-  if ((viewMode === 'edit' || viewMode === 'detail') && !!selectedUserEmail && !selectedUser) {
+  if (
+    (viewMode === 'edit' || viewMode === 'detail') &&
+    !!selectedUserEmail &&
+    !selectedUser
+  ) {
     return (
-      <div className={`p-4 rounded-lg border ${isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'}`}>
+      <div
+        className={`rounded-lg border p-4 ${isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'}`}
+      >
         User not found. They may have been removed.
       </div>
     )
@@ -271,25 +323,27 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex-1 flex items-center gap-3">
+        <div className="flex flex-1 items-center gap-3">
           <div className="relative max-w-md flex-1">
-            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`} />
+            <Search
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            />
             <Input
               placeholder="Search users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
             />
           </div>
           <select
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value as UserFilter)}
-            className={`px-3 py-2 rounded-lg border text-sm ${
+            className={`rounded-lg border px-3 py-2 text-sm ${
               isDarkMode
-                ? 'bg-gray-700 border-gray-600 text-white'
-                : 'bg-white border-gray-300 text-gray-900'
+                ? 'border-gray-600 bg-gray-700 text-white'
+                : 'border-gray-300 bg-white text-gray-900'
             }`}
           >
             <option value="all">All Types</option>
@@ -299,10 +353,10 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className={`px-3 py-2 rounded-lg border text-sm ${
+            className={`rounded-lg border px-3 py-2 text-sm ${
               isDarkMode
-                ? 'bg-gray-700 border-gray-600 text-white'
-                : 'bg-white border-gray-300 text-gray-900'
+                ? 'border-gray-600 bg-gray-700 text-white'
+                : 'border-gray-300 bg-white text-gray-900'
             }`}
           >
             <option value="all">All Status</option>
@@ -312,19 +366,25 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
         </div>
         <Button
           onClick={handleCreateClick}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="mr-2 h-4 w-4" />
           New User
         </Button>
       </div>
 
       {/* Bulk Actions */}
       {selectedEmails.size > 0 && (
-        <div className={`flex items-center justify-between p-4 rounded-lg border ${
-          isDarkMode ? 'bg-blue-900/20 border-blue-700' : 'bg-blue-50 border-blue-200'
-        }`}>
-          <span className={`text-sm ${isDarkMode ? 'text-blue-300' : 'text-blue-900'}`}>
+        <div
+          className={`flex items-center justify-between rounded-lg border p-4 ${
+            isDarkMode
+              ? 'border-blue-700 bg-blue-900/20'
+              : 'border-blue-200 bg-blue-50'
+          }`}
+        >
+          <span
+            className={`text-sm ${isDarkMode ? 'text-blue-300' : 'text-blue-900'}`}
+          >
             {selectedEmails.size} user(s) selected
           </span>
           <div className="flex items-center gap-2">
@@ -332,7 +392,11 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
               variant="outline"
               size="sm"
               onClick={() => handleBulkActivate(true)}
-              className={isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}
+              className={
+                isDarkMode
+                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  : ''
+              }
             >
               Activate Selected
             </Button>
@@ -340,7 +404,11 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
               variant="outline"
               size="sm"
               onClick={() => handleBulkActivate(false)}
-              className={isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}
+              className={
+                isDarkMode
+                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  : ''
+              }
             >
               Deactivate Selected
             </Button>
@@ -348,9 +416,10 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
               variant="outline"
               size="sm"
               onClick={handleBulkDelete}
-              className={isDarkMode
-                ? 'border-red-700 text-red-400 hover:bg-red-900/20'
-                : 'border-red-300 text-red-700 hover:bg-red-50'
+              className={
+                isDarkMode
+                  ? 'border-red-700 text-red-400 hover:bg-red-900/20'
+                  : 'border-red-300 text-red-700 hover:bg-red-50'
               }
             >
               Delete Selected
@@ -360,46 +429,77 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       )}
 
       {/* Users Table */}
-      <div className={`rounded-lg border overflow-hidden ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
+      <div
+        className={`overflow-hidden rounded-lg border ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
         <table className="w-full">
-          <thead className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'bg-gray-50 border-b border-gray-200'}`}>
+          <thead
+            className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
+          >
             <tr>
               <th className="w-12 px-4 py-3">
                 <input
                   type="checkbox"
-                  checked={selectedEmails.size === filteredUsers.length && filteredUsers.length > 0}
+                  checked={
+                    selectedEmails.size === filteredUsers.length &&
+                    filteredUsers.length > 0
+                  }
                   onChange={toggleSelectAll}
                   className="rounded"
                 />
               </th>
-              <th className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 User
               </th>
-              <th className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Email
               </th>
-              <th className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Type
               </th>
-              <th className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Status
               </th>
-              <th className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Last Login
               </th>
-              <th className={`px-4 py-3 text-right text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-right text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className={isDarkMode ? 'divide-y divide-gray-700' : 'divide-y divide-gray-200'}>
+          <tbody
+            className={
+              isDarkMode
+                ? 'divide-y divide-gray-700'
+                : 'divide-y divide-gray-200'
+            }
+          >
             {filteredUsers.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center">
-                  <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {searchQuery || userFilter !== 'all' || statusFilter !== 'all'
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                  >
+                    {searchQuery ||
+                    userFilter !== 'all' ||
+                    statusFilter !== 'all'
                       ? 'No users match your filters'
                       : 'No users created yet'}
                   </div>
@@ -414,7 +514,10 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                     !user.is_active ? 'opacity-60' : ''
                   }`}
                 >
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <td
+                    className="px-4 py-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <input
                       type="checkbox"
                       checked={selectedEmails.has(user.email)}
@@ -428,34 +531,48 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                         email={user.email}
                         size={32}
                         alt={user.display_name}
-                        className="w-8 h-8 rounded-full"
+                        className="h-8 w-8 rounded-full"
                       />
                       <div>
-                        <div className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <div
+                          className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                        >
                           {user.display_name}
                         </div>
-                        <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                        <div
+                          className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                        >
                           {getGroupNames(user)}
                         </div>
                       </div>
                     </div>
                   </td>
-                  <td className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  <td
+                    className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  >
                     {user.email}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {user.is_admin ? (
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                          isDarkMode ? 'bg-red-900/30 text-red-400' : 'bg-red-100 text-red-700'
-                        }`}>
-                          <Crown className="w-3 h-3" />
+                        <span
+                          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium ${
+                            isDarkMode
+                              ? 'bg-red-900/30 text-red-400'
+                              : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          <Crown className="h-3 w-3" />
                           Admin
                         </span>
                       ) : (
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          isDarkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700'
-                        }`}>
+                        <span
+                          className={`rounded px-2 py-1 text-xs font-medium ${
+                            isDarkMode
+                              ? 'bg-blue-900/30 text-blue-400'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}
+                        >
                           User
                         </span>
                       )}
@@ -468,7 +585,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                         handleToggleActive(user)
                       }}
                       disabled={toggleActiveMutation.isPending}
-                      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${
+                      className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
                         user.is_active
                           ? isDarkMode
                             ? 'bg-green-900/30 text-green-400'
@@ -478,11 +595,13 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                             : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      <Power className="w-3 h-3" />
+                      <Power className="h-3 w-3" />
                       {user.is_active ? 'Active' : 'Inactive'}
                     </button>
                   </td>
-                  <td className={`px-4 py-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  <td
+                    className={`px-4 py-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
                     {formatDate(user.last_login)}
                   </td>
                   <td className="px-4 py-3">
@@ -492,12 +611,14 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                           e.stopPropagation()
                           handleEditClick(user)
                         }}
-                        className={`p-1.5 rounded ${
-                          isDarkMode ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                        className={`rounded p-1.5 ${
+                          isDarkMode
+                            ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                         }`}
                         title="Edit"
                       >
-                        <Edit2 className="w-4 h-4" />
+                        <Edit2 className="h-4 w-4" />
                       </button>
                       <button
                         onClick={(e) => {
@@ -505,12 +626,14 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
                           handleDelete(user.email)
                         }}
                         disabled={deleteMutation.isPending}
-                        className={`p-1.5 rounded ${
-                          isDarkMode ? 'text-red-400 hover:text-red-300 hover:bg-gray-700' : 'text-red-600 hover:text-red-700 hover:bg-gray-100'
+                        className={`rounded p-1.5 ${
+                          isDarkMode
+                            ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                            : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
                         }`}
                         title="Delete"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </td>
@@ -523,8 +646,11 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
 
       {/* Summary */}
       {filteredUsers.length > 0 && (
-        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          Showing {filteredUsers.length} of {users.filter(u => !u.is_service_account).length} user(s)
+        <div
+          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+        >
+          Showing {filteredUsers.length} of{' '}
+          {users.filter((u) => !u.is_service_account).length} user(s)
         </div>
       )}
     </div>

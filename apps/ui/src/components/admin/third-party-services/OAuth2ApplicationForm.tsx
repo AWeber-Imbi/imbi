@@ -3,7 +3,11 @@ import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { slugify } from '@/lib/utils'
-import type { ServiceApplication, ServiceApplicationCreate, ServiceApplicationUpdate } from '@/types'
+import type {
+  ServiceApplication,
+  ServiceApplicationCreate,
+  ServiceApplicationUpdate,
+} from '@/types'
 
 interface OAuth2ApplicationFormProps {
   application: ServiceApplication | null
@@ -41,7 +45,9 @@ export function OAuth2ApplicationForm({
   const [name, setName] = useState(application?.name || '')
   const [description, setDescription] = useState(application?.description || '')
   const [appType, setAppType] = useState(application?.app_type || 'github_app')
-  const [applicationUrl, setApplicationUrl] = useState(application?.application_url || '')
+  const [applicationUrl, setApplicationUrl] = useState(
+    application?.application_url || '',
+  )
   const [clientId, setClientId] = useState(application?.client_id || '')
   const [scopes, setScopes] = useState(application?.scopes?.join(', ') || '')
   const [status, setStatus] = useState(application?.status || 'active')
@@ -69,11 +75,15 @@ export function OAuth2ApplicationForm({
       return
     }
     if (!isEdit && !clientSecret) {
-      setValidationError('Client secret is required when creating an application.')
+      setValidationError(
+        'Client secret is required when creating an application.',
+      )
       return
     }
     if (!/^[a-z][a-z0-9-]*$/.test(slug)) {
-      setValidationError('Slug must start with a letter and contain only lowercase letters, numbers, and hyphens.')
+      setValidationError(
+        'Slug must start with a letter and contain only lowercase letters, numbers, and hyphens.',
+      )
       return
     }
 
@@ -85,7 +95,12 @@ export function OAuth2ApplicationForm({
         app_type: appType,
         application_url: applicationUrl || null,
         client_id: clientId,
-        scopes: scopes ? scopes.split(',').map((s) => s.trim()).filter(Boolean) : [],
+        scopes: scopes
+          ? scopes
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [],
         status,
       }
       onSave(data)
@@ -98,10 +113,24 @@ export function OAuth2ApplicationForm({
         application_url: applicationUrl || null,
         client_id: clientId,
         client_secret: clientSecret,
-        scopes: scopes ? scopes.split(',').map((s) => s.trim()).filter(Boolean) : [],
-        webhook_secret: extraSecretFields.includes('webhook_secret') && webhookSecret ? webhookSecret : null,
-        private_key: extraSecretFields.includes('private_key') && privateKey ? privateKey : null,
-        signing_secret: extraSecretFields.includes('signing_secret') && signingSecret ? signingSecret : null,
+        scopes: scopes
+          ? scopes
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [],
+        webhook_secret:
+          extraSecretFields.includes('webhook_secret') && webhookSecret
+            ? webhookSecret
+            : null,
+        private_key:
+          extraSecretFields.includes('private_key') && privateKey
+            ? privateKey
+            : null,
+        signing_secret:
+          extraSecretFields.includes('signing_secret') && signingSecret
+            ? signingSecret
+            : null,
         status,
       }
       onSave(data)
@@ -119,18 +148,24 @@ export function OAuth2ApplicationForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="outline" onClick={onCancel} className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h3
+            className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             {isEdit ? 'Edit Application' : 'New Application'}
           </h3>
         </div>
         <Button
           onClick={handleSubmit}
           disabled={isLoading}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
         >
           {isLoading ? 'Saving...' : isEdit ? 'Update' : 'Create'}
         </Button>
@@ -138,20 +173,29 @@ export function OAuth2ApplicationForm({
 
       {/* Error display */}
       {(validationError || error) && (
-        <div className={`flex items-center gap-3 p-4 rounded-lg border ${
-          isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
-        }`}>
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+        <div
+          className={`flex items-center gap-3 rounded-lg border p-4 ${
+            isDarkMode
+              ? 'border-red-700 bg-red-900/20 text-red-400'
+              : 'border-red-200 bg-red-50 text-red-700'
+          }`}
+        >
+          <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <div className="text-sm">
-            {validationError || (error instanceof Error ? error.message : 'An error occurred')}
+            {validationError ||
+              (error instanceof Error ? error.message : 'An error occurred')}
           </div>
         </div>
       )}
 
       {/* Form */}
-      <div className={`p-6 rounded-lg border space-y-4 ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
+      <div
+        className={`space-y-4 rounded-lg border p-6 ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Name *</label>
@@ -201,14 +245,16 @@ export function OAuth2ApplicationForm({
               value={appType}
               onChange={(e) => setAppType(e.target.value)}
               disabled={isEdit}
-              className={`w-full px-3 py-2 rounded-md border text-sm ${
+              className={`w-full rounded-md border px-3 py-2 text-sm ${
                 isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white'
-                  : 'bg-white border-gray-300 text-gray-900'
+                  ? 'border-gray-600 bg-gray-700 text-white'
+                  : 'border-gray-300 bg-white text-gray-900'
               }`}
             >
               {APP_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
               ))}
             </select>
           </div>
@@ -216,11 +262,13 @@ export function OAuth2ApplicationForm({
             <label className={labelClass}>Status</label>
             <select
               value={status}
-              onChange={(e) => setStatus(e.target.value as 'active' | 'inactive' | 'revoked')}
-              className={`w-full px-3 py-2 rounded-md border text-sm ${
+              onChange={(e) =>
+                setStatus(e.target.value as 'active' | 'inactive' | 'revoked')
+              }
+              className={`w-full rounded-md border px-3 py-2 text-sm ${
                 isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white'
-                  : 'bg-white border-gray-300 text-gray-900'
+                  ? 'border-gray-600 bg-gray-700 text-white'
+                  : 'border-gray-300 bg-white text-gray-900'
               }`}
             >
               <option value="active">Active</option>
@@ -253,8 +301,12 @@ export function OAuth2ApplicationForm({
         {/* Secret fields (create mode only) */}
         {!isEdit && (
           <>
-            <div className={`border-t pt-4 ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-              <h4 className={`text-sm font-medium mb-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <div
+              className={`border-t pt-4 ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}
+            >
+              <h4
+                className={`mb-3 text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Secrets
               </h4>
             </div>
@@ -291,10 +343,10 @@ export function OAuth2ApplicationForm({
                   onChange={(e) => setPrivateKey(e.target.value)}
                   placeholder={'-----BEGIN RSA PRIVATE KEY-----\n...'}
                   rows={4}
-                  className={`w-full px-3 py-2 rounded-md border text-sm font-mono ${
+                  className={`w-full rounded-md border px-3 py-2 font-mono text-sm ${
                     isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-                      : 'bg-white border-gray-300 text-gray-900'
+                      ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
+                      : 'border-gray-300 bg-white text-gray-900'
                   }`}
                 />
               </div>
@@ -316,8 +368,12 @@ export function OAuth2ApplicationForm({
         )}
 
         {isEdit && (
-          <div className={`border-t pt-4 ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}>
-            <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          <div
+            className={`border-t pt-4 ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}
+          >
+            <p
+              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            >
               Secrets are managed separately below via the Secrets panel.
             </p>
           </div>

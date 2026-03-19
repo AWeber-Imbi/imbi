@@ -7,11 +7,7 @@ interface SessionEntryProps {
   isDarkMode: boolean
 }
 
-export function SessionEntry({
-  role,
-  content,
-  isDarkMode,
-}: SessionEntryProps) {
+export function SessionEntry({ role, content, isDarkMode }: SessionEntryProps) {
   if (role === 'user') {
     return (
       <div
@@ -33,13 +29,13 @@ export function SessionEntry({
 
   return (
     <div
-      className={`text-sm pl-4 border-l-2 ${
+      className={`border-l-2 pl-4 text-sm ${
         isDarkMode
           ? 'border-gray-700 text-gray-300'
           : 'border-gray-200 text-gray-800'
       }`}
     >
-      <div className="prose prose-sm max-w-none dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+      <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
         <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
       </div>
     </div>

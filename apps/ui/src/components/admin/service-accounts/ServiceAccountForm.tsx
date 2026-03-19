@@ -28,12 +28,8 @@ export function ServiceAccountForm({
 
   // Basic info
   const [slug, setSlug] = useState(account?.slug || '')
-  const [displayName, setDisplayName] = useState(
-    account?.display_name || ''
-  )
-  const [description, setDescription] = useState(
-    account?.description || ''
-  )
+  const [displayName, setDisplayName] = useState(account?.display_name || '')
+  const [description, setDescription] = useState(account?.description || '')
 
   // Account status
   const [isActive, setIsActive] = useState(account?.is_active ?? true)
@@ -41,7 +37,7 @@ export function ServiceAccountForm({
   // Organization membership (for creation only)
   const { organizations } = useOrganization()
   const [organizationSlug, setOrganizationSlug] = useState(
-    organizations.length === 1 ? organizations[0].slug : ''
+    organizations.length === 1 ? organizations[0].slug : '',
   )
   const [roleSlug, setRoleSlug] = useState('')
 
@@ -82,7 +78,8 @@ export function ServiceAccountForm({
     if (displayNameError) errors.display_name = displayNameError
 
     if (!isEditing) {
-      if (!organizationSlug) errors.organization_slug = 'Organization is required'
+      if (!organizationSlug)
+        errors.organization_slug = 'Organization is required'
       if (!roleSlug) errors.role_slug = 'Role is required'
     }
 
@@ -137,9 +134,7 @@ export function ServiceAccountForm({
           <h2
             className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
-            {isEditing
-              ? 'Edit Service Account'
-              : 'Create Service Account'}
+            {isEditing ? 'Edit Service Account' : 'Create Service Account'}
           </h2>
           <p
             className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
@@ -154,19 +149,17 @@ export function ServiceAccountForm({
             variant="outline"
             onClick={onCancel}
             disabled={isLoading}
-            className={
-              isDarkMode ? 'border-gray-600 text-gray-300' : ''
-            }
+            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
           >
-            <X className="w-4 h-4 mr-2" />
+            <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={isLoading}
-            className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
           >
-            <Save className="w-4 h-4 mr-2" />
+            <Save className="mr-2 h-4 w-4" />
             {isLoading
               ? 'Saving...'
               : isEditing
@@ -181,13 +174,13 @@ export function ServiceAccountForm({
         <div
           className={`rounded-lg border p-4 ${
             isDarkMode
-              ? 'bg-red-900/20 border-red-700'
-              : 'bg-red-50 border-red-200'
+              ? 'border-red-700 bg-red-900/20'
+              : 'border-red-200 bg-red-50'
           }`}
         >
           <div className="flex items-start gap-3">
             <AlertCircle
-              className={`w-5 h-5 flex-shrink-0 ${
+              className={`h-5 w-5 flex-shrink-0 ${
                 isDarkMode ? 'text-red-400' : 'text-red-600'
               }`}
             />
@@ -198,7 +191,7 @@ export function ServiceAccountForm({
                 Failed to save service account
               </div>
               <div
-                className={`text-sm mt-1 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
+                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
               >
                 {error?.response?.data?.detail ||
                   error?.message ||
@@ -211,10 +204,10 @@ export function ServiceAccountForm({
 
       {/* Section 1: Basic Information */}
       <div
-        className={`p-6 rounded-lg border ${
+        className={`rounded-lg border p-6 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <h3
@@ -227,7 +220,7 @@ export function ServiceAccountForm({
           {/* Slug */}
           <div className="col-span-2">
             <label
-              className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
             >
               Slug <span className="text-red-500">*</span>
             </label>
@@ -246,27 +239,27 @@ export function ServiceAccountForm({
               }}
               disabled={isEditing || isLoading}
               placeholder="my-service-account"
-              className={`${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} ${
-                isEditing ? 'opacity-60 cursor-not-allowed' : ''
+              className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                isEditing ? 'cursor-not-allowed opacity-60' : ''
               }`}
             />
             {isEditing && (
               <p
-                className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
               >
                 Slug cannot be changed after creation
               </p>
             )}
             {!isEditing && (
               <p
-                className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
               >
-                Lowercase letters, numbers, and hyphens only. Must start
-                with a letter.
+                Lowercase letters, numbers, and hyphens only. Must start with a
+                letter.
               </p>
             )}
             {touched.slug && validationErrors.slug && (
-              <p className="text-sm text-red-600 mt-1">
+              <p className="mt-1 text-sm text-red-600">
                 {validationErrors.slug}
               </p>
             )}
@@ -275,7 +268,7 @@ export function ServiceAccountForm({
           {/* Display Name */}
           <div className="col-span-2">
             <label
-              className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
             >
               Display Name <span className="text-red-500">*</span>
             </label>
@@ -298,23 +291,20 @@ export function ServiceAccountForm({
               disabled={isLoading}
               placeholder="CI/CD Pipeline"
               className={
-                isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white'
-                  : ''
+                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
               }
             />
-            {touched.display_name &&
-              validationErrors.display_name && (
-                <p className="text-sm text-red-600 mt-1">
-                  {validationErrors.display_name}
-                </p>
-              )}
+            {touched.display_name && validationErrors.display_name && (
+              <p className="mt-1 text-sm text-red-600">
+                {validationErrors.display_name}
+              </p>
+            )}
           </div>
 
           {/* Description */}
           <div className="col-span-2">
             <label
-              className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
             >
               Description
             </label>
@@ -324,11 +314,11 @@ export function ServiceAccountForm({
               disabled={isLoading}
               placeholder="What does this service account do?"
               rows={3}
-              className={`w-full px-3 py-2 rounded-md border text-sm ${
+              className={`w-full rounded-md border px-3 py-2 text-sm ${
                 isDarkMode
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder:text-gray-400'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-500'
-              } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                  ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
+                  : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
+              } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
             />
           </div>
         </div>
@@ -337,10 +327,10 @@ export function ServiceAccountForm({
       {/* Section 2: Organization Membership (creation only) */}
       {!isEditing && (
         <div
-          className={`p-6 rounded-lg border ${
+          className={`rounded-lg border p-6 ${
             isDarkMode
-              ? 'bg-gray-800 border-gray-700'
-              : 'bg-white border-gray-200'
+              ? 'border-gray-700 bg-gray-800'
+              : 'border-gray-200 bg-white'
           }`}
         >
           <h3
@@ -349,17 +339,17 @@ export function ServiceAccountForm({
             Organization Membership
           </h3>
           <p
-            className={`text-sm mb-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
           >
-            Service accounts must belong to at least one organization
-            with a role to have any permissions.
+            Service accounts must belong to at least one organization with a
+            role to have any permissions.
           </p>
 
           <div className="grid grid-cols-2 gap-4">
             {/* Organization */}
             <div>
               <label
-                className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
               >
                 Organization <span className="text-red-500">*</span>
               </label>
@@ -370,11 +360,11 @@ export function ServiceAccountForm({
                   handleFieldChange('organization_slug')
                 }}
                 disabled={isLoading}
-                className={`w-full px-3 py-2 rounded-md border text-sm ${
+                className={`w-full rounded-md border px-3 py-2 text-sm ${
                   isDarkMode
-                    ? 'bg-gray-700 border-gray-600 text-white'
-                    : 'bg-white border-gray-300 text-gray-900'
-                } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                    ? 'border-gray-600 bg-gray-700 text-white'
+                    : 'border-gray-300 bg-white text-gray-900'
+                } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
               >
                 <option value="">Select an organization...</option>
                 {organizations.map((org) => (
@@ -385,7 +375,7 @@ export function ServiceAccountForm({
               </select>
               {touched.organization_slug &&
                 validationErrors.organization_slug && (
-                  <p className="text-sm text-red-600 mt-1">
+                  <p className="mt-1 text-sm text-red-600">
                     {validationErrors.organization_slug}
                   </p>
                 )}
@@ -394,7 +384,7 @@ export function ServiceAccountForm({
             {/* Role */}
             <div>
               <label
-                className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
               >
                 Role <span className="text-red-500">*</span>
               </label>
@@ -412,11 +402,11 @@ export function ServiceAccountForm({
                     handleFieldChange('role_slug')
                   }}
                   disabled={isLoading}
-                  className={`w-full px-3 py-2 rounded-md border text-sm ${
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${
                     isDarkMode
-                      ? 'bg-gray-700 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
-                  } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
+                      ? 'border-gray-600 bg-gray-700 text-white'
+                      : 'border-gray-300 bg-white text-gray-900'
+                  } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
                 >
                   <option value="">Select a role...</option>
                   {availableRoles.map((role) => (
@@ -427,7 +417,7 @@ export function ServiceAccountForm({
                 </select>
               )}
               {touched.role_slug && validationErrors.role_slug && (
-                <p className="text-sm text-red-600 mt-1">
+                <p className="mt-1 text-sm text-red-600">
                   {validationErrors.role_slug}
                 </p>
               )}
@@ -438,10 +428,10 @@ export function ServiceAccountForm({
 
       {/* Section 3: Account Status */}
       <div
-        className={`p-6 rounded-lg border ${
+        className={`rounded-lg border p-6 ${
           isDarkMode
-            ? 'bg-gray-800 border-gray-700'
-            : 'bg-white border-gray-200'
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
         }`}
       >
         <h3
@@ -451,7 +441,7 @@ export function ServiceAccountForm({
         </h3>
 
         <div>
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label className="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
               checked={isActive}
@@ -459,16 +449,12 @@ export function ServiceAccountForm({
               disabled={isLoading}
               className="rounded"
             />
-            <span
-              className={
-                isDarkMode ? 'text-gray-300' : 'text-gray-700'
-              }
-            >
+            <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
               Account Active
             </span>
           </label>
           <p
-            className={`text-sm mt-1 ml-6 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            className={`ml-6 mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
           >
             Inactive service accounts cannot authenticate via API
           </p>

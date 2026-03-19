@@ -13,7 +13,12 @@ const REMEMBERED_EMAIL_KEY = 'imbi_remembered_email'
 export function LoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { isAuthenticated, isLoading: authLoading, login, loginWithOAuth } = useAuth()
+  const {
+    isAuthenticated,
+    isLoading: authLoading,
+    login,
+    loginWithOAuth,
+  } = useAuth()
   const [loginError, setLoginError] = useState<string>('')
   const [rememberedEmail, setRememberedEmail] = useState<string>('')
 
@@ -38,7 +43,7 @@ export function LoginPage() {
       setLoginError(
         error === 'no_token'
           ? 'Authentication failed: No token received'
-          : `Authentication failed: ${error}`
+          : `Authentication failed: ${error}`,
       )
     }
   }, [searchParams])
@@ -60,7 +65,10 @@ export function LoginPage() {
     }
   }, [isAuthenticated, navigate])
 
-  const handlePasswordLogin = async (credentials: { email: string; password: string }) => {
+  const handlePasswordLogin = async (credentials: {
+    email: string
+    password: string
+  }) => {
     try {
       setLoginError('')
       await login(credentials)
@@ -70,8 +78,8 @@ export function LoginPage() {
       console.error('[Login] Password login failed:', error)
       setLoginError(
         error.response?.data?.message ||
-        error.message ||
-        'Login failed. Please check your credentials.'
+          error.message ||
+          'Login failed. Please check your credentials.',
       )
     }
   }
@@ -83,30 +91,33 @@ export function LoginPage() {
 
   if (authLoading || providersLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-lg">Loading...</div>
       </div>
     )
   }
 
   const providers = providersData?.providers || []
-  const oauthProviders = providers.filter(p => p.type === 'oauth' && p.enabled)
-  const localLoginEnabled = providers.some(p => p.type === 'password' && p.enabled)
+  const oauthProviders = providers.filter(
+    (p) => p.type === 'oauth' && p.enabled,
+  )
+  const localLoginEnabled = providers.some(
+    (p) => p.type === 'password' && p.enabled,
+  )
 
-  const showLocalLogin = localLoginEnabled || (oauthProviders.length === 0 && providers.length === 0)
+  const showLocalLogin =
+    localLoginEnabled || (oauthProviders.length === 0 && providers.length === 0)
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="w-full max-w-md p-8 rounded-xl border bg-white border-gray-200">
-        <div className="flex flex-col items-center mb-8">
-          <img src={imbiLogo} alt="Imbi" className="w-16 h-16 mb-4" />
-          <h1 className="text-2xl mb-2 text-gray-900">
-            Imbi
-          </h1>
+    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-8">
+        <div className="mb-8 flex flex-col items-center">
+          <img src={imbiLogo} alt="Imbi" className="mb-4 h-16 w-16" />
+          <h1 className="mb-2 text-2xl text-gray-900">Imbi</h1>
         </div>
 
         {oauthProviders.length > 0 && (
-          <div className="space-y-3 mb-6">
+          <div className="mb-6 space-y-3">
             {oauthProviders.map((provider) => (
               <OAuthButton
                 key={provider.id}

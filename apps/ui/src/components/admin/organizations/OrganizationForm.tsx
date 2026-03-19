@@ -26,7 +26,9 @@ export function OrganizationForm({
 
   const [name, setName] = useState(organization?.name || '')
   const [slug, setSlug] = useState(organization?.slug || '')
-  const [description, setDescription] = useState(organization?.description || '')
+  const [description, setDescription] = useState(
+    organization?.description || '',
+  )
   const [icon, setIcon] = useState(organization?.icon || '')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -35,7 +37,8 @@ export function OrganizationForm({
     if (!name.trim()) newErrors.name = 'Organization name is required'
     if (!slug.trim()) newErrors.slug = 'Slug is required'
     if (slug && !/^[a-z0-9-_]+$/.test(slug)) {
-      newErrors.slug = 'Slug must be lowercase and can only contain letters, numbers, hyphens, and underscores'
+      newErrors.slug =
+        'Slug must be lowercase and can only contain letters, numbers, hyphens, and underscores'
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -62,7 +65,7 @@ export function OrganizationForm({
           .replace(/[^a-z0-9\s-_]/g, '')
           .replace(/\s+/g, '-')
           .replace(/-+/g, '-')
-          .trim()
+          .trim(),
       )
     }
   }
@@ -72,10 +75,14 @@ export function OrganizationForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          <h2
+            className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             {isEditing ? 'Edit Organization' : 'Create New Organization'}
           </h2>
-          <p className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          <p
+            className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+          >
             {isEditing
               ? 'Update organization information and settings'
               : 'Create a new organization to group projects and control access'}
@@ -88,33 +95,49 @@ export function OrganizationForm({
             disabled={isLoading}
             className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
           >
-            <X className="w-4 h-4 mr-2" />
+            <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
           >
-            <Save className="w-4 h-4 mr-2" />
-            {isLoading ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Organization'}
+            <Save className="mr-2 h-4 w-4" />
+            {isLoading
+              ? 'Saving...'
+              : isEditing
+                ? 'Save Changes'
+                : 'Create Organization'}
           </Button>
         </div>
       </div>
 
       {/* API Error */}
       {error && (
-        <div className={`rounded-lg border p-4 ${
-          isDarkMode ? 'bg-red-900/20 border-red-700' : 'bg-red-50 border-red-200'
-        }`}>
+        <div
+          className={`rounded-lg border p-4 ${
+            isDarkMode
+              ? 'border-red-700 bg-red-900/20'
+              : 'border-red-200 bg-red-50'
+          }`}
+        >
           <div className="flex items-start gap-3">
-            <AlertCircle className={`w-5 h-5 flex-shrink-0 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`} />
+            <AlertCircle
+              className={`h-5 w-5 flex-shrink-0 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+            />
             <div>
-              <div className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}>
+              <div
+                className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}
+              >
                 Failed to save organization
               </div>
-              <div className={`text-sm mt-1 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>
-                {error?.response?.data?.detail || error?.message || 'An error occurred'}
+              <div
+                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
+              >
+                {error?.response?.data?.detail ||
+                  error?.message ||
+                  'An error occurred'}
               </div>
             </div>
           </div>
@@ -123,17 +146,25 @@ export function OrganizationForm({
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className={`p-6 rounded-lg border ${
-          isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-        }`}>
-          <h3 className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+        <div
+          className={`rounded-lg border p-6 ${
+            isDarkMode
+              ? 'border-gray-700 bg-gray-800'
+              : 'border-gray-200 bg-white'
+          }`}
+        >
+          <h3
+            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
             Organization Information
           </h3>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
                   Organization Name <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -141,22 +172,26 @@ export function OrganizationForm({
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., Engineering"
                   disabled={isLoading}
-                  className={`${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} ${
+                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
                     errors.name ? 'border-red-500' : ''
                   }`}
                 />
                 {errors.name && (
-                  <div className={`flex items-center gap-1 mt-1 text-xs ${
-                    isDarkMode ? 'text-red-400' : 'text-red-600'
-                  }`}>
-                    <AlertCircle className="w-3 h-3" />
+                  <div
+                    className={`mt-1 flex items-center gap-1 text-xs ${
+                      isDarkMode ? 'text-red-400' : 'text-red-600'
+                    }`}
+                  >
+                    <AlertCircle className="h-3 w-3" />
                     {errors.name}
                   </div>
                 )}
               </div>
 
               <div>
-                <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
                   Slug <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -164,15 +199,17 @@ export function OrganizationForm({
                   onChange={(e) => setSlug(e.target.value)}
                   placeholder="e.g., engineering"
                   disabled={isLoading}
-                  className={`${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''} ${
+                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
                     errors.slug ? 'border-red-500' : ''
                   }`}
                 />
                 {errors.slug && (
-                  <div className={`flex items-center gap-1 mt-1 text-xs ${
-                    isDarkMode ? 'text-red-400' : 'text-red-600'
-                  }`}>
-                    <AlertCircle className="w-3 h-3" />
+                  <div
+                    className={`mt-1 flex items-center gap-1 text-xs ${
+                      isDarkMode ? 'text-red-400' : 'text-red-600'
+                    }`}
+                  >
+                    <AlertCircle className="h-3 w-3" />
                     {errors.slug}
                   </div>
                 )}
@@ -180,7 +217,9 @@ export function OrganizationForm({
             </div>
 
             <div>
-              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Description
               </label>
               <textarea
@@ -189,19 +228,25 @@ export function OrganizationForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of the organization's purpose"
-                className={`w-full px-3 py-2 rounded-lg border resize-none ${
+                className={`w-full resize-none rounded-lg border px-3 py-2 ${
                   isDarkMode
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder:text-gray-400'
-                    : 'bg-white border-gray-300 text-gray-900 placeholder:text-gray-500'
+                    ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
+                    : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
                 }`}
               />
             </div>
 
             <div>
-              <label className={`block text-sm mb-1.5 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Icon
               </label>
-              <IconUpload value={icon} onChange={setIcon} isDarkMode={isDarkMode} />
+              <IconUpload
+                value={icon}
+                onChange={setIcon}
+                isDarkMode={isDarkMode}
+              />
             </div>
           </div>
         </div>

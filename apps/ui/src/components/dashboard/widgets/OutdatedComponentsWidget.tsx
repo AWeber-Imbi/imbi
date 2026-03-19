@@ -6,7 +6,10 @@ interface OutdatedComponentsWidgetProps {
   onProjectSelect?: (projectId: string) => void
 }
 
-export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: OutdatedComponentsWidgetProps) {
+export function OutdatedComponentsWidget({
+  isDarkMode,
+  onProjectSelect,
+}: OutdatedComponentsWidgetProps) {
   const outdatedComponents = [
     {
       projectId: 'proj-123',
@@ -16,7 +19,7 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
       latestVersion: '18.2.0',
       severity: 'high' as const,
       behindBy: 15,
-      releaseDate: '2 months ago'
+      releaseDate: '2 months ago',
     },
     {
       projectId: 'proj-456',
@@ -26,7 +29,7 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
       latestVersion: '4.18.2',
       severity: 'medium' as const,
       behindBy: 8,
-      releaseDate: '3 weeks ago'
+      releaseDate: '3 weeks ago',
     },
     {
       projectId: 'proj-789',
@@ -36,7 +39,7 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
       latestVersion: '20.10.0',
       severity: 'high' as const,
       behindBy: 4,
-      releaseDate: '1 week ago'
+      releaseDate: '1 week ago',
     },
     {
       projectId: 'proj-234',
@@ -46,7 +49,7 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
       latestVersion: '9.0.2',
       severity: 'critical' as const,
       behindBy: 12,
-      releaseDate: '1 month ago'
+      releaseDate: '1 month ago',
     },
     {
       projectId: 'proj-567',
@@ -56,25 +59,45 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
       latestVersion: '2.1.4',
       severity: 'medium' as const,
       behindBy: 20,
-      releaseDate: '2 weeks ago'
-    }
+      releaseDate: '2 weeks ago',
+    },
   ]
 
   const severityConfig = {
-    critical: { label: 'Critical', bgColor: isDarkMode ? 'bg-red-900/30' : 'bg-red-100', textColor: isDarkMode ? 'text-red-400' : 'text-red-700' },
-    high: { label: 'High', bgColor: isDarkMode ? 'bg-orange-900/30' : 'bg-orange-100', textColor: isDarkMode ? 'text-orange-400' : 'text-orange-700' },
-    medium: { label: 'Medium', bgColor: isDarkMode ? 'bg-yellow-900/30' : 'bg-yellow-100', textColor: isDarkMode ? 'text-yellow-400' : 'text-yellow-700' },
-    low: { label: 'Low', bgColor: isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100', textColor: isDarkMode ? 'text-blue-400' : 'text-blue-700' }
+    critical: {
+      label: 'Critical',
+      bgColor: isDarkMode ? 'bg-red-900/30' : 'bg-red-100',
+      textColor: isDarkMode ? 'text-red-400' : 'text-red-700',
+    },
+    high: {
+      label: 'High',
+      bgColor: isDarkMode ? 'bg-orange-900/30' : 'bg-orange-100',
+      textColor: isDarkMode ? 'text-orange-400' : 'text-orange-700',
+    },
+    medium: {
+      label: 'Medium',
+      bgColor: isDarkMode ? 'bg-yellow-900/30' : 'bg-yellow-100',
+      textColor: isDarkMode ? 'text-yellow-400' : 'text-yellow-700',
+    },
+    low: {
+      label: 'Low',
+      bgColor: isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100',
+      textColor: isDarkMode ? 'text-blue-400' : 'text-blue-700',
+    },
   }
 
   return (
-    <Card className={`p-6 ${isDarkMode ? 'bg-gray-800 border-gray-700' : ''}`}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className={`text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+    <Card className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
+      <div className="mb-4 flex items-center justify-between">
+        <h3
+          className={`text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+        >
           Outdated Components
         </h3>
-        <span className={`flex items-center gap-1 text-sm ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>
-          <AlertTriangle className="w-4 h-4" />
+        <span
+          className={`flex items-center gap-1 text-sm ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}
+        >
+          <AlertTriangle className="h-4 w-4" />
           {outdatedComponents.length} need updates
         </span>
       </div>
@@ -86,25 +109,31 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
           return (
             <div
               key={item.projectId}
-              className={`p-4 rounded-lg border transition-colors ${
+              className={`rounded-lg border p-4 transition-colors ${
                 isDarkMode
                   ? 'bg-gray-750 border-gray-600 hover:border-gray-500'
-                  : 'bg-white border-gray-200 hover:border-gray-300'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <Package className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <code className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <Package
+                    className={`mt-0.5 h-5 w-5 flex-shrink-0 ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex items-center gap-2">
+                      <code
+                        className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                      >
                         {item.component}
                       </code>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${
-                        config.bgColor
-                      } ${config.textColor}`}>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
+                          config.bgColor
+                        } ${config.textColor}`}
+                      >
                         {config.label}
                       </span>
                     </div>
@@ -112,22 +141,39 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
                     <button
                       type="button"
                       onClick={() => onProjectSelect?.(item.projectId)}
-                      className={`text-sm mb-2 hover:underline ${
+                      className={`mb-2 text-sm hover:underline ${
                         isDarkMode ? 'text-blue-400' : 'text-[#2A4DD0]'
                       }`}
                     >
                       {item.project}
                     </button>
 
-                    <div className={`flex items-center gap-3 text-xs ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                    }`}>
+                    <div
+                      className={`flex items-center gap-3 text-xs ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                      }`}
+                    >
                       <span className="font-mono">
                         {item.currentVersion} → {item.latestVersion}
                       </span>
-                      <span className={isDarkMode ? 'text-gray-600' : 'text-gray-400'}>•</span>
-                      <span>{item.behindBy} version{item.behindBy !== 1 ? 's' : ''} behind</span>
-                      <span className={isDarkMode ? 'text-gray-600' : 'text-gray-400'}>•</span>
+                      <span
+                        className={
+                          isDarkMode ? 'text-gray-600' : 'text-gray-400'
+                        }
+                      >
+                        •
+                      </span>
+                      <span>
+                        {item.behindBy} version{item.behindBy !== 1 ? 's' : ''}{' '}
+                        behind
+                      </span>
+                      <span
+                        className={
+                          isDarkMode ? 'text-gray-600' : 'text-gray-400'
+                        }
+                      >
+                        •
+                      </span>
                       <span>{item.releaseDate}</span>
                     </div>
                   </div>
@@ -136,14 +182,14 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
                 <button
                   type="button"
                   onClick={() => onProjectSelect?.(item.projectId)}
-                  className={`p-2 rounded transition-colors flex-shrink-0 ${
+                  className={`flex-shrink-0 rounded p-2 transition-colors ${
                     isDarkMode
-                      ? 'hover:bg-gray-700 text-gray-400 hover:text-white'
-                      : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900'
+                      ? 'text-gray-400 hover:bg-gray-700 hover:text-white'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   }`}
                   aria-label={`View update details for ${item.component}`}
                 >
-                  <TrendingUp className="w-4 h-4" />
+                  <TrendingUp className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -151,16 +197,20 @@ export function OutdatedComponentsWidget({ isDarkMode, onProjectSelect }: Outdat
         })}
       </div>
 
-      <div className={`mt-4 pt-4 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+      <div
+        className={`mt-4 border-t pt-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+      >
         <button
           type="button"
           onClick={() => onProjectSelect?.('outdated-components')}
-          className={`text-sm flex items-center gap-1 ${
-            isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#2A4DD0] hover:text-blue-700'
+          className={`flex items-center gap-1 text-sm ${
+            isDarkMode
+              ? 'text-blue-400 hover:text-blue-300'
+              : 'text-[#2A4DD0] hover:text-blue-700'
           }`}
         >
           View all outdated components
-          <ExternalLink className="w-3 h-3" />
+          <ExternalLink className="h-3 w-3" />
         </button>
       </div>
     </Card>

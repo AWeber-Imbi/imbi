@@ -1,13 +1,29 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Edit2, Trash2, Shield, AlertCircle, Lock } from 'lucide-react'
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  Shield,
+  AlertCircle,
+  Lock,
+} from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RoleForm } from './roles/RoleForm'
 import { RoleDetail } from './roles/RoleDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
-import { getRoles, getRole, deleteRole, createRole, updateRole, grantPermission, revokePermission } from '@/api/endpoints'
+import {
+  getRoles,
+  getRole,
+  deleteRole,
+  createRole,
+  updateRole,
+  grantPermission,
+  revokePermission,
+} from '@/api/endpoints'
 import type { RoleDetail as RoleDetailType, RoleCreate } from '@/types'
 
 interface RoleManagementProps {
@@ -16,11 +32,22 @@ interface RoleManagementProps {
 
 export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   const queryClient = useQueryClient()
-  const { viewMode, slug: selectedRoleSlug, goToList, goToCreate, goToDetail, goToEdit } = useAdminNav()
+  const {
+    viewMode,
+    slug: selectedRoleSlug,
+    goToList,
+    goToCreate,
+    goToDetail,
+    goToEdit,
+  } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
 
   // Fetch roles from API
-  const { data: roles = [], isLoading, error } = useQuery({
+  const {
+    data: roles = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['roles'],
     queryFn: getRoles,
   })
@@ -32,28 +59,36 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
     },
     onError: (error: any) => {
-      alert(`Failed to delete role: ${error.response?.data?.detail || error.message}`)
-    }
+      alert(
+        `Failed to delete role: ${error.response?.data?.detail || error.message}`,
+      )
+    },
   })
 
   // Sync permissions: grant new ones, revoke removed ones
   const syncPermissions = async (slug: string, desired: string[]) => {
     const current = await getRole(slug)
-    const currentPerms = new Set(current.permissions?.map(p => p.name) || [])
+    const currentPerms = new Set(current.permissions?.map((p) => p.name) || [])
     const desiredPerms = new Set(desired)
 
-    const toGrant = desired.filter(p => !currentPerms.has(p))
-    const toRevoke = [...currentPerms].filter(p => !desiredPerms.has(p))
+    const toGrant = desired.filter((p) => !currentPerms.has(p))
+    const toRevoke = [...currentPerms].filter((p) => !desiredPerms.has(p))
 
     await Promise.all([
-      ...toGrant.map(p => grantPermission(slug, p)),
-      ...toRevoke.map(p => revokePermission(slug, p)),
+      ...toGrant.map((p) => grantPermission(slug, p)),
+      ...toRevoke.map((p) => revokePermission(slug, p)),
     ])
   }
 
   // Create role mutation with permission sync
   const createMutation = useMutation({
-    mutationFn: async ({ role, permissions }: { role: RoleCreate, permissions: string[] }) => {
+    mutationFn: async ({
+      role,
+      permissions,
+    }: {
+      role: RoleCreate
+      permissions: string[]
+    }) => {
       const created = await createRole(role)
       if (permissions.length > 0) {
         await syncPermissions(created.slug, permissions)
@@ -65,12 +100,20 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     },
     onError: (error: any) => {
       console.error('Failed to create role:', error)
-    }
+    },
   })
 
   // Update role mutation with permission sync
   const updateMutation = useMutation({
-    mutationFn: async ({ slug, role, permissions }: { slug: string, role: RoleCreate, permissions: string[] }) => {
+    mutationFn: async ({
+      slug,
+      role,
+      permissions,
+    }: {
+      slug: string
+      role: RoleCreate
+      permissions: string[]
+    }) => {
       const updated = await updateRole(slug, role)
       await syncPermissions(updated.slug, permissions)
     },
@@ -81,11 +124,11 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     },
     onError: (error: any) => {
       console.error('Failed to update role:', error)
-    }
+    },
   })
 
   // Filter roles locally
-  const filteredRoles = roles.filter(role => {
+  const filteredRoles = roles.filter((role) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       return (
@@ -98,7 +141,11 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   })
 
   const handleDelete = (slug: string) => {
-    if (confirm('Are you sure you want to delete this role? This action cannot be undone.')) {
+    if (
+      confirm(
+        'Are you sure you want to delete this role? This action cannot be undone.',
+      )
+    ) {
       deleteMutation.mutate(slug)
     }
   }
@@ -119,7 +166,11 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     if (viewMode === 'create') {
       createMutation.mutate({ role: roleData, permissions })
     } else if (selectedRoleSlug) {
-      updateMutation.mutate({ slug: selectedRoleSlug, role: roleData, permissions })
+      updateMutation.mutate({
+        slug: selectedRoleSlug,
+        role: roleData,
+        permissions,
+      })
     }
   }
 
@@ -131,7 +182,9 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <div
+          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+        >
           Loading roles...
         </div>
       </div>
@@ -141,13 +194,19 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   // Error state
   if (error) {
     return (
-      <div className={`flex items-center gap-3 p-4 rounded-lg border ${
-        isDarkMode ? 'bg-red-900/20 border-red-700 text-red-400' : 'bg-red-50 border-red-200 text-red-700'
-      }`}>
-        <AlertCircle className="w-5 h-5 flex-shrink-0" />
+      <div
+        className={`flex items-center gap-3 rounded-lg border p-4 ${
+          isDarkMode
+            ? 'border-red-700 bg-red-900/20 text-red-400'
+            : 'border-red-200 bg-red-50 text-red-700'
+        }`}
+      >
+        <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
           <div className="font-medium">Failed to load roles</div>
-          <div className="text-sm mt-1">{error instanceof Error ? error.message : 'An error occurred'}</div>
+          <div className="mt-1 text-sm">
+            {error instanceof Error ? error.message : 'An error occurred'}
+          </div>
         </div>
       </div>
     )
@@ -162,7 +221,9 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
         onSave={handleSave}
         onCancel={handleCancel}
         isDarkMode={isDarkMode}
-        isLoading={isCreate ? createMutation.isPending : updateMutation.isPending}
+        isLoading={
+          isCreate ? createMutation.isPending : updateMutation.isPending
+        }
         error={isCreate ? createMutation.error : updateMutation.error}
       />
     )
@@ -187,58 +248,86 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <div className="relative max-w-md">
-            <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-500'
-            }`} />
+            <Search
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
+                isDarkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}
+            />
             <Input
               placeholder="Search roles..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-white' : ''}`}
+              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
             />
           </div>
         </div>
         <Button
           onClick={handleCreateClick}
-          className="bg-[#2A4DD0] hover:bg-blue-700 text-white"
+          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="mr-2 h-4 w-4" />
           New Role
         </Button>
       </div>
 
       {/* Roles Table */}
-      <div className={`rounded-lg border overflow-hidden ${
-        isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-      }`}>
+      <div
+        className={`overflow-hidden rounded-lg border ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
         <table className="w-full">
-          <thead className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'bg-gray-50 border-b border-gray-200'}`}>
+          <thead
+            className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
+          >
             <tr>
-              <th className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Role
               </th>
-              <th className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Slug
               </th>
-              <th className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Description
               </th>
-              <th className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Type
               </th>
-              <th className={`px-4 py-3 text-center text-xs font-medium whitespace-nowrap ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`whitespace-nowrap px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Last Updated
               </th>
-              <th className={`px-4 py-3 text-right text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              <th
+                className={`px-4 py-3 text-right text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className={isDarkMode ? 'divide-y divide-gray-700' : 'divide-y divide-gray-200'}>
+          <tbody
+            className={
+              isDarkMode
+                ? 'divide-y divide-gray-700'
+                : 'divide-y divide-gray-200'
+            }
+          >
             {filteredRoles.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center">
-                  <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                  >
                     {searchQuery
                       ? 'No roles match your search'
                       : 'No roles created yet'}
@@ -247,7 +336,8 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
               </tr>
             ) : (
               filteredRoles.map((role) => {
-                const isSystem = 'is_system' in role && (role as RoleDetailType).is_system
+                const isSystem =
+                  'is_system' in role && (role as RoleDetailType).is_system
                 return (
                   <tr
                     key={role.slug}
@@ -256,40 +346,58 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <Shield className={`w-4 h-4 flex-shrink-0 ${
-                          isDarkMode ? 'text-blue-400' : 'text-blue-600'
-                        }`} />
-                        <span className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <Shield
+                          className={`h-4 w-4 flex-shrink-0 ${
+                            isDarkMode ? 'text-blue-400' : 'text-blue-600'
+                          }`}
+                        />
+                        <span
+                          className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                        >
                           {role.name}
                         </span>
                       </div>
                     </td>
-                    <td className={`px-4 py-3 text-sm font-mono whitespace-nowrap text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    <td
+                      className={`whitespace-nowrap px-4 py-3 text-center font-mono text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                    >
                       {role.slug}
                     </td>
-                    <td className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <td
+                      className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                    >
                       {role.description || '-'}
                     </td>
-                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3 text-center">
                       {isSystem ? (
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                          isDarkMode ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          <Lock className="w-3 h-3" />
+                        <span
+                          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium ${
+                            isDarkMode
+                              ? 'bg-amber-900/30 text-amber-400'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          <Lock className="h-3 w-3" />
                           System
                         </span>
                       ) : (
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          isDarkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700'
-                        }`}>
+                        <span
+                          className={`rounded px-2 py-1 text-xs font-medium ${
+                            isDarkMode
+                              ? 'bg-blue-900/30 text-blue-400'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}
+                        >
                           Custom
                         </span>
                       )}
                     </td>
-                    <td className={`px-4 py-3 text-sm whitespace-nowrap text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <td
+                      className={`whitespace-nowrap px-4 py-3 text-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                    >
                       {formatRelativeDate(role.updated_at)}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
                         <button
                           onClick={(e) => {
@@ -297,16 +405,18 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                             handleEditClick(role.slug)
                           }}
                           disabled={isSystem}
-                          className={`p-1.5 rounded ${
+                          className={`rounded p-1.5 ${
                             isSystem
-                              ? 'opacity-40 cursor-not-allowed'
+                              ? 'cursor-not-allowed opacity-40'
                               : isDarkMode
-                                ? 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
-                                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                                ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                           }`}
-                          title={isSystem ? 'System roles cannot be edited' : 'Edit'}
+                          title={
+                            isSystem ? 'System roles cannot be edited' : 'Edit'
+                          }
                         >
-                          <Edit2 className="w-4 h-4" />
+                          <Edit2 className="h-4 w-4" />
                         </button>
                         <button
                           onClick={(e) => {
@@ -314,16 +424,20 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                             handleDelete(role.slug)
                           }}
                           disabled={deleteMutation.isPending || isSystem}
-                          className={`p-1.5 rounded ${
+                          className={`rounded p-1.5 ${
                             isSystem
-                              ? 'opacity-40 cursor-not-allowed'
+                              ? 'cursor-not-allowed opacity-40'
                               : isDarkMode
-                                ? 'text-red-400 hover:text-red-300 hover:bg-gray-700'
-                                : 'text-red-600 hover:text-red-700 hover:bg-gray-100'
+                                ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                                : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
                           }`}
-                          title={isSystem ? 'System roles cannot be deleted' : 'Delete'}
+                          title={
+                            isSystem
+                              ? 'System roles cannot be deleted'
+                              : 'Delete'
+                          }
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
@@ -334,7 +448,6 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
           </tbody>
         </table>
       </div>
-
     </div>
   )
 }
