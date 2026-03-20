@@ -213,18 +213,6 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     return true
   })
 
-  // Check for priority conflicts
-  const priorityConflicts = (
-    type: string,
-    priority: number,
-    excludeSlug?: string,
-  ) => {
-    return blueprints.filter(
-      (bp: Blueprint) =>
-        bp.type === type && bp.priority === priority && bp.slug !== excludeSlug,
-    )
-  }
-
   const handleDelete = (key: BlueprintKey) => {
     if (
       confirm(
@@ -333,7 +321,6 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
           isCreate ? createMutation.isPending : updateMutation.isPending
         }
         error={isCreate ? createMutation.error : updateMutation.error}
-        checkPriorityConflict={priorityConflicts}
       />
     )
   }

@@ -4,7 +4,6 @@ import {
   Save,
   X,
   AlertCircle,
-  AlertTriangle,
   Plus,
   Trash2,
   ChevronUp,
@@ -23,12 +22,7 @@ import {
   listProjectTypes,
 } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import type {
-  Blueprint,
-  BlueprintCreate,
-  BlueprintFilter,
-  SchemaProperty,
-} from '@/types'
+import type { BlueprintCreate, BlueprintFilter, SchemaProperty } from '@/types'
 
 const ajv = new Ajv()
 
@@ -41,11 +35,6 @@ interface BlueprintFormProps {
   isLoading?: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
-  checkPriorityConflict: (
-    type: string,
-    priority: number,
-    excludeSlug?: string,
-  ) => Blueprint[]
 }
 
 type SchemaEditorMode = 'visual' | 'code'
@@ -168,7 +157,6 @@ export function BlueprintForm({
   isDarkMode,
   isLoading = false,
   error,
-  checkPriorityConflict,
 }: BlueprintFormProps) {
   const isEditing = !!blueprintKey
 
@@ -500,15 +488,6 @@ export function BlueprintForm({
     onSave(data)
   }
 
-  // Priority conflict check
-  const conflicts = type
-    ? checkPriorityConflict(
-        type,
-        priority,
-        isEditing ? blueprintKey?.slug : undefined,
-      )
-    : []
-
   if (isEditing && bpLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -609,37 +588,6 @@ export function BlueprintForm({
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Priority Conflict Warning */}
-      {conflicts.length > 0 && (
-        <div
-          className={`rounded-lg border p-4 ${
-            isDarkMode
-              ? 'border-amber-700 bg-amber-900/20'
-              : 'border-amber-200 bg-amber-50'
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            <AlertTriangle
-              className={`h-5 w-5 flex-shrink-0 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
-            />
-            <div>
-              <div
-                className={`font-medium ${isDarkMode ? 'text-amber-400' : 'text-amber-800'}`}
-              >
-                Priority conflict
-              </div>
-              <div
-                className={`mt-1 text-sm ${isDarkMode ? 'text-amber-300' : 'text-amber-700'}`}
-              >
-                Another {type} blueprint ({conflicts[0].name}) already has
-                priority {priority}. Blueprints of the same type with the same
-                priority may have undefined ordering.
               </div>
             </div>
           </div>
@@ -769,9 +717,14 @@ export function BlueprintForm({
               Priority
             </label>
             <Input
-              type="number"
-              value={priority}
-              onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={String(priority)}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '')
+                setPriority(val === '' ? 0 : parseInt(val, 10))
+              }}
               disabled={isLoading}
               placeholder="0"
               className={
