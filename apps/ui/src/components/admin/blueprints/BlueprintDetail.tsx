@@ -8,6 +8,8 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  Copy,
+  Check,
   ChevronDown,
   ChevronRight,
   Hash,
@@ -98,6 +100,7 @@ export function BlueprintDetail({
   isDarkMode,
 }: BlueprintDetailProps) {
   const [rawSchemaOpen, setRawSchemaOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const {
     data: blueprint,
@@ -159,6 +162,41 @@ export function BlueprintDetail({
     ((parsedFilter.project_type?.length ?? 0) > 0 ||
       (parsedFilter.environment?.length ?? 0) > 0)
 
+  const handleCopy = () => {
+    // Parse json_schema from string back to object
+    let schemaObj: Record<string, unknown> = {}
+    try {
+      schemaObj =
+        typeof blueprint.json_schema === 'string'
+          ? JSON.parse(blueprint.json_schema)
+          : blueprint.json_schema
+    } catch {
+      // fallback
+    }
+
+    const exportObj: Record<string, unknown> = {
+      name: blueprint.name,
+      slug: blueprint.slug,
+      type: blueprint.type,
+      ...(blueprint.description ? { description: blueprint.description } : {}),
+      enabled: blueprint.enabled,
+      priority: blueprint.priority,
+      ...(parsedFilter &&
+      (parsedFilter.project_type?.length > 0 ||
+        parsedFilter.environment?.length > 0)
+        ? { filter: parsedFilter }
+        : {}),
+      json_schema: schemaObj,
+    }
+
+    navigator.clipboard
+      .writeText(JSON.stringify(exportObj, null, 2))
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+  }
+
   return (
     <div className="space-y-6">
       {/* Back button */}
@@ -215,13 +253,27 @@ export function BlueprintDetail({
               </p>
             </div>
           </div>
-          <Button
-            onClick={onEdit}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
-          >
-            <Edit2 className="mr-2 h-4 w-4" />
-            Edit Blueprint
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCopy}
+              className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+            >
+              {copied ? (
+                <Check className="mr-2 h-4 w-4 text-green-500" />
+              ) : (
+                <Copy className="mr-2 h-4 w-4" />
+              )}
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+            <Button
+              onClick={onEdit}
+              className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            >
+              <Edit2 className="mr-2 h-4 w-4" />
+              Edit Blueprint
+            </Button>
+          </div>
         </div>
 
         {/* Metadata row */}
