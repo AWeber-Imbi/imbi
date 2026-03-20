@@ -161,17 +161,32 @@ export function BlueprintDetail({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={onBack}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
+      {/* Back button */}
+      <div>
+        <Button
+          variant="outline"
+          onClick={onBack}
+          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+      </div>
+
+      {/* Blueprint info card */}
+      <div
+        className={`rounded-lg border ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
+        {/* Title row */}
+        <div
+          className={`flex items-start justify-between border-b px-6 py-5 ${
+            isDarkMode ? 'border-gray-700' : 'border-gray-200'
+          }`}
+        >
           <div className="flex items-center gap-3">
             <div
               className={`rounded-lg p-2 ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100'}`}
@@ -200,140 +215,134 @@ export function BlueprintDetail({
               </p>
             </div>
           </div>
+          <Button
+            onClick={onEdit}
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+          >
+            <Edit2 className="mr-2 h-4 w-4" />
+            Edit Blueprint
+          </Button>
         </div>
-        <Button
-          onClick={onEdit}
-          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
-        >
-          <Edit2 className="mr-2 h-4 w-4" />
-          Edit Blueprint
-        </Button>
-      </div>
 
-      {/* Metadata */}
-      <div
-        className={`flex flex-wrap items-center gap-6 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <div>
-          <div
-            className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Slug
+        {/* Metadata row */}
+        <div className="flex flex-wrap items-center gap-6 px-6 py-4">
+          <div>
+            <div
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Slug
+            </div>
+            <div
+              className={`font-mono text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+            >
+              {blueprint.slug}
+            </div>
           </div>
           <div
-            className={`font-mono text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-          >
-            {blueprint.slug}
+            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          />
+          <div>
+            <div
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Enabled
+            </div>
+            <div className="flex items-center gap-1.5">
+              {blueprint.enabled ? (
+                <>
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span
+                    className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                  >
+                    Yes
+                  </span>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-4 w-4 text-gray-400" />
+                  <span
+                    className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                  >
+                    No
+                  </span>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-        <div
-          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        />
-        <div>
           <div
-            className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Enabled
+            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          />
+          <div>
+            <div
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Priority
+            </div>
+            <div
+              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+            >
+              {blueprint.priority}
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            {blueprint.enabled ? (
-              <>
-                <CheckCircle className="h-4 w-4 text-green-500" />
+          <div
+            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          />
+          <div>
+            <div
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Version
+            </div>
+            <div
+              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+            >
+              v{blueprint.version}
+            </div>
+          </div>
+          <div
+            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          />
+          <div>
+            <div
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Properties
+            </div>
+            <div
+              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+            >
+              {properties.length}
+            </div>
+          </div>
+          <div
+            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          />
+          <div>
+            <div
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Filter
+            </div>
+            <div className="flex items-center gap-1.5">
+              {hasFilter ? (
+                <>
+                  <Filter
+                    className={`h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
+                  />
+                  <span
+                    className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                  >
+                    Active
+                  </span>
+                </>
+              ) : (
                 <span
-                  className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                  className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
                 >
-                  Yes
+                  None
                 </span>
-              </>
-            ) : (
-              <>
-                <XCircle className="h-4 w-4 text-gray-400" />
-                <span
-                  className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                >
-                  No
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-        <div
-          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        />
-        <div>
-          <div
-            className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Priority
-          </div>
-          <div
-            className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-          >
-            {blueprint.priority}
-          </div>
-        </div>
-        <div
-          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        />
-        <div>
-          <div
-            className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Version
-          </div>
-          <div
-            className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-          >
-            v{blueprint.version}
-          </div>
-        </div>
-        <div
-          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        />
-        <div>
-          <div
-            className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Properties
-          </div>
-          <div
-            className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-          >
-            {properties.length}
-          </div>
-        </div>
-        <div
-          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        />
-        <div>
-          <div
-            className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Filter
-          </div>
-          <div className="flex items-center gap-1.5">
-            {hasFilter ? (
-              <>
-                <Filter
-                  className={`h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
-                />
-                <span
-                  className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                >
-                  Active
-                </span>
-              </>
-            ) : (
-              <span
-                className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-              >
-                None
-              </span>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
