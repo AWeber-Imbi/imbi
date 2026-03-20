@@ -54,6 +54,8 @@ import type {
   ClientCredentialCreate,
   Webhook,
   WebhookCreate,
+  ProjectService,
+  ProjectServiceCreate,
 } from '@/types'
 
 // Status/Health
@@ -863,4 +865,34 @@ export const updateWebhook = (orgSlug: string, slug: string, data: WebhookCreate
 export const deleteWebhook = (orgSlug: string, slug: string) =>
   apiClient.delete<void>(
     `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`
+  )
+
+// Project Services (EXISTS_IN)
+export const listProjectServices = async (
+  orgSlug: string,
+  projectSlug: string
+): Promise<ProjectService[]> => {
+  const response = await apiClient.get<ProjectService[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createProjectService = (
+  orgSlug: string,
+  projectSlug: string,
+  data: ProjectServiceCreate
+) =>
+  apiClient.post<ProjectService>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/`,
+    data
+  )
+
+export const deleteProjectService = (
+  orgSlug: string,
+  projectSlug: string,
+  serviceSlug: string
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/${encodeURIComponent(serviceSlug)}`
   )

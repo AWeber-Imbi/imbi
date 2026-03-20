@@ -670,6 +670,20 @@ export interface WebhookCreate {
   rules: WebhookRule[]
 }
 
+// Project EXISTS_IN types
+export interface ProjectService {
+  third_party_service_slug: string
+  third_party_service_name: string
+  identifier: string
+  canonical_link?: string | null
+}
+
+export interface ProjectServiceCreate {
+  third_party_service_slug: string
+  identifier: string
+  canonical_link?: string | null
+}
+
 export interface SchemaProperty {
   id: string
   name: string
