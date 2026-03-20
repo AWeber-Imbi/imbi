@@ -43,8 +43,9 @@ PATH_MODEL_MAPPING: dict[str, str] = {
     '/organizations/{org_slug}/environments/{slug}': 'Environment',
     '/organizations/{org_slug}/project-types/': 'ProjectType',
     '/organizations/{org_slug}/project-types/{slug}': 'ProjectType',
-    '/projects/': 'Project',
-    '/projects/{project_type_slug}/{slug}': 'Project',
+    '/organizations/{org_slug}/projects/': 'Project',
+    '/organizations/{org_slug}/projects/{project_type_slug}': 'Project',
+    '/organizations/{org_slug}/projects/{project_type_slug}/{slug}': 'Project',
 }
 
 

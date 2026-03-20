@@ -60,7 +60,12 @@ class EnvironmentRef(pydantic.BaseModel):
 
 
 class ProjectCreate(pydantic.BaseModel):
-    """Request body for creating a project."""
+    """Request body for creating a project.
+
+    Blueprint-defined fields are accepted as extra properties.
+    """
+
+    model_config = pydantic.ConfigDict(extra='allow')
 
     name: str
     slug: str
@@ -73,7 +78,12 @@ class ProjectCreate(pydantic.BaseModel):
 
 
 class ProjectUpdate(pydantic.BaseModel):
-    """Request body for updating a project."""
+    """Request body for updating a project.
+
+    Blueprint-defined fields are accepted as extra properties.
+    """
+
+    model_config = pydantic.ConfigDict(extra='allow')
 
     name: str | None = None
     slug: str | None = None
@@ -167,7 +177,10 @@ async def create_project(
     ],
 ) -> ProjectResponse:
     """Create a new project in an organization."""
-    dynamic_model = await blueprints.get_model(models.Project)
+    dynamic_model = await blueprints.get_model(
+        models.Project,
+        context={'project_type': project_type_slug},
+    )
 
     try:
         project = dynamic_model(
@@ -194,6 +207,7 @@ async def create_project(
             icon=data.icon,
             links=data.links,
             identifiers=data.identifiers,
+            **(data.model_extra or {}),
         )
     except pydantic.ValidationError as e:
         LOGGER.warning(
@@ -352,6 +366,31 @@ async def list_projects(
     return results
 
 
+@projects_router.get('/{project_type_slug}/schema')
+async def get_project_type_schema(
+    org_slug: str,
+    project_type_slug: str,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:read'),
+        ),
+    ],
+) -> dict[str, typing.Any]:
+    """Return the resolved JSON Schema for a project type.
+
+    Fetches all enabled blueprints matching the given project
+    type, merges them by priority, and returns the combined
+    JSON Schema.  Useful for dynamic form generation and
+    client-side validation.
+    """
+    dynamic_model = await blueprints.get_model(
+        models.Project,
+        context={'project_type': project_type_slug},
+    )
+    return dynamic_model.model_json_schema()
+
+
 @projects_router.get('/{project_type_slug}/{slug}')
 async def get_project(
     org_slug: str,
@@ -431,7 +470,10 @@ async def update_project(
     ],
 ) -> ProjectResponse:
     """Update a project."""
-    dynamic_model = await blueprints.get_model(models.Project)
+    dynamic_model = await blueprints.get_model(
+        models.Project,
+        context={'project_type': project_type_slug},
+    )
 
     # Fetch existing project
     fetch_query: typing.LiteralString = """
@@ -482,6 +524,24 @@ async def update_project(
         else existing.get('identifiers', {})
     )
 
+    # Merge blueprint extra fields: start with existing values
+    # from the node, then overlay anything sent in the request.
+    base_fields = set(ProjectUpdate.model_fields)
+    extra_fields = {
+        k: v
+        for k, v in existing.items()
+        if k not in base_fields
+        and k
+        not in {
+            'team',
+            'project_type',
+            'environments',
+            'created_at',
+            'updated_at',
+        }
+    }
+    extra_fields.update(data.model_extra or {})
+
     try:
         project = dynamic_model(
             team=models.Team(
@@ -507,6 +567,7 @@ async def update_project(
             icon=merged_icon,
             links=merged_links,
             identifiers=merged_ids,
+            **extra_fields,
         )
     except pydantic.ValidationError as e:
         LOGGER.warning(
