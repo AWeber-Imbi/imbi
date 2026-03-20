@@ -505,7 +505,7 @@ export function ServiceAccountDetail({
           <div
             className={`mb-4 rounded-lg border p-4 ${
               isDarkMode
-                ? 'bg-gray-750 border-gray-600'
+                ? 'border-gray-600 bg-gray-700'
                 : 'border-gray-200 bg-gray-50'
             }`}
           >
@@ -597,7 +597,7 @@ export function ServiceAccountDetail({
                 key={membership.organization_slug}
                 className={`flex items-center justify-between rounded-lg border p-3 ${
                   isDarkMode
-                    ? 'bg-gray-750 border-gray-600'
+                    ? 'border-gray-600 bg-gray-700'
                     : 'border-gray-200 bg-gray-50'
                 }`}
               >
@@ -714,7 +714,7 @@ export function ServiceAccountDetail({
           <div
             className={`mb-4 rounded-lg border p-4 ${
               isDarkMode
-                ? 'bg-gray-750 border-gray-600'
+                ? 'border-gray-600 bg-gray-700'
                 : 'border-gray-200 bg-gray-50'
             }`}
           >
@@ -954,10 +954,10 @@ export function ServiceAccountDetail({
                 className={`flex items-center justify-between rounded-lg border p-3 ${
                   cred.revoked
                     ? isDarkMode
-                      ? 'bg-gray-750 border-gray-600 opacity-50'
+                      ? 'border-gray-600 bg-gray-700 opacity-50'
                       : 'border-gray-200 bg-gray-50 opacity-50'
                     : isDarkMode
-                      ? 'bg-gray-750 border-gray-600'
+                      ? 'border-gray-600 bg-gray-700'
                       : 'border-gray-200 bg-gray-50'
                 }`}
               >
@@ -1079,7 +1079,7 @@ export function ServiceAccountDetail({
           <div
             className={`mb-4 rounded-lg border p-4 ${
               isDarkMode
-                ? 'bg-gray-750 border-gray-600'
+                ? 'border-gray-600 bg-gray-700'
                 : 'border-gray-200 bg-gray-50'
             }`}
           >
@@ -1210,10 +1210,10 @@ export function ServiceAccountDetail({
                 className={`flex items-center justify-between rounded-lg border p-3 ${
                   key.revoked
                     ? isDarkMode
-                      ? 'bg-gray-750 border-gray-600 opacity-50'
+                      ? 'border-gray-600 bg-gray-700 opacity-50'
                       : 'border-gray-200 bg-gray-50 opacity-50'
                     : isDarkMode
-                      ? 'bg-gray-750 border-gray-600'
+                      ? 'border-gray-600 bg-gray-700'
                       : 'border-gray-200 bg-gray-50'
                 }`}
               >

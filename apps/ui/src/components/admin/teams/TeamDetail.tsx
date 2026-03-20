@@ -10,10 +10,10 @@ import {
   Search,
   AlertCircle,
 } from 'lucide-react'
-import { Button } from '../../ui/button'
-import { Input } from '../../ui/input'
-import { Gravatar } from '../../ui/gravatar'
-import { DynamicDetailFields } from '../../ui/dynamic-fields'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Gravatar } from '@/components/ui/gravatar'
+import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import {
   getTeamMembers,
   addTeamMember,
@@ -241,7 +241,7 @@ export function TeamDetail({
             <div
               className={`mt-4 rounded-lg border p-4 ${
                 isDarkMode
-                  ? 'bg-gray-750 border-gray-600'
+                  ? 'border-gray-600 bg-gray-700'
                   : 'border-gray-200 bg-gray-50'
               }`}
             >
@@ -343,7 +343,7 @@ export function TeamDetail({
                 <tr
                   key={member.email}
                   className={
-                    isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'
+                    isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                   }
                 >
                   <td className="px-6 py-4">

@@ -454,7 +454,7 @@ export function RoleDetail({
                 <thead
                   className={
                     isDarkMode
-                      ? 'bg-gray-750 border-b border-gray-700'
+                      ? 'border-b border-gray-700 bg-gray-700'
                       : 'border-b border-gray-200 bg-gray-50'
                   }
                 >
@@ -497,7 +497,7 @@ export function RoleDetail({
                       <tr
                         key={perm.name}
                         className={
-                          isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'
+                          isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                         }
                       >
                         <td
@@ -506,7 +506,7 @@ export function RoleDetail({
                           <code
                             className={`rounded px-2 py-1 text-sm ${
                               isDarkMode
-                                ? 'bg-gray-750 text-blue-400'
+                                ? 'bg-gray-700 text-blue-400'
                                 : 'bg-gray-100 text-[#2A4DD0]'
                             }`}
                           >

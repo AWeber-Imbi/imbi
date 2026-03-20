@@ -22,6 +22,7 @@ import {
   listProjectTypes,
 } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { BlueprintCreate, BlueprintFilter, SchemaProperty } from '@/types'
 
 const ajv = new Ajv()
@@ -175,13 +176,13 @@ export function BlueprintForm({
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
 
-  const { data: availableProjectTypes = [] } = useQuery({
+  const { data: availableProjectTypes = [], isLoading: ptLoading } = useQuery({
     queryKey: ['projectTypes', orgSlug],
     queryFn: () => listProjectTypes(orgSlug!),
     enabled: !!orgSlug,
   })
 
-  const { data: availableEnvironments = [] } = useQuery({
+  const { data: availableEnvironments = [], isLoading: envLoading } = useQuery({
     queryKey: ['environments', orgSlug],
     queryFn: () => listEnvironments(orgSlug!),
     enabled: !!orgSlug,
@@ -231,23 +232,14 @@ export function BlueprintForm({
       setEnabled(existingBlueprint.enabled)
       setPriority(existingBlueprint.priority)
       setSlugManuallyEdited(true)
-      if (existingBlueprint.filter) {
-        try {
-          const f: BlueprintFilter =
-            typeof existingBlueprint.filter === 'string'
-              ? JSON.parse(existingBlueprint.filter)
-              : existingBlueprint.filter
-          if (f.project_type?.length > 0 || f.environment?.length > 0) {
-            setFilterEnabled(true)
-            if (f.project_type?.length > 0) {
-              setSelectedProjectTypes(new Set(f.project_type))
-            }
-            if (f.environment?.length > 0) {
-              setSelectedEnvironments(new Set(f.environment))
-            }
-          }
-        } catch {
-          // ignore parse errors
+      const f = parseFilterFromBlueprint(existingBlueprint.filter)
+      if (f) {
+        setFilterEnabled(true)
+        if (f.project_type?.length > 0) {
+          setSelectedProjectTypes(new Set(f.project_type))
+        }
+        if (f.environment?.length > 0) {
+          setSelectedEnvironments(new Set(f.environment))
         }
       }
 
@@ -842,7 +834,13 @@ export function BlueprintForm({
               >
                 Project Types
               </label>
-              {availableProjectTypes.length === 0 ? (
+              {ptLoading ? (
+                <p
+                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                >
+                  Loading project types...
+                </p>
+              ) : availableProjectTypes.length === 0 ? (
                 <p
                   className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
                 >
@@ -885,7 +883,13 @@ export function BlueprintForm({
               >
                 Environments
               </label>
-              {availableEnvironments.length === 0 ? (
+              {envLoading ? (
+                <p
+                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                >
+                  Loading environments...
+                </p>
+              ) : availableEnvironments.length === 0 ? (
                 <p
                   className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
                 >
@@ -1019,7 +1023,7 @@ export function BlueprintForm({
                     key={prop.id}
                     className={`rounded-lg border ${
                       isDarkMode
-                        ? 'bg-gray-750 border-gray-600'
+                        ? 'border-gray-600 bg-gray-700'
                         : 'border-gray-200 bg-gray-50'
                     }`}
                   >

@@ -122,7 +122,7 @@ export function RecentDeploymentsWidget({
               onClick={() => onProjectSelect?.(deployment.projectId)}
               className={`w-full rounded-lg border p-3 text-left transition-colors ${
                 isDarkMode
-                  ? 'bg-gray-750 border-gray-600 hover:border-gray-500'
+                  ? 'border-gray-600 bg-gray-700 hover:border-gray-500'
                   : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
             >

@@ -14,8 +14,8 @@ import {
   Trash2,
   Building2,
 } from 'lucide-react'
-import { Button } from '../../ui/button'
-import { Gravatar } from '../../ui/gravatar'
+import { Button } from '@/components/ui/button'
+import { Gravatar } from '@/components/ui/gravatar'
 import {
   getRoles,
   addUserToOrg,
@@ -306,7 +306,7 @@ export function UserDetail({
           <div
             className={`mb-4 rounded-lg border p-4 ${
               isDarkMode
-                ? 'bg-gray-750 border-gray-600'
+                ? 'border-gray-600 bg-gray-700'
                 : 'border-gray-200 bg-gray-50'
             }`}
           >
@@ -398,7 +398,7 @@ export function UserDetail({
                 key={membership.organization_slug}
                 className={`flex items-center justify-between rounded-lg border p-3 ${
                   isDarkMode
-                    ? 'bg-gray-750 border-gray-600'
+                    ? 'border-gray-600 bg-gray-700'
                     : 'border-gray-200 bg-gray-50'
                 }`}
               >

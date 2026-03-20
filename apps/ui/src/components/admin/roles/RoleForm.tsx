@@ -573,7 +573,7 @@ export function RoleForm({
                   key={resource}
                   className={`rounded-lg border ${
                     isDarkMode
-                      ? 'bg-gray-750 border-gray-600'
+                      ? 'border-gray-600 bg-gray-700'
                       : 'border-gray-200 bg-gray-50'
                   }`}
                 >

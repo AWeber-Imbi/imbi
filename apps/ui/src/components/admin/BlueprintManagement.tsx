@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import React from 'react'
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -26,7 +27,8 @@ import {
   createBlueprint,
   updateBlueprint,
 } from '@/api/endpoints'
-import type { Blueprint, BlueprintCreate, BlueprintFilter } from '@/types'
+import { parseFilterFromBlueprint } from '@/lib/utils'
+import type { Blueprint, BlueprintCreate } from '@/types'
 
 interface BlueprintManagementProps {
   isDarkMode: boolean
@@ -96,6 +98,27 @@ export function getTypeBadgeClasses(
   const color = getTypeColor(type, allTypes)
   const classes = TYPE_COLOR_CLASSES[color] || TYPE_COLOR_CLASSES.blue
   return isDarkMode ? classes.dark : classes.light
+}
+
+function renderFilterCell(
+  filter: string | null | undefined,
+  isDarkMode: boolean,
+): React.ReactNode {
+  const f = parseFilterFromBlueprint(filter)
+  if (!f) return null
+  const title = [
+    f.project_type?.length ? `Project Types: ${f.project_type.join(', ')}` : '',
+    f.environment?.length ? `Environments: ${f.environment.join(', ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+  return (
+    <span title={title}>
+      <Filter
+        className={`mx-auto h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
+      />
+    </span>
+  )
 }
 
 export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
@@ -418,7 +441,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead
-              className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
+              className={`${isDarkMode ? 'border-b border-gray-700 bg-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
             >
               <tr>
                 <th
@@ -490,7 +513,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
                       handleViewClick({ type: bp.type, slug: bp.slug })
                     }
                     className={`cursor-pointer ${
-                      isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'
+                      isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
                     }`}
                   >
                     <td className="px-4 py-3">
@@ -540,42 +563,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-center">
-                      {(() => {
-                        if (!bp.filter) return null
-                        try {
-                          const f =
-                            typeof bp.filter === 'string'
-                              ? (JSON.parse(bp.filter) as BlueprintFilter)
-                              : null
-                          if (
-                            f &&
-                            (f.project_type?.length > 0 ||
-                              f.environment?.length > 0)
-                          ) {
-                            return (
-                              <span
-                                title={[
-                                  f.project_type?.length
-                                    ? `Project Types: ${f.project_type.join(', ')}`
-                                    : '',
-                                  f.environment?.length
-                                    ? `Environments: ${f.environment.join(', ')}`
-                                    : '',
-                                ]
-                                  .filter(Boolean)
-                                  .join('\n')}
-                              >
-                                <Filter
-                                  className={`mx-auto h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
-                                />
-                              </span>
-                            )
-                          }
-                        } catch {
-                          // ignore parse errors
-                        }
-                        return null
-                      })() || (
+                      {renderFilterCell(bp.filter, isDarkMode) || (
                         <span
                           className={`text-xs ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}
                         >

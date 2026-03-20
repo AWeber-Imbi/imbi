@@ -21,7 +21,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { getBlueprint } from '@/api/endpoints'
 import { getTypeBadgeClasses } from '../BlueprintManagement'
-import type { BlueprintFilter, SchemaProperty } from '@/types'
+import { parseFilterFromBlueprint } from '@/lib/utils'
+import type { SchemaProperty } from '@/types'
 
 interface BlueprintDetailProps {
   blueprintKey: { type: string; slug: string }
@@ -146,21 +147,8 @@ export function BlueprintDetail({
   const { properties, raw } = parseSchemaProperties(blueprint.json_schema)
 
   // Parse filter
-  let parsedFilter: BlueprintFilter | null = null
-  if (blueprint.filter) {
-    try {
-      parsedFilter =
-        typeof blueprint.filter === 'string'
-          ? JSON.parse(blueprint.filter)
-          : blueprint.filter
-    } catch {
-      // ignore
-    }
-  }
-  const hasFilter =
-    parsedFilter &&
-    ((parsedFilter.project_type?.length ?? 0) > 0 ||
-      (parsedFilter.environment?.length ?? 0) > 0)
+  const parsedFilter = parseFilterFromBlueprint(blueprint.filter)
+  const hasFilter = parsedFilter !== null
 
   const handleCopy = () => {
     // Parse json_schema from string back to object
@@ -518,7 +506,7 @@ export function BlueprintDetail({
                     <code
                       className={`rounded px-2 py-1 text-sm font-medium ${
                         isDarkMode
-                          ? 'bg-gray-750 text-blue-400'
+                          ? 'bg-gray-700 text-blue-400'
                           : 'bg-gray-100 text-[#2A4DD0]'
                       }`}
                     >
@@ -563,7 +551,7 @@ export function BlueprintDetail({
                           key={val}
                           className={`inline-flex items-center rounded border px-2 py-0.5 font-mono text-xs ${
                             isDarkMode
-                              ? 'bg-gray-750 border-gray-600 text-gray-300'
+                              ? 'border-gray-600 bg-gray-700 text-gray-300'
                               : 'border-gray-200 bg-gray-50 text-gray-700'
                           }`}
                         >
@@ -686,7 +674,7 @@ export function BlueprintDetail({
         <button
           onClick={() => setRawSchemaOpen(!rawSchemaOpen)}
           className={`flex w-full items-center gap-2 px-6 py-4 text-left ${
-            isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'
+            isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
           } ${rawSchemaOpen ? (isDarkMode ? 'border-b border-gray-700' : 'border-b border-gray-200') : ''}`}
         >
           {rawSchemaOpen ? (

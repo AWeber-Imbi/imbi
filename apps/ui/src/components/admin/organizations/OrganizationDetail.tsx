@@ -1,5 +1,5 @@
 import { ArrowLeft, Edit2, Building2 } from 'lucide-react'
-import { Button } from '../../ui/button'
+import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/formatDate'
 import type { Organization } from '@/types'
 

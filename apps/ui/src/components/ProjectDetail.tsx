@@ -15,7 +15,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { useState } from 'react'
+import { EnvironmentBadge } from '@/components/ui/environment-badge'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { listLinkDefinitions } from '@/api/endpoints'
@@ -158,8 +159,12 @@ export function ProjectDetail({
     },
   ]
 
-  const sortedEnvironments = [...(project.environments || [])].sort((a, b) =>
-    a.name.localeCompare(b.name),
+  const sortedEnvironments = useMemo(
+    () =>
+      [...(project.environments || [])].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+    [project.environments],
   )
 
   const { data: linkDefs = [] } = useQuery({
@@ -406,21 +411,12 @@ export function ProjectDetail({
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {sortedEnvironments.map((env) => (
-                    <span
+                    <EnvironmentBadge
                       key={env.slug}
-                      className="rounded px-2 py-1 text-xs font-medium"
-                      style={
-                        env.label_color
-                          ? {
-                              backgroundColor: env.label_color + '20',
-                              color: env.label_color,
-                              border: `1px solid ${env.label_color}40`,
-                            }
-                          : undefined
-                      }
-                    >
-                      {env.name}
-                    </span>
+                      name={env.name}
+                      slug={env.slug}
+                      label_color={env.label_color}
+                    />
                   ))}
                   {(!project.environments ||
                     project.environments.length === 0) && (

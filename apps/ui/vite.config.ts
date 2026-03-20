@@ -1,11 +1,11 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin, type ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-function requestLogger() {
+function requestLogger(): Plugin {
   return {
     name: 'request-logger',
-    configureServer(server) {
+    configureServer(server: ViteDevServer) {
       server.middlewares.use((req, res, next) => {
         console.log(`${req.method} ${req.url}`)
         next()

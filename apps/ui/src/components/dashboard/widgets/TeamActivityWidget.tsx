@@ -110,7 +110,7 @@ export function TeamActivityWidget({
               onClick={() => handleTeamClick(team.name)}
               className={`rounded-lg border p-4 text-left transition-all ${
                 isDarkMode
-                  ? 'bg-gray-750 border-gray-600 hover:border-gray-500 hover:bg-gray-700'
+                  ? 'border-gray-600 bg-gray-700 hover:border-gray-500 hover:bg-gray-700'
                   : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
               }`}
             >

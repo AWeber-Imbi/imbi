@@ -115,7 +115,7 @@ export function WidgetSelector({
                             ? 'border-blue-500 bg-blue-900/20 text-white'
                             : 'border-[#2A4DD0] bg-blue-50 text-gray-900'
                           : isDarkMode
-                            ? 'bg-gray-750 border-gray-600 text-gray-300 hover:border-gray-500'
+                            ? 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
                             : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
                       }`}
                     >

@@ -1,8 +1,32 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
+import type { BlueprintFilter } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+/**
+ * Parse a blueprint's filter field (string or object) into a typed
+ * BlueprintFilter, returning null on missing/invalid input.
+ */
+export function parseFilterFromBlueprint(
+  filter: string | BlueprintFilter | null | undefined,
+): BlueprintFilter | null {
+  if (!filter) return null
+  try {
+    const parsed: BlueprintFilter =
+      typeof filter === 'string' ? JSON.parse(filter) : filter
+    if (
+      (parsed.project_type?.length ?? 0) > 0 ||
+      (parsed.environment?.length ?? 0) > 0
+    ) {
+      return parsed
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return null
 }
 
 /**
