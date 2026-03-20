@@ -6,6 +6,8 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getProjects } from '@/api/endpoints'
+import { EnvironmentBadge } from './ui/environment-badge'
+import type { Environment } from '@/types'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { NewProjectDialog } from './NewProjectDialog'
 import { ProjectGraphView } from './ProjectGraphView'
@@ -70,11 +72,9 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
     return 'ring-red-200'
   }
 
-  const getEnvironmentBadgeColor = (env: string) => {
-    const envLower = env.toLowerCase()
-    if (envLower.includes('prod')) return 'bg-red-100 text-red-700'
-    if (envLower.includes('stag')) return 'bg-amber-100 text-amber-700'
-    return 'bg-blue-100 text-blue-700'
+  const sortedEnvironments = (envs?: Environment[]) => {
+    if (!envs || envs.length === 0) return []
+    return [...envs].sort((a, b) => a.name.localeCompare(b.name))
   }
 
   // Mock health score - deterministic from slug so it's stable across renders.
@@ -256,13 +256,13 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
 
                 {project.environments && project.environments.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
-                    {project.environments.map((env, envIdx) => (
-                      <span
-                        key={envIdx}
-                        className={`rounded px-2 py-1 text-xs ${getEnvironmentBadgeColor(env.name)}`}
-                      >
-                        {env.name}
-                      </span>
+                    {sortedEnvironments(project.environments).map((env) => (
+                      <EnvironmentBadge
+                        key={env.slug}
+                        name={env.name}
+                        slug={env.slug}
+                        label_color={env.label_color}
+                      />
                     ))}
                   </div>
                 )}
@@ -279,7 +279,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
               <thead
                 className={`border-b ${
                   isDarkMode
-                    ? 'bg-gray-750 border-gray-700'
+                    ? 'border-gray-700 bg-gray-700'
                     : 'border-slate-200 bg-slate-50'
                 }`}
               >
@@ -348,14 +348,16 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                         {project.environments &&
                           project.environments.length > 0 && (
                             <div className="flex flex-wrap items-center gap-2">
-                              {project.environments.map((env, envIdx) => (
-                                <span
-                                  key={envIdx}
-                                  className={`rounded px-2 py-1 text-xs ${getEnvironmentBadgeColor(env.name)}`}
-                                >
-                                  {env.name}
-                                </span>
-                              ))}
+                              {sortedEnvironments(project.environments).map(
+                                (env) => (
+                                  <EnvironmentBadge
+                                    key={env.slug}
+                                    name={env.name}
+                                    slug={env.slug}
+                                    label_color={env.label_color}
+                                  />
+                                ),
+                              )}
                             </div>
                           )}
                       </td>

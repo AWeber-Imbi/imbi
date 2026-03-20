@@ -111,7 +111,7 @@ export function OutdatedComponentsWidget({
               key={item.projectId}
               className={`rounded-lg border p-4 transition-colors ${
                 isDarkMode
-                  ? 'bg-gray-750 border-gray-600 hover:border-gray-500'
+                  ? 'border-gray-600 bg-gray-700 hover:border-gray-500'
                   : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
             >

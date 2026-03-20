@@ -281,7 +281,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
       >
         <table className="w-full">
           <thead
-            className={`${isDarkMode ? 'bg-gray-750 border-b border-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
+            className={`${isDarkMode ? 'border-b border-gray-700 bg-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
           >
             <tr>
               <th
@@ -343,7 +343,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                   <tr
                     key={role.slug}
                     onClick={() => handleViewClick(role.slug)}
-                    className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-750' : 'hover:bg-gray-50'}`}
+                    className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

@@ -63,17 +63,26 @@ export function ThirdPartyServiceDetail({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={onBack}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
+      {/* Back button */}
+      <div>
+        <Button
+          variant="outline"
+          onClick={onBack}
+          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+      </div>
+
+      {/* Third Party Service info card */}
+      <div
+        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
+      >
+        {/* Title row */}
+        <div
+          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+        >
           <div>
             <div className="flex items-center gap-3">
               {service.icon && (
@@ -106,43 +115,43 @@ export function ThirdPartyServiceDetail({
               </p>
             )}
           </div>
+          <Button
+            onClick={onEdit}
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+          >
+            <Edit2 className="mr-2 h-4 w-4" />
+            Edit Service
+          </Button>
         </div>
-        <Button
-          onClick={onEdit}
-          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
-        >
-          <Edit2 className="mr-2 h-4 w-4" />
-          Edit Service
-        </Button>
-      </div>
 
-      {/* Tabs */}
-      <div
-        className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-      >
-        <div className="flex gap-0">
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                  isActive
-                    ? isDarkMode
-                      ? 'border-blue-400 text-blue-400'
-                      : 'border-[#2A4DD0] text-[#2A4DD0]'
-                    : isDarkMode
-                      ? 'border-transparent text-gray-400 hover:text-gray-200'
-                      : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            )
-          })}
+        {/* Tabs */}
+        <div
+          className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+        >
+          <div className="flex gap-0 px-6">
+            {tabs.map((tab) => {
+              const Icon = tab.icon
+              const isActive = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                    isActive
+                      ? isDarkMode
+                        ? 'border-blue-400 text-blue-400'
+                        : 'border-[#2A4DD0] text-[#2A4DD0]'
+                      : isDarkMode
+                        ? 'border-transparent text-gray-400 hover:text-gray-200'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -157,11 +166,6 @@ export function ThirdPartyServiceDetail({
                 : 'border-gray-200 bg-white'
             }`}
           >
-            <h3
-              className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
-              Service Information
-            </h3>
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <div

@@ -28,17 +28,26 @@ export function EnvironmentDetail({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={onBack}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
+      {/* Back button */}
+      <div>
+        <Button
+          variant="outline"
+          onClick={onBack}
+          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+      </div>
+
+      {/* Environment info card */}
+      <div
+        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
+      >
+        {/* Title row */}
+        <div
+          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+        >
           <div>
             <div className="flex items-center gap-3">
               {environment.icon && (
@@ -62,98 +71,89 @@ export function EnvironmentDetail({
               </p>
             )}
           </div>
+          <Button
+            onClick={onEdit}
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+          >
+            <Edit2 className="mr-2 h-4 w-4" />
+            Edit Environment
+          </Button>
         </div>
-        <Button
-          onClick={onEdit}
-          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
-        >
-          <Edit2 className="mr-2 h-4 w-4" />
-          Edit Environment
-        </Button>
-      </div>
 
-      {/* Environment Info */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Environment Information
-        </h3>
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Slug
-            </div>
-            <div
-              className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
-              <code
-                className={`rounded px-2 py-1 text-sm ${
-                  isDarkMode
-                    ? 'bg-gray-700 text-gray-300'
-                    : 'bg-gray-100 text-gray-700'
-                }`}
+        {/* Info section */}
+        <div className="p-6">
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <div
+                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
-                {environment.slug}
-              </code>
-            </div>
-          </div>
-          <div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Organization
-            </div>
-            <div
-              className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
-              {environment.organization.name}
-            </div>
-          </div>
-          <div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Label Color
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              {environment.label_color ? (
-                <>
-                  <div
-                    className="h-6 w-6 rounded border"
-                    style={{ backgroundColor: environment.label_color }}
-                  />
-                  <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                    {environment.label_color}
-                  </span>
-                </>
-              ) : (
-                <span
-                  className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}
+                Slug
+              </div>
+              <div
+                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+              >
+                <code
+                  className={`rounded px-2 py-1 text-sm ${
+                    isDarkMode
+                      ? 'bg-gray-700 text-gray-300'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}
                 >
-                  Not set
-                </span>
-              )}
+                  {environment.slug}
+                </code>
+              </div>
             </div>
+            <div>
+              <div
+                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                Organization
+              </div>
+              <div
+                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+              >
+                {environment.organization.name}
+              </div>
+            </div>
+            <div>
+              <div
+                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                Label Color
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                {environment.label_color ? (
+                  <>
+                    <div
+                      className="h-6 w-6 rounded border"
+                      style={{ backgroundColor: environment.label_color }}
+                    />
+                    <span
+                      className={isDarkMode ? 'text-white' : 'text-gray-900'}
+                    >
+                      {environment.label_color}
+                    </span>
+                  </>
+                ) : (
+                  <span
+                    className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}
+                  >
+                    Not set
+                  </span>
+                )}
+              </div>
+            </div>
+            {envSchema && (
+              <DynamicDetailFields
+                schema={envSchema}
+                data={extractDynamicFields(
+                  environment,
+                  ENVIRONMENT_BASE_FIELDS_SET,
+                )}
+                isDarkMode={isDarkMode}
+              />
+            )}
           </div>
-          {envSchema && (
-            <DynamicDetailFields
-              schema={envSchema}
-              data={extractDynamicFields(
-                environment,
-                ENVIRONMENT_BASE_FIELDS_SET,
-              )}
-              isDarkMode={isDarkMode}
-            />
-          )}
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a complete rewrite of the Imbi UI using modern TypeScript and React.
 
 ## Commands
-- Dev server: `npm run dev` (starts Vite dev server on port 3000)
+- Dev server: `npm run dev` (starts Vite dev server on port 5173)
 - Build: `npm run build` (TypeScript compilation + production build)
 - Preview: `npm run preview` (preview production build)
 - Lint: `npm run lint` (ESLint with TypeScript)
