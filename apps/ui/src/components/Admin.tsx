@@ -14,6 +14,7 @@ import {
   Bot,
   Cloud,
   Link2,
+  Webhook,
 } from 'lucide-react'
 import { UserManagement } from './admin/UserManagement'
 import { RoleManagement } from './admin/RoleManagement'
@@ -26,6 +27,7 @@ import { EnvironmentManagement } from './admin/EnvironmentManagement'
 import { ProjectTypeManagement } from './admin/ProjectTypeManagement'
 import { ThirdPartyServiceManagement } from './admin/ThirdPartyServiceManagement'
 import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
+import { WebhookManagement } from './admin/WebhookManagement'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -38,6 +40,7 @@ type AdminSection =
   | 'environments'
   | 'project-types'
   | 'third-party-services'
+  | 'webhooks'
   | 'link-definitions'
   | 'blueprints'
   | 'organizations'
@@ -51,6 +54,7 @@ const VALID_SECTIONS: AdminSection[] = [
   'environments',
   'project-types',
   'third-party-services',
+  'webhooks',
   'link-definitions',
   'blueprints',
   'organizations',
@@ -110,6 +114,13 @@ export function Admin({ isDarkMode }: AdminProps) {
       label: 'Third-Party Services',
       icon: Cloud,
       description: 'Manage external SaaS services',
+      scope: 'org',
+    },
+    {
+      id: 'webhooks',
+      label: 'Webhooks',
+      icon: Webhook,
+      description: 'Configure inbound webhook processing',
       scope: 'org',
     },
     {
@@ -310,6 +321,9 @@ export function Admin({ isDarkMode }: AdminProps) {
             )}
             {currentSection === 'third-party-services' && (
               <ThirdPartyServiceManagement isDarkMode={isDarkMode} />
+            )}
+            {currentSection === 'webhooks' && (
+              <WebhookManagement isDarkMode={isDarkMode} />
             )}
             {currentSection === 'link-definitions' && (
               <LinkDefinitionManagement isDarkMode={isDarkMode} />

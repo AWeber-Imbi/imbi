@@ -52,6 +52,8 @@ import type {
   ClientCredential,
   ClientCredentialCreated,
   ClientCredentialCreate,
+  Webhook,
+  WebhookCreate,
 } from '@/types'
 
 // Status/Health
@@ -831,4 +833,34 @@ export const revokeServiceAccountApiKey = (slug: string, keyId: string) =>
 export const rotateServiceAccountApiKey = (slug: string, keyId: string) =>
   apiClient.post<ApiKeyCreated>(
     `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}/rotate`,
+  )
+
+// Admin - Webhooks
+export const listWebhooks = async (orgSlug: string): Promise<Webhook[]> => {
+  const response = await apiClient.get<Webhook[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/`
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getWebhook = (orgSlug: string, slug: string) =>
+  apiClient.get<Webhook>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`
+  )
+
+export const createWebhook = (orgSlug: string, data: WebhookCreate) =>
+  apiClient.post<Webhook>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/`,
+    data
+  )
+
+export const updateWebhook = (orgSlug: string, slug: string, data: WebhookCreate) =>
+  apiClient.put<Webhook>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
+    data
+  )
+
+export const deleteWebhook = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`
   )
