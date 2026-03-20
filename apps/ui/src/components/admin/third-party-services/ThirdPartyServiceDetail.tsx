@@ -1,7 +1,15 @@
 import { useState } from 'react'
-import { ArrowLeft, Edit2, ExternalLink, Info, Key } from 'lucide-react'
+import {
+  ArrowLeft,
+  Edit2,
+  ExternalLink,
+  Info,
+  Key,
+  Webhook,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { OAuth2ApplicationList } from './OAuth2ApplicationList'
+import { ServiceWebhookList } from './ServiceWebhookList'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import type { ThirdPartyService } from '@/types'
 
@@ -12,7 +20,7 @@ interface ThirdPartyServiceDetailProps {
   isDarkMode: boolean
 }
 
-type DetailTab = 'details' | 'applications'
+type DetailTab = 'details' | 'applications' | 'webhooks'
 
 const STATUS_COLORS: Record<
   string,
@@ -59,6 +67,7 @@ export function ThirdPartyServiceDetail({
   const tabs: { id: DetailTab; label: string; icon: typeof Info }[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'applications', label: 'Applications', icon: Key },
+    { id: 'webhooks', label: 'Webhooks', icon: Webhook },
   ]
 
   return (
@@ -369,6 +378,15 @@ export function ThirdPartyServiceDetail({
       {/* Applications Tab */}
       {activeTab === 'applications' && (
         <OAuth2ApplicationList
+          orgSlug={selectedOrganization?.slug || ''}
+          serviceSlug={service.slug}
+          isDarkMode={isDarkMode}
+        />
+      )}
+
+      {/* Webhooks Tab */}
+      {activeTab === 'webhooks' && (
+        <ServiceWebhookList
           orgSlug={selectedOrganization?.slug || ''}
           serviceSlug={service.slug}
           isDarkMode={isDarkMode}
