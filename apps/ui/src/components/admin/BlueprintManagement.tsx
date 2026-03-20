@@ -10,11 +10,14 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  Upload,
+  Filter,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BlueprintForm } from './blueprints/BlueprintForm'
 import { BlueprintDetail } from './blueprints/BlueprintDetail'
+import { ImportBlueprintDialog } from './blueprints/ImportBlueprintDialog'
 import { useAdminNav } from '@/hooks/useAdminNav'
 import { useOpenApiSpec, getSchemaEnum } from '@/api/openapi'
 import {
@@ -23,7 +26,7 @@ import {
   createBlueprint,
   updateBlueprint,
 } from '@/api/endpoints'
-import type { Blueprint, BlueprintCreate } from '@/types'
+import type { Blueprint, BlueprintCreate, BlueprintFilter } from '@/types'
 
 interface BlueprintManagementProps {
   isDarkMode: boolean
@@ -108,6 +111,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [enabledFilter, setEnabledFilter] = useState<string>('')
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
 
   // Parse compound key from URL slug (format: "type:slug")
   const selectedKey = useMemo<BlueprintKey | null>(() => {
@@ -259,6 +263,12 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     goToList()
   }
 
+  const handleImport = (data: BlueprintCreate) => {
+    createMutation.mutate(data, {
+      onSuccess: () => setImportDialogOpen(false),
+    })
+  }
+
   // Loading state
   if (isLoading) {
     return (
@@ -391,13 +401,23 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
             <option value="disabled">Disabled</option>
           </select>
         </div>
-        <Button
-          onClick={handleCreateClick}
-          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Blueprint
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setImportDialogOpen(true)}
+            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+          >
+            <Upload className="mr-2 h-4 w-4" />
+            Import
+          </Button>
+          <Button
+            onClick={handleCreateClick}
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            New Blueprint
+          </Button>
+        </div>
       </div>
 
       {/* Blueprints Table */}
@@ -437,6 +457,11 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
                 <th
                   className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
+                  Filter
+                </th>
+                <th
+                  className={`px-4 py-3 text-center text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
                   Priority
                 </th>
                 <th
@@ -460,7 +485,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
             >
               {filteredBlueprints.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
+                  <td colSpan={8} className="px-4 py-12 text-center">
                     <div
                       className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                     >
@@ -527,6 +552,50 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
                         />
                       )}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-center">
+                      {(() => {
+                        if (!bp.filter) return null
+                        try {
+                          const f =
+                            typeof bp.filter === 'string'
+                              ? (JSON.parse(bp.filter) as BlueprintFilter)
+                              : null
+                          if (
+                            f &&
+                            (f.project_type?.length > 0 ||
+                              f.environment?.length > 0)
+                          ) {
+                            return (
+                              <span
+                                title={[
+                                  f.project_type?.length
+                                    ? `Project Types: ${f.project_type.join(', ')}`
+                                    : '',
+                                  f.environment?.length
+                                    ? `Environments: ${f.environment.join(', ')}`
+                                    : '',
+                                ]
+                                  .filter(Boolean)
+                                  .join('\n')}
+                              >
+                                <Filter
+                                  className={`mx-auto h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
+                                />
+                              </span>
+                            )
+                          }
+                        } catch {
+                          // ignore parse errors
+                        }
+                        return null
+                      })() || (
+                        <span
+                          className={`text-xs ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}
+                        >
+                          &mdash;
+                        </span>
+                      )}
+                    </td>
                     <td
                       className={`whitespace-nowrap px-4 py-3 text-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                     >
@@ -580,6 +649,20 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
           </table>
         </div>
       </div>
+
+      {/* Import Dialog */}
+      <ImportBlueprintDialog
+        isOpen={importDialogOpen}
+        onClose={() => {
+          setImportDialogOpen(false)
+          createMutation.reset()
+        }}
+        onImport={handleImport}
+        blueprintTypes={blueprintTypes}
+        isDarkMode={isDarkMode}
+        isLoading={createMutation.isPending}
+        apiError={importDialogOpen ? createMutation.error : null}
+      />
     </div>
   )
 }

@@ -10,14 +10,25 @@ import {
   ChevronUp,
   ChevronDown,
   Code,
+  Filter,
   List,
 } from 'lucide-react'
 import Ajv from 'ajv'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
-import { getBlueprint } from '@/api/endpoints'
-import type { Blueprint, BlueprintCreate, SchemaProperty } from '@/types'
+import {
+  getBlueprint,
+  listEnvironments,
+  listProjectTypes,
+} from '@/api/endpoints'
+import { useOrganization } from '@/contexts/OrganizationContext'
+import type {
+  Blueprint,
+  BlueprintCreate,
+  BlueprintFilter,
+  SchemaProperty,
+} from '@/types'
 
 const ajv = new Ajv()
 
@@ -172,6 +183,22 @@ export function BlueprintForm({
     enabled: isEditing,
   })
 
+  // Fetch available entities for filter checkboxes
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug
+
+  const { data: availableProjectTypes = [] } = useQuery({
+    queryKey: ['projectTypes', orgSlug],
+    queryFn: () => listProjectTypes(orgSlug!),
+    enabled: !!orgSlug,
+  })
+
+  const { data: availableEnvironments = [] } = useQuery({
+    queryKey: ['environments', orgSlug],
+    queryFn: () => listEnvironments(orgSlug!),
+    enabled: !!orgSlug,
+  })
+
   // Form state
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
@@ -180,6 +207,15 @@ export function BlueprintForm({
   const [enabled, setEnabled] = useState(true)
   const [priority, setPriority] = useState(0)
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
+
+  // Filter state
+  const [filterEnabled, setFilterEnabled] = useState(false)
+  const [selectedProjectTypes, setSelectedProjectTypes] = useState<Set<string>>(
+    new Set(),
+  )
+  const [selectedEnvironments, setSelectedEnvironments] = useState<Set<string>>(
+    new Set(),
+  )
 
   // Schema editor state
   const [editorMode, setEditorMode] = useState<SchemaEditorMode>('visual')
@@ -207,6 +243,25 @@ export function BlueprintForm({
       setEnabled(existingBlueprint.enabled)
       setPriority(existingBlueprint.priority)
       setSlugManuallyEdited(true)
+      if (existingBlueprint.filter) {
+        try {
+          const f: BlueprintFilter =
+            typeof existingBlueprint.filter === 'string'
+              ? JSON.parse(existingBlueprint.filter)
+              : existingBlueprint.filter
+          if (f.project_type?.length > 0 || f.environment?.length > 0) {
+            setFilterEnabled(true)
+            if (f.project_type?.length > 0) {
+              setSelectedProjectTypes(new Set(f.project_type))
+            }
+            if (f.environment?.length > 0) {
+              setSelectedEnvironments(new Set(f.environment))
+            }
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
 
       try {
         const parsed =
@@ -417,6 +472,18 @@ export function BlueprintForm({
         ? buildJsonSchema(schemaProperties)
         : JSON.parse(rawSchema)
 
+    let filterObj: BlueprintFilter | null = null
+    if (filterEnabled) {
+      const ptArr = Array.from(selectedProjectTypes)
+      const envArr = Array.from(selectedEnvironments)
+      if (ptArr.length > 0 || envArr.length > 0) {
+        filterObj = {
+          project_type: ptArr,
+          environment: envArr,
+        }
+      }
+    }
+
     const data: BlueprintCreate = {
       name: name.trim(),
       slug: slug.trim() || undefined,
@@ -424,6 +491,7 @@ export function BlueprintForm({
       description: description.trim() || null,
       enabled,
       priority,
+      filter: filterObj,
       json_schema: schemaObj,
       ...(isEditing && existingBlueprint
         ? { version: existingBlueprint.version }
@@ -762,6 +830,152 @@ export function BlueprintForm({
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Conditional Filter */}
+      <div
+        className={`rounded-lg border p-6 ${
+          isDarkMode
+            ? 'border-gray-700 bg-gray-800'
+            : 'border-gray-200 bg-white'
+        }`}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Filter
+              className={`h-4 w-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            />
+            <h3
+              className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            >
+              Conditional Filter
+            </h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="filter-enabled"
+              checked={filterEnabled}
+              onCheckedChange={(checked) => {
+                setFilterEnabled(checked === true)
+                if (!checked) {
+                  setSelectedProjectTypes(new Set())
+                  setSelectedEnvironments(new Set())
+                }
+              }}
+              disabled={isLoading}
+            />
+            <label
+              htmlFor="filter-enabled"
+              className={`cursor-pointer select-none text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+            >
+              Enable filter
+            </label>
+          </div>
+        </div>
+
+        {filterEnabled ? (
+          <div className="space-y-5">
+            <p
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            >
+              Select which project types and environments this blueprint applies
+              to. Leave a section unchecked to apply to all.
+            </p>
+
+            {/* Project Type filter */}
+            <div>
+              <label
+                className={`mb-2 block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
+                Project Types
+              </label>
+              {availableProjectTypes.length === 0 ? (
+                <p
+                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                >
+                  No project types available
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                  {availableProjectTypes.map((pt) => (
+                    <div key={pt.slug} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`filter-pt-${pt.slug}`}
+                        checked={selectedProjectTypes.has(pt.slug)}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(selectedProjectTypes)
+                          if (checked) {
+                            next.add(pt.slug)
+                          } else {
+                            next.delete(pt.slug)
+                          }
+                          setSelectedProjectTypes(next)
+                        }}
+                        disabled={isLoading}
+                      />
+                      <label
+                        htmlFor={`filter-pt-${pt.slug}`}
+                        className={`cursor-pointer select-none text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                      >
+                        {pt.name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Environment filter */}
+            <div>
+              <label
+                className={`mb-2 block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
+                Environments
+              </label>
+              {availableEnvironments.length === 0 ? (
+                <p
+                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                >
+                  No environments available
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+                  {availableEnvironments.map((env) => (
+                    <div key={env.slug} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`filter-env-${env.slug}`}
+                        checked={selectedEnvironments.has(env.slug)}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(selectedEnvironments)
+                          if (checked) {
+                            next.add(env.slug)
+                          } else {
+                            next.delete(env.slug)
+                          }
+                          setSelectedEnvironments(next)
+                        }}
+                        disabled={isLoading}
+                      />
+                      <label
+                        htmlFor={`filter-env-${env.slug}`}
+                        className={`cursor-pointer select-none text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                      >
+                        {env.name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p
+            className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+          >
+            No filter configured. This blueprint will apply to all entities of
+            its type.
+          </p>
+        )}
       </div>
 
       {/* JSON Schema Editor */}

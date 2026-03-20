@@ -515,6 +515,11 @@ export interface ApiKeyCreated {
 }
 
 // Blueprint types
+export interface BlueprintFilter {
+  project_type: string[]
+  environment: string[]
+}
+
 export interface Blueprint {
   name: string
   slug: string
@@ -522,7 +527,7 @@ export interface Blueprint {
   description?: string | null
   enabled: boolean
   priority: number
-  filter?: Record<string, unknown> | null
+  filter?: string | null
   json_schema: string
   version: number
 }
@@ -534,6 +539,7 @@ export interface BlueprintCreate {
   description?: string | null
   enabled?: boolean
   priority?: number
+  filter?: BlueprintFilter | null
   json_schema: Record<string, unknown>
   version?: number
 }

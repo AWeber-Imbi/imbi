@@ -158,12 +158,9 @@ export function ProjectDetail({
     },
   ]
 
-  const getEnvironmentBadgeColor = (env: string) => {
-    const envLower = env.toLowerCase()
-    if (envLower.includes('prod')) return 'bg-red-100 text-red-700'
-    if (envLower.includes('stag')) return 'bg-amber-100 text-amber-700'
-    return 'bg-blue-100 text-blue-700'
-  }
+  const sortedEnvironments = [...(project.environments || [])].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )
 
   const { data: linkDefs = [] } = useQuery({
     queryKey: ['linkDefinitions', orgSlug],
@@ -408,10 +405,19 @@ export function ProjectDetail({
                   Environments
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {(project.environments || []).map((env, index) => (
+                  {sortedEnvironments.map((env) => (
                     <span
-                      key={index}
-                      className={`rounded px-2 py-1 text-xs ${getEnvironmentBadgeColor(env.name)}`}
+                      key={env.slug}
+                      className="rounded px-2 py-1 text-xs font-medium"
+                      style={
+                        env.label_color
+                          ? {
+                              backgroundColor: env.label_color + '20',
+                              color: env.label_color,
+                              border: `1px solid ${env.label_color}40`,
+                            }
+                          : undefined
+                      }
                     >
                       {env.name}
                     </span>
