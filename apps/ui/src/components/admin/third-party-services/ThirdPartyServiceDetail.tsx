@@ -60,6 +60,7 @@ export function ThirdPartyServiceDetail({
 }: ThirdPartyServiceDetailProps) {
   const { selectedOrganization } = useOrganization()
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
+  const [webhookDetailActive, setWebhookDetailActive] = useState(false)
   const statusColor = STATUS_COLORS[service.status] || STATUS_COLORS.inactive
   const linkEntries = Object.entries(service.links || {})
   const identifierEntries = Object.entries(service.identifiers || {})
@@ -72,97 +73,92 @@ export function ThirdPartyServiceDetail({
 
   return (
     <div className="space-y-6">
-      {/* Back button */}
-      <div>
-        <Button
-          variant="outline"
-          onClick={onBack}
-          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
-      </div>
-
-      {/* Third Party Service info card */}
-      <div
-        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
-      >
-        {/* Title row */}
-        <div
-          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
-          <div>
-            <div className="flex items-center gap-3">
-              {service.icon && (
-                <img
-                  src={service.icon}
-                  alt=""
-                  className="h-8 w-8 rounded object-cover"
-                />
-              )}
-              <h2
-                className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+      {/* Header - hidden when viewing webhook detail to avoid double Back buttons */}
+      {!webhookDetailActive && (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="outline"
+                onClick={onBack}
+                className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
               >
-                {service.name}
-              </h2>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  isDarkMode
-                    ? `${statusColor.darkBg} ${statusColor.darkText}`
-                    : `${statusColor.bg} ${statusColor.text}`
-                }`}
-              >
-                {service.status}
-              </span>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+              <div>
+                <div className="flex items-center gap-3">
+                  {service.icon && (
+                    <img
+                      src={service.icon}
+                      alt=""
+                      className="h-8 w-8 rounded object-cover"
+                    />
+                  )}
+                  <h2
+                    className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    {service.name}
+                  </h2>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      isDarkMode
+                        ? `${statusColor.darkBg} ${statusColor.darkText}`
+                        : `${statusColor.bg} ${statusColor.text}`
+                    }`}
+                  >
+                    {service.status}
+                  </span>
+                </div>
+                {service.description && (
+                  <p
+                    className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    {service.description}
+                  </p>
+                )}
+              </div>
             </div>
-            {service.description && (
-              <p
-                className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                {service.description}
-              </p>
-            )}
+            <Button
+              onClick={onEdit}
+              className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            >
+              <Edit2 className="mr-2 h-4 w-4" />
+              Edit Service
+            </Button>
           </div>
-          <Button
-            onClick={onEdit}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
-          >
-            <Edit2 className="mr-2 h-4 w-4" />
-            Edit Service
-          </Button>
-        </div>
 
-        {/* Tabs */}
-        <div
-          className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
-          <div className="flex gap-0 px-6">
-            {tabs.map((tab) => {
-              const Icon = tab.icon
-              const isActive = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                    isActive
-                      ? isDarkMode
-                        ? 'border-blue-400 text-blue-400'
-                        : 'border-[#2A4DD0] text-[#2A4DD0]'
-                      : isDarkMode
-                        ? 'border-transparent text-gray-400 hover:text-gray-200'
-                        : 'border-transparent text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {tab.label}
-                </button>
-              )
-            })}
+          {/* Tabs */}
+          <div
+            className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          >
+            <div className="flex gap-0">
+              {tabs.map((tab) => {
+                const Icon = tab.icon
+                const isActive = activeTab === tab.id
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                      isActive
+                        ? isDarkMode
+                          ? 'border-blue-400 text-blue-400'
+                          : 'border-[#2A4DD0] text-[#2A4DD0]'
+                        : isDarkMode
+                          ? 'border-transparent text-gray-400 hover:text-gray-200'
+                          : 'border-transparent text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Details Tab */}
       {activeTab === 'details' && (
@@ -390,6 +386,9 @@ export function ThirdPartyServiceDetail({
           orgSlug={selectedOrganization?.slug || ''}
           serviceSlug={service.slug}
           isDarkMode={isDarkMode}
+          onViewModeChange={(mode) =>
+            setWebhookDetailActive(mode === 'detail' || mode === 'edit')
+          }
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AxiosError } from 'axios'
 import { Plus, Search, Trash2, Webhook, AlertCircle } from 'lucide-react'
@@ -18,6 +18,7 @@ interface ServiceWebhookListProps {
   orgSlug: string
   serviceSlug: string
   isDarkMode: boolean
+  onViewModeChange?: (mode: ViewMode) => void
 }
 
 type ViewMode = 'list' | 'create' | 'edit' | 'detail'
@@ -26,11 +27,20 @@ export function ServiceWebhookList({
   orgSlug,
   serviceSlug,
   isDarkMode,
+  onViewModeChange,
 }: ServiceWebhookListProps) {
   const queryClient = useQueryClient()
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [viewMode, _setViewMode] = useState<ViewMode>('list')
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+
+  const setViewMode = useCallback(
+    (mode: ViewMode) => {
+      _setViewMode(mode)
+      onViewModeChange?.(mode)
+    },
+    [onViewModeChange],
+  )
 
   const {
     data: webhooks = [],
