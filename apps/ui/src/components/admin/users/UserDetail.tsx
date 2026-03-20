@@ -117,17 +117,26 @@ export function UserDetail({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={onBack}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
+      {/* Back button */}
+      <div>
+        <Button
+          variant="outline"
+          onClick={onBack}
+          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+      </div>
+
+      {/* User info card */}
+      <div
+        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
+      >
+        {/* Title row */}
+        <div
+          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+        >
           <div className="flex items-center gap-3">
             <Gravatar
               email={user.email}
@@ -148,8 +157,6 @@ export function UserDetail({
               </p>
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
           <Button
             onClick={onEdit}
             className="bg-[#2A4DD0] text-white hover:bg-blue-700"
@@ -158,122 +165,101 @@ export function UserDetail({
             Edit User
           </Button>
         </div>
-      </div>
 
-      {/* Account Status */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+        {/* Account Status */}
+        <div
+          className={`border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
         >
-          Account Status
-        </h3>
-        <div className="flex items-center gap-6">
-          <div
-            className={`flex items-center gap-2 rounded px-3 py-1.5 ${
-              user.is_active
-                ? isDarkMode
-                  ? 'bg-green-900/30 text-green-400'
-                  : 'bg-green-100 text-green-700'
-                : isDarkMode
-                  ? 'bg-gray-700 text-gray-400'
-                  : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            <Power className="h-4 w-4" />
-            {user.is_active ? 'Active' : 'Inactive'}
+          <div className="flex items-center gap-6">
+            <div
+              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
+                user.is_active
+                  ? isDarkMode
+                    ? 'bg-green-900/30 text-green-400'
+                    : 'bg-green-100 text-green-700'
+                  : isDarkMode
+                    ? 'bg-gray-700 text-gray-400'
+                    : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <Power className="h-4 w-4" />
+              {user.is_active ? 'Active' : 'Inactive'}
+            </div>
+            {user.is_admin && (
+              <div
+                className={`flex items-center gap-2 rounded px-3 py-1.5 ${
+                  isDarkMode
+                    ? 'bg-red-900/30 text-red-400'
+                    : 'bg-red-100 text-red-700'
+                }`}
+              >
+                <Shield className="h-4 w-4" />
+                Administrator
+              </div>
+            )}
+            {user.is_service_account && (
+              <div
+                className={`flex items-center gap-2 rounded px-3 py-1.5 ${
+                  isDarkMode
+                    ? 'bg-purple-900/30 text-purple-400'
+                    : 'bg-purple-100 text-purple-700'
+                }`}
+              >
+                Service Account
+              </div>
+            )}
           </div>
-          {user.is_admin && (
-            <div
-              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
-                isDarkMode
-                  ? 'bg-red-900/30 text-red-400'
-                  : 'bg-red-100 text-red-700'
-              }`}
-            >
-              <Shield className="h-4 w-4" />
-              Administrator
-            </div>
-          )}
-          {user.is_service_account && (
-            <div
-              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
-                isDarkMode
-                  ? 'bg-purple-900/30 text-purple-400'
-                  : 'bg-purple-100 text-purple-700'
-              }`}
-            >
-              Service Account
-            </div>
-          )}
         </div>
-      </div>
 
-      {/* Basic Information */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Basic Information
-        </h3>
+        {/* Basic Information */}
+        <div className="p-6">
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <div
+                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                <Mail className="h-4 w-4" />
+                Email
+              </div>
+              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                {user.email}
+              </div>
+            </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <div
-              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              <Mail className="h-4 w-4" />
-              Email
+            <div>
+              <div
+                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                <User className="h-4 w-4" />
+                Display Name
+              </div>
+              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                {user.display_name}
+              </div>
             </div>
-            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-              {user.email}
-            </div>
-          </div>
 
-          <div>
-            <div
-              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              <User className="h-4 w-4" />
-              Display Name
+            <div>
+              <div
+                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                <Calendar className="h-4 w-4" />
+                Created
+              </div>
+              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                {formatDate(user.created_at)}
+              </div>
             </div>
-            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-              {user.display_name}
-            </div>
-          </div>
 
-          <div>
-            <div
-              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              <Calendar className="h-4 w-4" />
-              Created
-            </div>
-            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-              {formatDate(user.created_at)}
-            </div>
-          </div>
-
-          <div>
-            <div
-              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              <Clock className="h-4 w-4" />
-              Last Login
-            </div>
-            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-              {formatDate(user.last_login)}
+            <div>
+              <div
+                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                <Clock className="h-4 w-4" />
+                Last Login
+              </div>
+              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                {formatDate(user.last_login)}
+              </div>
             </div>
           </div>
         </div>

@@ -393,17 +393,26 @@ export function ServiceAccountDetail({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={onBack}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
+      {/* Back button */}
+      <div>
+        <Button
+          variant="outline"
+          onClick={onBack}
+          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+      </div>
+
+      {/* Service Account info card */}
+      <div
+        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
+      >
+        {/* Title row */}
+        <div
+          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+        >
           <div>
             <h2
               className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
@@ -416,52 +425,41 @@ export function ServiceAccountDetail({
               {account.slug}
             </p>
           </div>
+          <Button
+            onClick={onEdit}
+            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+          >
+            <Edit2 className="mr-2 h-4 w-4" />
+            Edit Account
+          </Button>
         </div>
-        <Button
-          onClick={onEdit}
-          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
-        >
-          <Edit2 className="mr-2 h-4 w-4" />
-          Edit Account
-        </Button>
-      </div>
 
-      {/* Account Status */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Account Status
-        </h3>
-        <div className="flex items-center gap-6">
-          <div
-            className={`flex items-center gap-2 rounded px-3 py-1.5 ${
-              account.is_active
-                ? isDarkMode
-                  ? 'bg-green-900/30 text-green-400'
-                  : 'bg-green-100 text-green-700'
-                : isDarkMode
-                  ? 'bg-gray-700 text-gray-400'
-                  : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            <Power className="h-4 w-4" />
-            {account.is_active ? 'Active' : 'Inactive'}
-          </div>
-          <div
-            className={`flex items-center gap-2 rounded px-3 py-1.5 ${
-              isDarkMode
-                ? 'bg-purple-900/30 text-purple-400'
-                : 'bg-purple-100 text-purple-700'
-            }`}
-          >
-            Service Account
+        {/* Account Status */}
+        <div className="px-6 py-5">
+          <div className="flex items-center gap-6">
+            <div
+              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
+                account.is_active
+                  ? isDarkMode
+                    ? 'bg-green-900/30 text-green-400'
+                    : 'bg-green-100 text-green-700'
+                  : isDarkMode
+                    ? 'bg-gray-700 text-gray-400'
+                    : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              <Power className="h-4 w-4" />
+              {account.is_active ? 'Active' : 'Inactive'}
+            </div>
+            <div
+              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
+                isDarkMode
+                  ? 'bg-purple-900/30 text-purple-400'
+                  : 'bg-purple-100 text-purple-700'
+              }`}
+            >
+              Service Account
+            </div>
           </div>
         </div>
       </div>

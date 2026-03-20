@@ -193,17 +193,26 @@ export function RoleDetail({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={onBack}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
+      {/* Back button */}
+      <div>
+        <Button
+          variant="outline"
+          onClick={onBack}
+          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
+      </div>
+
+      {/* Role info card */}
+      <div
+        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
+      >
+        {/* Title row */}
+        <div
+          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+        >
           <div className="flex items-center gap-3">
             <div
               className={`rounded-lg p-2 ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100'}`}
@@ -239,116 +248,112 @@ export function RoleDetail({
               </p>
             </div>
           </div>
+          {!role.is_system && (
+            <Button
+              onClick={onEdit}
+              className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            >
+              <Edit2 className="mr-2 h-4 w-4" />
+              Edit Role
+            </Button>
+          )}
         </div>
-        {!role.is_system && (
-          <Button
-            onClick={onEdit}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
-          >
-            <Edit2 className="mr-2 h-4 w-4" />
-            Edit Role
-          </Button>
-        )}
-      </div>
 
-      {/* Stats Bar */}
-      <div
-        className={`flex items-center gap-6 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <div>
-          <div
-            className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Slug
-          </div>
-          <div
-            className={`font-mono text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-          >
-            {role.slug}
-          </div>
-        </div>
+        {/* Stats Bar */}
         <div
-          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        />
-        <div>
-          <div
-            className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Priority
-          </div>
-          <div
-            className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-          >
-            {role.priority}
-          </div>
-        </div>
-        <div
-          className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        />
-        <div>
-          <div
-            className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Permissions
-          </div>
-          <div
-            className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-          >
-            {role.permissions?.length || 0}
-          </div>
-        </div>
-        {role.parent_role && (
-          <>
+          className={`flex items-center gap-6 border-b px-6 py-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+        >
+          <div>
             <div
-              className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-            />
-            <div>
-              <div
-                className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Inherits From
-              </div>
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-              >
-                {role.parent_role.name}
-              </div>
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Slug
             </div>
-          </>
-        )}
-      </div>
+            <div
+              className={`font-mono text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+            >
+              {role.slug}
+            </div>
+          </div>
+          <div
+            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          />
+          <div>
+            <div
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Priority
+            </div>
+            <div
+              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+            >
+              {role.priority}
+            </div>
+          </div>
+          <div
+            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          />
+          <div>
+            <div
+              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Permissions
+            </div>
+            <div
+              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+            >
+              {role.permissions?.length || 0}
+            </div>
+          </div>
+          {role.parent_role && (
+            <>
+              <div
+                className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+              />
+              <div>
+                <div
+                  className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                >
+                  Inherits From
+                </div>
+                <div
+                  className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                >
+                  {role.parent_role.name}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
-      {/* Tabs */}
-      <div
-        className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-      >
-        <div className="flex gap-0">
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                  isActive
-                    ? isDarkMode
-                      ? 'border-blue-400 text-blue-400'
-                      : 'border-[#2A4DD0] text-[#2A4DD0]'
-                    : isDarkMode
-                      ? 'border-transparent text-gray-400 hover:text-gray-200'
-                      : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            )
-          })}
+        {/* Tabs */}
+        <div
+          className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+        >
+          <div className="flex gap-0 px-6">
+            {tabs.map((tab) => {
+              const Icon = tab.icon
+              const isActive = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                    isActive
+                      ? isDarkMode
+                        ? 'border-blue-400 text-blue-400'
+                        : 'border-[#2A4DD0] text-[#2A4DD0]'
+                      : isDarkMode
+                        ? 'border-transparent text-gray-400 hover:text-gray-200'
+                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
