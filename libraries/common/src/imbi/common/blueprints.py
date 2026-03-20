@@ -116,18 +116,66 @@ def _apply_blueprints[ModelType: pydantic.BaseModel](
     return pydantic.create_model(model.__name__, __base__=model, **kwargs)
 
 
+def _matches_filter(
+    blueprint: models.Blueprint,
+    context: dict[str, str] | None,
+) -> bool:
+    """Check if a blueprint's filter matches the given context.
+
+    Filter semantics:
+    - ``None`` filter (or empty lists) matches everything.
+    - Each non-empty filter field must have a corresponding
+      context value that appears in the filter's list.
+    - All non-empty filter fields must match (AND).
+
+    """
+    bp_filter = blueprint.filter
+    if bp_filter is None:
+        return True
+    if context is None:
+        # No context — only unfiltered blueprints match.
+        # Check if filter has any non-empty lists.
+        if bp_filter.project_type or bp_filter.environment:
+            return False
+        return True
+    for field in ('project_type', 'environment'):
+        allowed: list[str] = getattr(bp_filter, field)
+        if not allowed:
+            continue
+        ctx_value = context.get(field)
+        if ctx_value is None or ctx_value not in allowed:
+            return False
+    return True
+
+
 async def get_model[ModelType: pydantic.BaseModel](
     model: type[ModelType],
+    context: dict[str, str] | None = None,
 ) -> type[ModelType]:
-    """Return a model class with blueprints applied"""
-    blueprints: list[models.Blueprint] = []
+    """Return a model class with matching blueprints applied.
+
+    Parameters:
+        model: The base Pydantic model class to extend.
+        context: Optional filter context. When provided, only
+            blueprints whose ``filter`` matches this context
+            are applied.  Blueprints with no filter are always
+            included.  Example::
+
+                {'project_type': 'apis'}
+                {'project_type': 'apis',
+                 'environment': 'production'}
+
+    """
+    all_blueprints: list[models.Blueprint] = []
     async for blueprint in neo4j.fetch_nodes(
         models.Blueprint,
         {'type': model.__name__, 'enabled': True},
         order_by='priority',
     ):
-        blueprints.append(blueprint)
-    return _apply_blueprints(model, blueprints)
+        all_blueprints.append(blueprint)
+
+    matched = [bp for bp in all_blueprints if _matches_filter(bp, context)]
+    return _apply_blueprints(model, matched)
 
 
 def make_response_model[ModelType: pydantic.BaseModel](

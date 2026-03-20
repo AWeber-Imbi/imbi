@@ -463,6 +463,201 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('example.com', json_str)
 
 
+class MatchesFilterTestCase(unittest.TestCase):
+    """Test cases for blueprints._matches_filter."""
+
+    def _make_blueprint(
+        self,
+        *,
+        bp_filter: dict[str, typing.Any] | None = None,
+    ) -> models.Blueprint:
+        return models.Blueprint(
+            name='test',
+            type='Project',
+            json_schema=models.Schema.model_validate(
+                {'type': 'object', 'properties': {}}
+            ),
+            filter=bp_filter,
+        )
+
+    def test_no_filter_matches_everything(self) -> None:
+        bp = self._make_blueprint()
+        self.assertTrue(blueprints._matches_filter(bp, None))
+        self.assertTrue(
+            blueprints._matches_filter(bp, {'project_type': 'apis'})
+        )
+
+    def test_filter_with_no_context_rejects(self) -> None:
+        bp = self._make_blueprint(bp_filter={'project_type': ['apis']})
+        self.assertFalse(blueprints._matches_filter(bp, None))
+
+    def test_filter_matches_context(self) -> None:
+        bp = self._make_blueprint(bp_filter={'project_type': ['apis']})
+        self.assertTrue(
+            blueprints._matches_filter(bp, {'project_type': 'apis'})
+        )
+        self.assertFalse(
+            blueprints._matches_filter(bp, {'project_type': 'consumers'})
+        )
+
+    def test_list_filter_matches_any(self) -> None:
+        bp = self._make_blueprint(
+            bp_filter={
+                'project_type': [
+                    'apis',
+                    'consumers',
+                    'daemons',
+                ]
+            }
+        )
+        self.assertTrue(
+            blueprints._matches_filter(bp, {'project_type': 'apis'})
+        )
+        self.assertTrue(
+            blueprints._matches_filter(bp, {'project_type': 'daemons'})
+        )
+        self.assertFalse(
+            blueprints._matches_filter(bp, {'project_type': 'database'})
+        )
+
+    def test_multiple_filter_fields_and(self) -> None:
+        bp = self._make_blueprint(
+            bp_filter={
+                'project_type': ['apis'],
+                'environment': ['production'],
+            }
+        )
+        self.assertTrue(
+            blueprints._matches_filter(
+                bp,
+                {
+                    'project_type': 'apis',
+                    'environment': 'production',
+                },
+            )
+        )
+        self.assertFalse(
+            blueprints._matches_filter(
+                bp,
+                {
+                    'project_type': 'apis',
+                    'environment': 'staging',
+                },
+            )
+        )
+        # Missing key
+        self.assertFalse(
+            blueprints._matches_filter(bp, {'project_type': 'apis'})
+        )
+
+    def test_empty_filter_lists_match_everything(self) -> None:
+        bp = self._make_blueprint(
+            bp_filter={
+                'project_type': [],
+                'environment': [],
+            }
+        )
+        self.assertTrue(blueprints._matches_filter(bp, None))
+        self.assertTrue(
+            blueprints._matches_filter(bp, {'project_type': 'apis'})
+        )
+
+
+class GetModelFilterTestCase(unittest.IsolatedAsyncioTestCase):
+    """Test get_model with filter context."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.org = models.Organization(name='Org', slug='org')
+        self.fetch_nodes_patcher = mock.patch('imbi_common.neo4j.fetch_nodes')
+        self.mock_fetch_nodes = self.fetch_nodes_patcher.start()
+        self.addCleanup(self.fetch_nodes_patcher.stop)
+
+    def _make_blueprint(
+        self,
+        *,
+        properties: dict[str, typing.Any],
+        name: str = 'test',
+        bp_filter: dict[str, typing.Any] | None = None,
+        priority: int = 0,
+    ) -> models.Blueprint:
+        schema: dict[str, typing.Any] = {
+            'type': 'object',
+            'properties': properties,
+        }
+        return models.Blueprint(
+            name=name,
+            type='Project',
+            priority=priority,
+            json_schema=models.Schema.model_validate(schema),
+            filter=bp_filter,
+        )
+
+    def _set_blueprints(self, *bps: models.Blueprint) -> None:
+        async def iterator():
+            for bp in bps:
+                yield bp
+
+        self.mock_fetch_nodes.return_value = iterator()
+
+    async def test_context_filters_blueprints(self) -> None:
+        self._set_blueprints(
+            self._make_blueprint(
+                name='common',
+                properties={'has_ci': {'type': 'boolean'}},
+            ),
+            self._make_blueprint(
+                name='api-facts',
+                properties={
+                    'framework': {
+                        'type': 'string',
+                        'enum': ['FastAPI', 'Tornado'],
+                    }
+                },
+                bp_filter={'project_type': ['apis']},
+            ),
+            self._make_blueprint(
+                name='db-facts',
+                properties={
+                    'database_type': {
+                        'type': 'string',
+                        'enum': ['PostgreSQL', 'MySQL'],
+                    }
+                },
+                bp_filter={'project_type': ['database']},
+            ),
+        )
+
+        model = await blueprints.get_model(
+            models.Project,
+            context={'project_type': 'apis'},
+        )
+
+        self.assertIn('has_ci', model.model_fields)
+        self.assertIn('framework', model.model_fields)
+        self.assertNotIn('database_type', model.model_fields)
+
+    async def test_no_context_returns_unfiltered_only(
+        self,
+    ) -> None:
+        self._set_blueprints(
+            self._make_blueprint(
+                name='common',
+                properties={'has_ci': {'type': 'boolean'}},
+            ),
+            self._make_blueprint(
+                name='api-facts',
+                properties={'framework': {'type': 'string'}},
+                bp_filter={'project_type': ['apis']},
+            ),
+        )
+
+        model = await blueprints.get_model(models.Project)
+
+        self.assertIn('has_ci', model.model_fields)
+        self.assertNotIn('framework', model.model_fields)
+
+
 class GetModelIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
     """Integration tests for blueprints.get_model with real Neo4j."""
 

@@ -11,6 +11,7 @@ __all__ = [
     'Blueprint',
     'BlueprintAssignment',
     'BlueprintEdge',
+    'BlueprintFilter',
     'Environment',
     'LinkDefinition',
     'Node',
@@ -25,6 +26,21 @@ __all__ = [
 Schema = schema_models.Schema
 
 
+class BlueprintFilter(pydantic.BaseModel):
+    """Filter criteria for blueprint applicability.
+
+    All fields use ``list[str]`` — a blueprint matches when the
+    context value is contained in the list.  Multiple fields are
+    ANDed together.  Omitted fields match everything.
+
+    """
+
+    model_config = pydantic.ConfigDict(extra='forbid')
+
+    project_type: list[str] = []
+    environment: list[str] = []
+
+
 class Blueprint(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra='ignore')
 
@@ -34,7 +50,7 @@ class Blueprint(pydantic.BaseModel):
     description: str | None = None
     enabled: bool = True
     priority: int = 0
-    filter: dict[str, typing.Any] | None = None
+    filter: BlueprintFilter | None = None
     json_schema: Schema
     version: int = 0
 
@@ -56,9 +72,37 @@ class Blueprint(pydantic.BaseModel):
             )
         return self
 
+    @pydantic.field_validator('filter', mode='before')
+    @classmethod
+    def validate_filter(
+        cls,
+        value: typing.Any,
+    ) -> BlueprintFilter | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return BlueprintFilter.model_validate_json(value)
+        if isinstance(value, dict):
+            return BlueprintFilter.model_validate(value)
+        if isinstance(value, BlueprintFilter):
+            return value
+        raise ValueError('Invalid filter value')
+
+    @pydantic.field_serializer('filter')
+    def serialize_filter(
+        self,
+        value: BlueprintFilter | None,
+    ) -> str | None:
+        if value is None:
+            return None
+        return value.model_dump_json()
+
     @pydantic.field_validator('json_schema', mode='before')
     @classmethod
-    def validate_json_schema(cls, value: typing.Any) -> Schema:
+    def validate_json_schema(
+        cls,
+        value: typing.Any,
+    ) -> Schema:
         if isinstance(value, str):
             return Schema.model_validate_json(value)
         elif isinstance(value, dict):
