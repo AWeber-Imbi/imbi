@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { listOrganizations } from '@/api/endpoints'
+import { useAuthStore } from '@/stores/authStore'
 import type { Organization } from '@/types'
 
 const ORG_STORAGE_KEY = 'imbi-selected-org'
@@ -27,9 +28,12 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     localStorage.getItem(ORG_STORAGE_KEY),
   )
 
+  const { accessToken, isTokenExpired } = useAuthStore()
+
   const { data: organizations = [], isLoading } = useQuery({
     queryKey: ['organizations'],
     queryFn: listOrganizations,
+    enabled: !!accessToken && !isTokenExpired(),
   })
 
   // Default to first org when orgs load and nothing is selected (or saved slug no longer exists)
