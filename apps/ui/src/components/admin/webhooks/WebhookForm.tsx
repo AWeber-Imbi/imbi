@@ -15,6 +15,7 @@ import { IconUpload } from '@/components/ui/icon-upload'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { listThirdPartyServices } from '@/api/endpoints'
 import { slugify } from '@/lib/utils'
+import type { AxiosError } from 'axios'
 import type { Webhook, WebhookCreate, WebhookRule } from '@/types'
 
 interface WebhookFormProps {
@@ -23,7 +24,7 @@ interface WebhookFormProps {
   onCancel: () => void
   isDarkMode: boolean
   isLoading?: boolean
-  error?: any
+  error?: AxiosError<{ detail?: string }> | Error | null
   defaultServiceSlug?: string
 }
 
@@ -67,7 +68,7 @@ export function WebhookForm({
     const newErrors: Record<string, string> = {}
     if (!name.trim()) newErrors.name = 'Name is required'
     if (!slug.trim()) newErrors.slug = 'Slug is required'
-    if (slug && !/^[a-z][a-z0-9-]*$/.test(slug)) {
+    if (slug && !/^[a-z]([a-z0-9-]*[a-z0-9])?$/.test(slug)) {
       newErrors.slug =
         'Slug must start with a letter and contain only lowercase letters, numbers, and hyphens'
     }
@@ -242,7 +243,9 @@ export function WebhookForm({
               <div
                 className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
               >
-                {error?.response?.data?.detail ||
+                {(error && 'response' in error
+                  ? error.response?.data?.detail
+                  : undefined) ||
                   error?.message ||
                   'An error occurred'}
               </div>

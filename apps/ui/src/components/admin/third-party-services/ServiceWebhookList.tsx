@@ -13,6 +13,7 @@ import {
   deleteWebhook,
 } from '@/api/endpoints'
 import type { WebhookCreate } from '@/types'
+import type { ViewMode } from '@/hooks/useAdminNav'
 
 interface ServiceWebhookListProps {
   orgSlug: string
@@ -20,8 +21,6 @@ interface ServiceWebhookListProps {
   isDarkMode: boolean
   onViewModeChange?: (mode: ViewMode) => void
 }
-
-type ViewMode = 'list' | 'create' | 'edit' | 'detail'
 
 export function ServiceWebhookList({
   orgSlug,

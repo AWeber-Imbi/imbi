@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AxiosError } from 'axios'
 import { Plus, Search, Trash2, Webhook, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,7 +67,7 @@ export function WebhookManagement({ isDarkMode }: WebhookManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['webhooks', orgSlug] })
     },
-    onError: (error: any) => {
+    onError: (error: AxiosError<{ detail?: string }>) => {
       alert(
         `Failed to delete webhook: ${error.response?.data?.detail || error.message}`,
       )
@@ -144,7 +145,7 @@ export function WebhookManagement({ isDarkMode }: WebhookManagementProps) {
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <WebhookForm
-        webhook={selectedWebhook}
+        webhook={viewMode === 'edit' ? selectedWebhook : null}
         onSave={handleSave}
         onCancel={goToList}
         isDarkMode={isDarkMode}
