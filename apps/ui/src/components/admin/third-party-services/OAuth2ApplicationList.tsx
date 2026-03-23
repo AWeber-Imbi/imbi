@@ -17,10 +17,13 @@ import type {
   ServiceApplicationUpdate,
 } from '@/types'
 
+type ViewMode = 'list' | 'create' | 'edit'
+
 interface OAuth2ApplicationListProps {
   orgSlug: string
   serviceSlug: string
   isDarkMode: boolean
+  onViewModeChange?: (mode: ViewMode) => void
 }
 
 const STATUS_COLORS: Record<
@@ -51,10 +54,16 @@ export function OAuth2ApplicationList({
   orgSlug,
   serviceSlug,
   isDarkMode,
+  onViewModeChange,
 }: OAuth2ApplicationListProps) {
   const queryClient = useQueryClient()
-  const [viewMode, setViewMode] = useState<'list' | 'create' | 'edit'>('list')
+  const [viewMode, setViewModeInternal] = useState<ViewMode>('list')
   const [editingApp, setEditingApp] = useState<ServiceApplication | null>(null)
+
+  const setViewMode = (mode: ViewMode) => {
+    setViewModeInternal(mode)
+    onViewModeChange?.(mode)
+  }
 
   const {
     data: applications = [],

@@ -61,6 +61,7 @@ export function ThirdPartyServiceDetail({
   const { selectedOrganization } = useOrganization()
   const [activeTab, setActiveTab] = useState<DetailTab>('details')
   const [webhookDetailActive, setWebhookDetailActive] = useState(false)
+  const [appDetailActive, setAppDetailActive] = useState(false)
   const statusColor = STATUS_COLORS[service.status] || STATUS_COLORS.inactive
   const linkEntries = Object.entries(service.links || {})
   const identifierEntries = Object.entries(service.identifiers || {})
@@ -74,7 +75,7 @@ export function ThirdPartyServiceDetail({
   return (
     <div className="space-y-6">
       {/* Header - hidden when viewing webhook detail to avoid double Back buttons */}
-      {!webhookDetailActive && (
+      {!webhookDetailActive && !appDetailActive && (
         <>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -377,6 +378,9 @@ export function ThirdPartyServiceDetail({
           orgSlug={selectedOrganization?.slug || ''}
           serviceSlug={service.slug}
           isDarkMode={isDarkMode}
+          onViewModeChange={(mode) =>
+            setAppDetailActive(mode === 'create' || mode === 'edit')
+          }
         />
       )}
 
