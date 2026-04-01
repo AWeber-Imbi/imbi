@@ -637,6 +637,53 @@ export interface ServiceApplicationSecretsUpdate {
   signing_secret?: string | null
 }
 
+// Webhook types
+export interface WebhookRule {
+  filter_expression: string
+  handler: string
+  handler_config: Record<string, unknown> | unknown[]
+}
+
+export interface Webhook {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  notification_path: string
+  third_party_service?: {
+    name: string
+    slug: string
+  } | null
+  identifier_selector?: string | null
+  rules: WebhookRule[]
+}
+
+export interface WebhookCreate {
+  name: string
+  slug: string
+  description?: string | null
+  icon?: string | null
+  notification_path: string
+  secret?: string | null
+  third_party_service_slug?: string | null
+  identifier_selector?: string | null
+  rules: WebhookRule[]
+}
+
+// Project EXISTS_IN types
+export interface ProjectService {
+  third_party_service_slug: string
+  third_party_service_name: string
+  identifier: string
+  canonical_link?: string | null
+}
+
+export interface ProjectServiceCreate {
+  third_party_service_slug: string
+  identifier: string
+  canonical_link?: string | null
+}
+
 export interface SchemaProperty {
   id: string
   name: string

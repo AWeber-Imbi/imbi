@@ -52,6 +52,10 @@ import type {
   ClientCredential,
   ClientCredentialCreated,
   ClientCredentialCreate,
+  Webhook,
+  WebhookCreate,
+  ProjectService,
+  ProjectServiceCreate,
 } from '@/types'
 
 // Status/Health
@@ -831,4 +835,78 @@ export const revokeServiceAccountApiKey = (slug: string, keyId: string) =>
 export const rotateServiceAccountApiKey = (slug: string, keyId: string) =>
   apiClient.post<ApiKeyCreated>(
     `/service-accounts/${encodeURIComponent(slug)}/api-keys/${encodeURIComponent(keyId)}/rotate`,
+  )
+
+// Admin - Webhooks
+export const listWebhooks = async (orgSlug: string): Promise<Webhook[]> => {
+  const response = await apiClient.get<Webhook[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/`,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const getWebhook = (orgSlug: string, slug: string) =>
+  apiClient.get<Webhook>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
+  )
+
+export const createWebhook = (orgSlug: string, data: WebhookCreate) =>
+  apiClient.post<Webhook>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/`,
+    data,
+  )
+
+export const updateWebhook = (
+  orgSlug: string,
+  slug: string,
+  data: WebhookCreate,
+) =>
+  apiClient.put<Webhook>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
+    data,
+  )
+
+export const deleteWebhook = (orgSlug: string, slug: string) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/webhooks/${encodeURIComponent(slug)}`,
+  )
+
+export const listServiceWebhooks = async (
+  orgSlug: string,
+  serviceSlug: string,
+): Promise<Webhook[]> => {
+  const response = await apiClient.get<Webhook[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/third-party-services/${encodeURIComponent(serviceSlug)}/webhooks/`,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+// Project Services (EXISTS_IN)
+export const listProjectServices = async (
+  orgSlug: string,
+  projectSlug: string,
+): Promise<ProjectService[]> => {
+  const response = await apiClient.get<ProjectService[]>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/`,
+  )
+  return Array.isArray(response) ? response : []
+}
+
+export const createProjectService = (
+  orgSlug: string,
+  projectSlug: string,
+  data: ProjectServiceCreate,
+) =>
+  apiClient.post<ProjectService>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/`,
+    data,
+  )
+
+export const deleteProjectService = (
+  orgSlug: string,
+  projectSlug: string,
+  serviceSlug: string,
+) =>
+  apiClient.delete<void>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectSlug)}/services/${encodeURIComponent(serviceSlug)}`,
   )
