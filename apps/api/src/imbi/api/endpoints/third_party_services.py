@@ -447,6 +447,51 @@ async def delete_third_party_service(
         )
 
 
+# --- Service Webhook endpoints ---
+
+
+@third_party_services_router.get(
+    '/{slug}/webhooks/',
+)
+async def list_service_webhooks(
+    org_slug: str,
+    slug: str,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('webhook:read'),
+        ),
+    ],
+) -> list[models.WebhookResponse]:
+    """List webhooks linked to a third-party service."""
+    query: typing.LiteralString = """
+    MATCH (w:Webhook)-[impl:IMPLEMENTED_BY]->
+          (tps:ThirdPartyService {slug: $slug})
+          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    MATCH (w)-[:BELONGS_TO]->(o)
+    OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
+    WITH w, tps, impl,
+         collect(r{
+                .filter_expression, .handler,
+                .handler_config, .ordinal})
+            AS all_rules
+    RETURN w{.*} AS webhook,
+           tps{.*} AS tps,
+           impl.identifier_selector AS identifier_selector,
+           [x IN all_rules
+            | x {.filter_expression, .handler, .handler_config}]
+               AS rules
+    ORDER BY w.name
+    """
+    async with neo4j.run(
+        query,
+        slug=slug,
+        org_slug=org_slug,
+    ) as result:
+        records = await result.data()
+    return [models.WebhookResponse.from_neo4j_record(r) for r in records]
+
+
 # --- Service Application endpoints ---
 
 

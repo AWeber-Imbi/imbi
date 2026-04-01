@@ -27,6 +27,7 @@ class ServerConfig(pydantic_settings.BaseSettings):
     environment: str = 'development'
     host: str = 'localhost'
     port: int = 8000
+    cors_allowed_origins: list[str] = []
 
 
 class Auth(settings.Auth):  # type: ignore[misc]

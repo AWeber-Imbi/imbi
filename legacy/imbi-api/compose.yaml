@@ -31,7 +31,7 @@ services:
       test: [ "CMD", "wget", "-qO-", "http://localhost:8025/api/v1/info" ]
 
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:community-archive
     ports:
       - "4566"
     environment:

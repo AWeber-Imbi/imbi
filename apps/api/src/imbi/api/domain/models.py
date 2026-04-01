@@ -7,11 +7,12 @@ needed across all Imbi services.
 """
 
 import datetime
+import json
 import typing
 
 import cypherantic
 import pydantic
-from imbi_common import models
+from imbi_common import models, neo4j
 
 __all__ = [
     'SECRET_FIELDS',
@@ -21,6 +22,8 @@ __all__ = [
     'ClientCredentialCreateResponse',
     'ClientCredentialResponse',
     'EmptyRelationship',
+    'ExistsInCreate',
+    'ExistsInResponse',
     'MembershipProperties',
     'OAuth2TokenResponse',
     'OAuthIdentity',
@@ -51,6 +54,11 @@ __all__ = [
     'UserCreate',
     'UserResponse',
     'UserUpdate',
+    'WebhookCreate',
+    'WebhookResponse',
+    'WebhookRuleCreate',
+    'WebhookRuleResponse',
+    'WebhookUpdate',
 ]
 
 
@@ -799,3 +807,177 @@ class OAuth2TokenResponse(pydantic.BaseModel):
     expires_in: int
     scope: str | None = None
     refresh_token: str | None = None
+
+
+# -- Webhook models -------------------------------------------------------
+
+
+class WebhookRuleCreate(pydantic.BaseModel):
+    """A single rule within a webhook (no ordinal — position is implicit)."""
+
+    filter_expression: str = pydantic.Field(min_length=1)
+    handler: str = pydantic.Field(
+        min_length=1,
+        description='Python callable in dotted import syntax',
+    )
+    handler_config: dict[str, typing.Any] | list[typing.Any] = pydantic.Field(
+        default_factory=dict,
+        description='Structured configuration passed to the handler',
+    )
+
+
+class WebhookCreate(pydantic.BaseModel):
+    """Request model for creating a webhook."""
+
+    name: str = pydantic.Field(min_length=1, max_length=128)
+    slug: str = pydantic.Field(
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+    )
+    description: str | None = None
+    icon: str | None = None
+    notification_path: str = pydantic.Field(
+        min_length=1,
+        pattern=r'^/',
+        description='URL path for receiving webhooks (must start with /)',
+    )
+    secret: str | None = None
+    third_party_service_slug: str | None = None
+    identifier_selector: str | None = pydantic.Field(
+        default=None,
+        description='JSON Path expression to extract project identifier',
+    )
+    rules: list[WebhookRuleCreate] = pydantic.Field(
+        default_factory=list,
+    )
+
+    @pydantic.model_validator(mode='after')
+    def validate_identifier_selector(self) -> typing.Self:
+        """identifier_selector requires a third_party_service."""
+        if self.identifier_selector and not self.third_party_service_slug:
+            raise ValueError(
+                'identifier_selector requires third_party_service_slug'
+            )
+        return self
+
+
+class WebhookUpdate(pydantic.BaseModel):
+    """Request model for updating a webhook (GET-modify-PUT)."""
+
+    name: str = pydantic.Field(min_length=1, max_length=128)
+    slug: str = pydantic.Field(
+        pattern=r'^[a-z][a-z0-9-]*$',
+        min_length=2,
+        max_length=64,
+    )
+    description: str | None = None
+    icon: str | None = None
+    notification_path: str = pydantic.Field(
+        min_length=1,
+        pattern=r'^/',
+    )
+    secret: str | None = None
+    third_party_service_slug: str | None = None
+    identifier_selector: str | None = pydantic.Field(
+        default=None,
+        description='JSON Path expression to extract project identifier',
+    )
+    rules: list[WebhookRuleCreate] = pydantic.Field(
+        default_factory=list,
+    )
+
+    @pydantic.model_validator(mode='after')
+    def validate_identifier_selector(self) -> typing.Self:
+        """identifier_selector requires a third_party_service."""
+        if self.identifier_selector and not self.third_party_service_slug:
+            raise ValueError(
+                'identifier_selector requires third_party_service_slug'
+            )
+        return self
+
+
+class WebhookRuleResponse(pydantic.BaseModel):
+    """Rule in a webhook response (no ordinal exposed)."""
+
+    filter_expression: str
+    handler: str
+    handler_config: dict[str, typing.Any] | list[typing.Any] = pydantic.Field(
+        default_factory=dict,
+    )
+
+
+class WebhookResponse(pydantic.BaseModel):
+    """Response model for a webhook."""
+
+    model_config = pydantic.ConfigDict(extra='allow')
+
+    name: str
+    slug: str
+    description: str | None = None
+    icon: str | None = None
+    notification_path: str
+    third_party_service: dict[str, typing.Any] | None = None
+    identifier_selector: str | None = None
+    rules: list[WebhookRuleResponse] = []
+
+    @classmethod
+    def from_neo4j_record(
+        cls,
+        record: dict[str, typing.Any],
+    ) -> 'WebhookResponse':
+        """Build a WebhookResponse from a Neo4j record."""
+        webhook = neo4j.convert_neo4j_types(record['webhook'])
+
+        raw_rules = record.get('rules', [])
+        rules: list[WebhookRuleResponse] = []
+        for r in raw_rules:
+            if r is not None:
+                raw_config = r.get('handler_config', '{}')
+                config: dict[str, typing.Any] | list[typing.Any]
+                try:
+                    config = json.loads(raw_config) if raw_config else {}
+                except (json.JSONDecodeError, TypeError):
+                    config = {}
+                rules.append(
+                    WebhookRuleResponse(
+                        filter_expression=r['filter_expression'],
+                        handler=r['handler'],
+                        handler_config=config,
+                    )
+                )
+
+        tps = record.get('tps')
+        if tps:
+            tps = neo4j.convert_neo4j_types(tps)
+
+        return cls(
+            name=webhook['name'],
+            slug=webhook['slug'],
+            description=webhook.get('description'),
+            icon=webhook.get('icon'),
+            notification_path=webhook['notification_path'],
+            third_party_service=tps,
+            identifier_selector=record.get('identifier_selector'),
+            rules=rules,
+        )
+
+
+# -- EXISTS_IN models ------------------------------------------------------
+
+
+class ExistsInCreate(pydantic.BaseModel):
+    """Request model for creating a Project EXISTS_IN link."""
+
+    third_party_service_slug: str
+    identifier: str = pydantic.Field(min_length=1)
+    canonical_link: str | None = None
+
+
+class ExistsInResponse(pydantic.BaseModel):
+    """Response model for a Project EXISTS_IN link."""
+
+    third_party_service_slug: str
+    third_party_service_name: str
+    identifier: str
+    canonical_link: str | None = None

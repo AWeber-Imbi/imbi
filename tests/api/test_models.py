@@ -395,3 +395,194 @@ class ServiceApplicationResponseModelTestCase(unittest.TestCase):
         self.assertEqual(resp.status, 'active')
         self.assertIsNone(resp.description)
         self.assertIsNone(resp.application_url)
+
+
+class WebhookCreateModelTestCase(unittest.TestCase):
+    """Test cases for WebhookCreate validation."""
+
+    def _valid_payload(
+        self,
+        **overrides: object,
+    ) -> dict[str, object]:
+        defaults: dict[str, object] = {
+            'name': 'GitHub Events',
+            'slug': 'github-events',
+            'notification_path': '/webhooks/github',
+        }
+        defaults.update(overrides)
+        return defaults
+
+    def test_valid_creation(self) -> None:
+        obj = domain_models.WebhookCreate.model_validate(
+            self._valid_payload(),
+        )
+        self.assertEqual(obj.slug, 'github-events')
+        self.assertIsNone(obj.secret)
+        self.assertEqual(obj.rules, [])
+        self.assertIsNone(obj.third_party_service_slug)
+
+    def test_slug_pattern_rejects_uppercase(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.WebhookCreate.model_validate(
+                self._valid_payload(slug='Bad-Slug'),
+            )
+
+    def test_slug_too_short(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.WebhookCreate.model_validate(
+                self._valid_payload(slug='x'),
+            )
+
+    def test_notification_path_must_start_with_slash(
+        self,
+    ) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.WebhookCreate.model_validate(
+                self._valid_payload(
+                    notification_path='no-slash',
+                ),
+            )
+
+    def test_identifier_selector_requires_tps(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.WebhookCreate.model_validate(
+                self._valid_payload(
+                    identifier_selector='$.repo.name',
+                ),
+            )
+
+    def test_identifier_selector_with_tps_valid(self) -> None:
+        obj = domain_models.WebhookCreate.model_validate(
+            self._valid_payload(
+                third_party_service_slug='github',
+                identifier_selector='$.repo.name',
+            ),
+        )
+        self.assertEqual(obj.identifier_selector, '$.repo.name')
+
+    def test_with_rules(self) -> None:
+        obj = domain_models.WebhookCreate.model_validate(
+            self._valid_payload(
+                rules=[
+                    {
+                        'filter_expression': '$.action',
+                        'handler': 'my.handler',
+                    },
+                ],
+            ),
+        )
+        self.assertEqual(len(obj.rules), 1)
+        self.assertEqual(obj.rules[0].handler_config, {})
+
+
+class WebhookUpdateModelTestCase(unittest.TestCase):
+    """Test cases for WebhookUpdate validation."""
+
+    def test_valid_update(self) -> None:
+        obj = domain_models.WebhookUpdate.model_validate(
+            {
+                'name': 'Updated',
+                'slug': 'updated',
+                'notification_path': '/updated',
+            }
+        )
+        self.assertEqual(obj.name, 'Updated')
+        self.assertEqual(obj.rules, [])
+
+    def test_identifier_selector_requires_tps(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.WebhookUpdate.model_validate(
+                {
+                    'name': 'Test',
+                    'slug': 'test',
+                    'notification_path': '/test',
+                    'identifier_selector': '$.repo',
+                }
+            )
+
+
+class WebhookRuleCreateModelTestCase(unittest.TestCase):
+    """Test cases for WebhookRuleCreate validation."""
+
+    def test_valid_rule(self) -> None:
+        obj = domain_models.WebhookRuleCreate.model_validate(
+            {
+                'filter_expression': '$.action == "push"',
+                'handler': 'my.module.handle_push',
+            }
+        )
+        self.assertEqual(obj.handler_config, {})
+
+    def test_handler_config_as_list(self) -> None:
+        obj = domain_models.WebhookRuleCreate.model_validate(
+            {
+                'filter_expression': '$.action',
+                'handler': 'my.handler',
+                'handler_config': ['step1', 'step2'],
+            }
+        )
+        self.assertEqual(obj.handler_config, ['step1', 'step2'])
+
+    def test_empty_filter_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.WebhookRuleCreate.model_validate(
+                {
+                    'filter_expression': '',
+                    'handler': 'my.handler',
+                }
+            )
+
+    def test_empty_handler_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.WebhookRuleCreate.model_validate(
+                {
+                    'filter_expression': '$.action',
+                    'handler': '',
+                }
+            )
+
+
+class ExistsInModelTestCase(unittest.TestCase):
+    """Test cases for ExistsIn models."""
+
+    def test_exists_in_create(self) -> None:
+        obj = domain_models.ExistsInCreate.model_validate(
+            {
+                'third_party_service_slug': 'github',
+                'identifier': 'org/repo',
+            }
+        )
+        self.assertIsNone(obj.canonical_link)
+
+    def test_exists_in_create_with_link(self) -> None:
+        obj = domain_models.ExistsInCreate.model_validate(
+            {
+                'third_party_service_slug': 'github',
+                'identifier': 'org/repo',
+                'canonical_link': 'https://github.com/org/repo',
+            }
+        )
+        self.assertEqual(
+            obj.canonical_link,
+            'https://github.com/org/repo',
+        )
+
+    def test_exists_in_empty_identifier_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            domain_models.ExistsInCreate.model_validate(
+                {
+                    'third_party_service_slug': 'github',
+                    'identifier': '',
+                }
+            )
+
+    def test_exists_in_response(self) -> None:
+        obj = domain_models.ExistsInResponse.model_validate(
+            {
+                'third_party_service_slug': 'github',
+                'third_party_service_name': 'GitHub',
+                'identifier': 'org/repo',
+            }
+        )
+        self.assertEqual(obj.third_party_service_name, 'GitHub')
+        self.assertIsNone(obj.canonical_link)

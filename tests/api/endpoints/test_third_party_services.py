@@ -487,6 +487,240 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertIn('not found', response.json()['detail'])
 
 
+class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
+    """Test cases for list_service_webhooks endpoint."""
+
+    def setUp(self) -> None:
+        from imbi_api.auth import permissions
+
+        self.test_app = app.create_app()
+
+        self.admin_user = models.User(
+            email='admin@example.com',
+            display_name='Admin User',
+            password_hash='$argon2id$hashed',
+            is_active=True,
+            is_admin=True,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.auth_context = permissions.AuthContext(
+            user=self.admin_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'webhook:read'},
+        )
+
+        async def mock_get_current_user():
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+        self.client = testclient.TestClient(self.test_app)
+
+        self.base_url = (
+            '/organizations/engineering/third-party-services/github/webhooks/'
+        )
+
+    def test_list_service_webhooks(self) -> None:
+        record = {
+            'webhook': {
+                'name': 'GitHub PR Events',
+                'slug': 'gh-pr-events',
+                'description': 'PR webhooks',
+                'icon': None,
+                'notification_path': '/webhooks/gh-pr',
+            },
+            'tps': {
+                'name': 'GitHub',
+                'slug': 'github',
+            },
+            'identifier_selector': '$.repository.full_name',
+            'rules': [],
+        }
+
+        result = _mock_neo4j_result([record])
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=result,
+        ):
+            response = self.client.get(self.base_url)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['slug'], 'gh-pr-events')
+        self.assertEqual(data[0]['name'], 'GitHub PR Events')
+        self.assertEqual(data[0]['notification_path'], '/webhooks/gh-pr')
+        self.assertEqual(data[0]['third_party_service']['slug'], 'github')
+        self.assertEqual(
+            data[0]['identifier_selector'],
+            '$.repository.full_name',
+        )
+
+    def test_list_service_webhooks_empty(self) -> None:
+        result = _mock_neo4j_result([])
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=result,
+        ):
+            response = self.client.get(self.base_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+
+    def test_list_service_webhooks_multiple(self) -> None:
+        records = [
+            {
+                'webhook': {
+                    'name': 'First',
+                    'slug': 'first',
+                    'notification_path': '/webhooks/first',
+                },
+                'tps': {'name': 'GitHub', 'slug': 'github'},
+                'identifier_selector': None,
+                'rules': [],
+            },
+            {
+                'webhook': {
+                    'name': 'Second',
+                    'slug': 'second',
+                    'notification_path': '/webhooks/second',
+                },
+                'tps': {'name': 'GitHub', 'slug': 'github'},
+                'identifier_selector': None,
+                'rules': [],
+            },
+        ]
+
+        result = _mock_neo4j_result(records)
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=result,
+        ):
+            response = self.client.get(self.base_url)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['slug'], 'first')
+        self.assertEqual(data[1]['slug'], 'second')
+
+    def test_list_service_webhooks_with_rules(self) -> None:
+        record = {
+            'webhook': {
+                'name': 'GitHub Events',
+                'slug': 'gh-events',
+                'notification_path': '/webhooks/gh',
+            },
+            'tps': {'name': 'GitHub', 'slug': 'github'},
+            'identifier_selector': None,
+            'rules': [
+                {
+                    'filter_expression': '$.action == "opened"',
+                    'handler': 'pr.handler',
+                    'handler_config': '{"notify": true}',
+                },
+                {
+                    'filter_expression': '$.action == "closed"',
+                    'handler': 'close.handler',
+                    'handler_config': '{}',
+                },
+            ],
+        }
+
+        result = _mock_neo4j_result([record])
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=result,
+        ):
+            response = self.client.get(self.base_url)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        rules = data[0]['rules']
+        self.assertEqual(len(rules), 2)
+        self.assertEqual(rules[0]['handler'], 'pr.handler')
+        self.assertEqual(rules[0]['handler_config'], {'notify': True})
+        self.assertEqual(rules[1]['handler'], 'close.handler')
+
+    def test_list_service_webhooks_null_rules_filtered(self) -> None:
+        record = {
+            'webhook': {
+                'name': 'GitHub Events',
+                'slug': 'gh-events',
+                'notification_path': '/webhooks/gh',
+            },
+            'tps': {'name': 'GitHub', 'slug': 'github'},
+            'identifier_selector': None,
+            'rules': [None],
+        }
+
+        result = _mock_neo4j_result([record])
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=result,
+        ):
+            response = self.client.get(self.base_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]['rules'], [])
+
+    def test_list_service_webhooks_malformed_config(self) -> None:
+        record = {
+            'webhook': {
+                'name': 'GitHub Events',
+                'slug': 'gh-events',
+                'notification_path': '/webhooks/gh',
+            },
+            'tps': {'name': 'GitHub', 'slug': 'github'},
+            'identifier_selector': None,
+            'rules': [
+                {
+                    'filter_expression': '$.action',
+                    'handler': 'my.handler',
+                    'handler_config': '{bad json',
+                },
+            ],
+        }
+
+        result = _mock_neo4j_result([record])
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=result,
+        ):
+            response = self.client.get(self.base_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]['rules'][0]['handler_config'], {})
+
+    def test_list_service_webhooks_without_tps(self) -> None:
+        record = {
+            'webhook': {
+                'name': 'GitHub Events',
+                'slug': 'gh-events',
+                'notification_path': '/webhooks/gh',
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+
+        result = _mock_neo4j_result([record])
+        with mock.patch(
+            'imbi_common.neo4j.run',
+            return_value=result,
+        ):
+            response = self.client.get(self.base_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()[0]['third_party_service'])
+
+
 class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     """Test cases for ServiceApplication CRUD endpoints."""
 

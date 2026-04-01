@@ -1,7 +1,8 @@
 import fastapi
+from fastapi.middleware import cors
 from imbi_common.lifespan import Lifespan
 
-from imbi_api import endpoints, lifespans, openapi, version
+from imbi_api import endpoints, lifespans, openapi, settings, version
 from imbi_api.middleware import rate_limit
 
 
@@ -22,6 +23,15 @@ def create_app() -> fastapi.FastAPI:
             'name': 'BSD 3-Clause',
             'url': 'https://github.com/AWeber-Imbi/imbi-api/blob/main/LICENSE',
         },
+    )
+
+    server_config = settings.ServerConfig()
+    app.add_middleware(
+        cors.CORSMiddleware,
+        allow_origins=server_config.cors_allowed_origins,
+        allow_credentials=True,
+        allow_methods=['*'],
+        allow_headers=['authorization'],
     )
 
     # Phase 5: Setup rate limiting middleware

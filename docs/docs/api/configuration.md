@@ -51,9 +51,10 @@ export NEO4J_PASSWORD="your-neo4j-password"
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMBI_ENVIRONMENT` | `development` | Environment name (development, staging, production) |
-| `IMBI_HOST` | `localhost` | Server bind address |
-| `IMBI_PORT` | `8000` | Server bind port |
+| `IMBI_API_ENVIRONMENT` | `development` | Environment name (development, staging, production) |
+| `IMBI_API_HOST` | `localhost` | Server bind address |
+| `IMBI_API_PORT` | `8000` | Server bind port |
+| `IMBI_API_CORS_ALLOWED_ORIGINS` | `[]` | JSON array of allowed CORS origins |
 | `IMBI_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 | `IMBI_AUTO_SEED_AUTH` | `true` | Auto-seed default roles and permissions on startup |
 
@@ -195,6 +196,7 @@ For production deployments, use a structured TOML configuration file:
 environment = "production"
 host = "0.0.0.0"
 port = 8080
+cors_allowed_origins = ["https://imbi.example.com"]
 
 [neo4j]
 url = "neo4j://neo4j-prod:7687"
@@ -236,11 +238,12 @@ For development, use environment variables or a `.env` file:
 
 ```bash
 # Application
-IMBI_ENVIRONMENT=development
-IMBI_HOST=localhost
-IMBI_PORT=8000
+IMBI_API_ENVIRONMENT=development
+IMBI_API_HOST=localhost
+IMBI_API_PORT=8000
 IMBI_LOG_LEVEL=INFO
 IMBI_AUTO_SEED_AUTH=true
+IMBI_API_CORS_ALLOWED_ORIGINS='["http://localhost:3000"]'
 
 # Neo4j
 NEO4J_URL=neo4j://localhost:7687
@@ -277,6 +280,7 @@ OTEL_TRACES_EXPORTER=otlp
 2. **OAuth Secrets**: Store in a secrets manager (AWS Secrets Manager, HashiCorp Vault)
 3. **Database Credentials**: Use strong passwords, rotate regularly
 4. **HTTPS**: Always use HTTPS in production (configure via reverse proxy)
+5. **CORS**: Set `IMBI_API_CORS_ALLOWED_ORIGINS` to only the origins that need API access (e.g., your frontend URL). Credentials and the `authorization` header are allowed for authenticated cross-origin requests
 
 ### Performance
 

@@ -74,6 +74,11 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'delete',
         'Delete third-party services',
     ),
+    # Webhook management
+    ('webhook:create', 'webhook', 'create', 'Create webhooks'),
+    ('webhook:read', 'webhook', 'read', 'View webhooks'),
+    ('webhook:update', 'webhook', 'update', 'Update webhooks'),
+    ('webhook:delete', 'webhook', 'delete', 'Delete webhooks'),
     # Upload management
     ('upload:create', 'upload', 'create', 'Upload files'),
     ('upload:read', 'upload', 'read', 'View and download uploads'),
@@ -135,6 +140,8 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'third_party_service:update',
             'upload:create',
             'upload:read',
+            'webhook:read',
+            'webhook:update',
         ],
     ),
     (
@@ -153,6 +160,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
             'user:read',
             'role:read',
             'upload:read',
+            'webhook:read',
         ],
     ),
 ]
