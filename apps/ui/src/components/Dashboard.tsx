@@ -151,7 +151,7 @@ function SortableWidget({ id, children, isDarkMode }: SortableWidgetProps) {
       <div
         {...attributes}
         {...listeners}
-        className={`absolute left-2 top-2 z-20 cursor-grab rounded p-1 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100 ${
+        className={`rounded absolute left-2 top-2 z-20 cursor-grab p-1 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100 ${
           isDarkMode
             ? 'bg-gray-700/80 text-gray-400 hover:text-gray-200'
             : 'bg-white/80 text-gray-400 hover:text-gray-600'
@@ -346,12 +346,12 @@ export function Dashboard({
           }`}
         >
           <div
-            className={`mb-4 text-6xl ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}
+            className={`text-6xl mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}
           >
             📊
           </div>
           <h3
-            className={`mb-2 text-xl font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-xl mb-2 font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             No Widgets Selected
           </h3>

@@ -388,7 +388,7 @@ export function RoleForm({
         }`}
       >
         <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Role Information
         </h3>
@@ -652,7 +652,7 @@ export function RoleForm({
                         .map((perm) => (
                           <div
                             key={perm.name}
-                            className={`flex items-start gap-3 rounded p-2.5 ${
+                            className={`rounded flex items-start gap-3 p-2.5 ${
                               isDarkMode
                                 ? 'hover:bg-gray-700'
                                 : 'hover:bg-white'

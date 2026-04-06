@@ -72,7 +72,7 @@ export function RecentActivity({
       >
         {!hideHeading && (
           <h2
-            className={`mb-6 text-xl ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
+            className={`text-xl mb-6 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
           >
             Recent Activity
           </h2>
@@ -89,7 +89,7 @@ export function RecentActivity({
       >
         {!hideHeading && (
           <h2
-            className={`mb-6 text-xl ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
+            className={`text-xl mb-6 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
           >
             Recent Activity
           </h2>
@@ -212,7 +212,7 @@ export function RecentActivity({
     <Card className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
       {!hideHeading && (
         <h2
-          className={`mb-6 text-xl ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
+          className={`text-xl mb-6 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
         >
           Recent Activity
         </h2>

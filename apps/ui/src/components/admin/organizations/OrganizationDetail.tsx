@@ -43,7 +43,7 @@ export function OrganizationDetail({
               <img
                 src={organization.icon}
                 alt=""
-                className="h-8 w-8 rounded object-cover"
+                className="rounded h-8 w-8 object-cover"
               />
             ) : (
               <Building2

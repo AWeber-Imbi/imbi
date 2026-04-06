@@ -119,7 +119,7 @@ export function WidgetSelector({
                             : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
                       }`}
                     >
-                      <div className="flex-shrink-0 text-2xl">
+                      <div className="text-2xl flex-shrink-0">
                         {widget.icon}
                       </div>
                       <div className="flex-1 text-left">
@@ -141,7 +141,7 @@ export function WidgetSelector({
                         </div>
                       </div>
                       <div
-                        className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 ${
+                        className={`rounded flex h-5 w-5 flex-shrink-0 items-center justify-center border-2 ${
                           isSelected
                             ? isDarkMode
                               ? 'border-blue-500 bg-blue-500'

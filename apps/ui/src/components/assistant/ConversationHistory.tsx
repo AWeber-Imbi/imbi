@@ -60,7 +60,7 @@ export function ConversationHistory({
     return (
       <button
         onClick={() => setShowHistory(true)}
-        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
+        className={`rounded flex items-center gap-1 px-2 py-1 text-xs ${
           isDarkMode
             ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-300'
             : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
@@ -84,7 +84,7 @@ export function ConversationHistory({
             onNewConversation()
             setShowHistory(false)
           }}
-          className={`flex w-full items-center gap-2 rounded px-3 py-2 text-sm ${
+          className={`rounded flex w-full items-center gap-2 px-3 py-2 text-sm ${
             isDarkMode
               ? 'text-gray-300 hover:bg-gray-700'
               : 'text-gray-700 hover:bg-gray-100'
@@ -109,7 +109,7 @@ export function ConversationHistory({
                 setShowHistory(false)
               }
             }}
-            className={`flex cursor-pointer items-center justify-between rounded px-3 py-2 text-sm ${
+            className={`rounded flex cursor-pointer items-center justify-between px-3 py-2 text-sm ${
               conv.id === currentConversationId
                 ? isDarkMode
                   ? 'bg-gray-700 text-white'
@@ -150,7 +150,7 @@ export function ConversationHistory({
       >
         <button
           onClick={() => setShowHistory(false)}
-          className={`w-full rounded px-3 py-1 text-xs ${
+          className={`rounded w-full px-3 py-1 text-xs ${
             isDarkMode
               ? 'text-gray-500 hover:text-gray-400'
               : 'text-gray-400 hover:text-gray-600'
