@@ -64,6 +64,7 @@ function parseSchemaProperties(
 
   for (const [name, propSchema] of Object.entries(props)) {
     const ps = propSchema as Record<string, unknown>
+    const xUi = ps['x-ui'] as Record<string, unknown> | undefined
     properties.push({
       id: name,
       name,
@@ -77,6 +78,8 @@ function parseSchemaProperties(
       maximum: ps.maximum as number | undefined,
       minLength: ps.minLength as number | undefined,
       maxLength: ps.maxLength as number | undefined,
+      colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
+      iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
     })
   }
 
@@ -229,7 +232,7 @@ export function BlueprintDetail({
                   {blueprint.name}
                 </h2>
                 <span
-                  className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.type, blueprintTypes, isDarkMode)}`}
+                  className={`rounded inline-flex items-center px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.type, blueprintTypes, isDarkMode)}`}
                 >
                   {blueprint.type}
                 </span>
@@ -549,7 +552,7 @@ export function BlueprintDetail({
                       {prop.enumValues.map((val) => (
                         <span
                           key={val}
-                          className={`inline-flex items-center rounded border px-2 py-0.5 font-mono text-xs ${
+                          className={`rounded inline-flex items-center border px-2 py-0.5 font-mono text-xs ${
                             isDarkMode
                               ? 'border-gray-600 bg-gray-700 text-gray-300'
                               : 'border-gray-200 bg-gray-50 text-gray-700'
@@ -560,6 +563,66 @@ export function BlueprintDetail({
                       ))}
                     </div>
                   )}
+
+                  {/* x-ui: color-map and icon-map */}
+                  {(prop.colorMap && Object.keys(prop.colorMap).length > 0) ||
+                  (prop.iconMap && Object.keys(prop.iconMap).length > 0) ? (
+                    <div className="ml-7 mt-2 flex flex-wrap gap-4">
+                      {prop.colorMap &&
+                        Object.keys(prop.colorMap).length > 0 && (
+                          <div>
+                            <span
+                              className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                            >
+                              color-map
+                            </span>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {Object.entries(prop.colorMap).map(
+                                ([val, color]) => (
+                                  <span
+                                    key={val}
+                                    className={`rounded inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-xs ${
+                                      isDarkMode
+                                        ? 'border-gray-600 bg-gray-700 text-gray-300'
+                                        : 'border-gray-200 bg-gray-50 text-gray-700'
+                                    }`}
+                                  >
+                                    <span
+                                      className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
+                                      style={{ backgroundColor: color }}
+                                    />
+                                    {val}
+                                  </span>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      {prop.iconMap && Object.keys(prop.iconMap).length > 0 && (
+                        <div>
+                          <span
+                            className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                          >
+                            icon-map
+                          </span>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {Object.entries(prop.iconMap).map(([val, icon]) => (
+                              <span
+                                key={val}
+                                className={`rounded inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-xs ${
+                                  isDarkMode
+                                    ? 'border-gray-600 bg-gray-700 text-gray-300'
+                                    : 'border-gray-200 bg-gray-50 text-gray-700'
+                                }`}
+                              >
+                                {val} → {icon}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
 
                   {/* Constraints row */}
                   {hasConstraints(prop) && (

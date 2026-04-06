@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import { Plus, Search, Trash2, Users, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '../ui/button'
@@ -72,7 +72,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams', orgSlug] })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to delete team: ${error.response?.data?.detail || error.message}`,
       )
@@ -231,7 +231,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             Total Teams
           </div>
           <div
-            className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-2xl mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {filteredTeams.length}
           </div>
@@ -249,7 +249,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             Total Projects
           </div>
           <div
-            className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-2xl mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {filteredTeams.reduce(
               (sum, t) => sum + (t.relationships?.projects?.count ?? 0),
@@ -270,7 +270,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             Total Members
           </div>
           <div
-            className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-2xl mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {filteredTeams.reduce(
               (sum, t) => sum + (t.relationships?.members?.count ?? 0),
@@ -290,9 +290,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
       >
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead
-              className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-            >
+            <thead className="border-b border-tertiary bg-secondary">
               <tr>
                 <th
                   className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
@@ -367,7 +365,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
                           <img
                             src={team.icon}
                             alt=""
-                            className="h-5 w-5 rounded object-cover"
+                            className="rounded h-5 w-5 object-cover"
                           />
                         ) : (
                           <Users

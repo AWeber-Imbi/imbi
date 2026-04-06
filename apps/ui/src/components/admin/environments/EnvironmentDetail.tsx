@@ -54,7 +54,7 @@ export function EnvironmentDetail({
                 <img
                   src={environment.icon}
                   alt=""
-                  className="h-8 w-8 rounded object-cover"
+                  className="rounded h-8 w-8 object-cover"
                 />
               )}
               <h2
@@ -119,13 +119,25 @@ export function EnvironmentDetail({
               <div
                 className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
+                Sort Order
+              </div>
+              <div
+                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+              >
+                {environment.sort_order ?? 0}
+              </div>
+            </div>
+            <div>
+              <div
+                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
                 Label Color
               </div>
               <div className="mt-1 flex items-center gap-2">
                 {environment.label_color ? (
                   <>
                     <div
-                      className="h-6 w-6 rounded border"
+                      className="rounded h-6 w-6 border"
                       style={{ backgroundColor: environment.label_color }}
                     />
                     <span

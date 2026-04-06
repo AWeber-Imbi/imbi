@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { apiClient } from '@/api/client'
 import type { ActivityFeedEntry } from '@/types'
 
 interface ActivityFeedResponse {
@@ -7,7 +7,8 @@ interface ActivityFeedResponse {
   nextToken?: string
 }
 
-function parseLinkHeader(linkHeader: string | null): string | undefined {
+function parseLinkHeader(headers: Headers): string | undefined {
+  const linkHeader = headers.get('link')
   if (!linkHeader) return undefined
 
   // Parse Link header: <url>; rel="next"
@@ -30,27 +31,22 @@ async function fetchActivityFeed({
       params.token = pageParam
     }
 
-    const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
-    const response = await axios.get<ActivityFeedEntry[]>(
-      `${API_BASE_URL}/activity-feed`,
-      {
-        params,
-        withCredentials: true,
-      },
-    )
+    const { data, headers } = await apiClient.getWithHeaders<
+      ActivityFeedEntry[]
+    >('/activity-feed', params)
 
-    const data = Array.isArray(response.data) ? response.data : []
-    const nextToken = parseLinkHeader(response.headers.link)
+    const items = Array.isArray(data) ? data : []
+    const nextToken = parseLinkHeader(headers)
 
     console.log(
       '[Infinite Activity] Fetched',
-      data.length,
+      items.length,
       'items, next token:',
       nextToken,
     )
 
     return {
-      data,
+      data: items,
       nextToken,
     }
   } catch (error) {

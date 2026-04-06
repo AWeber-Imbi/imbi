@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import { Plus, Search, Trash2, Cloud, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -108,7 +108,7 @@ export function ThirdPartyServiceManagement({
         queryKey: ['third-party-services', orgSlug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to delete service: ${error.response?.data?.detail || error.message}`,
       )
@@ -277,7 +277,7 @@ export function ThirdPartyServiceManagement({
             Total Services
           </div>
           <div
-            className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-2xl mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {filteredServices.length}
           </div>
@@ -295,7 +295,7 @@ export function ThirdPartyServiceManagement({
             Active
           </div>
           <div
-            className={`mt-1 text-2xl ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}
+            className={`text-2xl mt-1 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}
           >
             {statusCounts.active}
           </div>
@@ -313,7 +313,7 @@ export function ThirdPartyServiceManagement({
             Evaluating
           </div>
           <div
-            className={`mt-1 text-2xl ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
+            className={`text-2xl mt-1 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
           >
             {statusCounts.evaluating}
           </div>
@@ -331,7 +331,7 @@ export function ThirdPartyServiceManagement({
             Deprecated
           </div>
           <div
-            className={`mt-1 text-2xl ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}
+            className={`text-2xl mt-1 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}
           >
             {statusCounts.deprecated}
           </div>
@@ -348,9 +348,7 @@ export function ThirdPartyServiceManagement({
       >
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead
-              className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-            >
+            <thead className="border-b border-tertiary bg-secondary">
               <tr>
                 <th
                   className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
@@ -432,7 +430,7 @@ export function ThirdPartyServiceManagement({
                             <img
                               src={svc.icon}
                               alt=""
-                              className="h-5 w-5 rounded object-cover"
+                              className="rounded h-5 w-5 object-cover"
                             />
                           ) : (
                             <Cloud

@@ -101,22 +101,16 @@ export function Navigation({
     'dashboard'
 
   return (
-    <nav
-      className={`fixed left-0 right-0 top-0 z-50 border-b transition-colors ${
-        isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
-      }`}
-    >
+    <nav className="fixed left-0 right-0 top-0 z-50 border-b border-tertiary bg-primary transition-colors">
       <div className="flex h-16 items-center justify-between px-6">
         {/* Logo and Brand */}
         <div className="flex items-center gap-8">
           <button
             onClick={() => navigate('/dashboard')}
-            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all ${
-              isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
-            }`}
+            className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all hover:bg-secondary"
           >
             <img src={imbiLogo} alt="Imbi" className="h-8 w-8" />
-            <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+            <span className="text-primary" style={{ fontWeight: 800 }}>
               Imbi
             </span>
           </button>
@@ -132,12 +126,8 @@ export function Navigation({
                   onClick={() => navigate(item.path)}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                     isActive
-                      ? isDarkMode
-                        ? 'bg-blue-900 text-blue-300'
-                        : 'bg-blue-50 text-[#2A4DD0]'
-                      : isDarkMode
-                        ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      ? 'bg-amber-bg text-amber-text'
+                      : 'text-secondary hover:bg-secondary hover:text-primary'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -151,64 +141,81 @@ export function Navigation({
         {/* Right Side Actions */}
         <div className="flex items-center gap-3">
           {/* Organization Selector */}
-          {organizations.length > 0 && selectedOrganization && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={`max-w-[200px] gap-2 ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700'
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  {selectedOrganization.icon ? (
-                    <img
-                      src={selectedOrganization.icon}
-                      alt=""
-                      className="h-4 w-4 flex-shrink-0 rounded object-cover"
-                    />
-                  ) : (
-                    <Building2 className="h-4 w-4 flex-shrink-0" />
-                  )}
-                  <span className="truncate">{selectedOrganization.name}</span>
-                  <ChevronDown className="h-3 w-3 flex-shrink-0" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {organizations.map((org) => (
-                  <DropdownMenuItem
-                    key={org.slug}
-                    onClick={() => setSelectedOrganization(org)}
-                    className={
-                      selectedOrganization.slug === org.slug
-                        ? 'font-medium'
-                        : ''
-                    }
+          {organizations.length > 0 &&
+            selectedOrganization &&
+            (organizations.length === 1 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="pointer-events-none max-w-[200px] cursor-default gap-2 border-tertiary bg-primary text-primary"
+              >
+                {selectedOrganization.icon ? (
+                  <img
+                    src={selectedOrganization.icon}
+                    alt=""
+                    className="rounded h-4 w-4 flex-shrink-0 object-cover"
+                  />
+                ) : (
+                  <Building2 className="h-4 w-4 flex-shrink-0" />
+                )}
+                <span className="truncate">{selectedOrganization.name}</span>
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="max-w-[200px] gap-2 border-tertiary bg-primary text-primary hover:bg-secondary"
                   >
-                    <div className="flex items-center gap-2">
-                      {org.icon ? (
-                        <img
-                          src={org.icon}
-                          alt=""
-                          className="h-4 w-4 flex-shrink-0 rounded object-cover"
-                        />
-                      ) : (
-                        <Building2 className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                      )}
-                      <div className="flex flex-col">
-                        <span>{org.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {org.slug}
-                        </span>
+                    {selectedOrganization.icon ? (
+                      <img
+                        src={selectedOrganization.icon}
+                        alt=""
+                        className="rounded h-4 w-4 flex-shrink-0 object-cover"
+                      />
+                    ) : (
+                      <Building2 className="h-4 w-4 flex-shrink-0" />
+                    )}
+                    <span className="truncate">
+                      {selectedOrganization.name}
+                    </span>
+                    <ChevronDown className="h-3 w-3 flex-shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {organizations.map((org) => (
+                    <DropdownMenuItem
+                      key={org.slug}
+                      onClick={() => setSelectedOrganization(org)}
+                      className={
+                        selectedOrganization.slug === org.slug
+                          ? 'font-medium'
+                          : ''
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        {org.icon ? (
+                          <img
+                            src={org.icon}
+                            alt=""
+                            className="rounded h-4 w-4 flex-shrink-0 object-cover"
+                          />
+                        ) : (
+                          <Building2 className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                        )}
+                        <div className="flex flex-col">
+                          <span>{org.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {org.slug}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ))}
 
           {/* Quick Actions Dropdown */}
           <DropdownMenu>
@@ -216,11 +223,7 @@ export function Navigation({
               <Button
                 variant="outline"
                 size="sm"
-                className={`gap-2 ${
-                  isDarkMode
-                    ? 'border-blue-500 bg-gray-800 text-blue-400 hover:bg-gray-700'
-                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                }`}
+                className="gap-2 border-tertiary bg-primary text-primary hover:bg-secondary"
               >
                 <Plus className="h-4 w-4" />
                 <ChevronDown className="h-3 w-3" />
@@ -248,11 +251,11 @@ export function Navigation({
               <Button
                 variant="ghost"
                 size="icon"
-                className={`rounded-full p-0 ${isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                className="rounded-full p-0 hover:bg-secondary"
               >
-                {user?.email_address ? (
+                {user?.email ? (
                   <Gravatar
-                    email={user.email_address}
+                    email={user.email}
                     size={32}
                     alt={user?.display_name || user?.username || 'User'}
                     className="h-8 w-8 rounded-full"
@@ -264,7 +267,7 @@ export function Navigation({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               {user && (
-                <div className="px-2 py-1.5 text-sm font-semibold">
+                <div className="font-semibold px-2 py-1.5 text-sm">
                   {user.display_name || user.username}
                 </div>
               )}
@@ -273,7 +276,7 @@ export function Navigation({
                 <UserCircle className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onViewChange?.('settings')}>
+              <DropdownMenuItem onClick={() => navigate('/settings')}>
                 <Settings className="mr-2 h-4 w-4" />
                 <span>Settings</span>
               </DropdownMenuItem>
@@ -289,7 +292,7 @@ export function Navigation({
           <Button
             variant="ghost"
             size="icon"
-            className={`rounded-full ${isDarkMode ? 'text-white hover:bg-gray-700' : 'text-gray-700 hover:bg-gray-100'}`}
+            className="rounded-full text-secondary hover:bg-secondary"
             onClick={onThemeToggle}
           >
             {isDarkMode ? (

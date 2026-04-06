@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigation } from '@/components/Navigation'
 import { ProjectsView } from '@/components/ProjectsView'
 import { CommandBar } from '@/components/CommandBar'
+import honeycombBg from '@/assets/honeycomb_pattern_organic.png'
 
 export function ProjectsPage() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -17,9 +18,7 @@ export function ProjectsPage() {
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
-      <div
-        className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}
-      >
+      <div className="min-h-screen bg-tertiary text-primary">
         <Navigation
           currentView="projects"
           isDarkMode={isDarkMode}
@@ -27,7 +26,11 @@ export function ProjectsPage() {
         />
         <main
           className="pt-16"
-          style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
+          style={{
+            paddingBottom: 'var(--assistant-height, 64px)',
+            backgroundImage: `url(${honeycombBg})`,
+            backgroundRepeat: 'repeat',
+          }}
         >
           <ProjectsView isDarkMode={isDarkMode} />
         </main>

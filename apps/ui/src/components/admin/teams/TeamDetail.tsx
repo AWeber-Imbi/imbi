@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import {
   ArrowLeft,
   Edit2,
@@ -62,7 +62,7 @@ export function TeamDetail({
       setNewMemberEmail('')
       setShowAddMember(false)
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to add member: ${error.response?.data?.detail || error.message}`,
       )
@@ -77,7 +77,7 @@ export function TeamDetail({
         queryKey: ['teamMembers', team.organization.slug, team.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to remove member: ${error.response?.data?.detail || error.message}`,
       )
@@ -123,7 +123,7 @@ export function TeamDetail({
                 <img
                   src={team.icon}
                   alt=""
-                  className="h-8 w-8 rounded object-cover"
+                  className="rounded h-8 w-8 object-cover"
                 />
               )}
               <h2
@@ -217,7 +217,7 @@ export function TeamDetail({
                 Team Members
               </h3>
               <span
-                className={`ml-2 rounded px-2 py-1 text-sm ${
+                className={`rounded ml-2 px-2 py-1 text-sm ${
                   isDarkMode
                     ? 'bg-gray-700 text-gray-300'
                     : 'bg-gray-100 text-gray-700'
@@ -277,7 +277,7 @@ export function TeamDetail({
                   }`}
                 >
                   <AlertCircle className="h-3 w-3" />
-                  {(addMemberMutation.error as AxiosError<{ detail?: string }>)
+                  {(addMemberMutation.error as ApiError<{ detail?: string }>)
                     ?.response?.data?.detail || 'Failed to add member'}
                 </div>
               )}
@@ -302,9 +302,7 @@ export function TeamDetail({
           </div>
         ) : (
           <table className="w-full">
-            <thead
-              className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-            >
+            <thead className="border-b border-tertiary bg-secondary">
               <tr>
                 <th
                   className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
@@ -368,7 +366,7 @@ export function TeamDetail({
                   </td>
                   <td className="px-6 py-4">
                     <span
-                      className={`inline-flex items-center rounded px-2 py-1 text-xs font-medium ${
+                      className={`rounded inline-flex items-center px-2 py-1 text-xs font-medium ${
                         member.is_active
                           ? isDarkMode
                             ? 'bg-green-900/30 text-green-400'

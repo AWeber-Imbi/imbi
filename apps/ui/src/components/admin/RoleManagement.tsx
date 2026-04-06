@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import {
   Plus,
   Search,
@@ -59,7 +59,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to delete role: ${error.response?.data?.detail || error.message}`,
       )
@@ -99,7 +99,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
       goToList()
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       console.error('Failed to create role:', error)
     },
   })
@@ -123,7 +123,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['role'] })
       goToList()
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       console.error('Failed to update role:', error)
     },
   })
@@ -280,9 +280,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
         }`}
       >
         <table className="w-full">
-          <thead
-            className={`${isDarkMode ? 'border-b border-gray-700 bg-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
-          >
+          <thead className="border-b border-tertiary bg-secondary">
             <tr>
               <th
                 className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
@@ -372,7 +370,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                     <td className="whitespace-nowrap px-4 py-3 text-center">
                       {isSystem ? (
                         <span
-                          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium ${
+                          className={`rounded inline-flex items-center gap-1 px-2 py-1 text-xs font-medium ${
                             isDarkMode
                               ? 'bg-amber-900/30 text-amber-400'
                               : 'bg-amber-100 text-amber-700'

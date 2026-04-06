@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import {
   ArrowLeft,
   Edit2,
@@ -104,7 +104,7 @@ export function ServiceAccountDetail({
       setNewOrgSlug('')
       setNewRoleSlug('')
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to add to organization: ${error.response?.data?.detail || error.message}`,
       )
@@ -128,7 +128,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccount', account.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to update role: ${error.response?.data?.detail || error.message}`,
       )
@@ -144,7 +144,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccount', account.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to remove from organization: ${error.response?.data?.detail || error.message}`,
       )
@@ -200,7 +200,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to create API key: ${error.response?.data?.detail || error.message}`,
       )
@@ -215,7 +215,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to revoke API key: ${error.response?.data?.detail || error.message}`,
       )
@@ -231,7 +231,7 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to rotate API key: ${error.response?.data?.detail || error.message}`,
       )
@@ -250,7 +250,7 @@ export function ServiceAccountDetail({
         queryKey: ['clientCredentials', account.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to create credential: ${error.response?.data?.detail || error.message}`,
       )
@@ -265,7 +265,7 @@ export function ServiceAccountDetail({
         queryKey: ['clientCredentials', account.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to revoke credential: ${error.response?.data?.detail || error.message}`,
       )
@@ -281,7 +281,7 @@ export function ServiceAccountDetail({
         queryKey: ['clientCredentials', account.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to rotate credential: ${error.response?.data?.detail || error.message}`,
       )
@@ -438,7 +438,7 @@ export function ServiceAccountDetail({
         <div className="px-6 py-5">
           <div className="flex items-center gap-6">
             <div
-              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
+              className={`rounded flex items-center gap-2 px-3 py-1.5 ${
                 account.is_active
                   ? isDarkMode
                     ? 'bg-green-900/30 text-green-400'
@@ -452,7 +452,7 @@ export function ServiceAccountDetail({
               {account.is_active ? 'Active' : 'Inactive'}
             </div>
             <div
-              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
+              className={`rounded flex items-center gap-2 px-3 py-1.5 ${
                 isDarkMode
                   ? 'bg-purple-900/30 text-purple-400'
                   : 'bg-purple-100 text-purple-700'
@@ -842,7 +842,7 @@ export function ServiceAccountDetail({
                 </span>
                 <div className="flex items-center gap-2">
                   <code
-                    className={`flex-1 rounded border px-3 py-2 text-sm ${
+                    className={`rounded flex-1 border px-3 py-2 text-sm ${
                       isDarkMode
                         ? 'border-gray-600 bg-gray-800 text-green-300'
                         : 'border-gray-200 bg-white text-green-700'
@@ -878,7 +878,7 @@ export function ServiceAccountDetail({
                 </span>
                 <div className="flex items-center gap-2">
                   <code
-                    className={`flex-1 rounded border px-3 py-2 text-sm ${
+                    className={`rounded flex-1 border px-3 py-2 text-sm ${
                       isDarkMode
                         ? 'border-gray-600 bg-gray-800 text-green-300'
                         : 'border-gray-200 bg-white text-green-700'
@@ -1139,7 +1139,7 @@ export function ServiceAccountDetail({
             </div>
             <div className="flex items-center gap-2">
               <code
-                className={`flex-1 rounded border px-3 py-2 text-sm ${
+                className={`rounded flex-1 border px-3 py-2 text-sm ${
                   isDarkMode
                     ? 'border-gray-600 bg-gray-800 text-green-300'
                     : 'border-gray-200 bg-white text-green-700'
@@ -1298,7 +1298,7 @@ export function ServiceAccountDetail({
         }`}
       >
         <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Basic Information
         </h3>

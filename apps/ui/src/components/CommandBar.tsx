@@ -6,6 +6,7 @@ import {
   X,
   Terminal,
   HelpCircle,
+  Sparkles,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAssistantStore } from '@/stores/assistantStore'
@@ -29,7 +30,7 @@ interface CommandBarProps {
 function buildUserContext(
   user: {
     display_name: string
-    email_address: string
+    email: string
     groups?: string[]
     roles?: string[]
     is_admin?: boolean
@@ -38,7 +39,7 @@ function buildUserContext(
 ): string {
   if (!user) return ''
   const parts: string[] = []
-  parts.push(`User: ${user.display_name} (${user.email_address})`)
+  parts.push(`User: ${user.display_name} (${user.email})`)
   if (user.is_admin) parts.push('Role: Administrator')
   if (user.groups?.length) parts.push(`Groups: ${user.groups.join(', ')}`)
   if (user.roles?.length) parts.push(`Roles: ${user.roles.join(', ')}`)
@@ -80,7 +81,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
   } = useAssistantStore()
 
   // Set CSS custom property so page content can avoid being hidden
-  const INPUT_BAR_HEIGHT = 64
+  const INPUT_BAR_HEIGHT = 72
   useEffect(() => {
     const total = isExpanded ? panelHeight + INPUT_BAR_HEIGHT : INPUT_BAR_HEIGHT
     document.documentElement.style.setProperty(
@@ -476,10 +477,10 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
 
       {/* Command Input Bar */}
       <div
-        className={`fixed bottom-0 left-0 right-0 z-50 pt-3 ${
+        className={`fixed bottom-0 left-0 right-0 z-50 ${
           isDarkMode
             ? 'border-gray-700 bg-gray-900'
-            : 'border-gray-200 bg-gray-100'
+            : 'border-gray-200 bg-white'
         } border-t`}
       >
         {/* Tray Toggle */}
@@ -488,10 +489,10 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
             onClick={() => setExpanded(!isExpanded)}
             aria-label={isExpanded ? 'Collapse assistant' : 'Expand assistant'}
             type="button"
-            className={`-mt-6 rounded-t-md border border-b-0 px-4 py-0.5 font-mono text-xs transition-all ${
+            className={`-mt-3 rounded-t-md border border-b-0 px-4 py-0.5 font-mono text-xs transition-all ${
               isDarkMode
                 ? 'border-gray-700 bg-gray-800 text-gray-500 hover:text-gray-400'
-                : 'border-gray-200 bg-gray-100 text-gray-400 hover:text-gray-600'
+                : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
             } ${isExpanded ? 'shadow-lg' : ''}`}
           >
             {isExpanded ? (
@@ -508,31 +509,35 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
         </div>
 
         {/* Input */}
-        <form onSubmit={handleSubmit} className="px-6 py-2">
+        <form onSubmit={handleSubmit} className="px-3 pb-1.5 pt-2">
           <div
-            className={`flex items-center gap-2 rounded-md border px-3 py-1.5 font-mono text-sm ${
+            className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
               isDarkMode
-                ? 'border-gray-700 bg-gray-800 focus-within:border-gray-600'
-                : 'border-gray-300 bg-gray-50 focus-within:border-gray-400'
+                ? 'border-gray-700 bg-tertiary focus-within:border-gray-600'
+                : 'border-tertiary bg-tertiary focus-within:border-secondary'
             } transition-colors`}
           >
             <span
-              className={`select-none ${
-                isDarkMode ? 'text-gray-500' : 'text-gray-400'
+              className={`select-none text-sm ${
+                isDarkMode ? 'text-gray-500' : 'text-gray-500'
               }`}
             >
-              {'>'}
+              &gt;
             </span>
             <input
               ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isStreaming ? 'waiting...' : 'ask imbi...'}
+              placeholder={
+                isStreaming
+                  ? 'waiting...'
+                  : "Search projects, ask about deployments, or type 'help'..."
+              }
               disabled={isStreaming}
-              className={`flex-1 bg-transparent font-mono outline-none ${
+              className={`flex-1 bg-transparent text-sm outline-none ${
                 isDarkMode
-                  ? 'text-gray-200 placeholder:text-gray-600'
+                  ? 'text-gray-200 placeholder:text-gray-500'
                   : 'text-gray-800 placeholder:text-gray-400'
               } disabled:opacity-50`}
             />
@@ -548,6 +553,23 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
                 <Send className="h-3.5 w-3.5" />
               </button>
             )}
+          </div>
+          <div className="flex items-center justify-between px-1 pt-1">
+            <span
+              className={`text-[11px] ${
+                isDarkMode ? 'text-gray-500' : 'text-secondary'
+              }`}
+            >
+              Press Enter to send
+            </span>
+            <span
+              className={`flex items-center gap-1 text-[11px] ${
+                isDarkMode ? 'text-gray-500' : 'text-secondary'
+              }`}
+            >
+              <Sparkles className="h-3 w-3" />
+              AI-powered
+            </span>
           </div>
         </form>
       </div>

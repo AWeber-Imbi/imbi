@@ -1,20 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Navigation } from '@/components/Navigation'
-import { Dashboard } from '@/components/Dashboard'
+import { Settings } from '@/components/Settings'
 import { CommandBar } from '@/components/CommandBar'
 import honeycombBg from '@/assets/honeycomb_pattern_organic.png'
 
 const THEME_STORAGE_KEY = 'imbi-theme'
 
-export function DashboardPage() {
+export function SettingsPage() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    // Initialize from localStorage
     const stored = localStorage.getItem(THEME_STORAGE_KEY)
     return stored === 'dark'
   })
 
   useEffect(() => {
-    // Save to localStorage whenever theme changes
     localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light')
   }, [isDarkMode])
 
@@ -34,7 +32,7 @@ export function DashboardPage() {
             backgroundRepeat: 'repeat',
           }}
         >
-          <Dashboard isDarkMode={isDarkMode} />
+          <Settings isDarkMode={isDarkMode} />
         </main>
         <CommandBar isDarkMode={isDarkMode} />
       </div>

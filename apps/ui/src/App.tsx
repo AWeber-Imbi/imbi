@@ -3,6 +3,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { AdminPage } from './pages/AdminPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { LoginPage } from './pages/LoginPage'
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage'
 import { OrganizationProvider } from './contexts/OrganizationContext'
@@ -93,10 +94,18 @@ function App() {
           }
         />
         <Route
-          path="/projects/:typeSlug/:slug"
+          path="/projects/:projectId"
           element={
             <ProtectedRoute>
               <ProjectDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/:tab?"
+          element={
+            <ProtectedRoute>
+              <SettingsPage />
             </ProtectedRoute>
           }
         />

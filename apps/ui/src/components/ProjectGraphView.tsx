@@ -38,7 +38,6 @@ const LAYOUT_OPTIONS: { label: string; value: LayoutTypes }[] = [
 // Camera distance at which node labels are comfortably legible.
 // Increase to zoom out further at 100%, decrease to zoom in closer.
 const ZOOM_100_DISTANCE = 1800
-const DEFAULT_ZOOM_PERCENT = 10
 
 const TYPE_COLORS = [
   '#2563EB',
@@ -114,7 +113,7 @@ export function ProjectGraphView({
   // but different project types produce distinct hashes.
   const graphKey = useMemo(() => {
     const ids = projects
-      .map((p) => `${p.project_type.slug}/${p.slug}`)
+      .map((p) => p.id)
       .sort()
       .join('|')
     let h = 5381
@@ -141,14 +140,12 @@ export function ProjectGraphView({
       edges,
     )
     const fitTimer = setTimeout(() => {
+      ref.current?.centerGraph()
       ref.current?.fitNodesInView(
         clusterIds.length > 1 ? clusterIds : undefined,
       )
-      ref.current
-        ?.getControls()
-        .dollyTo(ZOOM_100_DISTANCE / (DEFAULT_ZOOM_PERCENT / 100), true)
       setIsRendering(false)
-    }, 600)
+    }, 1200)
 
     // After fit settles, capture reference distance (= 100%) and start tracking.
     let removeListener: (() => void) | undefined
@@ -185,22 +182,19 @@ export function ProjectGraphView({
   const nodes = useMemo(
     () =>
       projects.map((p) => ({
-        id: `${p.project_type.slug}/${p.slug}`,
+        id: p.id,
         label: p.name,
-        fill: getTypeColor(p.project_type.slug),
+        fill: getTypeColor((p.project_types || [])[0]?.slug || ''),
         data: p,
       })),
     [projects],
   )
 
-  // Map composite "typeSlug/slug" → node ID for edge resolution.
-  // Using the composite key avoids last-write-wins collisions when two
-  // projects share the same slug but belong to different project types.
-  const compositeToNodeId = useMemo(() => {
+  // Map project ID → node ID for edge resolution.
+  const idToNodeId = useMemo(() => {
     const map = new Map<string, string>()
     projects.forEach((p) => {
-      const composite = `${p.project_type.slug}/${p.slug}`
-      map.set(composite, composite)
+      map.set(p.id, p.id)
     })
     return map
   }, [projects])
@@ -208,15 +202,11 @@ export function ProjectGraphView({
   const edges = useMemo(() => {
     const seen = new Set<string>()
     return projects.flatMap((p) => {
-      const sourceId = `${p.project_type.slug}/${p.slug}`
+      const sourceId = p.id
       return [...new Set(p.dependency_uris ?? [])].flatMap((uri) => {
-        // URI format: /organizations/<org>/projects/<typeSlug>/<slug>
-        const parts = uri.split('/')
-        // Extract the last two path segments as the composite key
-        const depTypeSlug = parts[parts.length - 2]
-        const depSlug = parts[parts.length - 1]
-        const composite = `${depTypeSlug}/${depSlug}`
-        const targetId = compositeToNodeId.get(composite)
+        // URI format: /organizations/<org>/projects/<id>
+        const depId = uri.split('/').pop() || ''
+        const targetId = idToNodeId.get(depId)
         if (!targetId) return []
         const edgeId = `${sourceId}->${targetId}`
         if (seen.has(edgeId)) return []
@@ -231,7 +221,7 @@ export function ProjectGraphView({
         ]
       })
     })
-  }, [projects, compositeToNodeId])
+  }, [projects, idToNodeId])
 
   const {
     selections,
@@ -255,7 +245,7 @@ export function ProjectGraphView({
   const handleNodeDoubleClick = useCallback(
     (node: InternalGraphNode) => {
       const p = node.data as Project
-      navigate(`/projects/${p.project_type.slug}/${p.slug}`)
+      navigate(`/projects/${p.id}`)
     },
     [navigate],
   )

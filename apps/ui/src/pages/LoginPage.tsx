@@ -95,7 +95,7 @@ export function LoginPage() {
 
   if (authLoading || providersLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center bg-tertiary">
         <div className="text-lg">Loading...</div>
       </div>
     )
@@ -113,11 +113,11 @@ export function LoginPage() {
     localLoginEnabled || (oauthProviders.length === 0 && providers.length === 0)
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-8">
+    <div className="flex min-h-screen items-center justify-center bg-tertiary">
+      <div className="rounded-xl w-full max-w-md border border-tertiary bg-primary p-8">
         <div className="mb-8 flex flex-col items-center">
           <img src={imbiLogo} alt="Imbi" className="mb-4 h-16 w-16" />
-          <h1 className="mb-2 text-2xl text-gray-900">Imbi</h1>
+          <h1 className="text-2xl mb-2 text-gray-900">Imbi</h1>
         </div>
 
         {oauthProviders.length > 0 && (

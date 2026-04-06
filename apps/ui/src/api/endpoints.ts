@@ -92,13 +92,40 @@ export const getProjects = async (orgSlug: string): Promise<Project[]> => {
   return Array.isArray(response) ? response : []
 }
 
-export const getProject = (
-  orgSlug: string,
-  projectTypeSlug: string,
-  slug: string,
-) =>
+export const getProject = (orgSlug: string, projectId: string) =>
   apiClient.get<Project>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
+  )
+
+export interface ProjectSchemaSectionProperty {
+  type?: string | null
+  format?: string | null
+  title?: string | null
+  description?: string | null
+  enum?: string[] | null
+  default?: unknown
+  minimum?: number | null
+  maximum?: number | null
+  'x-ui'?: {
+    'color-map'?: Record<string, string>
+    'icon-map'?: Record<string, string>
+  } | null
+}
+
+export interface ProjectSchemaSection {
+  name: string
+  slug: string
+  description?: string | null
+  properties: Record<string, ProjectSchemaSectionProperty>
+}
+
+export interface ProjectSchemaResponse {
+  sections: ProjectSchemaSection[]
+}
+
+export const getProjectSchema = (orgSlug: string, projectId: string) =>
+  apiClient.get<ProjectSchemaResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/schema`,
   )
 
 export const createProject = (
@@ -717,24 +744,17 @@ export const getUploadThumbnailUrl = (id: string): string => {
 export const deleteUpload = (id: string) =>
   apiClient.delete<void>(`/uploads/${encodeURIComponent(id)}`)
 
-// API Keys
-export const listApiKeys = async (email: string): Promise<ApiKey[]> => {
-  const response = await apiClient.get<ApiKey[]>(
-    `/users/${encodeURIComponent(email)}/api-keys`,
-  )
+// API Keys (routes use the authenticated user, no user prefix)
+export const listApiKeys = async (): Promise<ApiKey[]> => {
+  const response = await apiClient.get<ApiKey[]>('/api-keys')
   return Array.isArray(response) ? response : []
 }
 
-export const createApiKey = (email: string, name?: string) =>
-  apiClient.post<ApiKeyCreated>(
-    `/users/${encodeURIComponent(email)}/api-keys`,
-    { name: name || 'default' },
-  )
+export const createApiKey = (name?: string) =>
+  apiClient.post<ApiKeyCreated>('/api-keys', { name: name || 'default' })
 
-export const deleteApiKey = (email: string, keyId: string) =>
-  apiClient.delete<void>(
-    `/users/${encodeURIComponent(email)}/api-keys/${encodeURIComponent(keyId)}`,
-  )
+export const deleteApiKey = (keyId: string) =>
+  apiClient.delete<void>(`/api-keys/${encodeURIComponent(keyId)}`)
 
 // Service Accounts
 export const listServiceAccounts = (params?: { is_active?: boolean }) =>
