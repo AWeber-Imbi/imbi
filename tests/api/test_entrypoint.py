@@ -107,11 +107,13 @@ class SetupTestCase(unittest.TestCase):
 
     def test_setup_fresh_install(self) -> None:
         """Test setup on a fresh system with defaults."""
-        result = self.runner.invoke(entrypoint.main, ['setup'], input='\n\n')
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
 
         self.assertEqual(result.exit_code, 0)
         self.assertIn('Setup complete', result.output)
-        self.assertIn('Created default organization', result.output)
+        self.assertIn('Created organization: AWeber (aweber)', result.output)
         self.assertIn('Created 5 permissions and 3 roles', result.output)
         self.assertIn('Created admin user: admin@example.com', result.output)
         self.assertIn('ClickHouse schema created', result.output)
@@ -120,6 +122,7 @@ class SetupTestCase(unittest.TestCase):
             email='admin@example.com',
             display_name='Administrator',
             password='s3cret',
+            org_slug='aweber',
         )
         self.mock_neo4j_close.assert_awaited_once()
         self.mock_ch_close.assert_awaited_once()
@@ -127,7 +130,9 @@ class SetupTestCase(unittest.TestCase):
     def test_setup_custom_email_and_display_name(self) -> None:
         """Test setup with user-provided email and display name."""
         result = self.runner.invoke(
-            entrypoint.main, ['setup'], input='dave@example.com\nDave\n'
+            entrypoint.main,
+            ['setup'],
+            input='\n\ndave@example.com\nDave\n',
         )
 
         self.assertEqual(result.exit_code, 0)
@@ -135,6 +140,7 @@ class SetupTestCase(unittest.TestCase):
             email='dave@example.com',
             display_name='Dave',
             password='s3cret',
+            org_slug='aweber',
         )
 
     def test_setup_already_seeded_continue(self) -> None:
@@ -143,7 +149,7 @@ class SetupTestCase(unittest.TestCase):
         self.mock_check_admin.return_value = True
 
         result = self.runner.invoke(
-            entrypoint.main, ['setup'], input='y\n\n\n'
+            entrypoint.main, ['setup'], input='y\n\n\n\n\n'
         )
 
         self.assertEqual(result.exit_code, 0)
@@ -168,10 +174,12 @@ class SetupTestCase(unittest.TestCase):
         """Test output when permissions and roles already exist."""
         self.seed_result.update(organization=False, permissions=0, roles=0)
 
-        result = self.runner.invoke(entrypoint.main, ['setup'], input='\n\n')
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn('Default organization already exists', result.output)
+        self.assertIn('Organization already exists: aweber', result.output)
         self.assertIn('already exist', result.output)
 
     def test_setup_neo4j_connection_failure(self) -> None:
@@ -198,7 +206,9 @@ class SetupTestCase(unittest.TestCase):
         """Test setup rejects empty password."""
         self.mock_getpass.return_value = ''
 
-        result = self.runner.invoke(entrypoint.main, ['setup'], input='\n\n')
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn('Password cannot be empty', result.output)
@@ -208,7 +218,9 @@ class SetupTestCase(unittest.TestCase):
         """Test setup rejects mismatched passwords."""
         self.mock_getpass.side_effect = ['s3cret', 'different']
 
-        result = self.runner.invoke(entrypoint.main, ['setup'], input='\n\n')
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn('Passwords do not match', result.output)
@@ -218,7 +230,9 @@ class SetupTestCase(unittest.TestCase):
         """Test setup when admin user creation fails."""
         self.mock_create_admin.side_effect = RuntimeError('db error')
 
-        result = self.runner.invoke(entrypoint.main, ['setup'], input='\n\n')
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn('Failed to create admin user', result.output)
@@ -229,7 +243,9 @@ class SetupTestCase(unittest.TestCase):
         """Test setup when ClickHouse schema creation fails."""
         self.mock_ch_schema.side_effect = RuntimeError('schema error')
 
-        result = self.runner.invoke(entrypoint.main, ['setup'], input='\n\n')
+        result = self.runner.invoke(
+            entrypoint.main, ['setup'], input='\n\n\n\n'
+        )
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn('Failed to set up ClickHouse schema', result.output)

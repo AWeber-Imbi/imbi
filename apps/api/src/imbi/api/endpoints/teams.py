@@ -398,7 +398,9 @@ async def list_team_members(
     OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)
     RETURN t, collect({
         email: u.email,
-        display_name: u.display_name
+        display_name: u.display_name,
+        is_active: COALESCE(u.is_active, false),
+        is_admin: COALESCE(u.is_admin, false)
     }) AS members
     """
     records = await neo4j.query(

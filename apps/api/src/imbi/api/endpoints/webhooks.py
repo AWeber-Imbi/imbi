@@ -471,7 +471,7 @@ project_services_router = fastapi.APIRouter(
 @project_services_router.get('/')
 async def list_project_services(
     org_slug: str,
-    project_slug: str,
+    project_id: str,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -481,7 +481,7 @@ async def list_project_services(
 ) -> list[models.ExistsInResponse]:
     """List third-party services this project exists in."""
     query: typing.LiteralString = """
-    MATCH (p:Project {slug: $project_slug})
+    MATCH (p:Project {id: $project_id})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     MATCH (p)-[ei:EXISTS_IN]->(tps:ThirdPartyService)
@@ -494,7 +494,7 @@ async def list_project_services(
     async with neo4j.run(
         query,
         org_slug=org_slug,
-        project_slug=project_slug,
+        project_id=project_id,
     ) as result:
         records = await result.data()
 
@@ -512,7 +512,7 @@ async def list_project_services(
 @project_services_router.post('/', status_code=201)
 async def create_project_service(
     org_slug: str,
-    project_slug: str,
+    project_id: str,
     data: models.ExistsInCreate,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -523,7 +523,7 @@ async def create_project_service(
 ) -> models.ExistsInResponse:
     """Add an EXISTS_IN link between a project and a service."""
     query: typing.LiteralString = """
-    MATCH (p:Project {slug: $project_slug})
+    MATCH (p:Project {id: $project_id})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     MATCH (tps:ThirdPartyService {slug: $tps_slug})
@@ -539,7 +539,7 @@ async def create_project_service(
     async with neo4j.run(
         query,
         org_slug=org_slug,
-        project_slug=project_slug,
+        project_id=project_id,
         tps_slug=data.third_party_service_slug,
         identifier=data.identifier,
         canonical_link=data.canonical_link,
@@ -550,7 +550,7 @@ async def create_project_service(
         raise fastapi.HTTPException(
             status_code=404,
             detail=(
-                f'Project {project_slug!r} or '
+                f'Project {project_id!r} or '
                 f'service {data.third_party_service_slug!r} '
                 f'not found'
             ),
@@ -571,7 +571,7 @@ async def create_project_service(
 )
 async def delete_project_service(
     org_slug: str,
-    project_slug: str,
+    project_id: str,
     service_slug: str,
     auth: typing.Annotated[
         permissions.AuthContext,
@@ -582,7 +582,7 @@ async def delete_project_service(
 ) -> None:
     """Remove an EXISTS_IN link."""
     query: typing.LiteralString = """
-    MATCH (p:Project {slug: $project_slug})
+    MATCH (p:Project {id: $project_id})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
     MATCH (p)-[ei:EXISTS_IN]->
@@ -593,7 +593,7 @@ async def delete_project_service(
     async with neo4j.run(
         query,
         org_slug=org_slug,
-        project_slug=project_slug,
+        project_id=project_id,
         tps_slug=service_slug,
     ) as result:
         records = await result.data()
@@ -603,7 +603,7 @@ async def delete_project_service(
             status_code=404,
             detail=(
                 f'EXISTS_IN link between project '
-                f'{project_slug!r} and service '
+                f'{project_id!r} and service '
                 f'{service_slug!r} not found'
             ),
         )

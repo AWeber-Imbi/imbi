@@ -55,7 +55,7 @@ organizations_router.include_router(
 )
 organizations_router.include_router(
     project_services_router,
-    prefix='/{org_slug}/projects/{project_slug}/services',
+    prefix='/{org_slug}/projects/{project_id}/services',
 )
 
 

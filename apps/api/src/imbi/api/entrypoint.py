@@ -62,12 +62,27 @@ async def _setup_async() -> None:
 
         # Step 1: Seed organization, permissions, and roles
         typer.echo('Step 1: Seeding organization, permissions, and roles...')
-        seed_result = await seed.bootstrap_auth_system()
+        org_name = typer.prompt(
+            '  Organization name',
+            default='AWeber',
+        )
+        org_slug = typer.prompt(
+            '  Organization slug',
+            default='aweber',
+        )
+        seed_result = await seed.bootstrap_auth_system(
+            org_slug=org_slug,
+            org_name=org_name,
+        )
 
         if seed_result['organization']:
-            typer.echo('  ✓ Created default organization')
+            typer.echo(
+                f'  ✓ Created organization: {org_name} ({org_slug})',
+            )
         else:
-            typer.echo('  ✓ Default organization already exists')
+            typer.echo(
+                f'  ✓ Organization already exists: {org_slug}',
+            )
 
         if seed_result['permissions'] > 0 or seed_result['roles'] > 0:
             typer.echo(
@@ -104,6 +119,7 @@ async def _setup_async() -> None:
                 email=email,
                 display_name=display_name,
                 password=password,
+                org_slug=org_slug,
             )
             typer.echo(f'  ✓ Created admin user: {admin_user.email}')
         except Exception as e:
@@ -152,6 +168,7 @@ async def _create_admin_user(
     email: str,
     display_name: str,
     password: str,
+    org_slug: str = 'default',
 ) -> models.User:
     """Create an admin user with the specified credentials.
 
@@ -216,7 +233,7 @@ async def _create_admin_user(
     # Add user to default organization with admin role
     membership_query = """
     MATCH (u:User {email: $email})
-    MATCH (o:Organization {slug: 'default'})
+    MATCH (o:Organization {slug: $org_slug})
     MERGE (u)-[m:MEMBER_OF]->(o)
     SET m.role = 'admin'
     """
@@ -224,6 +241,7 @@ async def _create_admin_user(
     async with neo4j.run(
         query=membership_query,
         email=email,
+        org_slug=org_slug,
     ) as result:
         await result.consume()
 

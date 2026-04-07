@@ -9,10 +9,26 @@ Re-exports all shared settings for convenience.
 
 import os
 import typing
+import urllib.parse
 
 import pydantic
 import pydantic_settings
 from imbi_common import settings
+
+
+def _parse_k8s_port(value: typing.Any) -> typing.Any:
+    """Extract port from K8s service-discovery URLs.
+
+    Kubernetes injects ``<SERVICE>_PORT=tcp://<ip>:<port>`` for every
+    service, which collides with pydantic ``port: int`` fields when the
+    env prefix matches. Detect that format and pull out the port number.
+    """
+    if isinstance(value, str):
+        parsed = urllib.parse.urlparse(value)
+        if parsed.scheme in ('tcp', 'udp') and parsed.port is not None:
+            return parsed.port
+    return value
+
 
 # Re-export shared settings
 Clickhouse = settings.Clickhouse
@@ -26,7 +42,9 @@ class ServerConfig(pydantic_settings.BaseSettings):
     model_config = settings.base_settings_config(env_prefix='IMBI_API_')
     environment: str = 'development'
     host: str = 'localhost'
-    port: int = 8000
+    port: typing.Annotated[int, pydantic.BeforeValidator(_parse_k8s_port)] = (
+        8000
+    )
     cors_allowed_origins: list[str] = []
 
 

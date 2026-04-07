@@ -5,10 +5,12 @@ import typing
 import unittest
 from unittest import mock
 
-from fastapi import testclient
+from fastapi.testclient import TestClient
 from neo4j import exceptions
 
 from imbi_api import app, models
+
+PROJECT_ID = 'abc123nanoid'
 
 
 class ProjectEndpointsTestCase(unittest.TestCase):
@@ -49,11 +51,12 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
-        self.client = testclient.TestClient(self.test_app)
+        self.client = TestClient(self.test_app)
 
     def _project_data(self, **overrides: typing.Any) -> dict:
         """Return a default project record as returned by Neo4j."""
         data: dict[str, typing.Any] = {
+            'id': PROJECT_ID,
             'name': 'My API',
             'slug': 'my-api',
             'description': 'An example API',
@@ -70,15 +73,18 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                     'slug': 'engineering',
                 },
             },
-            'project_type': {
-                'name': 'API Service',
-                'slug': 'api-service',
-                'organization': {
-                    'name': 'Engineering',
-                    'slug': 'engineering',
+            'project_types': [
+                {
+                    'name': 'API Service',
+                    'slug': 'api-service',
+                    'organization': {
+                        'name': 'Engineering',
+                        'slug': 'engineering',
+                    },
                 },
-            },
+            ],
             'environments': [],
+            'dependency_uris': [],
         }
         data.update(overrides)
         return data
@@ -95,18 +101,29 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             ) as mock_get_model,
             mock.patch(
                 'imbi_common.neo4j.query',
-                return_value=[{'project': record}],
+                side_effect=[
+                    # Pre-validation query result
+                    [{'pt_slug': 'api-service', 'found': True}],
+                    # Create query result
+                    [
+                        {
+                            'project': record,
+                            'dependency_count': 0,
+                        },
+                    ],
+                ],
             ),
         ):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/engineering/projects/api-service',
+                '/organizations/engineering/projects/',
                 json={
                     'name': 'My API',
                     'slug': 'my-api',
                     'description': 'An example API',
                     'team_slug': 'platform',
+                    'project_type_slugs': ['api-service'],
                 },
             )
 
@@ -117,7 +134,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.assertIn('relationships', data)
 
     def test_create_with_environments(self) -> None:
-        """Test project creation with environment slugs."""
+        """Test project creation with environment assignments."""
         record = self._project_data(
             environments=[
                 {
@@ -137,18 +154,29 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             ) as mock_get_model,
             mock.patch(
                 'imbi_common.neo4j.query',
-                return_value=[{'project': record}],
+                side_effect=[
+                    # Pre-validation query result
+                    [{'pt_slug': 'api-service', 'found': True}],
+                    # Create query result
+                    [
+                        {
+                            'project': record,
+                            'dependency_count': 0,
+                        },
+                    ],
+                ],
             ),
         ):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/engineering/projects/api-service',
+                '/organizations/engineering/projects/',
                 json={
                     'name': 'My API',
                     'slug': 'my-api',
                     'team_slug': 'platform',
-                    'environment_slugs': ['production'],
+                    'project_type_slugs': ['api-service'],
+                    'environments': {'production': None},
                 },
             )
 
@@ -164,7 +192,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/engineering/projects/api-service',
+                '/organizations/engineering/projects/',
                 json={},
             )
 
@@ -178,45 +206,85 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             ) as mock_get_model,
             mock.patch(
                 'imbi_common.neo4j.query',
-                return_value=[],
+                side_effect=[
+                    # Pre-validation: org not found, no rows returned
+                    [],
+                    # Create query: org/team not found, no rows
+                    [],
+                ],
             ),
         ):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/nonexistent/projects/api-service',
+                '/organizations/nonexistent/projects/',
                 json={
                     'name': 'My API',
                     'slug': 'my-api',
                     'team_slug': 'platform',
+                    'project_type_slugs': ['api-service'],
                 },
             )
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
-    def test_create_slug_conflict(self) -> None:
-        """Test creating project with duplicate slug."""
+    def test_create_invalid_type_slugs(self) -> None:
+        """Test creating project with invalid project type slugs."""
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
                 'imbi_common.neo4j.query',
-                side_effect=exceptions.ClientError(
-                    'Project with slug "my-api" already exists'
-                    ' for project type "api-service"'
-                ),
+                side_effect=[
+                    # Pre-validation: type slug not found
+                    [{'pt_slug': 'nonexistent', 'found': False}],
+                ],
             ),
         ):
             mock_get_model.return_value = models.Project
 
             response = self.client.post(
-                '/organizations/engineering/projects/api-service',
+                '/organizations/engineering/projects/',
                 json={
                     'name': 'My API',
                     'slug': 'my-api',
                     'team_slug': 'platform',
+                    'project_type_slugs': ['nonexistent'],
+                },
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_create_slug_conflict(self) -> None:
+        """Test creating project with duplicate ID."""
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.neo4j.query',
+                side_effect=[
+                    # Pre-validation: type slug exists
+                    [{'pt_slug': 'api-service', 'found': True}],
+                    # Create query: constraint error
+                    exceptions.ConstraintError(
+                        'Project already exists',
+                    ),
+                ],
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+
+            response = self.client.post(
+                '/organizations/engineering/projects/',
+                json={
+                    'name': 'My API',
+                    'slug': 'my-api',
+                    'team_slug': 'platform',
+                    'project_type_slugs': ['api-service'],
                 },
             )
 
@@ -237,6 +305,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             },
             {
                 'project': self._project_data(
+                    id='def456nanoid',
                     name='My Consumer',
                     slug='my-consumer',
                 ),
@@ -279,7 +348,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             ],
         ):
             response = self.client.get(
-                '/organizations/engineering/projects/api-service/my-api',
+                f'/organizations/engineering/projects/{PROJECT_ID}',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -297,7 +366,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             return_value=[],
         ):
             response = self.client.get(
-                '/organizations/engineering/projects/api-service/nonexistent',
+                '/organizations/engineering/projects/nonexistent',
             )
 
         self.assertEqual(response.status_code, 404)
@@ -323,6 +392,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
+                            'current_type_slugs': ['api-service'],
                         },
                     ],
                     [
@@ -337,7 +407,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/api-service/my-api',
+                f'/organizations/engineering/projects/{PROJECT_ID}',
                 json={'name': 'Updated API'},
             )
 
@@ -367,12 +437,17 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock.patch(
                 'imbi_common.neo4j.query',
                 side_effect=[
+                    # Fetch existing project
                     [
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
+                            'current_type_slugs': ['api-service'],
                         },
                     ],
+                    # Team pre-validation
+                    [{'slug': 'backend'}],
+                    # Update query
                     [
                         {
                             'project': updated,
@@ -385,11 +460,79 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/api-service/my-api',
+                f'/organizations/engineering/projects/{PROJECT_ID}',
                 json={'team_slug': 'backend'},
             )
 
         self.assertEqual(response.status_code, 200)
+
+    def test_update_invalid_team(self) -> None:
+        """Test updating a project with nonexistent team slug."""
+        existing = self._project_data()
+
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.neo4j.query',
+                side_effect=[
+                    # Fetch existing project
+                    [
+                        {
+                            'project': existing,
+                            'current_team_slug': 'platform',
+                            'current_type_slugs': ['api-service'],
+                        },
+                    ],
+                    # Team pre-validation: not found
+                    [],
+                ],
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+
+            response = self.client.put(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json={'team_slug': 'nonexistent'},
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_update_invalid_type_slugs(self) -> None:
+        """Test updating project with invalid project type slugs."""
+        existing = self._project_data()
+
+        with (
+            mock.patch(
+                'imbi_common.blueprints.get_model',
+            ) as mock_get_model,
+            mock.patch(
+                'imbi_common.neo4j.query',
+                side_effect=[
+                    # Fetch existing project
+                    [
+                        {
+                            'project': existing,
+                            'current_team_slug': 'platform',
+                            'current_type_slugs': ['api-service'],
+                        },
+                    ],
+                    # Type pre-validation: slug not found
+                    [{'pt_slug': 'nonexistent', 'found': False}],
+                ],
+            ),
+        ):
+            mock_get_model.return_value = models.Project
+
+            response = self.client.put(
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json={'project_type_slugs': ['nonexistent']},
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('not found', response.json()['detail'])
 
     def test_update_with_environment_change(self) -> None:
         """Test updating a project with environment change."""
@@ -418,6 +561,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
+                            'current_type_slugs': ['api-service'],
                         },
                     ],
                     [
@@ -432,8 +576,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/api-service/my-api',
-                json={'environment_slugs': ['staging']},
+                f'/organizations/engineering/projects/{PROJECT_ID}',
+                json={'environments': {'staging': None}},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -452,7 +596,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/api-service/nonexistent',
+                '/organizations/engineering/projects/nonexistent',
                 json={'name': 'Updated'},
             )
 
@@ -473,9 +617,10 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
+                            'current_type_slugs': ['api-service'],
                         },
                     ],
-                    exceptions.ClientError(
+                    exceptions.ConstraintError(
                         'Project with slug "conflicting-slug" already'
                         ' exists for project type "api-service"'
                     ),
@@ -485,7 +630,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/api-service/my-api',
+                f'/organizations/engineering/projects/{PROJECT_ID}',
                 json={'slug': 'conflicting-slug'},
             )
 
@@ -510,6 +655,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                         {
                             'project': existing,
                             'current_team_slug': 'platform',
+                            'current_type_slugs': ['api-service'],
                         },
                     ],
                     [],
@@ -519,7 +665,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             mock_get_model.return_value = models.Project
 
             response = self.client.put(
-                '/organizations/engineering/projects/api-service/my-api',
+                f'/organizations/engineering/projects/{PROJECT_ID}',
                 json={'name': 'Updated'},
             )
 
@@ -535,7 +681,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             return_value=[{'deleted': 1}],
         ):
             response = self.client.delete(
-                '/organizations/engineering/projects/api-service/my-api',
+                f'/organizations/engineering/projects/{PROJECT_ID}',
             )
 
         self.assertEqual(response.status_code, 204)
@@ -547,7 +693,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             return_value=[{'deleted': 0}],
         ):
             response = self.client.delete(
-                '/organizations/engineering/projects/api-service/nonexistent',
+                '/organizations/engineering/projects/nonexistent',
             )
 
         self.assertEqual(response.status_code, 404)

@@ -36,9 +36,35 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('blueprint:write', 'blueprint', 'write', 'Create/update blueprints'),
     ('blueprint:delete', 'blueprint', 'delete', 'Delete blueprints'),
     # Project management
+    ('project:create', 'project', 'create', 'Create projects'),
     ('project:read', 'project', 'read', 'View projects'),
-    ('project:write', 'project', 'write', 'Create/update projects'),
+    ('project:write', 'project', 'write', 'Update projects'),
     ('project:delete', 'project', 'delete', 'Delete projects'),
+    # Link definition management
+    (
+        'link_definition:create',
+        'link_definition',
+        'create',
+        'Create link definitions',
+    ),
+    (
+        'link_definition:read',
+        'link_definition',
+        'read',
+        'View link definitions',
+    ),
+    (
+        'link_definition:write',
+        'link_definition',
+        'write',
+        'Update link definitions',
+    ),
+    (
+        'link_definition:delete',
+        'link_definition',
+        'delete',
+        'Delete link definitions',
+    ),
     # Environment management
     ('environment:create', 'environment', 'create', 'Create environments'),
     ('environment:read', 'environment', 'read', 'View environments'),
@@ -127,9 +153,12 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
         [
             'blueprint:read',
             'blueprint:write',
+            'project:create',
             'project:read',
             'project:write',
             'environment:read',
+            'link_definition:read',
+            'link_definition:write',
             'organization:read',
             'organization:update',
             'project_type:read',
@@ -152,6 +181,7 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
         [
             'blueprint:read',
             'environment:read',
+            'link_definition:read',
             'project:read',
             'project_type:read',
             'organization:read',
@@ -276,10 +306,17 @@ async def seed_default_roles() -> int:
     return created_count
 
 
-async def seed_default_organization() -> bool:
-    """Seed the default organization.
+async def seed_default_organization(
+    slug: str = 'default',
+    name: str = 'Default',
+) -> bool:
+    """Seed the organization.
 
-    Creates a 'Default' organization using MERGE to ensure idempotency.
+    Creates the organization using MERGE to ensure idempotency.
+
+    Args:
+        slug: Organization slug (default: 'default').
+        name: Organization display name (default: 'Default').
 
     Returns:
         True if the organization was newly created, False if it
@@ -300,36 +337,43 @@ async def seed_default_organization() -> bool:
     """
     async with neo4j.run(
         query,
-        slug='default',
-        name='Default',
-        description='Default organization',
+        slug=slug,
+        name=name,
+        description=f'{name} organization',
     ) as result:
         records = await result.data()
         created = bool(records and records[0].get('is_new'))
 
     if created:
-        LOGGER.info('Created default organization')
+        LOGGER.info('Created organization: %s (%s)', name, slug)
     else:
-        LOGGER.info('Default organization already exists')
+        LOGGER.info('Organization already exists: %s', slug)
     return created
 
 
-async def bootstrap_auth_system() -> dict[str, int | bool]:
+async def bootstrap_auth_system(
+    org_slug: str = 'default',
+    org_name: str = 'Default',
+) -> dict[str, int | bool]:
     """Complete bootstrap of the authentication system.
 
-    Seeds the default organization, permissions, and default roles.
+    Seeds the organization, permissions, and default roles.
     This operation is idempotent and can be run multiple times safely.
+
+    Args:
+        org_slug: Organization slug (default: 'default').
+        org_name: Organization display name (default: 'Default').
 
     Returns:
         dict with keys:
-            - 'organization': Whether the default org was created
+            - 'organization': Whether the org was created
             - 'permissions': Number of permissions created
             - 'roles': Number of roles created
 
     """
     LOGGER.info('Starting authentication system bootstrap')
 
-    org_created = await seed_default_organization()
+    org_created = await seed_default_organization(org_slug, org_name)
     permissions_created = await seed_permissions()
     roles_created = await seed_default_roles()
 
