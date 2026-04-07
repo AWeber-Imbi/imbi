@@ -408,11 +408,10 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+                    className="flex items-center gap-1.5 text-sm text-amber-text hover:underline"
                   >
                     <Icon className="h-4 w-4" />
                     <span>{linkLabel}</span>
-                    <ExternalLink className="h-3 w-3" />
                   </a>
                 </span>
               ),
