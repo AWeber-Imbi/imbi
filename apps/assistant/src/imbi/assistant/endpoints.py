@@ -10,12 +10,12 @@ import fastapi
 from fastapi import responses
 
 from imbi_assistant import (
+    age_ops,
     auth,
     client,
     client_tools,
     mcp,
     models,
-    neo4j_ops,
     settings,
     system_prompt,
 )
@@ -57,7 +57,7 @@ async def create_conversation(
     _require_assistant()
     assistant_settings = settings.get_assistant_settings()
     model = body.model if body and body.model else assistant_settings.model
-    conv = await neo4j_ops.create_conversation(
+    conv = await age_ops.create_conversation(
         user_email=auth_ctx.require_user.email, model=model
     )
     return models.conversation_to_response(conv)
@@ -76,7 +76,7 @@ async def list_conversations(
     """List the current user's conversations."""
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
-    convs = await neo4j_ops.list_conversations(
+    convs = await age_ops.list_conversations(
         user_email=auth_ctx.require_user.email,
         limit=limit,
         offset=offset,
@@ -94,14 +94,14 @@ async def get_conversation(
     auth_ctx: AuthDep,
 ) -> models.ConversationWithMessagesResponse:
     """Get a conversation with its messages."""
-    conv = await neo4j_ops.get_conversation(
+    conv = await age_ops.get_conversation(
         conversation_id, auth_ctx.require_user.email
     )
     if not conv:
         raise fastapi.HTTPException(
             status_code=404, detail='Conversation not found'
         )
-    msgs = await neo4j_ops.get_messages(conversation_id)
+    msgs = await age_ops.get_messages(conversation_id)
     resp = models.conversation_to_response(conv)
     return models.ConversationWithMessagesResponse(
         **resp.model_dump(),
@@ -118,7 +118,7 @@ async def delete_conversation(
     auth_ctx: AuthDep,
 ) -> None:
     """Delete a conversation and its messages."""
-    deleted = await neo4j_ops.delete_conversation(
+    deleted = await age_ops.delete_conversation(
         conversation_id, auth_ctx.require_user.email
     )
     if not deleted:
@@ -138,17 +138,17 @@ async def update_conversation(
 ) -> models.ConversationResponse:
     """Update a conversation's title or archive status."""
     if body.title is not None:
-        await neo4j_ops.update_conversation_title(
+        await age_ops.update_conversation_title(
             conversation_id,
             auth_ctx.require_user.email,
             body.title,
         )
     if body.is_archived is True:
-        await neo4j_ops.archive_conversation(
+        await age_ops.archive_conversation(
             conversation_id, auth_ctx.require_user.email
         )
 
-    conv = await neo4j_ops.get_conversation(
+    conv = await age_ops.get_conversation(
         conversation_id, auth_ctx.require_user.email
     )
     if not conv:
@@ -367,7 +367,7 @@ async def _stream_response(
             break
 
         # Save the assistant message with tool_use blocks.
-        await neo4j_ops.add_message(
+        await age_ops.add_message(
             conversation_id=conversation_id,
             role='assistant',
             content=state['text'],
@@ -447,7 +447,7 @@ async def _stream_response(
                 )
 
         # Save tool results as a user message.
-        await neo4j_ops.add_message(
+        await age_ops.add_message(
             conversation_id=conversation_id,
             role='user',
             content='',
@@ -458,7 +458,7 @@ async def _stream_response(
         )
 
     # Save the final assistant message.
-    msg = await neo4j_ops.add_message(
+    msg = await age_ops.add_message(
         conversation_id=conversation_id,
         role='assistant',
         content=state['text'],
@@ -481,7 +481,7 @@ async def _stream_response(
             accumulated_text,
             model,
         )
-        await neo4j_ops.update_conversation_title(
+        await age_ops.update_conversation_title(
             conversation_id,
             auth_ctx.require_user.email,
             title,
@@ -502,7 +502,7 @@ async def send_message(
     """Send a message and stream the response via SSE."""
     _require_assistant()
 
-    conv = await neo4j_ops.get_conversation(
+    conv = await age_ops.get_conversation(
         conversation_id, auth_ctx.require_user.email
     )
     if not conv:
@@ -511,7 +511,7 @@ async def send_message(
         )
 
     assistant_settings = settings.get_assistant_settings()
-    msg_count = await neo4j_ops.count_messages(conversation_id)
+    msg_count = await age_ops.count_messages(conversation_id)
     max_turns = assistant_settings.max_conversation_turns
     if msg_count >= max_turns:
         raise fastapi.HTTPException(
@@ -522,13 +522,13 @@ async def send_message(
             ),
         )
 
-    await neo4j_ops.add_message(
+    await age_ops.add_message(
         conversation_id=conversation_id,
         role='user',
         content=body.content,
     )
 
-    all_msgs = await neo4j_ops.get_messages(conversation_id)
+    all_msgs = await age_ops.get_messages(conversation_id)
     api_messages: list[dict[str, typing.Any]] = [
         _build_api_message(m) for m in all_msgs
     ]

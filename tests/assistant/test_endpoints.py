@@ -394,7 +394,7 @@ class CreateConversationEndpointTestCase(
         settings._assistant_settings = None
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.create_conversation',
+        'imbi_assistant.age_ops.create_conversation',
     )
     async def test_create_conversation(
         self,
@@ -411,7 +411,7 @@ class CreateConversationEndpointTestCase(
         self.assertEqual(result.id, 'conv-123')
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.create_conversation',
+        'imbi_assistant.age_ops.create_conversation',
     )
     async def test_create_conversation_custom_model(
         self,
@@ -436,7 +436,7 @@ class ListConversationsEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.neo4j_ops.list_conversations',
+        'imbi_assistant.age_ops.list_conversations',
     )
     async def test_list_conversations(
         self,
@@ -448,7 +448,7 @@ class ListConversationsEndpointTestCase(
         self.assertEqual(len(result), 1)
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.list_conversations',
+        'imbi_assistant.age_ops.list_conversations',
     )
     async def test_list_conversations_limit_capped(
         self,
@@ -465,7 +465,7 @@ class ListConversationsEndpointTestCase(
         )
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.list_conversations',
+        'imbi_assistant.age_ops.list_conversations',
     )
     async def test_list_conversations_negative_values(
         self,
@@ -488,10 +488,10 @@ class GetConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_messages',
+        'imbi_assistant.age_ops.get_messages',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_get_conversation(
         self,
@@ -508,7 +508,7 @@ class GetConversationEndpointTestCase(
         self.assertEqual(result.messages, [])
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_get_conversation_not_found(
         self,
@@ -528,7 +528,7 @@ class DeleteConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.neo4j_ops.delete_conversation',
+        'imbi_assistant.age_ops.delete_conversation',
     )
     async def test_delete_conversation(
         self,
@@ -542,7 +542,7 @@ class DeleteConversationEndpointTestCase(
         mock_delete.assert_called_once_with('conv-123', 'test@example.com')
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.delete_conversation',
+        'imbi_assistant.age_ops.delete_conversation',
     )
     async def test_delete_conversation_not_found(
         self,
@@ -562,10 +562,10 @@ class UpdateConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.update_conversation_title',
+        'imbi_assistant.age_ops.update_conversation_title',
     )
     async def test_update_title(
         self,
@@ -587,10 +587,10 @@ class UpdateConversationEndpointTestCase(
         mock_update.assert_called_once()
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.archive_conversation',
+        'imbi_assistant.age_ops.archive_conversation',
     )
     async def test_archive(
         self,
@@ -611,10 +611,10 @@ class UpdateConversationEndpointTestCase(
         mock_archive.assert_called_once()
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.update_conversation_title',
+        'imbi_assistant.age_ops.update_conversation_title',
     )
     async def test_update_not_found(
         self,
@@ -675,7 +675,7 @@ class SendMessageEndpointTestCase(
         self.assertEqual(ctx.exception.status_code, 503)
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_send_message_conversation_not_found(
         self,
@@ -695,10 +695,10 @@ class SendMessageEndpointTestCase(
 
     @mock.patch.dict('os.environ', {}, clear=True)
     @mock.patch(
-        'imbi_assistant.neo4j_ops.count_messages',
+        'imbi_assistant.age_ops.count_messages',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_send_message_turn_limit_reached(
         self,
@@ -721,16 +721,16 @@ class SendMessageEndpointTestCase(
 
     @mock.patch.dict('os.environ', {}, clear=True)
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_messages',
+        'imbi_assistant.age_ops.get_messages',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.add_message',
+        'imbi_assistant.age_ops.add_message',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.count_messages',
+        'imbi_assistant.age_ops.count_messages',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_send_message_returns_streaming_response(
         self,
@@ -836,7 +836,7 @@ class StreamResponseTestCase(
             sequence=1,
         )
         with mock.patch(
-            'imbi_assistant.neo4j_ops.add_message',
+            'imbi_assistant.age_ops.add_message',
             return_value=msg,
         ):
             chunks = []
@@ -888,7 +888,7 @@ class StreamResponseTestCase(
         )
         with (
             mock.patch(
-                'imbi_assistant.neo4j_ops.add_message',
+                'imbi_assistant.age_ops.add_message',
                 return_value=msg,
             ),
             mock.patch(
@@ -896,7 +896,7 @@ class StreamResponseTestCase(
                 return_value='Generated Title',
             ) as mock_gen,
             mock.patch(
-                'imbi_assistant.neo4j_ops.update_conversation_title',
+                'imbi_assistant.age_ops.update_conversation_title',
             ) as mock_update,
         ):
             chunks = []

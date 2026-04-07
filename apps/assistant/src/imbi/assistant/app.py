@@ -4,19 +4,19 @@ from collections import abc
 
 import fastapi
 import typer
-from imbi_common import lifespan, neo4j, server
+from imbi_common import age, lifespan, server
 
 import imbi_assistant
 from imbi_assistant import app_status, client, endpoints, mcp
 
 
 @contextlib.asynccontextmanager
-async def _neo4j_lifespan() -> abc.AsyncIterator[None]:
-    await neo4j.initialize()
+async def _age_lifespan() -> abc.AsyncIterator[None]:
+    await age.initialize()
     try:
         yield
     finally:
-        await neo4j.aclose()
+        await age.aclose()
 
 
 @contextlib.asynccontextmanager
@@ -43,7 +43,7 @@ def create_app() -> fastapi.FastAPI:
         version=imbi_assistant.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
-            _neo4j_lifespan,
+            _age_lifespan,
             _anthropic_lifespan,
             _mcp_lifespan,
         ),

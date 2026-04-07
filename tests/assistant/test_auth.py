@@ -82,7 +82,7 @@ class LoadUserPermissionsTestCase(
                 ]
             }
         ]
-        with mock.patch('imbi_common.neo4j.run', return_value=ctx):
+        with mock.patch('imbi_common.age.run', return_value=ctx):
             perms = await auth.load_user_permissions('test@example.com')
         self.assertEqual(perms, {'project:read', 'team:read'})
 
@@ -91,7 +91,7 @@ class LoadUserPermissionsTestCase(
         ctx.__aenter__.return_value = ctx
         ctx.__aexit__.return_value = None
         ctx.data.return_value = []
-        with mock.patch('imbi_common.neo4j.run', return_value=ctx):
+        with mock.patch('imbi_common.age.run', return_value=ctx):
             perms = await auth.load_user_permissions('test@example.com')
         self.assertEqual(perms, set())
 
@@ -160,10 +160,10 @@ class GetCurrentUserTestCase(
     async def test_user_not_found(self) -> None:
         creds = mock.MagicMock()
         creds.credentials = 'some-token'
-        neo4j_ctx = mock.AsyncMock()
-        neo4j_ctx.__aenter__.return_value = neo4j_ctx
-        neo4j_ctx.__aexit__.return_value = None
-        neo4j_ctx.data.return_value = []
+        age_ctx = mock.AsyncMock()
+        age_ctx.__aenter__.return_value = age_ctx
+        age_ctx.__aexit__.return_value = None
+        age_ctx.data.return_value = []
         with (
             mock.patch(
                 'imbi_common.auth.core.verify_token',
@@ -174,8 +174,8 @@ class GetCurrentUserTestCase(
                 },
             ),
             mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=neo4j_ctx,
+                'imbi_common.age.run',
+                return_value=age_ctx,
             ),
         ):
             with self.assertRaises(fastapi.HTTPException) as ctx:
@@ -185,10 +185,10 @@ class GetCurrentUserTestCase(
     async def test_inactive_user(self) -> None:
         creds = mock.MagicMock()
         creds.credentials = 'some-token'
-        neo4j_ctx = mock.AsyncMock()
-        neo4j_ctx.__aenter__.return_value = neo4j_ctx
-        neo4j_ctx.__aexit__.return_value = None
-        neo4j_ctx.data.return_value = [
+        age_ctx = mock.AsyncMock()
+        age_ctx.__aenter__.return_value = age_ctx
+        age_ctx.__aexit__.return_value = None
+        age_ctx.data.return_value = [
             {
                 'u': {
                     'email': 'inactive@example.com',
@@ -208,11 +208,11 @@ class GetCurrentUserTestCase(
                 },
             ),
             mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=neo4j_ctx,
+                'imbi_common.age.run',
+                return_value=age_ctx,
             ),
             mock.patch(
-                'imbi_common.neo4j.convert_neo4j_types',
+                'imbi_common.age.convert_neo4j_types',
                 side_effect=lambda x: x,
             ),
         ):
@@ -225,10 +225,10 @@ class GetCurrentUserTestCase(
         creds = mock.MagicMock()
         creds.credentials = 'good-token'
 
-        neo4j_ctx = mock.AsyncMock()
-        neo4j_ctx.__aenter__.return_value = neo4j_ctx
-        neo4j_ctx.__aexit__.return_value = None
-        neo4j_ctx.data.return_value = [
+        age_ctx = mock.AsyncMock()
+        age_ctx.__aenter__.return_value = age_ctx
+        age_ctx.__aexit__.return_value = None
+        age_ctx.data.return_value = [
             {
                 'u': {
                     'email': 'test@example.com',
@@ -254,11 +254,11 @@ class GetCurrentUserTestCase(
                 },
             ),
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[neo4j_ctx, perms_ctx],
+                'imbi_common.age.run',
+                side_effect=[age_ctx, perms_ctx],
             ),
             mock.patch(
-                'imbi_common.neo4j.convert_neo4j_types',
+                'imbi_common.age.convert_neo4j_types',
                 side_effect=lambda x: x,
             ),
         ):

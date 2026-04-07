@@ -7,7 +7,7 @@ import fastapi
 import jwt
 import pydantic
 from fastapi import security
-from imbi_common import neo4j, settings
+from imbi_common import age, settings
 from imbi_common.auth import core
 
 LOGGER = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ async def load_user_permissions(email: str) -> set[str]:
     OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission)
     RETURN collect(DISTINCT perm.name) AS permissions
     """
-    async with neo4j.run(query, email=email) as result:
+    async with age.run(query, email=email) as result:
         records = await result.data()
         if not records:
             return set()
@@ -131,13 +131,13 @@ async def get_current_user(
     MATCH (u:User {email: $email})
     RETURN u
     """
-    async with neo4j.run(user_query, email=subject) as result:
+    async with age.run(user_query, email=subject) as result:
         records = await result.data()
         if not records:
             raise fastapi.HTTPException(
                 status_code=401, detail='User not found'
             )
-        user_data = neo4j.convert_neo4j_types(records[0]['u'])
+        user_data = age.convert_neo4j_types(records[0]['u'])
         user = User(**user_data)
 
     if not user.is_active:

@@ -1,4 +1,4 @@
-"""Neo4j operations for AI assistant conversations and messages."""
+"""AGE operations for AI assistant conversations and messages."""
 
 import datetime
 import json
@@ -6,7 +6,7 @@ import logging
 import typing
 import uuid
 
-from imbi_common import neo4j
+from imbi_common import age
 
 from imbi_assistant import models
 
@@ -53,7 +53,7 @@ async def create_conversation(
     )
     RETURN c
     """
-    async with neo4j.run(
+    async with age.run(
         query,
         id=conversation.id,
         user_email=user_email,
@@ -63,7 +63,7 @@ async def create_conversation(
         model=model,
         is_archived=False,
     ) as result:
-        await result.consume()
+        await result.data()
 
     LOGGER.info(
         'Created conversation %s for user %s',
@@ -91,7 +91,7 @@ async def get_conversation(
     MATCH (c:Conversation {id: $id, user_email: $user_email})
     RETURN c
     """
-    async with neo4j.run(
+    async with age.run(
         query, id=conversation_id, user_email=user_email
     ) as result:
         records = await result.data()
@@ -99,7 +99,7 @@ async def get_conversation(
     if not records:
         return None
 
-    data = neo4j.convert_neo4j_types(records[0]['c'])
+    data = age.convert_neo4j_types(records[0]['c'])
     return models.Conversation(**data)
 
 
@@ -131,7 +131,7 @@ async def list_conversations(
     LIMIT $limit
     """
     conversations: list[models.Conversation] = []
-    async with neo4j.run(
+    async with age.run(
         query,
         user_email=user_email,
         limit=limit,
@@ -140,7 +140,7 @@ async def list_conversations(
         records = await result.data()
 
     for record in records:
-        data = neo4j.convert_neo4j_types(record['c'])
+        data = age.convert_neo4j_types(record['c'])
         conversations.append(models.Conversation(**data))
     return conversations
 
@@ -192,7 +192,7 @@ async def add_message(
     CREATE (c)-[:CONTAINS]->(m)
     RETURN m.sequence AS sequence
     """
-    async with neo4j.run(
+    async with age.run(
         query,
         id=msg_id,
         conversation_id=conversation_id,
@@ -243,7 +243,7 @@ async def get_messages(
     LIMIT $limit
     """
     messages: list[models.Message] = []
-    async with neo4j.run(
+    async with age.run(
         query,
         conversation_id=conversation_id,
         limit=limit,
@@ -251,7 +251,7 @@ async def get_messages(
         records = await result.data()
 
     for record in records:
-        data = neo4j.convert_neo4j_types(record['m'])
+        data = age.convert_neo4j_types(record['m'])
         # Deserialize JSON strings back to Python objects
         for field in ('tool_use', 'tool_results', 'token_usage'):
             if isinstance(data.get(field), str):
@@ -274,7 +274,7 @@ async def count_messages(conversation_id: str) -> int:
     MATCH (m:Message {conversation_id: $conversation_id})
     RETURN count(m) AS count
     """
-    async with neo4j.run(query, conversation_id=conversation_id) as result:
+    async with age.run(query, conversation_id=conversation_id) as result:
         records = await result.data()
     return records[0]['count'] if records else 0
 
@@ -301,7 +301,7 @@ async def update_conversation_title(
         c.updated_at = datetime()
     RETURN c.id AS id
     """
-    async with neo4j.run(
+    async with age.run(
         query,
         id=conversation_id,
         user_email=user_email,
@@ -331,7 +331,7 @@ async def archive_conversation(
         c.updated_at = datetime()
     RETURN c.id AS id
     """
-    async with neo4j.run(
+    async with age.run(
         query,
         id=conversation_id,
         user_email=user_email,
@@ -360,7 +360,7 @@ async def delete_conversation(
     DETACH DELETE c, m
     RETURN count(c) AS deleted
     """
-    async with neo4j.run(
+    async with age.run(
         query,
         id=conversation_id,
         user_email=user_email,

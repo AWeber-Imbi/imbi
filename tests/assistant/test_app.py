@@ -15,12 +15,12 @@ class AppTests(helpers.TestCase):
 
     @mock.patch('imbi_assistant.client.aclose')
     @mock.patch('imbi_assistant.client.initialize')
-    @mock.patch('imbi_common.neo4j.aclose')
-    @mock.patch('imbi_common.neo4j.initialize')
+    @mock.patch('imbi_common.age.aclose')
+    @mock.patch('imbi_common.age.initialize')
     def test_status_endpoint(
         self,
-        _neo4j_init: mock.AsyncMock,
-        _neo4j_close: mock.AsyncMock,
+        _age_init: mock.AsyncMock,
+        _age_close: mock.AsyncMock,
         _client_init: mock.AsyncMock,
         _client_close: mock.AsyncMock,
     ) -> None:
@@ -43,12 +43,12 @@ class AppTests(helpers.TestCase):
 
     @mock.patch('imbi_assistant.client.aclose')
     @mock.patch('imbi_assistant.client.initialize')
-    @mock.patch('imbi_common.neo4j.aclose')
-    @mock.patch('imbi_common.neo4j.initialize')
+    @mock.patch('imbi_common.age.aclose')
+    @mock.patch('imbi_common.age.initialize')
     def test_status_endpoint_in_specific_environment(
         self,
-        _neo4j_init: mock.AsyncMock,
-        _neo4j_close: mock.AsyncMock,
+        _age_init: mock.AsyncMock,
+        _age_close: mock.AsyncMock,
         _client_init: mock.AsyncMock,
         _client_close: mock.AsyncMock,
     ) -> None:
