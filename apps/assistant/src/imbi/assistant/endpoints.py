@@ -7,6 +7,7 @@ import typing
 
 import anthropic
 import fastapi
+import fastapi.security
 from fastapi import responses
 
 from imbi_assistant import (
@@ -327,13 +328,20 @@ async def _stream_response(
     mcp_manager = mcp.get_manager()
     accumulated_text = ''
 
+    state: dict[str, typing.Any] = {
+        'text': '',
+        'stop_reason': None,
+        'usage': {},
+    }
+    tool_use_blocks: list[dict[str, typing.Any]] = []
+
     for _round in range(max_rounds):
-        state: dict[str, typing.Any] = {
+        state = {
             'text': '',
             'stop_reason': None,
             'usage': {},
         }
-        tool_use_blocks: list[dict[str, typing.Any]] = []
+        tool_use_blocks = []
 
         kwargs: dict[str, typing.Any] = {
             'model': model,
