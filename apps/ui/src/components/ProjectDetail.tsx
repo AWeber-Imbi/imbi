@@ -439,7 +439,7 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
         </TabsList>
 
         <TabsContent value="overview">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
             {/* Left column: Details */}
             <div className="space-y-6">
               <Card
