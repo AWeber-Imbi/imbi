@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Navigation } from '@/components/Navigation'
 import { CommandBar } from '@/components/CommandBar'
 import { Admin } from '@/components/Admin'
-import honeycombBg from '@/assets/honeycomb_pattern_organic.png'
 
 const THEME_STORAGE_KEY = 'imbi-theme'
 
@@ -28,11 +27,7 @@ export function AdminPage() {
         />
         <main
           className="pt-16"
-          style={{
-            paddingBottom: 'var(--assistant-height, 64px)',
-            backgroundImage: `url(${honeycombBg})`,
-            backgroundRepeat: 'repeat',
-          }}
+          style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
         >
           <Admin isDarkMode={isDarkMode} />
         </main>

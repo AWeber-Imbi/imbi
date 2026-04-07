@@ -1,6 +1,6 @@
 import { ExternalLink, icons as lucideIcons } from 'lucide-react'
 import * as simpleIcons from '@icons-pack/react-simple-icons'
-import * as awsIcons from 'aws-react-icons'
+import { createElement } from 'react'
 import type { ComponentType, SVGProps } from 'react'
 
 type IconComponent = ComponentType<
@@ -14,20 +14,81 @@ function toPascalCase(str: string): string {
     .join('')
 }
 
+// ---------------------------------------------------------------------------
+// AWS SVG icon index (built at compile time via Vite import.meta.glob)
+// We import 64px Architecture-Service icons and 48px Light Resource icons.
+// ---------------------------------------------------------------------------
+const awsArchGlob = import.meta.glob<string>(
+  '/node_modules/aws-svg-icons/lib/Architecture-Service-Icons_07302021/*/64/*.svg',
+  { eager: true, import: 'default', query: '?url' },
+)
+const awsResGlob = import.meta.glob<string>(
+  '/node_modules/aws-svg-icons/lib/Resource-Icons_07302021/*/Res_48_Light/*.svg',
+  { eager: true, import: 'default', query: '?url' },
+)
+
+/**
+ * Build a lookup map from normalized name → SVG URL.
+ *
+ * Architecture icons:  Arch_AWS-Lambda_64.svg → "aws-lambda"
+ * Resource icons:      Res_AWS-Systems-Manager_Parameter-Store_48_Light.svg → "aws-systems-manager-parameter-store"
+ */
+function buildAwsIndex(): Record<string, string> {
+  const index: Record<string, string> = {}
+
+  for (const [path, url] of Object.entries(awsArchGlob)) {
+    // Extract filename: Arch_AWS-Lambda_64.svg → AWS-Lambda
+    const filename = path.split('/').pop()!
+    const match = filename.match(/^Arch_(.+)_64\.svg$/)
+    if (!match) continue
+    const name = match[1].toLowerCase()
+    index[name] = url
+  }
+
+  for (const [path, url] of Object.entries(awsResGlob)) {
+    // Extract filename: Res_AWS-Systems-Manager_Parameter-Store_48_Light.svg → AWS-Systems-Manager_Parameter-Store
+    const filename = path.split('/').pop()!
+    const match = filename.match(/^Res_(.+)_48_Light\.svg$/)
+    if (!match) continue
+    // Normalize underscores to hyphens for consistent lookup
+    const name = match[1].replace(/_/g, '-').toLowerCase()
+    index[name] = url
+  }
+
+  return index
+}
+
+const awsIndex = buildAwsIndex()
+
+/** Create a React component that renders an <img> for an AWS SVG icon URL. */
+function createAwsImgComponent(url: string): IconComponent {
+  const AwsIcon: IconComponent = (props) => {
+    const { className, width, height, ...rest } = props as Record<
+      string,
+      unknown
+    >
+    return createElement('img', {
+      src: url,
+      alt: '',
+      className,
+      width: width ?? 16,
+      height: height ?? 16,
+      ...rest,
+    })
+  }
+  return AwsIcon
+}
+
+const siLookup = simpleIcons as Record<string, unknown>
+
 /**
  * Resolve an icon name to a React component.
  *
  * Naming convention:
- *   - "si-github"               → Simple Icons (SiGithub)
- *   - "aws-lambda"              → AWS Icons (ArchitectureServiceAWSLambda)
- *   - "aws:ArchitectureService" → AWS Icons by exact export name
- *   - "external-link"           → Lucide (ExternalLink)
- *
- * AWS icons use three prefixes in the library: ArchitectureService*,
- * ArchitectureGroup*, Category*, and Resource*. The shorthand "aws-"
- * prefix tries ArchitectureService{AWS,Amazon}{PascalName} first,
- * then falls back to a case-insensitive search. Use "aws:" for an
- * exact export name lookup.
+ *   - "si-github"                            → Simple Icons (SiGithub)
+ *   - "aws-lambda"                           → AWS SVG icon (Arch_AWS-Lambda_64.svg)
+ *   - "aws-systems-manager-parameter-store"  → AWS SVG icon (Res_..._Parameter-Store_48_Light.svg)
+ *   - "external-link"                        → Lucide (ExternalLink)
  *
  * Returns the fallback icon when the name is missing or unresolved.
  */
@@ -45,53 +106,19 @@ export function getIcon(
     return fallback
   }
 
-  // AWS Icons exact: aws:ArchitectureServiceAWSLambda
-  if (iconName.startsWith('aws:')) {
-    const name = iconName.slice(4)
-    const icon = awsLookup[name]
-    if (icon) return icon as IconComponent
-    return fallback
-  }
-
-  // AWS Icons shorthand: aws-lambda → try common prefixes
+  // AWS Icons: aws-lambda, aws-systems-manager-parameter-store
   if (iconName.startsWith('aws-')) {
-    const pascal = toPascalCase(iconName.slice(4))
-    const icon = resolveAwsIcon(pascal)
-    if (icon) return icon
+    const key = iconName.slice(4).toLowerCase()
+    const url = awsIndex[key]
+    if (url) return createAwsImgComponent(url)
+    // Try partial match (suffix)
+    for (const [k, u] of Object.entries(awsIndex)) {
+      if (k.endsWith(key)) return createAwsImgComponent(u)
+    }
     return fallback
   }
 
   // Lucide: external-link → ExternalLink
   const name = toPascalCase(iconName) as keyof typeof lucideIcons
   return (lucideIcons[name] as IconComponent) || fallback
-}
-
-// Pre-built lookup tables for AWS icons
-const awsLookup = awsIcons as Record<string, unknown>
-const siLookup = simpleIcons as Record<string, unknown>
-
-const AWS_PREFIXES = [
-  'ArchitectureServiceAWS',
-  'ArchitectureServiceAmazon',
-  'ArchitectureService',
-  'Category',
-  'Resource',
-  'ResourceAWS',
-  'ResourceAmazon',
-  'ArchitectureGroup',
-]
-
-function resolveAwsIcon(pascal: string): IconComponent | null {
-  for (const prefix of AWS_PREFIXES) {
-    const icon = awsLookup[prefix + pascal]
-    if (icon) return icon as IconComponent
-  }
-  // Case-insensitive fallback
-  const lower = pascal.toLowerCase()
-  for (const key of Object.keys(awsLookup)) {
-    if (key.toLowerCase().endsWith(lower)) {
-      return awsLookup[key] as IconComponent
-    }
-  }
-  return null
 }
