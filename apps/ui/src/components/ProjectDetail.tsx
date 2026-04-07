@@ -408,11 +408,10 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+                    className={`flex items-center gap-1.5 text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-text'} hover:underline`}
                   >
                     <Icon className="h-4 w-4" />
                     <span>{linkLabel}</span>
-                    <ExternalLink className="h-3 w-3" />
                   </a>
                 </span>
               ),
@@ -440,7 +439,7 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
         </TabsList>
 
         <TabsContent value="overview">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr]">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
             {/* Left column: Details */}
             <div className="space-y-6">
               <Card
@@ -645,10 +644,20 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
                   <h3 className={`mb-4 ${value}`}>Environments</h3>
                   <div className="space-y-0">
                     {sortedEnvironments.map((env) => {
-                      const url =
-                        typeof env.url === 'string' && env.url !== ''
-                          ? env.url
-                          : null
+                      let url: string | null = null
+                      if (typeof env.url === 'string' && env.url !== '') {
+                        try {
+                          const parsed = new URL(env.url)
+                          if (
+                            parsed.protocol === 'http:' ||
+                            parsed.protocol === 'https:'
+                          ) {
+                            url = parsed.toString()
+                          }
+                        } catch {
+                          url = null
+                        }
+                      }
                       return (
                         <div
                           key={env.slug}
@@ -664,10 +673,12 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 text-sm text-amber-text hover:underline"
+                              className={`flex items-center gap-1.5 text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-text'} hover:underline`}
                             >
                               {url}
-                              <ExternalLink className="h-3 w-3 text-amber-text" />
+                              <ExternalLink
+                                className={`h-3 w-3 ${isDarkMode ? 'text-amber-400' : 'text-amber-text'}`}
+                              />
                             </a>
                           ) : (
                             <span className={`text-sm ${muted}`}>—</span>

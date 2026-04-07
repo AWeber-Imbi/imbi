@@ -99,6 +99,9 @@ export interface LinkDefinition {
     name: string
     slug: string
   }
+  relationships?: {
+    projects?: RelationshipLink
+  }
 }
 
 export interface LinkDefinitionCreate {

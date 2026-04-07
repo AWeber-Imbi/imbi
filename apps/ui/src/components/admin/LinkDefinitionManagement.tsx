@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiError } from '@/api/client'
 import { Plus, Search, Trash2, Link2, AlertCircle } from 'lucide-react'
+import { getIcon } from '@/lib/icons'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -222,7 +223,7 @@ export function LinkDefinitionManagement({
         </div>
         <Button
           onClick={goToCreate}
-          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+          className="bg-amber-border-strong text-white hover:brightness-125"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Link Definition
@@ -268,6 +269,13 @@ export function LinkDefinitionManagement({
                   }`}
                 >
                   URL Template
+                </th>
+                <th
+                  className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
+                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                  }`}
+                >
+                  Projects
                 </th>
                 <th
                   className={`whitespace-nowrap px-6 py-3 text-center text-xs uppercase tracking-wider ${
@@ -348,7 +356,22 @@ export function LinkDefinitionManagement({
                       isDarkMode ? 'text-gray-300' : 'text-gray-600'
                     }`}
                   >
-                    {ld.icon || '--'}
+                    {ld.icon
+                      ? (() => {
+                          const Icon = getIcon(ld.icon, null)
+                          return Icon ? (
+                            <Icon
+                              className={`mx-auto h-5 w-5 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                            />
+                          ) : (
+                            <span
+                              className={`text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                            >
+                              {ld.icon}
+                            </span>
+                          )
+                        })()
+                      : '--'}
                   </td>
                   <td
                     className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
@@ -372,6 +395,19 @@ export function LinkDefinitionManagement({
                         --
                       </span>
                     )}
+                  </td>
+                  <td
+                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${
+                      (ld.relationships?.projects?.count ?? 0) === 0
+                        ? isDarkMode
+                          ? 'text-gray-600'
+                          : 'text-gray-400'
+                        : isDarkMode
+                          ? 'text-gray-300'
+                          : 'text-gray-600'
+                    }`}
+                  >
+                    {ld.relationships?.projects?.count ?? 0}
                   </td>
                   <td
                     className={`whitespace-nowrap px-6 py-4 text-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
