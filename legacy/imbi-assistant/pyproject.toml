@@ -164,4 +164,4 @@ url = "https://pypi.org/simple"
 default = true
 
 [tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common", rev = "main" }
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common", branch = "feature/migrate-neo4j-to-age" }
