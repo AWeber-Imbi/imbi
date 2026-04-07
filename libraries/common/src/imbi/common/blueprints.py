@@ -3,7 +3,7 @@ import typing
 
 import pydantic
 
-from imbi_common import models, neo4j
+from imbi_common import age, models
 
 
 def _coerce_enum_case(
@@ -213,7 +213,7 @@ async def get_model[ModelType: pydantic.BaseModel](
 
     """
     all_blueprints: list[models.Blueprint] = []
-    async for blueprint in neo4j.fetch_nodes(
+    async for blueprint in age.fetch_nodes(
         models.Blueprint,
         {'type': model.__name__, 'enabled': True},
         order_by='priority',

@@ -4,9 +4,10 @@ import unittest
 from unittest import mock
 
 import pydantic
-from neo4j import exceptions
 
-from imbi_common import blueprints, models, neo4j
+from imbi_common import age, blueprints, models
+from imbi_common.age import exceptions
+from tests import AGETestCase
 
 
 class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
@@ -15,8 +16,8 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         self.org = models.Organization(name='Org', slug='org')
-        # Mock neo4j.fetch_nodes to return test blueprints
-        self.fetch_nodes_patcher = mock.patch('imbi_common.neo4j.fetch_nodes')
+        # Mock age.fetch_nodes to return test blueprints
+        self.fetch_nodes_patcher = mock.patch('imbi_common.age.fetch_nodes')
         self.mock_fetch_nodes = self.fetch_nodes_patcher.start()
         self.addCleanup(self.fetch_nodes_patcher.stop)
 
@@ -726,7 +727,7 @@ class GetModelFilterTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         self.org = models.Organization(name='Org', slug='org')
-        self.fetch_nodes_patcher = mock.patch('imbi_common.neo4j.fetch_nodes')
+        self.fetch_nodes_patcher = mock.patch('imbi_common.age.fetch_nodes')
         self.mock_fetch_nodes = self.fetch_nodes_patcher.start()
         self.addCleanup(self.fetch_nodes_patcher.stop)
 
@@ -815,31 +816,18 @@ class GetModelFilterTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('framework', model.model_fields)
 
 
-class GetModelIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
-    """Integration tests for blueprints.get_model with real Neo4j."""
+class GetModelIntegrationTestCase(AGETestCase):
+    """Integration tests for blueprints.get_model with real AGE."""
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        # Initialize Neo4j connection
-        await neo4j.initialize()
-        # Clean up any existing test blueprint before starting
-        async with neo4j.session() as session:
-            await session.run(
-                "MATCH (b:Blueprint {name: 'test-rtt'}) DETACH DELETE b"
-            )
+        await age.query(
+            "MATCH (b:Blueprint {name: 'test-rtt'})"
+            ' DETACH DELETE b RETURN 1 AS ok'
+        )
 
-    async def asyncTearDown(self) -> None:
-        # Clean up test blueprints
-        async with neo4j.session() as session:
-            await session.run(
-                "MATCH (b:Blueprint {name: 'test-rtt'}) DETACH DELETE b"
-            )
-        # Close Neo4j connection
-        await neo4j.aclose()
-        await super().asyncTearDown()
-
-    async def test_round_trip_with_neo4j(self) -> None:
-        """Test round-trip: create blueprint in Neo4j and build model."""
+    async def test_round_trip_with_age(self) -> None:
+        """Test round-trip: create blueprint in AGE and build model."""
         # Create a test blueprint
         blueprint = models.Blueprint(
             name='test-rtt',
@@ -874,9 +862,9 @@ class GetModelIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        # Store blueprint in Neo4j (handle constraint errors if already exists)
+        # Store blueprint in AGE (handle constraint errors if already exists)
         try:
-            await neo4j.create_node(blueprint)
+            await age.create_node(blueprint)
         except exceptions.ConstraintError:
             pass  # Blueprint already exists from previous run
 

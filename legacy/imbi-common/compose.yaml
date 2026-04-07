@@ -13,16 +13,12 @@ services:
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'" ]
 
-  neo4j:
-    image: neo4j:latest
-    environment:
-      NEO4J_AUTH: none
-      NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_apoc_trigger_enabled: 'true'
-      NEO4J_dbms_security_procedures_unrestricted: 'apoc.*'
-      NEO4J_dbms_security_procedures_allowlist: 'apoc.*'
+  postgres:
+    image: apache/age:release_PG16_1.6.0
     ports:
-      - "7474"
-      - "7687"
+      - "5432"
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: imbi
     healthcheck:
-      test: [ "CMD-SHELL", "wget -qO-  http://localhost:7474" ]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]

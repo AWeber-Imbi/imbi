@@ -32,7 +32,7 @@ docker:
     TEST_HOST="$test_host"
     CLICKHOUSE_URL="http://default:password@$test_host:$(port clickhouse 8123)/imbi"
     FILE_CACHE_ENABLED="no"
-    NEO4J_URL="bolt://neo4j:neo4j@$test_host:$(port neo4j 7687)"
+    AGE_URL="postgresql://postgres:secret@$test_host:$(port postgres 5432)/imbi"
     EOF
 
 [doc("Generate docs")]

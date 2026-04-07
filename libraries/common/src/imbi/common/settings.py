@@ -3,7 +3,6 @@ import pathlib
 import secrets
 import tomllib
 import typing
-from urllib import parse
 
 import pydantic
 import pydantic_settings
@@ -41,50 +40,14 @@ class Clickhouse(pydantic_settings.BaseSettings):
     max_connect_attempts: int = 10
 
 
-class Neo4j(pydantic_settings.BaseSettings):
-    model_config = base_settings_config(env_prefix='NEO4J_')
-    url: pydantic.AnyUrl = pydantic.AnyUrl('neo4j://localhost:7687')
-    user: str | None = None
-    password: str | None = None
-    database: str = 'neo4j'
-    keep_alive: bool = True
-    liveness_check_timeout: int = 60
-    max_connection_lifetime: int = 300
+class AGE(pydantic_settings.BaseSettings):
+    """Apache AGE (PostgreSQL extension) connection settings."""
 
-    @pydantic.model_validator(mode='after')
-    def extract_credentials_from_url(self) -> 'Neo4j':
-        """Extract username/password from URL and strip them from the URL.
-
-        If the URL contains embedded credentials (e.g.,
-        neo4j://username:password@localhost:7687), extract them and set
-        the user and password fields, then clean the URL.
-
-        """
-        if self.url.username and not self.user:
-            # Decode URL-encoded username
-            self.user = parse.unquote(self.url.username)
-
-        if self.url.password and not self.password:
-            # Decode URL-encoded password
-            self.password = parse.unquote(self.url.password)
-
-        # Strip credentials from URL if present
-        if self.url.username or self.url.password:
-            # Rebuild URL without credentials
-            scheme = self.url.scheme
-            host = self.url.host or 'localhost'
-            path = self.url.path or ''
-
-            # Build URL - only include port if explicitly set
-            url_parts = f'{scheme}://{host}'
-            if self.url.port:
-                url_parts += f':{self.url.port}'
-            if path:
-                url_parts += path
-
-            self.url = pydantic.AnyUrl(url_parts)
-
-        return self
+    model_config = base_settings_config(env_prefix='AGE_')
+    url: str = 'postgresql://postgres:secret@localhost:5432/imbi'
+    graph_name: str = 'imbi'
+    min_pool_size: int = 2
+    max_pool_size: int = 10
 
 
 class Auth(pydantic_settings.BaseSettings):
@@ -146,9 +109,8 @@ class Configuration(pydantic.BaseModel):
     Environment variables always take precedence over config file values.
 
     Example config.toml:
-        [neo4j]
-        url = "neo4j://neo4j-prod:7687"
-        user = "admin"
+        [age]
+        url = "postgresql://postgres:secret@db-prod:5432/imbi"
 
         [auth]
         jwt_secret = "your-secret-here"
@@ -175,7 +137,7 @@ class Configuration(pydantic.BaseModel):
         """
         settings_fields: dict[str, type[pydantic_settings.BaseSettings]] = {
             'clickhouse': Clickhouse,
-            'neo4j': Neo4j,
+            'age': AGE,
             'auth': Auth,
         }
         for field, settings_cls in settings_fields.items():
@@ -187,7 +149,7 @@ class Configuration(pydantic.BaseModel):
         return data
 
     clickhouse: Clickhouse = pydantic.Field(default_factory=Clickhouse)
-    neo4j: Neo4j = pydantic.Field(default_factory=Neo4j)
+    age: AGE = pydantic.Field(default_factory=AGE)
     auth: Auth = pydantic.Field(default_factory=Auth)
 
 

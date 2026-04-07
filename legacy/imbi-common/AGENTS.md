@@ -17,7 +17,7 @@ just clean        # Tear down Docker, remove .env and build artifacts
 just real-clean   # Remove .venv and all caches (prompts for confirmation)
 ```
 
-The `just test` target automatically starts Docker services (Neo4j + ClickHouse), creates a `.env` file with connection URLs, and runs coverage. When running specific files, the `.env` must already exist or env vars must be set.
+The `just test` target automatically starts Docker services (PostgreSQL with AGE + ClickHouse), creates a `.env` file with connection URLs, and runs coverage. When running specific files, the `.env` must already exist or env vars must be set.
 
 Running individual tests (e.g., during iteration):
 
@@ -34,11 +34,11 @@ just test tests/path/to/test_file.py::TestClass::test_method
 
 | Module               | Purpose                                                                                                                                                                                                      |
 |----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `neo4j/`             | Neo4j async driver wrapper — singleton `Neo4j` client, plus high-level graph functions (`fetch_node`, `fetch_nodes`, `upsert`, `create_node`, `create_relationship`, `delete_node`, `run`)                   |
+| `age/`               | Apache AGE (PostgreSQL extension) async client — singleton `AGE` class with psycopg v3 pool, plus high-level graph functions (`fetch_node`, `fetch_nodes`, `upsert`, `create_node`, `create_relationship`, `delete_node`, `run`, `query`) |
 | `clickhouse/`        | ClickHouse async client singleton with `query()` / `insert()`, schema setup via `schemata.toml`, and privacy utilities                                                                                       |
-| `models.py`          | Pydantic domain models (`Project`, `Team`, `Environment`, `Organization`, `ProjectType`, `Blueprint`) backed by cypherantic for Neo4j graph relationships                                                    |
-| `blueprints.py`      | Runtime schema extension system — loads `Blueprint` nodes from Neo4j and uses `pydantic.create_model` to dynamically add fields to existing models                                                           |
-| `settings.py`        | Pydantic Settings classes (`Neo4j`, `Clickhouse`, `Auth`) plus `Configuration` for TOML file loading. Settings pick up env vars with prefixes `NEO4J_`, `CLICKHOUSE_`, `IMBI_AUTH_` |
+| `models.py`          | Pydantic domain models (`Project`, `Team`, `Environment`, `Organization`, `ProjectType`, `Blueprint`) with `age.relationships.Relationship` metadata for graph relationships                                  |
+| `blueprints.py`      | Runtime schema extension system — loads `Blueprint` nodes from the graph and uses `pydantic.create_model` to dynamically add fields to existing models                                                       |
+| `settings.py`        | Pydantic Settings classes (`AGE`, `Clickhouse`, `Auth`) plus `Configuration` for TOML file loading. Settings pick up env vars with prefixes `AGE_`, `CLICKHOUSE_`, `IMBI_AUTH_` |
 | `auth/core.py`       | JWT creation (`create_access_token`, `create_refresh_token`) and verification (`verify_token`)                                                                                                               |
 | `auth/encryption.py` | Fernet symmetric encryption for sensitive tokens via `TokenEncryption` singleton; module-level `encrypt_token`/`decrypt_token` helpers                                                                       |
 | `server.py`          | Typer/uvicorn `serve()` command and `bind_entrypoint()` helper for building service CLIs                                                                                                                     |
@@ -47,17 +47,17 @@ just test tests/path/to/test_file.py::TestClass::test_method
 
 ### Key patterns
 
-**Singletons**: `Neo4j.get_instance()`, `Clickhouse.get_instance()`, `TokenEncryption.get_instance()`, and `settings.get_auth_settings()` all use class-level singletons. Tests that need clean state must reset them explicitly (e.g., `TokenEncryption.reset_instance()`).
+**Singletons**: `AGE.get_instance()`, `Clickhouse.get_instance()`, `TokenEncryption.get_instance()`, and `settings.get_auth_settings()` all use class-level singletons. Tests that need clean state must reset them explicitly (e.g., `TokenEncryption.reset_instance()`).
 
-**Neo4j + cypherantic**: Models use `typing.Annotated` with `cypherantic.Relationship(...)` metadata to declare graph relationships. The `neo4j/__init__.py` functions handle relationship fields specially — they provide defaults for relationship fields when deserializing raw node data from the graph.
+**AGE + relationships**: Models use `typing.Annotated` with `age.relationships.Relationship(...)` metadata to declare graph relationships. The `age/__init__.py` functions handle relationship fields specially — they provide defaults for relationship fields when deserializing raw node data from the graph.
 
-**Blueprint system**: `blueprints.get_model(MyModel)` fetches `Blueprint` nodes from Neo4j whose `type` matches the model class name, then calls `pydantic.create_model` to return a dynamically extended subclass. Only models in `MODEL_TYPES` (`Team`, `Environment`, `ProjectType`, `Project`) are valid blueprint targets.
+**Blueprint system**: `blueprints.get_model(MyModel)` fetches `Blueprint` nodes from the graph whose `type` matches the model class name, then calls `pydantic.create_model` to return a dynamically extended subclass. Only models in `MODEL_TYPES` (`Team`, `Environment`, `ProjectType`, `Project`) are valid blueprint targets.
 
 **Settings loading order**: Each `BaseSettings` subclass reads from `.env` file and environment variables with its prefix. `Configuration` additionally supports `config.toml` checked in order: `./config.toml` → `~/.config/imbi/config.toml` → `/etc/imbi/config.toml`.
 
 **ClickHouse schema**: DDL is defined in `src/imbi_common/clickhouse/schemata.toml` and executed via `Clickhouse.setup_schema()` (called explicitly during setup, not on every startup).
 
-**Neo4j indexes**: Defined as Cypher strings in `src/imbi_common/neo4j/constants.py` and applied during `Neo4j.initialize()`.
+**AGE indexes**: Defined as PostgreSQL DDL in `src/imbi_common/age/constants.py` and applied during `AGE.initialize()`.
 
 ## Code style
 

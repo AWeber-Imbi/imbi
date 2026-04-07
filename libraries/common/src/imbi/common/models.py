@@ -1,11 +1,12 @@
 import datetime
 import typing
 
-import cypherantic
 import nanoid  # type: ignore[import-untyped]
 import pydantic
 import slugify
 from jsonschema_models import models as schema_models
+
+from imbi_common.age import relationships
 
 __all__ = [
     'MODEL_TYPES',
@@ -118,8 +119,8 @@ class Blueprint(pydantic.BaseModel):
 
 
 class BlueprintAssignment(pydantic.BaseModel):
-    cypherantic_config: typing.ClassVar[cypherantic.RelationshipConfig] = (
-        cypherantic.RelationshipConfig(rel_type='BLUEPRINT')
+    cypherantic_config: typing.ClassVar[relationships.RelationshipConfig] = (
+        relationships.RelationshipConfig(rel_type='BLUEPRINT')
     )
     priority: int = 0
 
@@ -162,7 +163,9 @@ class Organization(Node):
 class Team(Node):
     organization: typing.Annotated[
         Organization,
-        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
+        relationships.Relationship(
+            rel_type='BELONGS_TO', direction='OUTGOING'
+        ),
     ]
 
 
@@ -180,14 +183,18 @@ class Environment(Node):
 
     organization: typing.Annotated[
         Organization,
-        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
+        relationships.Relationship(
+            rel_type='BELONGS_TO', direction='OUTGOING'
+        ),
     ]
 
 
 class ProjectType(Node):
     organization: typing.Annotated[
         Organization,
-        cypherantic.Relationship(rel_type='BELONGS_TO', direction='OUTGOING'),
+        relationships.Relationship(
+            rel_type='BELONGS_TO', direction='OUTGOING'
+        ),
     ]
 
 
@@ -203,7 +210,7 @@ class LinkDefinition(Node):
     url_template: str | None = None
     organization: typing.Annotated[
         Organization,
-        cypherantic.Relationship(
+        relationships.Relationship(
             rel_type='BELONGS_TO',
             direction='OUTGOING',
         ),
@@ -214,21 +221,21 @@ class Project(Node):
     id: str = pydantic.Field(default_factory=nanoid.generate)
     team: typing.Annotated[
         Team,
-        cypherantic.Relationship(
+        relationships.Relationship(
             rel_type='OWNED_BY',
             direction='OUTGOING',
         ),
     ]
     project_types: typing.Annotated[
         list[ProjectType],
-        cypherantic.Relationship(
+        relationships.Relationship(
             rel_type='TYPE',
             direction='OUTGOING',
         ),
     ] = []
     environments: typing.Annotated[
         list[Environment],
-        cypherantic.Relationship(
+        relationships.Relationship(
             rel_type='DEPLOYED_IN',
             direction='OUTGOING',
         ),
