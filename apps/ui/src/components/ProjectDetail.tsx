@@ -408,7 +408,7 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm text-amber-text hover:underline"
+                    className={`flex items-center gap-1.5 text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-text'} hover:underline`}
                   >
                     <Icon className="h-4 w-4" />
                     <span>{linkLabel}</span>
@@ -663,10 +663,12 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 text-sm text-amber-text hover:underline"
+                              className={`flex items-center gap-1.5 text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-text'} hover:underline`}
                             >
                               {url}
-                              <ExternalLink className="h-3 w-3 text-amber-text" />
+                              <ExternalLink
+                                className={`h-3 w-3 ${isDarkMode ? 'text-amber-400' : 'text-amber-text'}`}
+                              />
                             </a>
                           ) : (
                             <span className={`text-sm ${muted}`}>—</span>

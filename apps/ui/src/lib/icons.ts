@@ -94,8 +94,17 @@ const siLookup = simpleIcons as Record<string, unknown>
  */
 export function getIcon(
   iconName: string | null | undefined,
-  fallback: IconComponent = ExternalLink as IconComponent,
-): IconComponent {
+  fallback: null,
+): IconComponent | null
+export function getIcon(
+  iconName: string | null | undefined,
+  fallback?: IconComponent,
+): IconComponent
+export function getIcon(
+  iconName: string | null | undefined,
+  fallback?: IconComponent | null,
+): IconComponent | null {
+  if (fallback === undefined) fallback = ExternalLink as IconComponent
   if (!iconName) return fallback
 
   // Simple Icons: si-github → SiGithub
