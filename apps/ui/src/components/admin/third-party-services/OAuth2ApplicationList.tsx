@@ -356,7 +356,7 @@ export function OAuth2ApplicationList({
                             href={app.application_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`rounded inline-flex items-center p-1.5 ${
+                            className={`inline-flex items-center rounded p-1.5 ${
                               isDarkMode
                                 ? 'text-blue-400 hover:bg-blue-900/20 hover:text-blue-300'
                                 : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700'

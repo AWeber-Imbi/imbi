@@ -34,7 +34,7 @@ export function WebhookDetail({
                 <img
                   src={webhook.icon}
                   alt=""
-                  className="rounded h-8 w-8 object-cover"
+                  className="h-8 w-8 rounded object-cover"
                 />
               ) : (
                 <div
@@ -80,7 +80,7 @@ export function WebhookDetail({
         }`}
       >
         <h3
-          className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`text-lg mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Configuration
         </h3>
@@ -171,7 +171,7 @@ export function WebhookDetail({
         }`}
       >
         <h3
-          className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`text-lg mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Rules ({webhook.rules.length})
         </h3>

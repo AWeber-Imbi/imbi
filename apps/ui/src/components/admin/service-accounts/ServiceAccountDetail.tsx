@@ -438,7 +438,7 @@ export function ServiceAccountDetail({
         <div className="px-6 py-5">
           <div className="flex items-center gap-6">
             <div
-              className={`rounded flex items-center gap-2 px-3 py-1.5 ${
+              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
                 account.is_active
                   ? isDarkMode
                     ? 'bg-green-900/30 text-green-400'
@@ -452,7 +452,7 @@ export function ServiceAccountDetail({
               {account.is_active ? 'Active' : 'Inactive'}
             </div>
             <div
-              className={`rounded flex items-center gap-2 px-3 py-1.5 ${
+              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
                 isDarkMode
                   ? 'bg-purple-900/30 text-purple-400'
                   : 'bg-purple-100 text-purple-700'
@@ -842,7 +842,7 @@ export function ServiceAccountDetail({
                 </span>
                 <div className="flex items-center gap-2">
                   <code
-                    className={`rounded flex-1 border px-3 py-2 text-sm ${
+                    className={`flex-1 rounded border px-3 py-2 text-sm ${
                       isDarkMode
                         ? 'border-gray-600 bg-gray-800 text-green-300'
                         : 'border-gray-200 bg-white text-green-700'
@@ -878,7 +878,7 @@ export function ServiceAccountDetail({
                 </span>
                 <div className="flex items-center gap-2">
                   <code
-                    className={`rounded flex-1 border px-3 py-2 text-sm ${
+                    className={`flex-1 rounded border px-3 py-2 text-sm ${
                       isDarkMode
                         ? 'border-gray-600 bg-gray-800 text-green-300'
                         : 'border-gray-200 bg-white text-green-700'
@@ -1139,7 +1139,7 @@ export function ServiceAccountDetail({
             </div>
             <div className="flex items-center gap-2">
               <code
-                className={`rounded flex-1 border px-3 py-2 text-sm ${
+                className={`flex-1 rounded border px-3 py-2 text-sm ${
                   isDarkMode
                     ? 'border-gray-600 bg-gray-800 text-green-300'
                     : 'border-gray-200 bg-white text-green-700'
@@ -1298,7 +1298,7 @@ export function ServiceAccountDetail({
         }`}
       >
         <h3
-          className={`font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Basic Information
         </h3>

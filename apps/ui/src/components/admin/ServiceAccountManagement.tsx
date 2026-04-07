@@ -386,7 +386,7 @@ export function ServiceAccountManagement({
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span
-                      className={`rounded inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium ${
+                      className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
                         account.is_active
                           ? isDarkMode
                             ? 'bg-green-900/30 text-green-400'

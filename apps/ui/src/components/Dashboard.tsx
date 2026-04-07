@@ -151,7 +151,7 @@ function SortableWidget({ id, children, isDarkMode }: SortableWidgetProps) {
       <div
         {...attributes}
         {...listeners}
-        className={`rounded absolute left-2 top-2 z-20 cursor-grab p-1 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100 ${
+        className={`absolute left-2 top-2 z-20 cursor-grab rounded p-1 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100 ${
           isDarkMode
             ? 'bg-gray-700/80 text-gray-400 hover:text-gray-200'
             : 'bg-white/80 text-gray-400 hover:text-gray-600'

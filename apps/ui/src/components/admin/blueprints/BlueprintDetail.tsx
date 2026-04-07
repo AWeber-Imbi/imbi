@@ -236,7 +236,7 @@ export function BlueprintDetail({
                   {blueprint.name}
                 </h2>
                 <span
-                  className={`rounded inline-flex items-center px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.type, blueprintTypes, isDarkMode)}`}
+                  className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.type, blueprintTypes, isDarkMode)}`}
                 >
                   {blueprint.type}
                 </span>
@@ -556,7 +556,7 @@ export function BlueprintDetail({
                       {prop.enumValues.map((val) => (
                         <span
                           key={val}
-                          className={`rounded inline-flex items-center border px-2 py-0.5 font-mono text-xs ${
+                          className={`inline-flex items-center rounded border px-2 py-0.5 font-mono text-xs ${
                             isDarkMode
                               ? 'border-gray-600 bg-gray-700 text-gray-300'
                               : 'border-gray-200 bg-gray-50 text-gray-700'
@@ -603,7 +603,7 @@ export function BlueprintDetail({
                               {Object.entries(map!).map(([key, val]) => (
                                 <span
                                   key={key}
-                                  className={`rounded inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-xs ${chipClass}`}
+                                  className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-xs ${chipClass}`}
                                 >
                                   {isColorType(name) ? (
                                     <>

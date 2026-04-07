@@ -365,7 +365,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
                           <img
                             src={team.icon}
                             alt=""
-                            className="rounded h-5 w-5 object-cover"
+                            className="h-5 w-5 rounded object-cover"
                           />
                         ) : (
                           <Users

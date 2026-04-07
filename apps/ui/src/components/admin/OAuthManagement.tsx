@@ -146,7 +146,7 @@ export function OAuthManagement({ isDarkMode }: OAuthManagementProps) {
               </div>
               <div className="flex items-center gap-2">
                 <span
-                  className={`rounded inline-flex items-center px-2 py-0.5 text-xs font-medium ${
+                  className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
                     isDarkMode
                       ? 'bg-gray-700 text-gray-300'
                       : 'bg-gray-100 text-gray-600'

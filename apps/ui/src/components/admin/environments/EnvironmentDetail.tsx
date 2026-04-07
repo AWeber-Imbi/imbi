@@ -54,7 +54,7 @@ export function EnvironmentDetail({
                 <img
                   src={environment.icon}
                   alt=""
-                  className="rounded h-8 w-8 object-cover"
+                  className="h-8 w-8 rounded object-cover"
                 />
               )}
               <h2
@@ -137,7 +137,7 @@ export function EnvironmentDetail({
                 {environment.label_color ? (
                   <>
                     <div
-                      className="rounded h-6 w-6 border"
+                      className="h-6 w-6 rounded border"
                       style={{ backgroundColor: environment.label_color }}
                     />
                     <span

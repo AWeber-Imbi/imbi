@@ -141,7 +141,7 @@ export function WidgetSelector({
                         </div>
                       </div>
                       <div
-                        className={`rounded flex h-5 w-5 flex-shrink-0 items-center justify-center border-2 ${
+                        className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 ${
                           isSelected
                             ? isDarkMode
                               ? 'border-blue-500 bg-blue-500'

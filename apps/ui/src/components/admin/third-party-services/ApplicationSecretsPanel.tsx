@@ -233,7 +233,7 @@ export function ApplicationSecretsPanel({
                 </div>
                 <div className="flex items-center gap-2">
                   <code
-                    className={`rounded flex-1 break-all px-3 py-2 font-mono text-sm ${
+                    className={`flex-1 break-all rounded px-3 py-2 font-mono text-sm ${
                       isDarkMode
                         ? 'bg-gray-700 text-gray-200'
                         : 'bg-gray-100 text-gray-800'

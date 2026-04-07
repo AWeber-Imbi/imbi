@@ -182,7 +182,7 @@ export function OutdatedComponentsWidget({
                 <button
                   type="button"
                   onClick={() => onProjectSelect?.(item.projectId)}
-                  className={`rounded flex-shrink-0 p-2 transition-colors ${
+                  className={`flex-shrink-0 rounded p-2 transition-colors ${
                     isDarkMode
                       ? 'text-gray-400 hover:bg-gray-700 hover:text-white'
                       : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'

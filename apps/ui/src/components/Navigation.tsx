@@ -153,7 +153,7 @@ export function Navigation({
                   <img
                     src={selectedOrganization.icon}
                     alt=""
-                    className="rounded h-4 w-4 flex-shrink-0 object-cover"
+                    className="h-4 w-4 flex-shrink-0 rounded object-cover"
                   />
                 ) : (
                   <Building2 className="h-4 w-4 flex-shrink-0" />
@@ -172,7 +172,7 @@ export function Navigation({
                       <img
                         src={selectedOrganization.icon}
                         alt=""
-                        className="rounded h-4 w-4 flex-shrink-0 object-cover"
+                        className="h-4 w-4 flex-shrink-0 rounded object-cover"
                       />
                     ) : (
                       <Building2 className="h-4 w-4 flex-shrink-0" />
@@ -199,7 +199,7 @@ export function Navigation({
                           <img
                             src={org.icon}
                             alt=""
-                            className="rounded h-4 w-4 flex-shrink-0 object-cover"
+                            className="h-4 w-4 flex-shrink-0 rounded object-cover"
                           />
                         ) : (
                           <Building2 className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
@@ -267,7 +267,7 @@ export function Navigation({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               {user && (
-                <div className="font-semibold px-2 py-1.5 text-sm">
+                <div className="px-2 py-1.5 text-sm font-semibold">
                   {user.display_name || user.username}
                 </div>
               )}

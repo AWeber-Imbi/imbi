@@ -123,7 +123,7 @@ export function TeamDetail({
                 <img
                   src={team.icon}
                   alt=""
-                  className="rounded h-8 w-8 object-cover"
+                  className="h-8 w-8 rounded object-cover"
                 />
               )}
               <h2
@@ -217,7 +217,7 @@ export function TeamDetail({
                 Team Members
               </h3>
               <span
-                className={`rounded ml-2 px-2 py-1 text-sm ${
+                className={`ml-2 rounded px-2 py-1 text-sm ${
                   isDarkMode
                     ? 'bg-gray-700 text-gray-300'
                     : 'bg-gray-100 text-gray-700'
@@ -366,7 +366,7 @@ export function TeamDetail({
                   </td>
                   <td className="px-6 py-4">
                     <span
-                      className={`rounded inline-flex items-center px-2 py-1 text-xs font-medium ${
+                      className={`inline-flex items-center rounded px-2 py-1 text-xs font-medium ${
                         member.is_active
                           ? isDarkMode
                             ? 'bg-green-900/30 text-green-400'

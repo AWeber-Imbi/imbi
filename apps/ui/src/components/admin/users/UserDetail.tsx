@@ -172,7 +172,7 @@ export function UserDetail({
         >
           <div className="flex items-center gap-6">
             <div
-              className={`rounded flex items-center gap-2 px-3 py-1.5 ${
+              className={`flex items-center gap-2 rounded px-3 py-1.5 ${
                 user.is_active
                   ? isDarkMode
                     ? 'bg-green-900/30 text-green-400'
@@ -187,7 +187,7 @@ export function UserDetail({
             </div>
             {user.is_admin && (
               <div
-                className={`rounded flex items-center gap-2 px-3 py-1.5 ${
+                className={`flex items-center gap-2 rounded px-3 py-1.5 ${
                   isDarkMode
                     ? 'bg-red-900/30 text-red-400'
                     : 'bg-red-100 text-red-700'
@@ -199,7 +199,7 @@ export function UserDetail({
             )}
             {user.is_service_account && (
               <div
-                className={`rounded flex items-center gap-2 px-3 py-1.5 ${
+                className={`flex items-center gap-2 rounded px-3 py-1.5 ${
                   isDarkMode
                     ? 'bg-purple-900/30 text-purple-400'
                     : 'bg-purple-100 text-purple-700'
@@ -484,7 +484,7 @@ export function UserDetail({
         }`}
       >
         <h3
-          className={`font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Active Sessions
         </h3>

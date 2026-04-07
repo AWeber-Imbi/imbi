@@ -93,7 +93,7 @@ export function ThirdPartyServiceDetail({
                     <img
                       src={service.icon}
                       alt=""
-                      className="rounded h-8 w-8 object-cover"
+                      className="h-8 w-8 rounded object-cover"
                     />
                   )}
                   <h2
@@ -296,7 +296,7 @@ export function ThirdPartyServiceDetail({
               }`}
             >
               <h3
-                className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                className={`text-lg mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
               >
                 Links
               </h3>
@@ -339,7 +339,7 @@ export function ThirdPartyServiceDetail({
               }`}
             >
               <h3
-                className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                className={`text-lg mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
               >
                 Identifiers
               </h3>

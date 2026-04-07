@@ -312,7 +312,7 @@ export function EnvironmentManagement({
                           <img
                             src={env.icon}
                             alt=""
-                            className="rounded h-5 w-5 object-cover"
+                            className="h-5 w-5 rounded object-cover"
                           />
                         ) : (
                           <Globe

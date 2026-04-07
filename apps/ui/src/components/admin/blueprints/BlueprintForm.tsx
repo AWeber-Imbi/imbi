@@ -656,7 +656,7 @@ export function BlueprintForm({
         }`}
       >
         <h3
-          className={`font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Basic Information
         </h3>

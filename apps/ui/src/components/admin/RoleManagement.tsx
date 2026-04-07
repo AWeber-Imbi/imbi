@@ -370,7 +370,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
                     <td className="whitespace-nowrap px-4 py-3 text-center">
                       {isSystem ? (
                         <span
-                          className={`rounded inline-flex items-center gap-1 px-2 py-1 text-xs font-medium ${
+                          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium ${
                             isDarkMode
                               ? 'bg-amber-900/30 text-amber-400'
                               : 'bg-amber-100 text-amber-700'

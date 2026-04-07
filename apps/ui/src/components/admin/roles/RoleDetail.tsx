@@ -230,7 +230,7 @@ export function RoleDetail({
                 </h2>
                 {role.is_system && (
                   <span
-                    className={`rounded inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium ${
+                    className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
                       isDarkMode
                         ? 'bg-amber-900/30 text-amber-400'
                         : 'bg-amber-100 text-amber-700'
@@ -414,7 +414,7 @@ export function RoleDetail({
               )}
 
               <div
-                className={`rounded mt-3 flex items-start gap-2 p-2 text-xs ${
+                className={`mt-3 flex items-start gap-2 rounded p-2 text-xs ${
                   isDarkMode
                     ? 'bg-blue-900/20 text-blue-400'
                     : 'bg-blue-50 text-blue-700'
@@ -647,7 +647,7 @@ export function RoleDetail({
                     <div className="flex items-center gap-2">
                       {user.is_active ? (
                         <span
-                          className={`rounded inline-flex items-center px-2 py-0.5 text-xs font-medium ${
+                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
                             isDarkMode
                               ? 'bg-green-900/30 text-green-400'
                               : 'bg-green-100 text-green-700'
@@ -657,7 +657,7 @@ export function RoleDetail({
                         </span>
                       ) : (
                         <span
-                          className={`rounded inline-flex items-center px-2 py-0.5 text-xs font-medium ${
+                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
                             isDarkMode
                               ? 'bg-gray-700 text-gray-400'
                               : 'bg-gray-100 text-gray-500'
@@ -668,7 +668,7 @@ export function RoleDetail({
                       )}
                       {user.is_service_account && (
                         <span
-                          className={`rounded inline-flex items-center px-2 py-0.5 text-xs font-medium ${
+                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
                             isDarkMode
                               ? 'bg-purple-900/30 text-purple-400'
                               : 'bg-purple-100 text-purple-700'
@@ -809,7 +809,7 @@ export function RoleDetail({
                     <div>
                       {sa.is_active ? (
                         <span
-                          className={`rounded inline-flex items-center px-2 py-0.5 text-xs font-medium ${
+                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
                             isDarkMode
                               ? 'bg-green-900/30 text-green-400'
                               : 'bg-green-100 text-green-700'
@@ -819,7 +819,7 @@ export function RoleDetail({
                         </span>
                       ) : (
                         <span
-                          className={`rounded inline-flex items-center px-2 py-0.5 text-xs font-medium ${
+                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
                             isDarkMode
                               ? 'bg-gray-700 text-gray-400'
                               : 'bg-gray-100 text-gray-500'

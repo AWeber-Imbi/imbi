@@ -300,7 +300,7 @@ export function ProjectTypeManagement({
                           <img
                             src={pt.icon}
                             alt=""
-                            className="rounded h-5 w-5 object-cover"
+                            className="h-5 w-5 rounded object-cover"
                           />
                         ) : (
                           <Layers

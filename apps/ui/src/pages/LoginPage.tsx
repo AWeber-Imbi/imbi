@@ -114,7 +114,7 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-tertiary">
-      <div className="rounded-xl w-full max-w-md border border-tertiary bg-primary p-8">
+      <div className="w-full max-w-md rounded-xl border border-tertiary bg-primary p-8">
         <div className="mb-8 flex flex-col items-center">
           <img src={imbiLogo} alt="Imbi" className="mb-4 h-16 w-16" />
           <h1 className="text-2xl mb-2 text-gray-900">Imbi</h1>
