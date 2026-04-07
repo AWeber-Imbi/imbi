@@ -111,6 +111,22 @@ function buildJsonSchema(
       propSchema.items = { type: 'string' }
     }
 
+    const uiEntries: [string, Record<string, string> | undefined][] = [
+      ['color-map', prop.colorMap],
+      ['icon-map', prop.iconMap],
+      ['color-range', prop.colorRange],
+      ['icon-range', prop.iconRange],
+      ['color-age', prop.colorAge],
+      ['icon-age', prop.iconAge],
+    ]
+    const xUiObj: Record<string, Record<string, string>> = {}
+    for (const [key, map] of uiEntries) {
+      if (map && Object.keys(map).length > 0) xUiObj[key] = map
+    }
+    if (Object.keys(xUiObj).length > 0) {
+      propSchema['x-ui'] = xUiObj
+    }
+
     props[prop.name] = propSchema
     if (prop.required) required.push(prop.name)
   }
@@ -128,6 +144,7 @@ function schemaToProperties(schema: Record<string, unknown>): SchemaProperty[] {
   const result: SchemaProperty[] = []
 
   for (const [name, propSchema] of Object.entries(props)) {
+    const xUi = propSchema['x-ui'] as Record<string, unknown> | undefined
     result.push({
       id: generateId(),
       name,
@@ -144,6 +161,12 @@ function schemaToProperties(schema: Record<string, unknown>): SchemaProperty[] {
       maximum: propSchema.maximum as number | undefined,
       minLength: propSchema.minLength as number | undefined,
       maxLength: propSchema.maxLength as number | undefined,
+      colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
+      iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
+      colorRange: xUi?.['color-range'] as Record<string, string> | undefined,
+      iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
+      colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
+      iconAge: xUi?.['icon-age'] as Record<string, string> | undefined,
     })
   }
 
@@ -213,6 +236,11 @@ export function BlueprintForm({
     '{\n  "type": "object",\n  "properties": {}\n}',
   )
   const [enumRawText, setEnumRawText] = useState<Record<string, string>>({})
+  // Unified UI map editing state: keyed by "mapType:propId"
+  // e.g. "colorMap:abc123" -> [["true", "green"], ["false", "red"]]
+  const [uiMapEntries, setUiMapEntries] = useState<
+    Record<string, [string, string][]>
+  >({})
   const [schemaError, setSchemaError] = useState<string | null>(null)
   const [expandedProps, setExpandedProps] = useState<Set<string>>(new Set())
 
@@ -263,11 +291,44 @@ export function BlueprintForm({
               p.minimum !== undefined ||
               p.maximum !== undefined ||
               p.minLength !== undefined ||
-              p.maxLength !== undefined,
+              p.maxLength !== undefined ||
+              [
+                p.colorMap,
+                p.iconMap,
+                p.colorRange,
+                p.iconRange,
+                p.colorAge,
+                p.iconAge,
+              ].some((m) => m && Object.keys(m).length > 0),
           )
           .map((p) => p.id)
         if (toExpand.length > 0) {
           setExpandedProps(new Set(toExpand))
+        }
+
+        // Initialise UI map editing state from loaded properties
+        const mapTypes = [
+          'colorMap',
+          'iconMap',
+          'colorRange',
+          'iconRange',
+          'colorAge',
+          'iconAge',
+        ] as const
+        const initialUiMapEntries: Record<string, [string, string][]> = {}
+        for (const p of props) {
+          for (const mt of mapTypes) {
+            const map = p[mt]
+            if (map && Object.keys(map).length > 0) {
+              initialUiMapEntries[`${mt}:${p.id}`] = Object.entries(map) as [
+                string,
+                string,
+              ][]
+            }
+          }
+        }
+        if (Object.keys(initialUiMapEntries).length > 0) {
+          setUiMapEntries(initialUiMapEntries)
         }
       } catch {
         setRawSchema(
@@ -1337,6 +1398,212 @@ export function BlueprintForm({
                             className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
                           />
                         </div>
+
+                        {/* UI Maps */}
+                        {[
+                          {
+                            mapType: 'colorMap' as const,
+                            label: 'Color Map',
+                            keyPh: 'value',
+                            valPh: 'e.g. green',
+                            defaultVal: 'green',
+                            isColor: true,
+                          },
+                          {
+                            mapType: 'iconMap' as const,
+                            label: 'Icon Map',
+                            keyPh: 'value',
+                            valPh: 'e.g. circle-check-big',
+                            defaultVal: '',
+                            isColor: false,
+                          },
+                          {
+                            mapType: 'colorRange' as const,
+                            label: 'Color Range',
+                            keyPh: 'e.g. >=90',
+                            valPh: 'e.g. green',
+                            defaultVal: 'green',
+                            isColor: true,
+                          },
+                          {
+                            mapType: 'iconRange' as const,
+                            label: 'Icon Range',
+                            keyPh: 'e.g. >=90',
+                            valPh: 'e.g. check-circle',
+                            defaultVal: '',
+                            isColor: false,
+                          },
+                          {
+                            mapType: 'colorAge' as const,
+                            label: 'Color Age',
+                            keyPh: 'e.g. >30d',
+                            valPh: 'e.g. red',
+                            defaultVal: 'red',
+                            isColor: true,
+                          },
+                          {
+                            mapType: 'iconAge' as const,
+                            label: 'Icon Age',
+                            keyPh: 'e.g. >30d',
+                            valPh: 'e.g. alert-triangle',
+                            defaultVal: '',
+                            isColor: false,
+                          },
+                        ].map(
+                          ({
+                            mapType,
+                            label: mapLabel,
+                            keyPh,
+                            valPh,
+                            defaultVal,
+                            isColor,
+                          }) => {
+                            const stateKey = `${mapType}:${prop.id}`
+                            const entries = uiMapEntries[stateKey] ?? []
+                            const commit = (next: [string, string][]) => {
+                              const map = Object.fromEntries(
+                                next.filter(([k]) => k.trim() !== ''),
+                              )
+                              updateProperty(prop.id, {
+                                [mapType]:
+                                  Object.keys(map).length > 0 ? map : undefined,
+                              })
+                            }
+                            return (
+                              <div key={mapType}>
+                                <div className="mb-1 flex items-center justify-between">
+                                  <label
+                                    className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                  >
+                                    {mapLabel}
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setUiMapEntries({
+                                        ...uiMapEntries,
+                                        [stateKey]: [
+                                          ...entries,
+                                          ['', defaultVal],
+                                        ],
+                                      })
+                                    }}
+                                    className={`flex items-center gap-1 text-xs ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                    Add entry
+                                  </button>
+                                </div>
+                                {entries.length === 0 ? (
+                                  <p
+                                    className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                                  >
+                                    No {mapLabel.toLowerCase()} entries
+                                  </p>
+                                ) : (
+                                  <div className="space-y-1.5">
+                                    {entries.map(([eKey, eVal], idx) => (
+                                      <div
+                                        key={idx}
+                                        className="flex items-center gap-1.5"
+                                      >
+                                        <Input
+                                          value={eKey}
+                                          onChange={(e) => {
+                                            const next = entries.map(
+                                              (row, i): [string, string] =>
+                                                i === idx
+                                                  ? [e.target.value, row[1]]
+                                                  : row,
+                                            )
+                                            setUiMapEntries({
+                                              ...uiMapEntries,
+                                              [stateKey]: next,
+                                            })
+                                          }}
+                                          onBlur={() => commit(entries)}
+                                          placeholder={keyPh}
+                                          className={`flex-1 text-xs ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                        />
+                                        {isColor ? (
+                                          <select
+                                            value={eVal}
+                                            onChange={(e) => {
+                                              const next = entries.map(
+                                                (row, i): [string, string] =>
+                                                  i === idx
+                                                    ? [row[0], e.target.value]
+                                                    : row,
+                                              )
+                                              setUiMapEntries({
+                                                ...uiMapEntries,
+                                                [stateKey]: next,
+                                              })
+                                              commit(next)
+                                            }}
+                                            className={`rounded-md border px-2 py-1.5 text-xs ${
+                                              isDarkMode
+                                                ? 'border-gray-600 bg-gray-700 text-white'
+                                                : 'border-gray-300 bg-white text-gray-900'
+                                            }`}
+                                          >
+                                            {[
+                                              'green',
+                                              'red',
+                                              'amber',
+                                              'yellow',
+                                              'blue',
+                                              'gray',
+                                            ].map((c) => (
+                                              <option key={c} value={c}>
+                                                {c}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <Input
+                                            value={eVal}
+                                            onChange={(e) => {
+                                              const next = entries.map(
+                                                (row, i): [string, string] =>
+                                                  i === idx
+                                                    ? [row[0], e.target.value]
+                                                    : row,
+                                              )
+                                              setUiMapEntries({
+                                                ...uiMapEntries,
+                                                [stateKey]: next,
+                                              })
+                                            }}
+                                            onBlur={() => commit(entries)}
+                                            placeholder={valPh}
+                                            className={`flex-1 text-xs ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                          />
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const next = entries.filter(
+                                              (_, i) => i !== idx,
+                                            )
+                                            setUiMapEntries({
+                                              ...uiMapEntries,
+                                              [stateKey]: next,
+                                            })
+                                            commit(next)
+                                          }}
+                                          className={`flex-shrink-0 ${isDarkMode ? 'text-gray-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'}`}
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          },
+                        )}
                       </div>
                     )}
                   </div>

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import { Plus, Search, Trash2, Cloud, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -108,7 +108,7 @@ export function ThirdPartyServiceManagement({
         queryKey: ['third-party-services', orgSlug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to delete service: ${error.response?.data?.detail || error.message}`,
       )
@@ -348,9 +348,7 @@ export function ThirdPartyServiceManagement({
       >
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead
-              className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-            >
+            <thead className="border-b border-tertiary bg-secondary">
               <tr>
                 <th
                   className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${

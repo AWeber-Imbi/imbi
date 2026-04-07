@@ -24,7 +24,8 @@ export interface ApiStatus {
 export interface User {
   username: string
   display_name: string
-  email_address: string
+  email: string
+  email_address?: string
   user_type: string
   external_id?: string
   groups?: string[]
@@ -45,7 +46,8 @@ export interface Project {
       slug: string
     }
   }
-  project_type: {
+  id: string
+  project_type?: {
     name: string
     slug: string
     organization: {
@@ -53,6 +55,14 @@ export interface Project {
       slug: string
     }
   }
+  project_types?: {
+    name: string
+    slug: string
+    organization: {
+      name: string
+      slug: string
+    }
+  }[]
   environments?: Environment[]
   links?: Record<string, string>
   identifiers?: Record<string, string | number>
@@ -107,9 +117,11 @@ export interface RelationshipLink {
 export interface Environment {
   name: string
   slug: string
+  sort_order?: number | null
   description?: string | null
   icon?: string | null
   label_color?: string | null
+  url?: string | null
   created_at?: string | null
   updated_at?: string | null
   organization: {
@@ -125,6 +137,7 @@ export interface Environment {
 export interface EnvironmentCreate {
   name: string
   slug: string
+  sort_order?: number | null
   description?: string | null
   icon?: string | null
   label_color?: string | null
@@ -697,4 +710,10 @@ export interface SchemaProperty {
   maximum?: number
   minLength?: number
   maxLength?: number
+  colorMap?: Record<string, string>
+  iconMap?: Record<string, string>
+  colorRange?: Record<string, string>
+  iconRange?: Record<string, string>
+  colorAge?: Record<string, string>
+  iconAge?: Record<string, string>
 }

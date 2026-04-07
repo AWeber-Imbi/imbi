@@ -25,7 +25,7 @@ import type { ProjectCreate } from '@/types'
 interface NewProjectDialogProps {
   isOpen: boolean
   onClose: () => void
-  onProjectCreated?: (typeSlug: string, slug: string) => void
+  onProjectCreated?: (id: string) => void
 }
 
 export function NewProjectDialog({
@@ -86,9 +86,9 @@ export function NewProjectDialog({
       typeSlug: string
       data: ProjectCreate
     }) => createProject(orgSlug, typeSlug, data),
-    onSuccess: (created, { typeSlug }) => {
+    onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['projects', orgSlug] })
-      onProjectCreated?.(typeSlug, created.slug)
+      onProjectCreated?.(created.id)
       handleClose()
     },
   })

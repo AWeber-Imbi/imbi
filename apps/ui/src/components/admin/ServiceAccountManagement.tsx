@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import { Plus, Search, Trash2, Power, Bot, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
@@ -59,7 +59,7 @@ export function ServiceAccountManagement({
         queryKey: ['serviceAccounts'],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to delete service account: ${error.response?.data?.detail || error.message}`,
       )
@@ -75,7 +75,7 @@ export function ServiceAccountManagement({
       })
       goToList()
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       console.error('Failed to create service account:', error)
     },
   })
@@ -95,7 +95,7 @@ export function ServiceAccountManagement({
       })
       goToList()
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       console.error('Failed to update service account:', error)
     },
   })
@@ -279,9 +279,7 @@ export function ServiceAccountManagement({
         }`}
       >
         <table className="w-full">
-          <thead
-            className={`${isDarkMode ? 'border-b border-gray-700 bg-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
-          >
+          <thead className="border-b border-tertiary bg-secondary">
             <tr>
               <th
                 className={`px-4 py-3 text-left text-xs font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}

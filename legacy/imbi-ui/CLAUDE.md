@@ -19,7 +19,7 @@ This is a complete rewrite of the Imbi UI using modern TypeScript and React.
 - **shadcn/ui** for UI components (Radix UI primitives)
 - **React Query** for server state management
 - **React Router v7** for routing
-- **Axios** for API calls
+- **Native fetch** for API calls (via ApiClient wrapper in `src/api/client.ts`)
 
 ## Code Style
 - TypeScript strict mode enabled

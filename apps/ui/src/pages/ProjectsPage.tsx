@@ -17,9 +17,7 @@ export function ProjectsPage() {
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
-      <div
-        className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}
-      >
+      <div className="min-h-screen bg-tertiary text-primary">
         <Navigation
           currentView="projects"
           isDarkMode={isDarkMode}

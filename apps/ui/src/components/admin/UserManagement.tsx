@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import {
   Plus,
   Search,
@@ -63,7 +63,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to delete user: ${error.response?.data?.detail || error.message}`,
       )
@@ -77,7 +77,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to update user: ${error.response?.data?.detail || error.message}`,
       )
@@ -91,7 +91,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       goToList()
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       // Error will be displayed in the UserForm component
       console.error('Failed to create user:', error)
     },
@@ -105,7 +105,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       goToList()
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       // Error will be displayed in the UserForm component
       console.error('Failed to update user:', error)
     },
@@ -438,9 +438,7 @@ export function UserManagement({ isDarkMode }: UserManagementProps) {
         }`}
       >
         <table className="w-full">
-          <thead
-            className={`${isDarkMode ? 'border-b border-gray-700 bg-gray-700' : 'border-b border-gray-200 bg-gray-50'}`}
-          >
+          <thead className="border-b border-tertiary bg-secondary">
             <tr>
               <th className="w-12 px-4 py-3">
                 <input

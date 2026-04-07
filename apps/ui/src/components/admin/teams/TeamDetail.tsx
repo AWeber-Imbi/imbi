@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import {
   ArrowLeft,
   Edit2,
@@ -62,7 +62,7 @@ export function TeamDetail({
       setNewMemberEmail('')
       setShowAddMember(false)
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to add member: ${error.response?.data?.detail || error.message}`,
       )
@@ -77,7 +77,7 @@ export function TeamDetail({
         queryKey: ['teamMembers', team.organization.slug, team.slug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to remove member: ${error.response?.data?.detail || error.message}`,
       )
@@ -277,7 +277,7 @@ export function TeamDetail({
                   }`}
                 >
                   <AlertCircle className="h-3 w-3" />
-                  {(addMemberMutation.error as AxiosError<{ detail?: string }>)
+                  {(addMemberMutation.error as ApiError<{ detail?: string }>)
                     ?.response?.data?.detail || 'Failed to add member'}
                 </div>
               )}
@@ -302,9 +302,7 @@ export function TeamDetail({
           </div>
         ) : (
           <table className="w-full">
-            <thead
-              className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-            >
+            <thead className="border-b border-tertiary bg-secondary">
               <tr>
                 <th
                   className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import { ApiError } from '@/api/client'
 import { Plus, Search, Trash2, Webhook, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -89,7 +89,7 @@ export function ServiceWebhookList({
         queryKey: ['webhooks', orgSlug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to delete webhook: ${error.response?.data?.detail || error.message}`,
       )

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import {
   ArrowLeft,
   Edit2,
@@ -59,7 +59,7 @@ export function UserDetail({
       setNewOrgSlug('')
       setNewRoleSlug('')
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to add to organization: ${error.response?.data?.detail || error.message}`,
       )
@@ -78,7 +78,7 @@ export function UserDetail({
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       queryClient.invalidateQueries({ queryKey: ['adminUser', user.email] })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to update role: ${error.response?.data?.detail || error.message}`,
       )
@@ -91,7 +91,7 @@ export function UserDetail({
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       queryClient.invalidateQueries({ queryKey: ['adminUser', user.email] })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to remove from organization: ${error.response?.data?.detail || error.message}`,
       )

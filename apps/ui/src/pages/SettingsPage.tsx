@@ -1,35 +1,33 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Navigation } from '@/components/Navigation'
+import { Settings } from '@/components/Settings'
 import { CommandBar } from '@/components/CommandBar'
-import { Admin } from '@/components/Admin'
 
 const THEME_STORAGE_KEY = 'imbi-theme'
 
-export function AdminPage() {
+export function SettingsPage() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const stored = localStorage.getItem(THEME_STORAGE_KEY)
     return stored === 'dark'
   })
 
+  useEffect(() => {
+    localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light')
+  }, [isDarkMode])
+
   const handleThemeToggle = () => {
-    const newValue = !isDarkMode
-    setIsDarkMode(newValue)
-    localStorage.setItem(THEME_STORAGE_KEY, newValue ? 'dark' : 'light')
+    setIsDarkMode(!isDarkMode)
   }
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
       <div className="min-h-screen bg-tertiary text-primary">
-        <Navigation
-          currentView="admin"
-          isDarkMode={isDarkMode}
-          onThemeToggle={handleThemeToggle}
-        />
+        <Navigation isDarkMode={isDarkMode} onThemeToggle={handleThemeToggle} />
         <main
           className="pt-16"
           style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
         >
-          <Admin isDarkMode={isDarkMode} />
+          <Settings isDarkMode={isDarkMode} />
         </main>
         <CommandBar isDarkMode={isDarkMode} />
       </div>

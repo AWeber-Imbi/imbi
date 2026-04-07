@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import { Plus, Trash2, Key, AlertCircle, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -110,7 +110,7 @@ export function OAuth2ApplicationList({
         queryKey: ['service-applications', orgSlug, serviceSlug],
       })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to delete application: ${error.response?.data?.detail || error.message}`,
       )
@@ -252,9 +252,7 @@ export function OAuth2ApplicationList({
           }`}
         >
           <table className="w-full">
-            <thead
-              className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-            >
+            <thead className="border-b border-tertiary bg-secondary">
               <tr>
                 <th
                   className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${

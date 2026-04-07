@@ -23,9 +23,7 @@ export function DashboardPage() {
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
-      <div
-        className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}
-      >
+      <div className="min-h-screen bg-tertiary text-primary">
         <Navigation isDarkMode={isDarkMode} onThemeToggle={handleThemeToggle} />
         <main
           className="pt-16"

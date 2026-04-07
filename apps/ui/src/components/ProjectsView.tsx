@@ -74,7 +74,10 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
 
   const sortedEnvironments = (envs?: Environment[]) => {
     if (!envs || envs.length === 0) return []
-    return [...envs].sort((a, b) => a.name.localeCompare(b.name))
+    return [...envs].sort((a, b) => {
+      const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
+      return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name)
+    })
   }
 
   // Mock health score - deterministic from slug so it's stable across renders.
@@ -87,8 +90,8 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
     return 70 + Math.abs(hash % 30)
   }
 
-  const handleProjectSelect = (typeSlug: string, slug: string) => {
-    navigate(`/projects/${typeSlug}/${slug}`)
+  const handleProjectSelect = (projectId: string) => {
+    navigate(`/projects/${projectId}`)
   }
 
   const filteredProjects = useMemo(() => {
@@ -100,7 +103,9 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
         p.name.toLowerCase().includes(query) ||
         p.description?.toLowerCase().includes(query) ||
         p.team.name.toLowerCase().includes(query) ||
-        p.project_type.name.toLowerCase().includes(query)
+        (p.project_types || []).some((pt) =>
+          pt.name.toLowerCase().includes(query),
+        )
       )
     })
   }, [projects, searchQuery])
@@ -126,7 +131,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
           </h1>
           <Button
             size="sm"
-            className="bg-green-600 hover:bg-green-700"
+            className="border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
             onClick={() => setNewProjectDialogOpen(true)}
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -164,28 +169,28 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
               }`}
             >
               <Button
-                variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                variant="ghost"
                 size="sm"
                 onClick={() => setViewMode('grid')}
-                className="rounded-r-none"
+                className={`rounded-r-none ${viewMode === 'grid' ? 'bg-amber-bg text-amber-text' : ''}`}
                 aria-label="Grid view"
               >
                 <Grid3x3 className="h-4 w-4" />
               </Button>
               <Button
-                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                variant="ghost"
                 size="sm"
                 onClick={() => setViewMode('list')}
-                className="rounded-none"
+                className={`rounded-none ${viewMode === 'list' ? 'bg-amber-bg text-amber-text' : ''}`}
                 aria-label="List view"
               >
                 <List className="h-4 w-4" />
               </Button>
               <Button
-                variant={viewMode === 'graph' ? 'default' : 'ghost'}
+                variant="ghost"
                 size="sm"
                 onClick={() => setViewMode('graph')}
-                className="rounded-l-none"
+                className={`rounded-l-none ${viewMode === 'graph' ? 'bg-amber-bg text-amber-text' : ''}`}
                 aria-label="Graph view"
               >
                 <Network className="h-4 w-4" />
@@ -200,17 +205,15 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
         <ProjectGraphView projects={filteredProjects} isDarkMode={isDarkMode} />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredProjects.map((project, index) => {
+          {filteredProjects.map((project) => {
             const health = getMockHealth(project.slug)
             return (
               <Card
-                key={`${index}-${project.project_type.slug}/${project.slug}`}
+                key={`card-${project.id}`}
                 className={`cursor-pointer p-5 transition-shadow hover:shadow-md ${
                   isDarkMode ? 'border-gray-700 bg-gray-800' : ''
                 }`}
-                onClick={() =>
-                  handleProjectSelect(project.project_type.slug, project.slug)
-                }
+                onClick={() => handleProjectSelect(project.id)}
               >
                 <div className="mb-3 flex items-start justify-between">
                   <div className="min-w-0 flex-1">
@@ -224,7 +227,9 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                     <p
                       className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
                     >
-                      {project.project_type.name}
+                      {(project.project_types || [])
+                        .map((pt) => pt.name)
+                        .join(', ')}
                     </p>
                   </div>
                   <div
@@ -314,20 +319,15 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
               <tbody
                 className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-slate-200'}`}
               >
-                {filteredProjects.map((project, index) => {
+                {filteredProjects.map((project) => {
                   const health = getMockHealth(project.slug)
                   return (
                     <tr
-                      key={`${index}-${project.project_type.slug}/${project.slug}`}
+                      key={`table-${project.id}`}
                       className={`cursor-pointer transition-colors ${
                         isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-50'
                       }`}
-                      onClick={() =>
-                        handleProjectSelect(
-                          project.project_type.slug,
-                          project.slug,
-                        )
-                      }
+                      onClick={() => handleProjectSelect(project.id)}
                     >
                       <td
                         className={`px-6 py-4 font-medium ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
@@ -337,7 +337,9 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                       <td
                         className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-slate-600'}`}
                       >
-                        {project.project_type.name}
+                        {(project.project_types || [])
+                          .map((pt) => pt.name)
+                          .join(', ')}
                       </td>
                       <td
                         className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-slate-600'}`}
@@ -390,9 +392,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
       <NewProjectDialog
         isOpen={newProjectDialogOpen}
         onClose={() => setNewProjectDialogOpen(false)}
-        onProjectCreated={(typeSlug, slug) =>
-          navigate(`/projects/${typeSlug}/${slug}`)
-        }
+        onProjectCreated={(id) => navigate(`/projects/${id}`)}
       />
     </div>
   )

@@ -37,6 +37,9 @@ export function EnvironmentForm({
 
   const [name, setName] = useState(environment?.name || '')
   const [slug, setSlug] = useState(environment?.slug || '')
+  const [sortOrder, setSortOrder] = useState(
+    String(environment?.sort_order ?? 0),
+  )
   const [description, setDescription] = useState(environment?.description || '')
   const [icon, setIcon] = useState(environment?.icon || '')
   const [labelColor, setLabelColor] = useState(environment?.label_color ?? '')
@@ -84,6 +87,7 @@ export function EnvironmentForm({
     onSave(orgSlug, {
       name: name.trim(),
       slug: slug.trim(),
+      sort_order: parseInt(sortOrder, 10) || 0,
       description: description.trim() || null,
       icon: icon.trim() || null,
       label_color: /^#[0-9A-Fa-f]{6}$/.test(labelColor)
@@ -292,6 +296,27 @@ export function EnvironmentForm({
                   </div>
                 )}
               </div>
+            </div>
+
+            <div>
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
+                Sort Order
+              </label>
+              <Input
+                type="number"
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value)}
+                placeholder="0"
+                disabled={isLoading}
+                className={`w-32 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+              />
+              <p
+                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              >
+                Controls display order (lower numbers appear first)
+              </p>
             </div>
 
             <div>

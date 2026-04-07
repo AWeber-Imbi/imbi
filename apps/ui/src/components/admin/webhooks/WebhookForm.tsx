@@ -15,7 +15,7 @@ import { IconUpload } from '@/components/ui/icon-upload'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { listThirdPartyServices } from '@/api/endpoints'
 import { slugify } from '@/lib/utils'
-import type { AxiosError } from 'axios'
+import { ApiError } from '@/api/client'
 import type { Webhook, WebhookCreate, WebhookRule } from '@/types'
 
 interface WebhookFormProps {
@@ -24,7 +24,7 @@ interface WebhookFormProps {
   onCancel: () => void
   isDarkMode: boolean
   isLoading?: boolean
-  error?: AxiosError<{ detail?: string }> | Error | null
+  error?: ApiError<{ detail?: string }> | Error | null
   defaultServiceSlug?: string
 }
 

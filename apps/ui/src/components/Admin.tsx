@@ -191,12 +191,8 @@ export function Admin({ isDarkMode }: AdminProps) {
           isCollapsed ? 'justify-center px-3 py-3' : 'px-4 py-3'
         } ${
           isActive
-            ? isDarkMode
-              ? 'bg-blue-900 text-blue-300'
-              : 'bg-blue-50 text-[#2A4DD0]'
-            : isDarkMode
-              ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
-              : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+            ? 'bg-amber-bg text-amber-text'
+            : 'text-secondary hover:bg-secondary hover:text-primary'
         }`}
         title={isCollapsed ? sectionDef.label : undefined}
       >
@@ -204,7 +200,7 @@ export function Admin({ isDarkMode }: AdminProps) {
         {!isCollapsed && (
           <>
             <div
-              className={`min-w-0 flex-1 font-medium ${isActive ? (isDarkMode ? 'text-blue-300' : 'text-[#2A4DD0]') : ''}`}
+              className={`min-w-0 flex-1 font-medium ${isActive ? 'text-amber-text' : ''}`}
             >
               {sectionDef.label}
             </div>
@@ -218,15 +214,13 @@ export function Admin({ isDarkMode }: AdminProps) {
   }
 
   return (
-    <div
-      className={`min-h-screen ${isDarkMode ? 'bg-gray-900' : 'bg-slate-50'}`}
-    >
+    <div className="min-h-screen bg-tertiary text-primary">
       <div className="flex">
         {/* Side Navigation */}
         <aside
-          className={`relative flex min-h-screen flex-col border-r transition-all duration-300 ${
+          className={`relative flex min-h-screen flex-col border-r border-tertiary transition-all duration-300 ${
             isCollapsed ? 'w-20' : 'w-72'
-          } ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
+          } bg-primary`}
         >
           {/* Collapse Toggle */}
           <div
@@ -235,11 +229,7 @@ export function Admin({ isDarkMode }: AdminProps) {
           >
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className={`rounded-lg p-2 transition-colors ${
-                isDarkMode
-                  ? 'text-gray-400 hover:bg-gray-700 hover:text-white'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              }`}
+              className="rounded-lg p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary"
               title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {isCollapsed ? (
@@ -256,11 +246,7 @@ export function Admin({ isDarkMode }: AdminProps) {
             {/* Organization Scope Section */}
             <div style={{ paddingBottom: '2em' }}>
               {!isCollapsed && (
-                <div
-                  className={`flex items-center gap-2 px-3 pb-6 pt-4 text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                  }`}
-                >
+                <div className="flex items-center gap-2 px-3 pb-6 pt-4 text-xs uppercase tracking-wider text-tertiary">
                   <Building2 className="h-3 w-3" />
                   {orgName} Admin
                 </div>
@@ -272,9 +258,7 @@ export function Admin({ isDarkMode }: AdminProps) {
             <div>
               {!isCollapsed && (
                 <div
-                  className={`flex items-center gap-2 px-3 pb-3 text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                  }`}
+                  className="flex items-center gap-2 px-3 pb-3 text-xs uppercase tracking-wider text-tertiary"
                   style={{ paddingTop: '2em' }}
                 >
                   <Globe className="h-3 w-3" />
@@ -289,19 +273,13 @@ export function Admin({ isDarkMode }: AdminProps) {
         {/* Main Content */}
         <main className="flex-1">
           {/* Section Header */}
-          <div
-            className={`border-b ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
-          >
+          <div className="border-b border-tertiary bg-primary">
             <div className="px-8 py-6">
               <div className="flex items-center gap-3">
                 {currentSectionData && (
-                  <currentSectionData.icon
-                    className={`h-6 w-6 ${isDarkMode ? 'text-blue-400' : 'text-[#2A4DD0]'}`}
-                  />
+                  <currentSectionData.icon className="h-6 w-6 text-amber-text" />
                 )}
-                <h1
-                  className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
+                <h1 className="text-2xl font-semibold text-primary">
                   {currentSectionData?.label}
                 </h1>
               </div>

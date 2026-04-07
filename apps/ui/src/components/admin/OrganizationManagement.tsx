@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AxiosError } from 'axios'
+import type { ApiError } from '@/api/client'
 import { Plus, Search, Trash2, Building2, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '../ui/button'
@@ -82,7 +82,7 @@ export function OrganizationManagement({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organizations'] })
     },
-    onError: (error: AxiosError<{ detail?: string }>) => {
+    onError: (error: ApiError<{ detail?: string }>) => {
       alert(
         `Failed to delete organization: ${error.response?.data?.detail || error.message}`,
       )
@@ -242,9 +242,7 @@ export function OrganizationManagement({
       >
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead
-              className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-            >
+            <thead className="border-b border-tertiary bg-secondary">
               <tr>
                 <th
                   className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${

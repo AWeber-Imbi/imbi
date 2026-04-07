@@ -11,8 +11,11 @@ if [ -n "$conflict_files" ]; then
   done || exit 1
 fi
 
-# Check for large files (>500KB) among staged files
+# Check for large files (>500KB) among staged files (skip lock files)
 git diff --cached --diff-filter=ACM --name-only | while read -r file; do
+  case "$file" in
+    *-lock.json|*.lock) continue ;;
+  esac
   size=$(git cat-file -s ":$file" 2>/dev/null || echo 0)
   if [ "$size" -gt 512000 ]; then
     echo "Error: $file is too large ($((size / 1024))KB, limit 500KB)"

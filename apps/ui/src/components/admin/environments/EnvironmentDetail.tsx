@@ -119,6 +119,18 @@ export function EnvironmentDetail({
               <div
                 className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
+                Sort Order
+              </div>
+              <div
+                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+              >
+                {environment.sort_order ?? 0}
+              </div>
+            </div>
+            <div>
+              <div
+                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
                 Label Color
               </div>
               <div className="mt-1 flex items-center gap-2">

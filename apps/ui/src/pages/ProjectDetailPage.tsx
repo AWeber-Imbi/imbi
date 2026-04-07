@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Navigation } from '@/components/Navigation'
 import { ProjectDetail } from '@/components/ProjectDetail'
@@ -8,8 +8,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { getProject } from '@/api/endpoints'
 
 export function ProjectDetailPage() {
-  const { typeSlug, slug } = useParams<{ typeSlug: string; slug: string }>()
-  const navigate = useNavigate()
+  const { projectId } = useParams<{ projectId: string }>()
   const { selectedOrganization } = useOrganization()
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const stored = localStorage.getItem('imbi-theme')
@@ -29,16 +28,14 @@ export function ProjectDetailPage() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['project', orgSlug, typeSlug, slug],
-    queryFn: () => getProject(orgSlug, typeSlug!, slug!),
-    enabled: !!orgSlug && !!typeSlug && !!slug,
+    queryKey: ['project', orgSlug, projectId],
+    queryFn: () => getProject(orgSlug, projectId!),
+    enabled: !!orgSlug && !!projectId,
   })
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
-      <div
-        className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-slate-50'}`}
-      >
+      <div className="min-h-screen bg-tertiary text-primary">
         <Navigation
           currentView="projects"
           isDarkMode={isDarkMode}
@@ -46,7 +43,9 @@ export function ProjectDetailPage() {
         />
         <main
           className="pt-16"
-          style={{ paddingBottom: 'var(--assistant-height, 64px)' }}
+          style={{
+            paddingBottom: 'var(--assistant-height, 64px)',
+          }}
         >
           {!orgSlug && (
             <div className="mx-auto max-w-7xl px-6 py-8">
@@ -70,11 +69,7 @@ export function ProjectDetailPage() {
             </div>
           )}
           {project && (
-            <ProjectDetail
-              project={project}
-              onBack={() => navigate(-1)}
-              isDarkMode={isDarkMode}
-            />
+            <ProjectDetail project={project} isDarkMode={isDarkMode} />
           )}
         </main>
         <CommandBar isDarkMode={isDarkMode} />
