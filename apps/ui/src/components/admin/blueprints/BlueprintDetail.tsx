@@ -80,6 +80,10 @@ function parseSchemaProperties(
       maxLength: ps.maxLength as number | undefined,
       colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
       iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
+      colorRange: xUi?.['color-range'] as Record<string, string> | undefined,
+      iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
+      colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
+      iconAge: xUi?.['icon-age'] as Record<string, string> | undefined,
     })
   }
 
@@ -564,65 +568,64 @@ export function BlueprintDetail({
                     </div>
                   )}
 
-                  {/* x-ui: color-map and icon-map */}
-                  {(prop.colorMap && Object.keys(prop.colorMap).length > 0) ||
-                  (prop.iconMap && Object.keys(prop.iconMap).length > 0) ? (
-                    <div className="ml-7 mt-2 flex flex-wrap gap-4">
-                      {prop.colorMap &&
-                        Object.keys(prop.colorMap).length > 0 && (
-                          <div>
+                  {/* x-ui maps */}
+                  {(() => {
+                    const uiMaps: [
+                      string,
+                      Record<string, string> | undefined,
+                    ][] = [
+                      ['color-map', prop.colorMap],
+                      ['icon-map', prop.iconMap],
+                      ['color-range', prop.colorRange],
+                      ['icon-range', prop.iconRange],
+                      ['color-age', prop.colorAge],
+                      ['icon-age', prop.iconAge],
+                    ]
+                    const activeMaps = uiMaps.filter(
+                      ([, m]) => m && Object.keys(m).length > 0,
+                    )
+                    if (activeMaps.length === 0) return null
+                    const isColorType = (name: string) =>
+                      name.startsWith('color-')
+                    const chipClass = isDarkMode
+                      ? 'border-gray-600 bg-gray-700 text-gray-300'
+                      : 'border-gray-200 bg-gray-50 text-gray-700'
+                    return (
+                      <div className="ml-7 mt-2 flex flex-wrap gap-4">
+                        {activeMaps.map(([name, map]) => (
+                          <div key={name}>
                             <span
                               className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
                             >
-                              color-map
+                              {name}
                             </span>
                             <div className="mt-1 flex flex-wrap gap-1.5">
-                              {Object.entries(prop.colorMap).map(
-                                ([val, color]) => (
-                                  <span
-                                    key={val}
-                                    className={`rounded inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-xs ${
-                                      isDarkMode
-                                        ? 'border-gray-600 bg-gray-700 text-gray-300'
-                                        : 'border-gray-200 bg-gray-50 text-gray-700'
-                                    }`}
-                                  >
-                                    <span
-                                      className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
-                                      style={{ backgroundColor: color }}
-                                    />
-                                    {val}
-                                  </span>
-                                ),
-                              )}
+                              {Object.entries(map!).map(([key, val]) => (
+                                <span
+                                  key={key}
+                                  className={`rounded inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-xs ${chipClass}`}
+                                >
+                                  {isColorType(name) ? (
+                                    <>
+                                      <span
+                                        className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
+                                        style={{ backgroundColor: val }}
+                                      />
+                                      {key}
+                                    </>
+                                  ) : (
+                                    <>
+                                      {key} → {val}
+                                    </>
+                                  )}
+                                </span>
+                              ))}
                             </div>
                           </div>
-                        )}
-                      {prop.iconMap && Object.keys(prop.iconMap).length > 0 && (
-                        <div>
-                          <span
-                            className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                          >
-                            icon-map
-                          </span>
-                          <div className="mt-1 flex flex-wrap gap-1.5">
-                            {Object.entries(prop.iconMap).map(([val, icon]) => (
-                              <span
-                                key={val}
-                                className={`rounded inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-xs ${
-                                  isDarkMode
-                                    ? 'border-gray-600 bg-gray-700 text-gray-300'
-                                    : 'border-gray-200 bg-gray-50 text-gray-700'
-                                }`}
-                              >
-                                {val} → {icon}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
+                        ))}
+                      </div>
+                    )
+                  })()}
 
                   {/* Constraints row */}
                   {hasConstraints(prop) && (

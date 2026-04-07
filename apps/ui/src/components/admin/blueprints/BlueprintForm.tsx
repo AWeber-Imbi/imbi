@@ -111,13 +111,20 @@ function buildJsonSchema(
       propSchema.items = { type: 'string' }
     }
 
-    const hasColorMap = prop.colorMap && Object.keys(prop.colorMap).length > 0
-    const hasIconMap = prop.iconMap && Object.keys(prop.iconMap).length > 0
-    if (hasColorMap || hasIconMap) {
-      propSchema['x-ui'] = {
-        ...(hasColorMap ? { 'color-map': prop.colorMap } : {}),
-        ...(hasIconMap ? { 'icon-map': prop.iconMap } : {}),
-      }
+    const uiEntries: [string, Record<string, string> | undefined][] = [
+      ['color-map', prop.colorMap],
+      ['icon-map', prop.iconMap],
+      ['color-range', prop.colorRange],
+      ['icon-range', prop.iconRange],
+      ['color-age', prop.colorAge],
+      ['icon-age', prop.iconAge],
+    ]
+    const xUiObj: Record<string, Record<string, string>> = {}
+    for (const [key, map] of uiEntries) {
+      if (map && Object.keys(map).length > 0) xUiObj[key] = map
+    }
+    if (Object.keys(xUiObj).length > 0) {
+      propSchema['x-ui'] = xUiObj
     }
 
     props[prop.name] = propSchema
@@ -156,6 +163,10 @@ function schemaToProperties(schema: Record<string, unknown>): SchemaProperty[] {
       maxLength: propSchema.maxLength as number | undefined,
       colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
       iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
+      colorRange: xUi?.['color-range'] as Record<string, string> | undefined,
+      iconRange: xUi?.['icon-range'] as Record<string, string> | undefined,
+      colorAge: xUi?.['color-age'] as Record<string, string> | undefined,
+      iconAge: xUi?.['icon-age'] as Record<string, string> | undefined,
     })
   }
 
@@ -225,12 +236,9 @@ export function BlueprintForm({
     '{\n  "type": "object",\n  "properties": {}\n}',
   )
   const [enumRawText, setEnumRawText] = useState<Record<string, string>>({})
-  // propId -> array of [key, color] pairs being edited
-  const [colorMapEntries, setColorMapEntries] = useState<
-    Record<string, [string, string][]>
-  >({})
-  // propId -> array of [key, iconName] pairs being edited
-  const [iconMapEntries, setIconMapEntries] = useState<
+  // Unified UI map editing state: keyed by "mapType:propId"
+  // e.g. "colorMap:abc123" -> [["true", "green"], ["false", "red"]]
+  const [uiMapEntries, setUiMapEntries] = useState<
     Record<string, [string, string][]>
   >({})
   const [schemaError, setSchemaError] = useState<string | null>(null)
@@ -284,36 +292,43 @@ export function BlueprintForm({
               p.maximum !== undefined ||
               p.minLength !== undefined ||
               p.maxLength !== undefined ||
-              (p.colorMap && Object.keys(p.colorMap).length > 0) ||
-              (p.iconMap && Object.keys(p.iconMap).length > 0),
+              [
+                p.colorMap,
+                p.iconMap,
+                p.colorRange,
+                p.iconRange,
+                p.colorAge,
+                p.iconAge,
+              ].some((m) => m && Object.keys(m).length > 0),
           )
           .map((p) => p.id)
         if (toExpand.length > 0) {
           setExpandedProps(new Set(toExpand))
         }
 
-        // Initialise color-map and icon-map editing state from loaded properties
-        const initialColorMapEntries: Record<string, [string, string][]> = {}
-        const initialIconMapEntries: Record<string, [string, string][]> = {}
+        // Initialise UI map editing state from loaded properties
+        const mapTypes = [
+          'colorMap',
+          'iconMap',
+          'colorRange',
+          'iconRange',
+          'colorAge',
+          'iconAge',
+        ] as const
+        const initialUiMapEntries: Record<string, [string, string][]> = {}
         for (const p of props) {
-          if (p.colorMap && Object.keys(p.colorMap).length > 0) {
-            initialColorMapEntries[p.id] = Object.entries(p.colorMap) as [
-              string,
-              string,
-            ][]
-          }
-          if (p.iconMap && Object.keys(p.iconMap).length > 0) {
-            initialIconMapEntries[p.id] = Object.entries(p.iconMap) as [
-              string,
-              string,
-            ][]
+          for (const mt of mapTypes) {
+            const map = p[mt]
+            if (map && Object.keys(map).length > 0) {
+              initialUiMapEntries[`${mt}:${p.id}`] = Object.entries(map) as [
+                string,
+                string,
+              ][]
+            }
           }
         }
-        if (Object.keys(initialColorMapEntries).length > 0) {
-          setColorMapEntries(initialColorMapEntries)
-        }
-        if (Object.keys(initialIconMapEntries).length > 0) {
-          setIconMapEntries(initialIconMapEntries)
+        if (Object.keys(initialUiMapEntries).length > 0) {
+          setUiMapEntries(initialUiMapEntries)
         }
       } catch {
         setRawSchema(
@@ -1384,265 +1399,211 @@ export function BlueprintForm({
                           />
                         </div>
 
-                        {/* Color Map */}
-                        <div>
-                          <div className="mb-1 flex items-center justify-between">
-                            <label
-                              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                            >
-                              Color Map
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const entries = [
-                                  ...(colorMapEntries[prop.id] ?? []),
-                                ]
-                                entries.push(['', 'green'])
-                                setColorMapEntries({
-                                  ...colorMapEntries,
-                                  [prop.id]: entries,
-                                })
-                              }}
-                              className={`flex items-center gap-1 text-xs ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
-                            >
-                              <Plus className="h-3 w-3" />
-                              Add entry
-                            </button>
-                          </div>
-                          {(colorMapEntries[prop.id] ?? []).length === 0 ? (
-                            <p
-                              className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                            >
-                              No color mappings defined
-                            </p>
-                          ) : (
-                            <div className="space-y-1.5">
-                              {(colorMapEntries[prop.id] ?? []).map(
-                                ([entryKey, entryColor], idx) => {
-                                  const commitEntries = (
-                                    next: [string, string][],
-                                  ) => {
-                                    const map = Object.fromEntries(
-                                      next.filter(([k]) => k.trim() !== ''),
-                                    )
-                                    updateProperty(prop.id, {
-                                      colorMap:
-                                        Object.keys(map).length > 0
-                                          ? map
-                                          : undefined,
-                                    })
-                                  }
-                                  return (
-                                    <div
-                                      key={idx}
-                                      className="flex items-center gap-1.5"
-                                    >
-                                      <Input
-                                        value={entryKey}
-                                        onChange={(e) => {
-                                          const next = (
-                                            colorMapEntries[prop.id] ?? []
-                                          ).map((row, i): [string, string] =>
-                                            i === idx
-                                              ? [e.target.value, row[1]]
-                                              : row,
-                                          )
-                                          setColorMapEntries({
-                                            ...colorMapEntries,
-                                            [prop.id]: next,
-                                          })
-                                        }}
-                                        onBlur={() => {
-                                          const next =
-                                            colorMapEntries[prop.id] ?? []
-                                          commitEntries(next)
-                                        }}
-                                        placeholder="value"
-                                        className={`flex-1 text-xs ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
-                                      />
-                                      <select
-                                        value={entryColor}
-                                        onChange={(e) => {
-                                          const next = (
-                                            colorMapEntries[prop.id] ?? []
-                                          ).map((row, i): [string, string] =>
-                                            i === idx
-                                              ? [row[0], e.target.value]
-                                              : row,
-                                          )
-                                          setColorMapEntries({
-                                            ...colorMapEntries,
-                                            [prop.id]: next,
-                                          })
-                                          commitEntries(next)
-                                        }}
-                                        className={`rounded-md border px-2 py-1.5 text-xs ${
-                                          isDarkMode
-                                            ? 'border-gray-600 bg-gray-700 text-white'
-                                            : 'border-gray-300 bg-white text-gray-900'
-                                        }`}
+                        {/* UI Maps */}
+                        {[
+                          {
+                            mapType: 'colorMap' as const,
+                            label: 'Color Map',
+                            keyPh: 'value',
+                            valPh: 'e.g. green',
+                            defaultVal: 'green',
+                            isColor: true,
+                          },
+                          {
+                            mapType: 'iconMap' as const,
+                            label: 'Icon Map',
+                            keyPh: 'value',
+                            valPh: 'e.g. circle-check-big',
+                            defaultVal: '',
+                            isColor: false,
+                          },
+                          {
+                            mapType: 'colorRange' as const,
+                            label: 'Color Range',
+                            keyPh: 'e.g. >=90',
+                            valPh: 'e.g. green',
+                            defaultVal: 'green',
+                            isColor: true,
+                          },
+                          {
+                            mapType: 'iconRange' as const,
+                            label: 'Icon Range',
+                            keyPh: 'e.g. >=90',
+                            valPh: 'e.g. check-circle',
+                            defaultVal: '',
+                            isColor: false,
+                          },
+                          {
+                            mapType: 'colorAge' as const,
+                            label: 'Color Age',
+                            keyPh: 'e.g. >30d',
+                            valPh: 'e.g. red',
+                            defaultVal: 'red',
+                            isColor: true,
+                          },
+                          {
+                            mapType: 'iconAge' as const,
+                            label: 'Icon Age',
+                            keyPh: 'e.g. >30d',
+                            valPh: 'e.g. alert-triangle',
+                            defaultVal: '',
+                            isColor: false,
+                          },
+                        ].map(
+                          ({
+                            mapType,
+                            label: mapLabel,
+                            keyPh,
+                            valPh,
+                            defaultVal,
+                            isColor,
+                          }) => {
+                            const stateKey = `${mapType}:${prop.id}`
+                            const entries = uiMapEntries[stateKey] ?? []
+                            const commit = (next: [string, string][]) => {
+                              const map = Object.fromEntries(
+                                next.filter(([k]) => k.trim() !== ''),
+                              )
+                              updateProperty(prop.id, {
+                                [mapType]:
+                                  Object.keys(map).length > 0 ? map : undefined,
+                              })
+                            }
+                            return (
+                              <div key={mapType}>
+                                <div className="mb-1 flex items-center justify-between">
+                                  <label
+                                    className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                  >
+                                    {mapLabel}
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setUiMapEntries({
+                                        ...uiMapEntries,
+                                        [stateKey]: [
+                                          ...entries,
+                                          ['', defaultVal],
+                                        ],
+                                      })
+                                    }}
+                                    className={`flex items-center gap-1 text-xs ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                    Add entry
+                                  </button>
+                                </div>
+                                {entries.length === 0 ? (
+                                  <p
+                                    className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                                  >
+                                    No {mapLabel.toLowerCase()} entries
+                                  </p>
+                                ) : (
+                                  <div className="space-y-1.5">
+                                    {entries.map(([eKey, eVal], idx) => (
+                                      <div
+                                        key={idx}
+                                        className="flex items-center gap-1.5"
                                       >
-                                        {[
-                                          'green',
-                                          'red',
-                                          'amber',
-                                          'yellow',
-                                          'blue',
-                                          'gray',
-                                        ].map((c) => (
-                                          <option key={c} value={c}>
-                                            {c}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const next = (
-                                            colorMapEntries[prop.id] ?? []
-                                          ).filter((_, i) => i !== idx)
-                                          setColorMapEntries({
-                                            ...colorMapEntries,
-                                            [prop.id]: next,
-                                          })
-                                          commitEntries(next)
-                                        }}
-                                        className={`flex-shrink-0 ${isDarkMode ? 'text-gray-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'}`}
-                                      >
-                                        <X className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  )
-                                },
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Icon Map */}
-                        <div>
-                          <div className="mb-1 flex items-center justify-between">
-                            <label
-                              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                            >
-                              Icon Map (Lucide icon names)
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const entries = [
-                                  ...(iconMapEntries[prop.id] ?? []),
-                                ]
-                                entries.push(['', ''])
-                                setIconMapEntries({
-                                  ...iconMapEntries,
-                                  [prop.id]: entries,
-                                })
-                              }}
-                              className={`flex items-center gap-1 text-xs ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
-                            >
-                              <Plus className="h-3 w-3" />
-                              Add entry
-                            </button>
-                          </div>
-                          {(iconMapEntries[prop.id] ?? []).length === 0 ? (
-                            <p
-                              className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                            >
-                              No icon mappings defined
-                            </p>
-                          ) : (
-                            <div className="space-y-1.5">
-                              {(iconMapEntries[prop.id] ?? []).map(
-                                ([entryKey, entryIcon], idx) => {
-                                  const commitIconEntries = (
-                                    next: [string, string][],
-                                  ) => {
-                                    const map = Object.fromEntries(
-                                      next.filter(([k]) => k.trim() !== ''),
-                                    )
-                                    updateProperty(prop.id, {
-                                      iconMap:
-                                        Object.keys(map).length > 0
-                                          ? map
-                                          : undefined,
-                                    })
-                                  }
-                                  return (
-                                    <div
-                                      key={idx}
-                                      className="flex items-center gap-1.5"
-                                    >
-                                      <Input
-                                        value={entryKey}
-                                        onChange={(e) => {
-                                          const next = (
-                                            iconMapEntries[prop.id] ?? []
-                                          ).map((row, i): [string, string] =>
-                                            i === idx
-                                              ? [e.target.value, row[1]]
-                                              : row,
-                                          )
-                                          setIconMapEntries({
-                                            ...iconMapEntries,
-                                            [prop.id]: next,
-                                          })
-                                        }}
-                                        onBlur={() =>
-                                          commitIconEntries(
-                                            iconMapEntries[prop.id] ?? [],
-                                          )
-                                        }
-                                        placeholder="value"
-                                        className={`flex-1 text-xs ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
-                                      />
-                                      <Input
-                                        value={entryIcon}
-                                        onChange={(e) => {
-                                          const next = (
-                                            iconMapEntries[prop.id] ?? []
-                                          ).map((row, i): [string, string] =>
-                                            i === idx
-                                              ? [row[0], e.target.value]
-                                              : row,
-                                          )
-                                          setIconMapEntries({
-                                            ...iconMapEntries,
-                                            [prop.id]: next,
-                                          })
-                                        }}
-                                        onBlur={() =>
-                                          commitIconEntries(
-                                            iconMapEntries[prop.id] ?? [],
-                                          )
-                                        }
-                                        placeholder="e.g. circle-check-big"
-                                        className={`flex-1 text-xs ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const next = (
-                                            iconMapEntries[prop.id] ?? []
-                                          ).filter((_, i) => i !== idx)
-                                          setIconMapEntries({
-                                            ...iconMapEntries,
-                                            [prop.id]: next,
-                                          })
-                                          commitIconEntries(next)
-                                        }}
-                                        className={`flex-shrink-0 ${isDarkMode ? 'text-gray-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'}`}
-                                      >
-                                        <X className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  )
-                                },
-                              )}
-                            </div>
-                          )}
-                        </div>
+                                        <Input
+                                          value={eKey}
+                                          onChange={(e) => {
+                                            const next = entries.map(
+                                              (row, i): [string, string] =>
+                                                i === idx
+                                                  ? [e.target.value, row[1]]
+                                                  : row,
+                                            )
+                                            setUiMapEntries({
+                                              ...uiMapEntries,
+                                              [stateKey]: next,
+                                            })
+                                          }}
+                                          onBlur={() => commit(entries)}
+                                          placeholder={keyPh}
+                                          className={`flex-1 text-xs ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                        />
+                                        {isColor ? (
+                                          <select
+                                            value={eVal}
+                                            onChange={(e) => {
+                                              const next = entries.map(
+                                                (row, i): [string, string] =>
+                                                  i === idx
+                                                    ? [row[0], e.target.value]
+                                                    : row,
+                                              )
+                                              setUiMapEntries({
+                                                ...uiMapEntries,
+                                                [stateKey]: next,
+                                              })
+                                              commit(next)
+                                            }}
+                                            className={`rounded-md border px-2 py-1.5 text-xs ${
+                                              isDarkMode
+                                                ? 'border-gray-600 bg-gray-700 text-white'
+                                                : 'border-gray-300 bg-white text-gray-900'
+                                            }`}
+                                          >
+                                            {[
+                                              'green',
+                                              'red',
+                                              'amber',
+                                              'yellow',
+                                              'blue',
+                                              'gray',
+                                            ].map((c) => (
+                                              <option key={c} value={c}>
+                                                {c}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <Input
+                                            value={eVal}
+                                            onChange={(e) => {
+                                              const next = entries.map(
+                                                (row, i): [string, string] =>
+                                                  i === idx
+                                                    ? [row[0], e.target.value]
+                                                    : row,
+                                              )
+                                              setUiMapEntries({
+                                                ...uiMapEntries,
+                                                [stateKey]: next,
+                                              })
+                                            }}
+                                            onBlur={() => commit(entries)}
+                                            placeholder={valPh}
+                                            className={`flex-1 text-xs ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                          />
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const next = entries.filter(
+                                              (_, i) => i !== idx,
+                                            )
+                                            setUiMapEntries({
+                                              ...uiMapEntries,
+                                              [stateKey]: next,
+                                            })
+                                            commit(next)
+                                          }}
+                                          className={`flex-shrink-0 ${isDarkMode ? 'text-gray-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'}`}
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          },
+                        )}
                       </div>
                     )}
                   </div>

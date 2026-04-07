@@ -712,4 +712,8 @@ export interface SchemaProperty {
   maxLength?: number
   colorMap?: Record<string, string>
   iconMap?: Record<string, string>
+  colorRange?: Record<string, string>
+  iconRange?: Record<string, string>
+  colorAge?: Record<string, string>
+  iconAge?: Record<string, string>
 }

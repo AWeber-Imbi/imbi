@@ -109,6 +109,10 @@ export interface ProjectSchemaSectionProperty {
   'x-ui'?: {
     'color-map'?: Record<string, string>
     'icon-map'?: Record<string, string>
+    'color-range'?: Record<string, string>
+    'icon-range'?: Record<string, string>
+    'color-age'?: Record<string, string>
+    'icon-age'?: Record<string, string>
   } | null
 }
 

@@ -7,6 +7,8 @@ import {
   Rocket,
 } from 'lucide-react'
 import { getIcon } from '@/lib/icons'
+import { resolveColor, resolveIcon, hasAnyUiMap } from '@/lib/ui-maps'
+import type { XUiMaps } from '@/lib/ui-maps'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -49,19 +51,6 @@ const COLOR_TEXT: Record<string, string> = {
   blue: 'text-blue-600',
   gray: 'text-gray-500',
   grey: 'text-gray-500',
-}
-
-/** Case-insensitive lookup in a string-keyed record. */
-function caseInsensitiveLookup(
-  map: Record<string, string>,
-  key: string,
-): string | undefined {
-  if (map[key] !== undefined) return map[key]
-  const lower = key.toLowerCase()
-  for (const k of Object.keys(map)) {
-    if (k.toLowerCase() === lower) return map[k]
-  }
-  return undefined
 }
 
 /** Format a snake_case or camelCase key as a readable label */
@@ -289,8 +278,7 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
       value: string | null
       rawValue: unknown
       title?: string
-      colorMap?: Record<string, string>
-      iconMap?: Record<string, string>
+      uiMaps: XUiMaps
     }[] = []
     for (const section of projectSchema.sections) {
       for (const [key, def] of Object.entries(section.properties)) {
@@ -308,8 +296,14 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
             isDate && raw != null
               ? new Date(String(raw)).toLocaleString()
               : undefined,
-          colorMap: xUi?.['color-map'] ?? undefined,
-          iconMap: xUi?.['icon-map'] ?? undefined,
+          uiMaps: {
+            colorMap: xUi?.['color-map'] ?? undefined,
+            iconMap: xUi?.['icon-map'] ?? undefined,
+            colorRange: xUi?.['color-range'] ?? undefined,
+            iconRange: xUi?.['icon-range'] ?? undefined,
+            colorAge: xUi?.['color-age'] ?? undefined,
+            iconAge: xUi?.['icon-age'] ?? undefined,
+          },
         })
       }
     }
@@ -512,20 +506,12 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
                       value: fieldValue,
                       rawValue,
                       title: fieldTitle,
-                      colorMap,
-                      iconMap,
+                      uiMaps,
                     }) => {
-                      const rawStr = rawValue != null ? String(rawValue) : null
-                      const hasUiMap = colorMap || iconMap
-                      const mappedColor =
-                        colorMap && rawStr != null
-                          ? caseInsensitiveLookup(colorMap, rawStr)
-                          : undefined
-                      const mappedIcon =
-                        iconMap && rawStr != null
-                          ? caseInsensitiveLookup(iconMap, rawStr)
-                          : undefined
-                      if (hasUiMap && !mappedColor && !mappedIcon) return null
+                      const mappedColor = resolveColor(uiMaps, rawValue)
+                      const mappedIcon = resolveIcon(uiMaps, rawValue)
+                      if (hasAnyUiMap(uiMaps) && !mappedColor && !mappedIcon)
+                        return null
                       const FieldIcon = mappedIcon ? getIcon(mappedIcon) : null
                       const textColorClass = mappedColor
                         ? (COLOR_TEXT[mappedColor] ?? value)
