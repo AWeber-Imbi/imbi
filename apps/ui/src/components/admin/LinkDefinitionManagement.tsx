@@ -395,7 +395,15 @@ export function LinkDefinitionManagement({
                     )}
                   </td>
                   <td
-                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${
+                      (ld.relationships?.projects?.count ?? 0) === 0
+                        ? isDarkMode
+                          ? 'text-gray-600'
+                          : 'text-gray-400'
+                        : isDarkMode
+                          ? 'text-gray-300'
+                          : 'text-gray-600'
+                    }`}
                   >
                     {ld.relationships?.projects?.count ?? 0}
                   </td>
