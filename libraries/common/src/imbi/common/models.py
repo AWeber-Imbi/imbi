@@ -233,7 +233,7 @@ class Project(Node):
             direction='OUTGOING',
         ),
     ] = []
-    links: dict[str, pydantic.HttpUrl] = {}
+    links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str] = {}
 
 

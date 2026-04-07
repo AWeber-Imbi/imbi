@@ -388,6 +388,7 @@ async def upsert(
     node: pydantic.BaseModel,
     constraint: dict[str, typing.Any],
     auto_increment: list[str] | None = None,
+    immutable_fields: list[str] | None = None,
 ) -> str:
     """Save a node to the graph, returning the elementId.
 
@@ -397,6 +398,10 @@ async def upsert(
         to increment atomically server-side using
         ``coalesce(node.field, 0) + 1`` instead of client values.
         The model instance is updated in-place with the new values.
+    :param immutable_fields: Optional list of field names (not aliases)
+        that should only be set on CREATE, never overwritten on MATCH.
+        Use this for stable identifiers like ``id`` that must not be
+        replaced by freshly generated values on subsequent upserts.
     :returns: The elementId of the upserted node
 
     """
@@ -408,6 +413,7 @@ async def upsert(
         node.created_at = now
 
     auto_increment_fields = set(auto_increment or [])
+    immutable = set(immutable_fields or [])
 
     # Build field-name-to-alias mapping for alias-safe handling
     model_cls = type(node)
@@ -419,6 +425,7 @@ async def upsert(
     auto_increment_aliases = {
         field_to_alias.get(f, f) for f in auto_increment_fields
     }
+    immutable_aliases = {field_to_alias.get(f, f) for f in immutable}
 
     properties = node.model_dump(by_alias=True)
     label = node.__class__.__name__
@@ -429,11 +436,12 @@ async def upsert(
         else:
             assignment.append(f'node.{key} = ${key}')
 
-    # Split assignments: created_at only on CREATE, not on MATCH
+    # Split assignments: created_at and immutable fields only on CREATE
     created_at_alias = field_to_alias.get(
         'created_at',
         'created_at',
     )
+    create_only_aliases = {created_at_alias} | immutable_aliases
     on_create_assignment = list(assignment)
     on_match_assignment = [
         expr
@@ -442,7 +450,7 @@ async def upsert(
             assignment,
             strict=True,
         )
-        if key != created_at_alias
+        if key not in create_only_aliases
     ]
 
     # Namespace constraint params to avoid collisions with
@@ -461,15 +469,21 @@ async def upsert(
     where_props = ', '.join(f'{k}: $_c_{k}' for k in constraint)
 
     return_fields = 'elementId(node) AS nodeId'
-    if auto_increment_aliases:
+    returned_aliases = auto_increment_aliases | immutable_aliases
+    if returned_aliases:
         return_fields += ', ' + ', '.join(
-            f'node.{key} AS {key}' for key in sorted(auto_increment_aliases)
+            f'node.{key} AS {key}' for key in sorted(returned_aliases)
         )
 
+    match_clause = (
+        f'  ON MATCH SET {", ".join(on_match_assignment)}'
+        if on_match_assignment
+        else ''
+    )
     query = (
         f'         MERGE (node:{label} {{{where_props}}})'
         f' ON CREATE SET {", ".join(on_create_assignment)}'
-        f'  ON MATCH SET {", ".join(on_match_assignment)}'
+        f'{match_clause}'
         f'        RETURN {return_fields}'
     ).strip()
     LOGGER.debug('Upsert query: %s', query)
@@ -480,7 +494,7 @@ async def upsert(
         if record is None:
             raise ValueError('Upsert query returned no results')
         # Update model in-place with server-computed values
-        for alias in sorted(auto_increment_aliases):
+        for alias in sorted(returned_aliases):
             if alias in record:
                 field_name = alias_to_field.get(alias, alias)
                 setattr(node, field_name, record[alias])

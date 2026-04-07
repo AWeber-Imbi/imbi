@@ -36,7 +36,11 @@ def _map_string_type(prop_schema: typing.Any) -> type[typing.Any]:
 
     # Check for enum constraint
     enum_values = getattr(prop_schema, 'enum', None)
-    if enum_values and isinstance(enum_values, list):
+    if (
+        enum_values
+        and isinstance(enum_values, list)
+        and all(isinstance(v, str) for v in enum_values)
+    ):
         # Create Literal type from enum values
         return typing.Literal[tuple(enum_values)]  # type: ignore[return-value]
 
@@ -114,6 +118,7 @@ def _apply_blueprints[ModelType: pydantic.BaseModel](
                     enum_values
                     and isinstance(enum_values, list)
                     and getattr(prop_schema, 'type', None) == 'string'
+                    and all(isinstance(v, str) for v in enum_values)
                 ):
                     field_type = typing.Annotated[
                         field_type,
