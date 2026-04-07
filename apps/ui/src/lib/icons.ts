@@ -108,7 +108,7 @@ export function getIcon(
 
   // AWS Icons: aws-lambda, aws-systems-manager-parameter-store
   if (iconName.startsWith('aws-')) {
-    const key = iconName.slice(4).toLowerCase()
+    const key = iconName.toLowerCase()
     const url = awsIndex[key]
     if (url) return createAwsImgComponent(url)
     // Try partial match (suffix)

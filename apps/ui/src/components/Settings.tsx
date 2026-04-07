@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, User, Bell, Key, Shield, Link2, Book } from 'lucide-react'
 import { Button } from './ui/button'
@@ -33,12 +32,9 @@ interface SettingsProps {
 export function Settings({ isDarkMode }: SettingsProps) {
   const navigate = useNavigate()
   const { tab } = useParams<{ tab?: string }>()
-  const [activeTab, setActiveTab] = useState<SettingsTab>(
-    (tab as SettingsTab) || 'account',
-  )
+  const activeTab: SettingsTab = (tab as SettingsTab) || 'account'
 
   const handleTabChange = (tabId: SettingsTab) => {
-    setActiveTab(tabId)
     navigate(`/settings/${tabId}`, { replace: true })
   }
 

@@ -7,7 +7,7 @@ import {
   Rocket,
 } from 'lucide-react'
 import { getIcon } from '@/lib/icons'
-import { resolveColor, resolveIcon, hasAnyUiMap } from '@/lib/ui-maps'
+import { resolveColor, resolveIcon } from '@/lib/ui-maps'
 import type { XUiMaps } from '@/lib/ui-maps'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -345,30 +345,33 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
 
           {/* Deployment Pipeline (mocked) */}
           <div className="flex items-center gap-2">
-            {sortedEnvironments.map((env, idx) => {
-              const deployment = deploymentStatus[env.slug]
-              if (!deployment) return null
-              const color = env.label_color
-              return (
-                <span key={env.slug} className="contents">
-                  {idx > 0 && <ArrowRight className="h-4 w-4 text-slate-400" />}
-                  <span
-                    className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium"
-                    style={
-                      color
-                        ? {
-                            backgroundColor: color + '20',
-                            color: color,
-                            border: `1px solid ${color}40`,
-                          }
-                        : undefined
-                    }
-                  >
-                    {env.name}: {deployment.version}
+            {sortedEnvironments
+              .filter((env) => !!deploymentStatus[env.slug])
+              .map((env, idx) => {
+                const deployment = deploymentStatus[env.slug]
+                const color = env.label_color
+                return (
+                  <span key={env.slug} className="contents">
+                    {idx > 0 && (
+                      <ArrowRight className="h-4 w-4 text-slate-400" />
+                    )}
+                    <span
+                      className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium"
+                      style={
+                        color
+                          ? {
+                              backgroundColor: color + '20',
+                              color: color,
+                              border: `1px solid ${color}40`,
+                            }
+                          : undefined
+                      }
+                    >
+                      {env.name}: {deployment.version}
+                    </span>
                   </span>
-                </span>
-              )
-            })}
+                )
+              })}
             <Button
               variant="outline"
               size="sm"
@@ -510,8 +513,6 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
                     }) => {
                       const mappedColor = resolveColor(uiMaps, rawValue)
                       const mappedIcon = resolveIcon(uiMaps, rawValue)
-                      if (hasAnyUiMap(uiMaps) && !mappedColor && !mappedIcon)
-                        return null
                       const FieldIcon = mappedIcon ? getIcon(mappedIcon) : null
                       const textColorClass = mappedColor
                         ? (COLOR_TEXT[mappedColor] ?? value)
