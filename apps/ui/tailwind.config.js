@@ -17,28 +17,26 @@ export default {
       sans: ["var(--font-sans)"],
       mono: ["var(--font-mono)"],
     },
-    // fontWeight intentionally in extend (below) to preserve Tailwind defaults
-    fontSize: {
-      // Typography scale from design system
-      "overline": ["13px", { lineHeight: "1.5", letterSpacing: "0.5px", fontWeight: "500" }],
-      "xs": ["13.5px", { lineHeight: "1.5" }],
-      "chip": ["13px", { lineHeight: "1.5" }],
-      "badge": ["13.5px", { lineHeight: "1.5", fontWeight: "500" }],
-      "sm": ["15px", { lineHeight: "1.5" }],
-      "base": ["15.5px", { lineHeight: "1.5" }],
-      "task": ["16px", { lineHeight: "1.5", fontWeight: "500" }],
-      "body": ["15.5px", { lineHeight: "1.7" }],
-      "card-title": ["18px", { lineHeight: "1.5", fontWeight: "500" }],
-      "h2": ["20px", { lineHeight: "1.5", fontWeight: "500" }],
-      "h1": ["24px", { lineHeight: "1.5", fontWeight: "500" }],
-    },
-    // borderRadius intentionally in extend (below) to preserve Tailwind defaults
-    borderWidth: {
-      DEFAULT: "0.5px",
-      0: "0",
-      2: "2px",
-    },
     extend: {
+      fontSize: {
+        // Typography scale from design system (in extend to preserve Tailwind defaults)
+        "overline": ["13px", { lineHeight: "1.5", letterSpacing: "0.5px", fontWeight: "500" }],
+        "xs": ["13.5px", { lineHeight: "1.5" }],
+        "chip": ["13px", { lineHeight: "1.5" }],
+        "badge": ["13.5px", { lineHeight: "1.5", fontWeight: "500" }],
+        "sm": ["15px", { lineHeight: "1.5" }],
+        "base": ["15.5px", { lineHeight: "1.5" }],
+        "task": ["16px", { lineHeight: "1.5", fontWeight: "500" }],
+        "body": ["15.5px", { lineHeight: "1.7" }],
+        "card-title": ["18px", { lineHeight: "1.5", fontWeight: "500" }],
+        "h2": ["20px", { lineHeight: "1.5", fontWeight: "500" }],
+        "h1": ["24px", { lineHeight: "1.5", fontWeight: "500" }],
+      },
+      borderWidth: {
+        DEFAULT: "0.5px",
+        0: "0",
+        2: "2px",
+      },
       fontWeight: {
         normal: "400",
         medium: "500",

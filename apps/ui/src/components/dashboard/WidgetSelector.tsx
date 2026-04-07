@@ -119,7 +119,7 @@ export function WidgetSelector({
                             : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
                       }`}
                     >
-                      <div className="text-2xl flex-shrink-0">
+                      <div className="flex-shrink-0 text-2xl">
                         {widget.icon}
                       </div>
                       <div className="flex-1 text-left">

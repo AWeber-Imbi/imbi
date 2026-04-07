@@ -59,7 +59,7 @@ export function SettingsIntegrations({
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
               <div
-                className={`text-xl flex h-12 w-12 items-center justify-center rounded-lg ${
+                className={`flex h-12 w-12 items-center justify-center rounded-lg text-xl ${
                   isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
                 }`}
               >

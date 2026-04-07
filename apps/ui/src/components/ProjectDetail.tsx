@@ -602,7 +602,7 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
 
                 <div className="mb-4 flex items-center gap-3">
                   <div
-                    className={`text-2xl flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg font-medium ${
+                    className={`flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg text-2xl font-medium ${
                       healthScore >= 90
                         ? 'bg-green-50 text-green-700'
                         : healthScore >= 80
@@ -759,7 +759,7 @@ function PlaceholderTab({
     <Card className={`p-12 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
       <div className="text-center">
         <h3
-          className={`text-lg mb-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
+          className={`mb-2 text-lg ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
         >
           {name}
         </h3>

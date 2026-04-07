@@ -277,7 +277,7 @@ export function ThirdPartyServiceManagement({
             Total Services
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {filteredServices.length}
           </div>
@@ -295,7 +295,7 @@ export function ThirdPartyServiceManagement({
             Active
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}
           >
             {statusCounts.active}
           </div>
@@ -313,7 +313,7 @@ export function ThirdPartyServiceManagement({
             Evaluating
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
           >
             {statusCounts.evaluating}
           </div>
@@ -331,7 +331,7 @@ export function ThirdPartyServiceManagement({
             Deprecated
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}
           >
             {statusCounts.deprecated}
           </div>

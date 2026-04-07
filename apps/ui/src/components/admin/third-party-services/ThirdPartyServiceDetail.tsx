@@ -296,7 +296,7 @@ export function ThirdPartyServiceDetail({
               }`}
             >
               <h3
-                className={`text-lg mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
               >
                 Links
               </h3>
@@ -339,7 +339,7 @@ export function ThirdPartyServiceDetail({
               }`}
             >
               <h3
-                className={`text-lg mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
               >
                 Identifiers
               </h3>

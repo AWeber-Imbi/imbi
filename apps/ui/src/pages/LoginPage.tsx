@@ -117,7 +117,7 @@ export function LoginPage() {
       <div className="w-full max-w-md rounded-xl border border-tertiary bg-primary p-8">
         <div className="mb-8 flex flex-col items-center">
           <img src={imbiLogo} alt="Imbi" className="mb-4 h-16 w-16" />
-          <h1 className="text-2xl mb-2 text-gray-900">Imbi</h1>
+          <h1 className="mb-2 text-2xl text-gray-900">Imbi</h1>
         </div>
 
         {oauthProviders.length > 0 && (

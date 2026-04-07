@@ -27,7 +27,7 @@ export function StatWidget({
             {title}
           </p>
           <p
-            className={`text-3xl mt-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mt-2 text-3xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {value}
           </p>

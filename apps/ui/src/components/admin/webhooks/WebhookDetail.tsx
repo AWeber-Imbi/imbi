@@ -80,7 +80,7 @@ export function WebhookDetail({
         }`}
       >
         <h3
-          className={`text-lg mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Configuration
         </h3>
@@ -171,7 +171,7 @@ export function WebhookDetail({
         }`}
       >
         <h3
-          className={`text-lg mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Rules ({webhook.rules.length})
         </h3>

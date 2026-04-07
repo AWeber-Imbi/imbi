@@ -209,7 +209,7 @@ export function WebhookManagement({ isDarkMode }: WebhookManagementProps) {
             Total Webhooks
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {filteredWebhooks.length}
           </div>
@@ -227,7 +227,7 @@ export function WebhookManagement({ isDarkMode }: WebhookManagementProps) {
             With Service
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
           >
             {filteredWebhooks.filter((w) => w.third_party_service).length}
           </div>
@@ -245,7 +245,7 @@ export function WebhookManagement({ isDarkMode }: WebhookManagementProps) {
             Total Rules
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
           >
             {filteredWebhooks.reduce((sum, w) => sum + w.rules.length, 0)}
           </div>

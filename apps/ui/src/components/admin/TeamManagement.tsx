@@ -231,7 +231,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             Total Teams
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {filteredTeams.length}
           </div>
@@ -249,7 +249,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             Total Projects
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {filteredTeams.reduce(
               (sum, t) => sum + (t.relationships?.projects?.count ?? 0),
@@ -270,7 +270,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             Total Members
           </div>
           <div
-            className={`text-2xl mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {filteredTeams.reduce(
               (sum, t) => sum + (t.relationships?.members?.count ?? 0),

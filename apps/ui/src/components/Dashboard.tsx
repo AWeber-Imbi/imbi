@@ -346,12 +346,12 @@ export function Dashboard({
           }`}
         >
           <div
-            className={`text-6xl mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}
+            className={`mb-4 text-6xl ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}
           >
             📊
           </div>
           <h3
-            className={`text-xl mb-2 font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mb-2 text-xl font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             No Widgets Selected
           </h3>
