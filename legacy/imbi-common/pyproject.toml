@@ -21,6 +21,7 @@ dependencies = [
   "cryptography>=42.0.4",
   "cypherantic",
   "jsonschema-models",
+  "nanoid>=2.0.0",
   "neo4j",
   "orjson",
   "pydantic-settings",

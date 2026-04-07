@@ -1,4 +1,5 @@
 import datetime
+import json
 import unittest
 
 import pydantic
@@ -105,6 +106,92 @@ class BlueprintModelTestCase(unittest.TestCase):
         self.assertIn('Slug cannot be empty', str(ctx.exception))
 
 
+class BlueprintFilterValidatorTestCase(unittest.TestCase):
+    """Test Blueprint filter and json_schema validators/serializers."""
+
+    def _schema(self) -> models.Schema:
+        return models.Schema.model_validate(
+            {'type': 'object', 'properties': {}}
+        )
+
+    def test_filter_from_json_string(self) -> None:
+        """Test filter field accepts a JSON string."""
+        filter_json = json.dumps({'project_type': ['apis'], 'environment': []})
+        bp = models.Blueprint(
+            name='test',
+            type='Project',
+            json_schema=self._schema(),
+            filter=filter_json,
+        )
+        self.assertIsInstance(bp.filter, models.BlueprintFilter)
+        self.assertEqual(bp.filter.project_type, ['apis'])
+
+    def test_filter_from_blueprint_filter_instance(self) -> None:
+        """Test filter field accepts a BlueprintFilter instance."""
+        bf = models.BlueprintFilter(project_type=['apis'])
+        bp = models.Blueprint(
+            name='test',
+            type='Project',
+            json_schema=self._schema(),
+            filter=bf,
+        )
+        self.assertEqual(bp.filter, bf)
+
+    def test_filter_invalid_type_raises(self) -> None:
+        """Test filter rejects invalid types."""
+        with self.assertRaises(pydantic.ValidationError):
+            models.Blueprint(
+                name='test',
+                type='Project',
+                json_schema=self._schema(),
+                filter=42,
+            )
+
+    def test_filter_serialization(self) -> None:
+        """Test filter serializes to JSON string."""
+        bf = models.BlueprintFilter(project_type=['apis'])
+        bp = models.Blueprint(
+            name='test',
+            type='Project',
+            json_schema=self._schema(),
+            filter=bf,
+        )
+        dumped = bp.model_dump()
+        # serialize_filter should produce a JSON string
+        self.assertIsInstance(dumped['filter'], str)
+        parsed = json.loads(dumped['filter'])
+        self.assertEqual(parsed['project_type'], ['apis'])
+
+    def test_filter_none_serialization(self) -> None:
+        """Test None filter serializes to None."""
+        bp = models.Blueprint(
+            name='test',
+            type='Project',
+            json_schema=self._schema(),
+        )
+        dumped = bp.model_dump()
+        self.assertIsNone(dumped['filter'])
+
+    def test_json_schema_from_schema_instance(self) -> None:
+        """Test json_schema field accepts a Schema instance."""
+        schema = self._schema()
+        bp = models.Blueprint(
+            name='test',
+            type='Project',
+            json_schema=schema,
+        )
+        self.assertEqual(bp.json_schema, schema)
+
+    def test_json_schema_invalid_type_raises(self) -> None:
+        """Test json_schema rejects invalid types."""
+        with self.assertRaises(pydantic.ValidationError):
+            models.Blueprint(
+                name='test',
+                type='Project',
+                json_schema=42,
+            )
+
+
 class NodeModelTestCase(unittest.TestCase):
     """Test cases for Node-based models."""
 
@@ -193,7 +280,7 @@ class ProjectModelTestCase(unittest.TestCase):
                 name='Test',
                 slug='test',
                 team=team,
-                project_type=project_type,
+                project_types=[project_type],
                 links={'repo': 'not-a-url'},  # Invalid URL
                 urls={},
                 identifiers={},

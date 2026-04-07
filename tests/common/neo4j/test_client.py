@@ -26,7 +26,8 @@ class Neo4jClientTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Patch the driver creation and session context
         self.driver_patcher = mock.patch(
-            'neo4j.AsyncGraphDatabase.driver', return_value=self.mock_driver
+            'neo4j.AsyncGraphDatabase.driver',
+            return_value=self.mock_driver,
         )
         self.mock_driver_class = self.driver_patcher.start()
         self.addCleanup(self.driver_patcher.stop)
@@ -38,7 +39,7 @@ class Neo4jClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIs(instance1, instance2)
 
     async def test_initialize(self) -> None:
-        """Test graph initialization creates indexes and installs triggers."""
+        """Test graph initialization creates indexes."""
         graph = client.Neo4j.get_instance()
         await graph.initialize()
         self.mock_driver.session.assert_called()
@@ -48,15 +49,16 @@ class Neo4jClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.mock_session.run.call_count, expected_calls)
 
     async def test_initialize_with_constraint_error(self) -> None:
-        """Test that ConstraintError during index creation is handled."""
+        """Test that ConstraintError during index creation is
+        handled."""
         from neo4j import exceptions
 
         with (
             mock.patch(
                 'imbi_common.neo4j.constants.INDEXES',
                 [
-                    'CREATE CONSTRAINT test IF NOT EXISTS FOR (n:Test) '
-                    'REQUIRE n.id IS UNIQUE'
+                    'CREATE CONSTRAINT test IF NOT EXISTS '
+                    'FOR (n:Test) REQUIRE n.id IS UNIQUE'
                 ],
             ),
             mock.patch('imbi_common.neo4j.constants.TRIGGERS', []),
@@ -70,8 +72,10 @@ class Neo4jClientTestCase(unittest.IsolatedAsyncioTestCase):
 
             self.mock_driver.session.assert_called()
 
-    async def test_initialize_trigger_apoc_not_available(self) -> None:
-        """Test that a ProcedureNotFound error skips the trigger gracefully."""
+    async def test_initialize_trigger_apoc_not_available(
+        self,
+    ) -> None:
+        """Test that ProcedureNotFound skips the trigger."""
         from neo4j import exceptions
 
         apoc_err = exceptions.Neo4jError._hydrate_neo4j(
@@ -102,7 +106,9 @@ class Neo4jClientTestCase(unittest.IsolatedAsyncioTestCase):
                 any('APOC not available' in msg for msg in cm.output)
             )
 
-    async def test_initialize_trigger_other_client_error_raises(self) -> None:
+    async def test_initialize_trigger_other_client_error_raises(
+        self,
+    ) -> None:
         """Test that non-ProcedureNotFound ClientErrors propagate."""
         from neo4j import exceptions
 

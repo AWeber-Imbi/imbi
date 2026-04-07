@@ -314,6 +314,66 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 organization=self.org,
             )
 
+    async def test_get_model_with_enum_case_coercion(self) -> None:
+        """Test that enum values are coerced to match canonical case."""
+        self._set_blueprints(
+            self._make_blueprint(
+                properties={
+                    'framework': {
+                        'type': 'string',
+                        'enum': ['Tornado', 'FastAPI', 'Pylons'],
+                    }
+                }
+            )
+        )
+
+        result_model = await blueprints.get_model(models.Environment)
+
+        # Lowercase input should be coerced to canonical case
+        instance = result_model(
+            name='Test',
+            slug='test',
+            framework='tornado',
+            organization=self.org,
+        )
+        self.assertEqual(instance.framework, 'Tornado')
+
+        # UPPERCASE input should be coerced
+        instance2 = result_model(
+            name='Test',
+            slug='test',
+            framework='FASTAPI',
+            organization=self.org,
+        )
+        self.assertEqual(instance2.framework, 'FastAPI')
+
+        # Mixed case should be coerced
+        instance3 = result_model(
+            name='Test',
+            slug='test',
+            framework='pYlOnS',
+            organization=self.org,
+        )
+        self.assertEqual(instance3.framework, 'Pylons')
+
+        # Exact case still works
+        instance4 = result_model(
+            name='Test',
+            slug='test',
+            framework='Tornado',
+            organization=self.org,
+        )
+        self.assertEqual(instance4.framework, 'Tornado')
+
+        # Completely invalid value still fails
+        with self.assertRaises(pydantic.ValidationError):
+            result_model(
+                name='Test',
+                slug='test',
+                framework='django',
+                organization=self.org,
+            )
+
     async def test_get_model_with_default_values(self) -> None:
         """Test get_model with default values from schema."""
         self._set_blueprints(
@@ -463,6 +523,85 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('example.com', json_str)
 
 
+class CoerceEnumCaseTestCase(unittest.TestCase):
+    """Test _coerce_enum_case validator."""
+
+    def test_non_string_passthrough(self) -> None:
+        """Test non-string values pass through unchanged."""
+        coerce = blueprints._coerce_enum_case(['A', 'B'])
+        self.assertEqual(coerce(42), 42)
+        self.assertIsNone(coerce(None))
+        self.assertEqual(coerce(['a']), ['a'])
+
+
+class MapArrayTypeTestCase(unittest.TestCase):
+    """Test _map_array_type for various item types."""
+
+    def _schema(self, **kwargs: typing.Any) -> mock.MagicMock:
+        obj = mock.MagicMock()
+        for k, v in kwargs.items():
+            setattr(obj, k, v)
+        return obj
+
+    def test_number_items(self) -> None:
+        items = self._schema(type='number')
+        schema = self._schema(items=items)
+        result = blueprints._map_array_type(schema)
+        self.assertEqual(result, list[float])
+
+    def test_boolean_items(self) -> None:
+        items = self._schema(type='boolean')
+        schema = self._schema(items=items)
+        result = blueprints._map_array_type(schema)
+        self.assertEqual(result, list[bool])
+
+    def test_unknown_items_type(self) -> None:
+        items = self._schema(type='object')
+        schema = self._schema(items=items)
+        result = blueprints._map_array_type(schema)
+        self.assertEqual(result, list)
+
+    def test_no_items(self) -> None:
+        schema = self._schema(items=None)
+        result = blueprints._map_array_type(schema)
+        self.assertEqual(result, list)
+
+
+class MapSchemaTypeToPythonTestCase(unittest.TestCase):
+    """Test _map_schema_type_to_python for unknown types."""
+
+    def test_unknown_type(self) -> None:
+        schema = mock.MagicMock()
+        schema.type = None
+        result = blueprints._map_schema_type_to_python(schema)
+        self.assertEqual(result, typing.Any)
+
+
+class MakeResponseModelTestCase(unittest.TestCase):
+    """Test make_response_model."""
+
+    def test_creates_response_model(self) -> None:
+        """Test that response model adds relationships field."""
+
+        class SimpleModel(pydantic.BaseModel):
+            name: str
+
+        response_cls = blueprints.make_response_model(SimpleModel)
+        self.assertTrue(issubclass(response_cls, SimpleModel))
+        self.assertIn('relationships', response_cls.model_fields)
+
+        instance = response_cls(name='test')
+        self.assertIsNone(instance.relationships)
+
+        instance2 = response_cls(
+            name='test',
+            relationships={
+                'teams': models.RelationshipLink(href='/teams', count=5)
+            },
+        )
+        self.assertEqual(instance2.relationships['teams'].count, 5)
+
+
 class MatchesFilterTestCase(unittest.TestCase):
     """Test cases for blueprints._matches_filter."""
 
@@ -548,6 +687,24 @@ class MatchesFilterTestCase(unittest.TestCase):
         # Missing key
         self.assertFalse(
             blueprints._matches_filter(bp, {'project_type': 'apis'})
+        )
+
+    def test_list_context_value_matches(self) -> None:
+        """Test multi-type context (list) matches filter."""
+        bp = self._make_blueprint(bp_filter={'project_type': ['apis']})
+        self.assertTrue(
+            blueprints._matches_filter(
+                bp, {'project_type': ['apis', 'consumers']}
+            )
+        )
+
+    def test_list_context_value_no_match(self) -> None:
+        """Test multi-type context (list) rejects when none match."""
+        bp = self._make_blueprint(bp_filter={'project_type': ['apis']})
+        self.assertFalse(
+            blueprints._matches_filter(
+                bp, {'project_type': ['consumers', 'daemons']}
+            )
         )
 
     def test_empty_filter_lists_match_everything(self) -> None:

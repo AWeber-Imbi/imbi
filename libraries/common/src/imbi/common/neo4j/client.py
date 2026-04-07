@@ -68,7 +68,8 @@ class Neo4j:
                     try:
                         await session.run(
                             'CALL apoc.trigger.install('
-                            '    $db, $name, $statement, $selector, $config'
+                            '    $db, $name, $statement,'
+                            '    $selector, $config'
                             ')',
                             db=self._settings.database,
                             name=trigger['name'],
@@ -77,7 +78,8 @@ class Neo4j:
                             config=trigger.get('config', {}),
                         )
                         LOGGER.debug(
-                            'Installed APOC trigger %r', trigger['name']
+                            'Installed APOC trigger %r',
+                            trigger['name'],
                         )
                     except exceptions.ClientError as err:
                         if 'ProcedureNotFound' in (err.code or ''):

@@ -2,6 +2,7 @@ import datetime
 import typing
 
 import cypherantic
+import nanoid  # type: ignore[import-untyped]
 import pydantic
 import slugify
 from jsonschema_models import models as schema_models
@@ -166,6 +167,8 @@ class Team(Node):
 
 
 class Environment(Node):
+    sort_order: int = 0
+
     label_color: typing.Annotated[
         str | None,
         pydantic.Field(
@@ -208,6 +211,7 @@ class LinkDefinition(Node):
 
 
 class Project(Node):
+    id: str = pydantic.Field(default_factory=nanoid.generate)
     team: typing.Annotated[
         Team,
         cypherantic.Relationship(
@@ -215,13 +219,13 @@ class Project(Node):
             direction='OUTGOING',
         ),
     ]
-    project_type: typing.Annotated[
-        ProjectType,
+    project_types: typing.Annotated[
+        list[ProjectType],
         cypherantic.Relationship(
             rel_type='TYPE',
             direction='OUTGOING',
         ),
-    ]
+    ] = []
     environments: typing.Annotated[
         list[Environment],
         cypherantic.Relationship(

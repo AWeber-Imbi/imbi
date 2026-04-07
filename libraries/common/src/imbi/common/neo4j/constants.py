@@ -21,7 +21,10 @@ INDEXES: list[str] = [
     'IF NOT EXISTS FOR (n:LinkDefinition) '
     'REQUIRE n.slug IS UNIQUE;',
     # Projects
+    'CREATE CONSTRAINT project_id_unique IF NOT EXISTS '
+    'FOR (n:Project) REQUIRE n.id IS UNIQUE;',
     'CREATE INDEX project_name IF NOT EXISTS FOR (n:Project) ON (n.name);',
+    'CREATE INDEX project_slug IF NOT EXISTS FOR (n:Project) ON (n.slug);',
     # AI Assistant Conversations
     'CREATE CONSTRAINT conversation_id_unique IF NOT EXISTS '
     'FOR (n:Conversation) REQUIRE n.id IS UNIQUE;',
@@ -94,44 +97,4 @@ INDEXES: list[str] = [
 # Each entry is passed to `CALL apoc.trigger.install(...)`.
 # Triggers replace any existing trigger with the same name, so
 # they are safe to re-run on every startup.
-_PROJECT_TYPE_UNIQUENESS_QUERY: str = (
-    # Collect (project, project_type, slug-to-check) pairs from two sources:
-    # 1. Newly created [:TYPE] relationships (new project creation).
-    # 2. Slug property updates on existing Project nodes.
-    'CALL { '
-    "  UNWIND [r IN $createdRelationships WHERE type(r) = 'TYPE'] AS r "
-    '  WITH startNode(r) AS p, endNode(r) AS pt '
-    "  WHERE 'Project' IN labels(p) AND 'ProjectType' IN labels(pt) "
-    '  RETURN p, pt, p.slug AS checkSlug '
-    '  UNION ALL '
-    '  WITH $assignedNodeProperties AS anp '
-    '  WHERE anp.slug IS NOT NULL '
-    '  UNWIND anp.slug AS entry '
-    '  WITH entry.node AS p, entry.new AS checkSlug '
-    "  WHERE 'Project' IN labels(p) "
-    '  MATCH (p)-[:TYPE]->(pt:ProjectType) '
-    '  RETURN p, pt, checkSlug '
-    '} '
-    'OPTIONAL MATCH (other:Project)-[:TYPE]->(pt) '
-    'WHERE other.slug = checkSlug AND elementId(other) <> elementId(p) '
-    'WITH p, pt, checkSlug, count(other) AS dupeCount '
-    'CALL apoc.util.validate( '
-    '    dupeCount > 0, '
-    "    'Project with slug \"' + checkSlug + '\" already exists "
-    "for project type \"' + pt.slug + '\"', "
-    '    [0] '
-    ') '
-    'RETURN null'
-)
-
-TRIGGERS: list[dict[str, typing.Any]] = [
-    {
-        'name': 'project_type_slug_unique',
-        'query': _PROJECT_TYPE_UNIQUENESS_QUERY,
-        'selector': {'phase': 'before'},
-        # throwOnError ensures APOC propagates validate() failures back to
-        # the client as TransactionHookFailed rather than logging them as
-        # warnings and allowing the transaction to proceed (APOC 2026+).
-        'config': {'throwOnError': True},
-    },
-]
+TRIGGERS: list[dict[str, typing.Any]] = []

@@ -1,8 +1,142 @@
+import typing
 import unittest
 from unittest import mock
 
+import cypherantic
+import pydantic
+
 from imbi_common import neo4j
 from imbi_common.neo4j import client
+
+
+class ConvertNeo4jTypesTestCase(unittest.TestCase):
+    """Test cases for convert_neo4j_types."""
+
+    def test_dict_conversion(self) -> None:
+        """Test dict values are recursively converted."""
+        result = neo4j.convert_neo4j_types({'a': 1, 'b': 'hello'})
+        self.assertEqual(result, {'a': 1, 'b': 'hello'})
+
+    def test_list_conversion(self) -> None:
+        """Test list values are recursively converted."""
+        result = neo4j.convert_neo4j_types([1, 'hello', True])
+        self.assertEqual(result, [1, 'hello', True])
+
+    def test_to_native_duck_typing(self) -> None:
+        """Test objects with to_native() are converted."""
+        obj = mock.MagicMock()
+        obj.to_native.return_value = 42
+        result = neo4j.convert_neo4j_types(obj)
+        self.assertEqual(result, 42)
+        obj.to_native.assert_called_once()
+
+    def test_nested_list_in_dict(self) -> None:
+        """Test nested lists in dicts are converted."""
+        obj = mock.MagicMock()
+        obj.to_native.return_value = 'native_val'
+        result = neo4j.convert_neo4j_types({'items': [obj, 'plain']})
+        self.assertEqual(result, {'items': ['native_val', 'plain']})
+
+    def test_primitive_passthrough(self) -> None:
+        """Test primitives are returned as-is."""
+        self.assertEqual(neo4j.convert_neo4j_types(42), 42)
+        self.assertEqual(neo4j.convert_neo4j_types('hello'), 'hello')
+        self.assertIsNone(neo4j.convert_neo4j_types(None))
+
+
+class PrepareNodeDataTestCase(unittest.TestCase):
+    """Test cases for _prepare_node_data."""
+
+    def test_relationship_field_with_default(self) -> None:
+        """Test relationship field gets default value."""
+
+        class MyNode(pydantic.BaseModel):
+            name: str
+            friends: typing.Annotated[
+                list[str],
+                cypherantic.Relationship(
+                    rel_type='FRIENDS',
+                    direction='OUTGOING',
+                ),
+            ] = []
+
+        result = neo4j._prepare_node_data(MyNode, {'name': 'Alice'})
+        self.assertEqual(result['name'], 'Alice')
+        self.assertEqual(result['friends'], [])
+
+    def test_relationship_field_without_default(self) -> None:
+        """Test required relationship field gets None."""
+
+        class MyNode(pydantic.BaseModel):
+            name: str
+            org: typing.Annotated[
+                str,
+                cypherantic.Relationship(
+                    rel_type='BELONGS_TO',
+                    direction='OUTGOING',
+                ),
+            ]
+
+        result = neo4j._prepare_node_data(MyNode, {'name': 'Alice'})
+        self.assertEqual(result['name'], 'Alice')
+        self.assertIsNone(result['org'])
+
+    def test_existing_data_not_overwritten(self) -> None:
+        """Test existing node data is preserved."""
+
+        class MyNode(pydantic.BaseModel):
+            name: str
+            friends: typing.Annotated[
+                list[str],
+                cypherantic.Relationship(
+                    rel_type='FRIENDS',
+                    direction='OUTGOING',
+                ),
+            ] = []
+
+        result = neo4j._prepare_node_data(
+            MyNode, {'name': 'Alice', 'friends': ['Bob']}
+        )
+        self.assertEqual(result['friends'], ['Bob'])
+
+
+class BuildFetchQueryTestCase(unittest.TestCase):
+    """Test cases for _build_fetch_query."""
+
+    def test_simple_query(self) -> None:
+        """Test basic MATCH query."""
+
+        class MyNode(pydantic.BaseModel):
+            name: str
+
+        result = neo4j._build_fetch_query(MyNode)
+        self.assertEqual(result, 'MATCH (node:MyNode) RETURN node')
+
+    def test_query_with_parameters(self) -> None:
+        """Test query with match parameters."""
+
+        class MyNode(pydantic.BaseModel):
+            name: str
+
+        result = neo4j._build_fetch_query(MyNode, {'name': 'test'})
+        self.assertIn('name: $name', result)
+
+    def test_query_with_string_order_by(self) -> None:
+        """Test query with string order_by."""
+        result = neo4j._build_fetch_query('MyNode', order_by='name')
+        self.assertIn('ORDER BY node.name', result)
+
+    def test_query_with_list_order_by(self) -> None:
+        """Test query with list order_by."""
+        result = neo4j._build_fetch_query(
+            'MyNode', order_by=['name', 'priority']
+        )
+        self.assertIn('ORDER BY node.name, node.priority', result)
+
+    def test_query_with_string_model(self) -> None:
+        """Test query with string model name."""
+        result = neo4j._build_fetch_query('Blueprint')
+        self.assertEqual(result, 'MATCH (node:Blueprint) RETURN node')
 
 
 class Neo4jAbstrationsTestCase(unittest.IsolatedAsyncioTestCase):
@@ -205,6 +339,77 @@ class Neo4jAbstrationsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(params['slug'], 'test-node')
         self.assertEqual(params['type'], 'Project')
 
+    async def test_query_function(self) -> None:
+        """Test the query() convenience function."""
+        mock_records = [{'name': 'Alice'}, {'name': 'Bob'}]
+        self.mock_result.data.return_value = mock_records
+        self.mock_session.run.return_value = self.mock_result
+
+        result = await neo4j.query('MATCH (n) RETURN n.name AS name')
+
+        self.assertEqual(result, mock_records)
+        self.mock_session.run.assert_called_once()
+
+    async def test_upsert_with_timestamps(self) -> None:
+        """Test upsert auto-manages created_at and updated_at."""
+        import datetime
+
+        class TimestampNode(pydantic.BaseModel):
+            name: str
+            created_at: datetime.datetime | None = None
+            updated_at: datetime.datetime | None = None
+
+        mock_single_result = {'nodeId': 'elem1'}
+        self.mock_result.single.return_value = mock_single_result
+        self.mock_session.run.return_value = self.mock_result
+
+        node = TimestampNode(name='test')
+        self.assertIsNone(node.created_at)
+        self.assertIsNone(node.updated_at)
+
+        await neo4j.upsert(node, {'name': 'test'})
+
+        # Both timestamps should be set now
+        self.assertIsNotNone(node.created_at)
+        self.assertIsNotNone(node.updated_at)
+
+    async def test_upsert_with_auto_increment(self) -> None:
+        """Test upsert with auto_increment fields."""
+
+        class VersionedNode(pydantic.BaseModel):
+            name: str
+            version: int = 0
+
+        mock_single_result = {'nodeId': 'elem1', 'version': 3}
+        self.mock_result.single.return_value = mock_single_result
+        self.mock_session.run.return_value = self.mock_result
+
+        node = VersionedNode(name='test', version=2)
+        result = await neo4j.upsert(
+            node, {'name': 'test'}, auto_increment=['version']
+        )
+
+        self.assertEqual(result, 'elem1')
+        # Node should be updated in-place with server value
+        self.assertEqual(node.version, 3)
+
+        # Verify the query uses coalesce for auto-increment
+        call_args = self.mock_session.run.call_args
+        query = call_args[0][0]
+        self.assertIn('coalesce(node.version, 0) + 1', query)
+
+    async def test_upsert_returns_none_raises(self) -> None:
+        """Test upsert raises when query returns no results."""
+
+        class TestNode(pydantic.BaseModel):
+            name: str
+
+        self.mock_result.single.return_value = None
+        self.mock_session.run.return_value = self.mock_result
+
+        with self.assertRaises(ValueError, msg='no results'):
+            await neo4j.upsert(TestNode(name='test'), {'name': 'test'})
+
 
 class Neo4jCypheranticWrappersTestCase(unittest.IsolatedAsyncioTestCase):
     """Test cases for cypherantic wrapper functions."""
@@ -392,3 +597,41 @@ class Neo4jCypheranticWrappersTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result, mock_edges)
             self.assertEqual(len(result), 1)
             self.assertEqual(result[0].node.name, 'Alice')
+
+    async def test_create_relationship_no_props_or_type(self) -> None:
+        """Test create_relationship raises without props or type."""
+
+        class FromNode(pydantic.BaseModel):
+            id: str
+
+        class ToNode(pydantic.BaseModel):
+            id: str
+
+        with self.assertRaises(ValueError, msg='Either rel_props'):
+            await neo4j.create_relationship(FromNode(id='1'), ToNode(id='2'))
+
+    async def test_create_node_sets_timestamps(self) -> None:
+        """Test create_node sets created_at and updated_at."""
+        import datetime
+
+        class TimedNode(pydantic.BaseModel):
+            name: str
+            created_at: datetime.datetime | None = None
+            updated_at: datetime.datetime | None = None
+
+        node = TimedNode(name='test')
+        mock_neo4j_node = {
+            'name': 'test',
+            'created_at': None,
+            'updated_at': None,
+        }
+
+        with mock.patch(
+            'cypherantic.create_node', return_value=mock_neo4j_node
+        ):
+            result = await neo4j.create_node(node)
+
+        self.assertIsInstance(result, TimedNode)
+        # The original node should have timestamps set
+        self.assertIsNotNone(node.created_at)
+        self.assertIsNotNone(node.updated_at)

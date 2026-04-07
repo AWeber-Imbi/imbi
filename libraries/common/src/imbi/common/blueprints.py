@@ -6,6 +6,20 @@ import pydantic
 from imbi_common import models, neo4j
 
 
+def _coerce_enum_case(
+    enum_values: list[str],
+) -> typing.Callable[[typing.Any], typing.Any]:
+    """Return a validator that coerces values to match enum case."""
+    lookup = {v.casefold(): v for v in enum_values}
+
+    def _coerce(value: typing.Any) -> typing.Any:
+        if isinstance(value, str):
+            return lookup.get(value.casefold(), value)
+        return value
+
+    return _coerce
+
+
 def _map_string_type(prop_schema: typing.Any) -> type[typing.Any]:
     """Map JSON Schema string format to appropriate Python type"""
     format_type = getattr(prop_schema, 'format', None)
@@ -91,6 +105,23 @@ def _apply_blueprints[ModelType: pydantic.BaseModel](
                     prop_schema
                 )
 
+                # Wrap enum string fields with a case-coercing
+                # BeforeValidator so that incoming values are
+                # matched case-insensitively against the
+                # blueprint-defined enum values.
+                enum_values = getattr(prop_schema, 'enum', None)
+                if (
+                    enum_values
+                    and isinstance(enum_values, list)
+                    and getattr(prop_schema, 'type', None) == 'string'
+                ):
+                    field_type = typing.Annotated[
+                        field_type,
+                        pydantic.BeforeValidator(
+                            _coerce_enum_case(enum_values)
+                        ),
+                    ]
+
                 # Get metadata from schema
                 schema_default = getattr(prop_schema, 'default', None)
                 description = getattr(prop_schema, 'description', None)
@@ -118,7 +149,7 @@ def _apply_blueprints[ModelType: pydantic.BaseModel](
 
 def _matches_filter(
     blueprint: models.Blueprint,
-    context: dict[str, str] | None,
+    context: dict[str, str | list[str]] | None,
 ) -> bool:
     """Check if a blueprint's filter matches the given context.
 
@@ -128,13 +159,16 @@ def _matches_filter(
       context value that appears in the filter's list.
     - All non-empty filter fields must match (AND).
 
+    The ``project_type`` context value may be a list of slugs
+    (for multi-type projects). A match occurs when any of
+    the project's types appear in the blueprint's filter list.
+
     """
     bp_filter = blueprint.filter
     if bp_filter is None:
         return True
     if context is None:
         # No context — only unfiltered blueprints match.
-        # Check if filter has any non-empty lists.
         if bp_filter.project_type or bp_filter.environment:
             return False
         return True
@@ -143,14 +177,21 @@ def _matches_filter(
         if not allowed:
             continue
         ctx_value = context.get(field)
-        if ctx_value is None or ctx_value not in allowed:
+        if ctx_value is None:
+            return False
+        # Support list values (multi-type): match if any
+        # context value appears in the allowed list.
+        if isinstance(ctx_value, list):
+            if not any(v in allowed for v in ctx_value):
+                return False
+        elif ctx_value not in allowed:
             return False
     return True
 
 
 async def get_model[ModelType: pydantic.BaseModel](
     model: type[ModelType],
-    context: dict[str, str] | None = None,
+    context: dict[str, str | list[str]] | None = None,
 ) -> type[ModelType]:
     """Return a model class with matching blueprints applied.
 
