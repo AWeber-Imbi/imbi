@@ -687,7 +687,7 @@ requires-dist = [
   { name = "fastapi", specifier = ">=0.135.1" },
   { name = "fastmcp", specifier = ">=2.0.0" },
   { name = "httpx", specifier = ">=0.28.1" },
-  { name = "imbi-common", extras = ["server"], git = "https://github.com/AWeber-Imbi/imbi-common?branch=feature%2Fmigrate-neo4j-to-age" },
+  { name = "imbi-common", extras = ["server"], git = "https://github.com/AWeber-Imbi/imbi-common?rev=main" },
   { name = "pydantic", specifier = "~=2.12" },
 ]
 
@@ -707,7 +707,7 @@ dev = [
 [[package]]
 name = "imbi-common"
 version = "0.1.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common?branch=feature%2Fmigrate-neo4j-to-age#640ee9d57ae0ac52af3b1b1d857935ddcf9862fa" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common?rev=main#a6dd3a86235e3eb645dafe0640b2c751e70cde51" }
 dependencies = [
   { name = "clickhouse-connect" },
   { name = "cryptography" },
