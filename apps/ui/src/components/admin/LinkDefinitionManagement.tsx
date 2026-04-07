@@ -223,7 +223,7 @@ export function LinkDefinitionManagement({
         </div>
         <Button
           onClick={goToCreate}
-          className="bg-amber-border-strong text-white hover:bg-amber-900"
+          className="bg-amber-border-strong text-white hover:brightness-125"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Link Definition
@@ -364,7 +364,9 @@ export function LinkDefinitionManagement({
                               className={`mx-auto h-5 w-5 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
                             />
                           ) : (
-                            <span className="text-xs text-red-400">
+                            <span
+                              className={`text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                            >
                               {ld.icon}
                             </span>
                           )

@@ -644,10 +644,20 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
                   <h3 className={`mb-4 ${value}`}>Environments</h3>
                   <div className="space-y-0">
                     {sortedEnvironments.map((env) => {
-                      const url =
-                        typeof env.url === 'string' && env.url !== ''
-                          ? env.url
-                          : null
+                      let url: string | null = null
+                      if (typeof env.url === 'string' && env.url !== '') {
+                        try {
+                          const parsed = new URL(env.url)
+                          if (
+                            parsed.protocol === 'http:' ||
+                            parsed.protocol === 'https:'
+                          ) {
+                            url = parsed.toString()
+                          }
+                        } catch {
+                          url = null
+                        }
+                      }
                       return (
                         <div
                           key={env.slug}
