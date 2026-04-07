@@ -230,7 +230,11 @@ class ApiClient {
     return this.request<T>('DELETE', url)
   }
 
-  async postFormData<T>(url: string, formData: FormData): Promise<T> {
+  async postFormData<T>(
+    url: string,
+    formData: FormData,
+    isRetry = false,
+  ): Promise<T> {
     const authStore = useAuthStore.getState()
     let token = authStore.accessToken
 
@@ -262,6 +266,19 @@ class ApiClient {
       } catch {
         // No JSON body
       }
+
+      // Handle 401 with token refresh retry
+      if (response.status === 401 && !isRetry) {
+        try {
+          await refreshAccessToken()
+          return this.postFormData<T>(url, formData, true)
+        } catch {
+          useAuthStore.getState().clearTokens()
+          redirectToLogin()
+          throw new ApiError(response.status, response.statusText, errorData)
+        }
+      }
+
       throw new ApiError(response.status, response.statusText, errorData)
     }
 
@@ -272,6 +289,7 @@ class ApiClient {
   async getWithHeaders<T>(
     url: string,
     params?: Record<string, unknown>,
+    isRetry = false,
   ): Promise<{ data: T; headers: Headers }> {
     let fullUrl = `${API_BASE_URL}${url}`
     if (params) {
@@ -316,6 +334,19 @@ class ApiClient {
       } catch {
         // No JSON body
       }
+
+      // Handle 401 with token refresh retry
+      if (response.status === 401 && !isRetry) {
+        try {
+          await refreshAccessToken()
+          return this.getWithHeaders<T>(url, params, true)
+        } catch {
+          useAuthStore.getState().clearTokens()
+          redirectToLogin()
+          throw new ApiError(response.status, response.statusText, errorData)
+        }
+      }
+
       throw new ApiError(response.status, response.statusText, errorData)
     }
 

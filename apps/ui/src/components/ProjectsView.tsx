@@ -237,7 +237,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                       health,
                     )} ${getHealthColor(health)} ml-3 flex-shrink-0`}
                   >
-                    <span className="font-semibold text-sm">{health}</span>
+                    <span className="text-sm font-semibold">{health}</span>
                   </div>
                 </div>
 
@@ -367,7 +367,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
                         <div
                           className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${getHealthColor(health)}`}
                         >
-                          <span className="font-semibold text-sm">
+                          <span className="text-sm font-semibold">
                             {health}
                           </span>
                         </div>
@@ -392,9 +392,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
       <NewProjectDialog
         isOpen={newProjectDialogOpen}
         onClose={() => setNewProjectDialogOpen(false)}
-        onProjectCreated={(typeSlug, slug) =>
-          navigate(`/projects/${typeSlug}/${slug}`)
-        }
+        onProjectCreated={(id) => navigate(`/projects/${id}`)}
       />
     </div>
   )

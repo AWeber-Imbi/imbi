@@ -41,6 +41,10 @@
     /* shadcn/ui compatibility tokens */
     --background: 0 0% 100%;
     --foreground: 40 5% 10%;
+    --primary: 38 90% 55%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 6% 93%;
+    --secondary-foreground: 40 5% 10%;
     --muted: 40 6% 93%;
     --muted-foreground: 40 3% 46%;
     --border: 40 5% 85%;
@@ -84,6 +88,10 @@
     /* shadcn/ui compatibility tokens */
     --background: 40 5% 11%;
     --foreground: 40 4% 90%;
+    --primary: 38 90% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 5% 16%;
+    --secondary-foreground: 40 4% 90%;
     --muted: 40 5% 16%;
     --muted-foreground: 40 3% 52%;
     --border: 40 5% 20%;

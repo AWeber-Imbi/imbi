@@ -17,10 +17,7 @@ export default {
       sans: ["var(--font-sans)"],
       mono: ["var(--font-mono)"],
     },
-    fontWeight: {
-      normal: "400",
-      medium: "500",
-    },
+    // fontWeight intentionally in extend (below) to preserve Tailwind defaults
     fontSize: {
       // Typography scale from design system
       "overline": ["13px", { lineHeight: "1.5", letterSpacing: "0.5px", fontWeight: "500" }],
@@ -35,19 +32,25 @@ export default {
       "h2": ["20px", { lineHeight: "1.5", fontWeight: "500" }],
       "h1": ["24px", { lineHeight: "1.5", fontWeight: "500" }],
     },
-    borderRadius: {
-      none: "0",
-      sm: "4px",
-      md: "var(--border-radius-md)",
-      lg: "var(--border-radius-lg)",
-      full: "9999px",
-    },
+    // borderRadius intentionally in extend (below) to preserve Tailwind defaults
     borderWidth: {
       DEFAULT: "0.5px",
       0: "0",
       2: "2px",
     },
     extend: {
+      fontWeight: {
+        normal: "400",
+        medium: "500",
+      },
+      borderRadius: {
+        DEFAULT: "4px",
+        none: "0",
+        sm: "4px",
+        md: "var(--border-radius-md)",
+        lg: "var(--border-radius-lg)",
+        full: "9999px",
+      },
       // Separate bg/text/border color mappings for clean utility names
       // bg-primary, bg-secondary, bg-tertiary, etc.
       backgroundColor: {
@@ -77,9 +80,17 @@ export default {
         info: "var(--color-border-info)",
       },
       colors: {
-        // shadcn/ui compatibility (used by dialog, dropdown, popover, etc.)
+        // shadcn/ui compatibility (used by button, badge, dialog, dropdown, popover, etc.)
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
