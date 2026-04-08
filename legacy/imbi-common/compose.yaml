@@ -1,8 +1,6 @@
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
-    #volumes:
-    #  - ./schema/clickhouse:/docker-entrypoint-initdb.d
     ports:
       - "8123"
       - "9000"
@@ -10,15 +8,19 @@ services:
       - CLICKHOUSE_DB=default
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASSWORD=password
+    volumes:
+      - ./schema/clickhouse:/docker-entrypoint-initdb.d
     healthcheck:
-      test: [ "CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'" ]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'"]
 
   postgres:
-    image: apache/age:release_PG16_1.6.0
+    image: ghcr.io/aweber-imbi/postgres:latest
     ports:
       - "5432"
     environment:
       POSTGRES_PASSWORD: secret
       POSTGRES_DB: imbi
+    volumes:
+      - ./schema/postgres:/docker-entrypoint-initdb.d
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]

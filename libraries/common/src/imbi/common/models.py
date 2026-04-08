@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import typing
 
@@ -6,14 +7,13 @@ import pydantic
 import slugify
 from jsonschema_models import models as schema_models
 
-from imbi_common.age import relationships
-
 __all__ = [
-    'MODEL_TYPES',
     'Blueprint',
     'BlueprintAssignment',
     'BlueprintEdge',
     'BlueprintFilter',
+    'Edge',
+    'Embedding',
     'Environment',
     'LinkDefinition',
     'Node',
@@ -23,9 +23,37 @@ __all__ = [
     'RelationshipLink',
     'Schema',
     'Team',
+    'ThirdPartyService',
 ]
 
 Schema = schema_models.Schema
+
+
+class Node(pydantic.BaseModel):
+    """Base model for Cypherantic nodes.
+
+    The `icon` attribute can either be a URL or a CSS class name
+
+    """
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+    name: str
+    slug: str
+    description: str | None = None
+    icon: pydantic.HttpUrl | str | None = None
+    created_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: datetime.datetime | None = None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Edge:
+    """An edge between two nodes in the graph."""
+
+    rel_type: str
+    direction: typing.Literal['INCOMING', 'OUTGOING']
 
 
 class BlueprintFilter(pydantic.BaseModel):
@@ -48,7 +76,14 @@ class Blueprint(pydantic.BaseModel):
 
     name: str
     slug: str | None = None
-    type: typing.Literal['Team', 'Environment', 'ProjectType', 'Project']
+    type: typing.Literal[
+        'Team',
+        'Environment',
+        'ProjectType',
+        'Project',
+        'Organization',
+        'ThirdPartyService',
+    ]
     description: str | None = None
     enabled: bool = True
     priority: int = 0
@@ -119,9 +154,6 @@ class Blueprint(pydantic.BaseModel):
 
 
 class BlueprintAssignment(pydantic.BaseModel):
-    cypherantic_config: typing.ClassVar[relationships.RelationshipConfig] = (
-        relationships.RelationshipConfig(rel_type='BLUEPRINT')
-    )
     priority: int = 0
 
 
@@ -137,25 +169,6 @@ class RelationshipLink(pydantic.BaseModel):
     count: int
 
 
-class Node(pydantic.BaseModel):
-    """Base model for Cypherantic nodes.
-
-    The `icon` attribute can either be a URL or a CSS class name
-
-    """
-
-    model_config = pydantic.ConfigDict(extra='ignore')
-
-    name: str
-    slug: str
-    description: str | None = None
-    icon: pydantic.HttpUrl | str | None = None
-    created_at: datetime.datetime = pydantic.Field(
-        default_factory=lambda: datetime.datetime.now(datetime.UTC),
-    )
-    updated_at: datetime.datetime | None = None
-
-
 class Organization(Node):
     pass
 
@@ -163,9 +176,7 @@ class Organization(Node):
 class Team(Node):
     organization: typing.Annotated[
         Organization,
-        relationships.Relationship(
-            rel_type='BELONGS_TO', direction='OUTGOING'
-        ),
+        Edge(rel_type='BELONGS_TO', direction='OUTGOING'),
     ]
 
 
@@ -183,18 +194,21 @@ class Environment(Node):
 
     organization: typing.Annotated[
         Organization,
-        relationships.Relationship(
-            rel_type='BELONGS_TO', direction='OUTGOING'
-        ),
+        Edge(rel_type='BELONGS_TO', direction='OUTGOING'),
     ]
 
 
 class ProjectType(Node):
     organization: typing.Annotated[
         Organization,
-        relationships.Relationship(
-            rel_type='BELONGS_TO', direction='OUTGOING'
-        ),
+        Edge(rel_type='BELONGS_TO', direction='OUTGOING'),
+    ]
+
+
+class ThirdPartyService(Node):
+    organization: typing.Annotated[
+        Organization,
+        Edge(rel_type='BELONGS_TO', direction='OUTGOING'),
     ]
 
 
@@ -210,7 +224,7 @@ class LinkDefinition(Node):
     url_template: str | None = None
     organization: typing.Annotated[
         Organization,
-        relationships.Relationship(
+        Edge(
             rel_type='BELONGS_TO',
             direction='OUTGOING',
         ),
@@ -221,35 +235,28 @@ class Project(Node):
     id: str = pydantic.Field(default_factory=nanoid.generate)
     team: typing.Annotated[
         Team,
-        relationships.Relationship(
+        Edge(
             rel_type='OWNED_BY',
             direction='OUTGOING',
         ),
     ]
     project_types: typing.Annotated[
         list[ProjectType],
-        relationships.Relationship(
+        Edge(
             rel_type='TYPE',
             direction='OUTGOING',
         ),
     ] = []
     environments: typing.Annotated[
         list[Environment],
-        relationships.Relationship(
+        Edge(
             rel_type='DEPLOYED_IN',
             direction='OUTGOING',
         ),
     ] = []
     links: dict[str, pydantic.AnyUrl] = {}
-    identifiers: dict[str, int | str] = {}
 
 
-# Model type mapping for schema generation
-MODEL_TYPES: dict[str, type[pydantic.BaseModel]] = {
-    'Environment': Environment,
-    'LinkDefinition': LinkDefinition,
-    'Organization': Organization,
-    'Project': Project,
-    'ProjectType': ProjectType,
-    'Team': Team,
-}
+class Embedding(pydantic.BaseModel):
+    attribute: str
+    value: list[float]

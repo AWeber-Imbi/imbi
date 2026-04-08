@@ -9,48 +9,52 @@ import unittest.mock
 from imbi_common import settings
 
 
-class AGESettingsTestCase(unittest.TestCase):
-    """Test cases for AGE settings."""
+class PostgresSettingsTestCase(unittest.TestCase):
+    """Test cases for Postgres settings."""
 
     def test_default_settings(self) -> None:
-        """Test AGE settings with defaults."""
+        """Test Postgres settings with defaults."""
         with unittest.mock.patch.dict(os.environ, {}, clear=True):
-            age = settings.AGE(_env_file=None)
+            pg = settings.Postgres(_env_file=None)
         self.assertEqual(
-            age.url, 'postgresql://postgres:secret@localhost:5432/imbi'
+            str(pg.url),
+            'postgresql://postgres:secret@localhost:5432/imbi',
         )
-        self.assertEqual(age.graph_name, 'imbi')
-        self.assertEqual(age.min_pool_size, 2)
-        self.assertEqual(age.max_pool_size, 10)
+        self.assertEqual(pg.graph_name, 'imbi')
+        self.assertEqual(pg.min_pool_size, 2)
+        self.assertEqual(pg.max_pool_size, 10)
 
     def test_custom_url(self) -> None:
-        """Test AGE settings with custom URL."""
+        """Test Postgres settings with custom URL."""
         with unittest.mock.patch.dict(os.environ, {}, clear=True):
-            age = settings.AGE(
+            pg = settings.Postgres(
                 url='postgresql://user:pass@dbhost:5432/mydb',
                 _env_file=None,
             )
-        self.assertEqual(age.url, 'postgresql://user:pass@dbhost:5432/mydb')
+        self.assertEqual(
+            str(pg.url),
+            'postgresql://user:pass@dbhost:5432/mydb',
+        )
 
     def test_custom_pool_sizes(self) -> None:
-        """Test AGE settings with custom pool sizes."""
+        """Test Postgres settings with custom pool sizes."""
         with unittest.mock.patch.dict(os.environ, {}, clear=True):
-            age = settings.AGE(
+            pg = settings.Postgres(
                 min_pool_size=5,
                 max_pool_size=20,
                 _env_file=None,
             )
-        self.assertEqual(age.min_pool_size, 5)
-        self.assertEqual(age.max_pool_size, 20)
+        self.assertEqual(pg.min_pool_size, 5)
+        self.assertEqual(pg.max_pool_size, 20)
 
     def test_custom_graph_name(self) -> None:
-        """Test AGE settings with custom graph name."""
+        """Test Postgres settings with custom graph name."""
         with unittest.mock.patch.dict(os.environ, {}, clear=True):
-            age = settings.AGE(
+            pg = settings.Postgres(
                 graph_name='test_graph',
                 _env_file=None,
             )
-        self.assertEqual(age.graph_name, 'test_graph')
+        self.assertEqual(pg.graph_name, 'test_graph')
 
 
 class ClickhouseSettingsTestCase(unittest.TestCase):
@@ -111,20 +115,22 @@ class ConfigurationTestCase(unittest.TestCase):
         config = settings.Configuration()
 
         self.assertIsInstance(config.clickhouse, settings.Clickhouse)
-        self.assertIsInstance(config.age, settings.AGE)
+        self.assertIsInstance(config.postgres, settings.Postgres)
         self.assertIsInstance(config.auth, settings.Auth)
 
     def test_configuration_from_dict(self) -> None:
         """Test Configuration from dictionary data."""
         data = {
-            'age': {'url': 'postgresql://user:pass@age-host:5432/imbi'},
+            'postgres': {
+                'url': 'postgresql://user:pass@pg-host:5432/imbi',
+            },
         }
 
         config = settings.Configuration.model_validate(data)
 
         self.assertEqual(
-            config.age.url,
-            'postgresql://user:pass@age-host:5432/imbi',
+            str(config.postgres.url),
+            'postgresql://user:pass@pg-host:5432/imbi',
         )
 
     def test_load_config_no_file(self) -> None:
@@ -147,7 +153,7 @@ class ConfigurationTestCase(unittest.TestCase):
                 config_path = pathlib.Path(tmpdir) / 'config.toml'
                 config_path.write_text(
                     """
-[age]
+[postgres]
 graph_name = "test-graph"
 
 [auth]
@@ -158,7 +164,10 @@ access_token_expire_seconds = 7200
                 os.chdir(tmpdir)
                 config = settings.load_config()
 
-                self.assertEqual(config.age.graph_name, 'test-graph')
+                self.assertEqual(
+                    config.postgres.graph_name,
+                    'test-graph',
+                )
                 self.assertEqual(config.auth.access_token_expire_seconds, 7200)
         finally:
             os.chdir(original_cwd)

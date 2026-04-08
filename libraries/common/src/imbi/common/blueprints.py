@@ -3,7 +3,7 @@ import typing
 
 import pydantic
 
-from imbi_common import age, models
+from imbi_common import graph, models
 
 
 def _coerce_enum_case(
@@ -195,6 +195,7 @@ def _matches_filter(
 
 
 async def get_model[ModelType: pydantic.BaseModel](
+    database: graph.Graph,
     model: type[ModelType],
     context: dict[str, str | list[str]] | None = None,
 ) -> type[ModelType]:
@@ -212,14 +213,11 @@ async def get_model[ModelType: pydantic.BaseModel](
                  'environment': 'production'}
 
     """
-    all_blueprints: list[models.Blueprint] = []
-    async for blueprint in age.fetch_nodes(
+    all_blueprints = await database.match(
         models.Blueprint,
         {'type': model.__name__, 'enabled': True},
         order_by='priority',
-    ):
-        all_blueprints.append(blueprint)
-
+    )
     matched = [bp for bp in all_blueprints if _matches_filter(bp, context)]
     return _apply_blueprints(model, matched)
 

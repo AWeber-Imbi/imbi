@@ -32,24 +32,6 @@ def base_settings_config(
     )
 
 
-class Clickhouse(pydantic_settings.BaseSettings):
-    model_config = base_settings_config(env_prefix='CLICKHOUSE_')
-
-    url: pydantic.HttpUrl = pydantic.HttpUrl('http://localhost:8123')
-    connect_timeout: float = 10.0  # default in clickhouse client
-    max_connect_attempts: int = 10
-
-
-class AGE(pydantic_settings.BaseSettings):
-    """Apache AGE (PostgreSQL extension) connection settings."""
-
-    model_config = base_settings_config(env_prefix='AGE_')
-    url: str = 'postgresql://postgres:secret@localhost:5432/imbi'
-    graph_name: str = 'imbi'
-    min_pool_size: int = 2
-    max_pool_size: int = 10
-
-
 class Auth(pydantic_settings.BaseSettings):
     """Authentication settings shared across Imbi services.
 
@@ -97,6 +79,28 @@ class Auth(pydantic_settings.BaseSettings):
         return self
 
 
+class Clickhouse(pydantic_settings.BaseSettings):
+    model_config = base_settings_config(env_prefix='CLICKHOUSE_')
+
+    url: pydantic.HttpUrl = pydantic.HttpUrl('http://localhost:8123')
+    connect_timeout: float = 10.0  # default in clickhouse client
+    max_connect_attempts: int = 10
+
+
+class Postgres(pydantic_settings.BaseSettings):
+    """Apache AGE (PostgreSQL extension) connection settings."""
+
+    model_config = base_settings_config(env_prefix='POSTGRES_')
+    url: pydantic.PostgresDsn = pydantic.Field(
+        default=pydantic.PostgresDsn(
+            'postgresql://postgres:secret@localhost:5432/imbi'
+        )
+    )
+    graph_name: str = 'imbi'
+    min_pool_size: int = 2
+    max_pool_size: int = 10
+
+
 class Configuration(pydantic.BaseModel):
     """Root configuration combining all shared settings sections.
 
@@ -109,7 +113,7 @@ class Configuration(pydantic.BaseModel):
     Environment variables always take precedence over config file values.
 
     Example config.toml:
-        [age]
+        [postgres]
         url = "postgresql://postgres:secret@db-prod:5432/imbi"
 
         [auth]
@@ -136,9 +140,9 @@ class Configuration(pydantic.BaseModel):
 
         """
         settings_fields: dict[str, type[pydantic_settings.BaseSettings]] = {
-            'clickhouse': Clickhouse,
-            'age': AGE,
             'auth': Auth,
+            'clickhouse': Clickhouse,
+            'postgres': Postgres,
         }
         for field, settings_cls in settings_fields.items():
             if field in data and data[field] is not None:
@@ -148,9 +152,9 @@ class Configuration(pydantic.BaseModel):
                 data[field] = settings_cls(**data[field])
         return data
 
-    clickhouse: Clickhouse = pydantic.Field(default_factory=Clickhouse)
-    age: AGE = pydantic.Field(default_factory=AGE)
     auth: Auth = pydantic.Field(default_factory=Auth)
+    clickhouse: Clickhouse = pydantic.Field(default_factory=Clickhouse)
+    postgres: Postgres = pydantic.Field(default_factory=Postgres)
 
 
 def load_config_data() -> dict[str, typing.Any]:

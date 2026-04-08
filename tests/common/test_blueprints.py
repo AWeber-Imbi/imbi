@@ -1,545 +1,461 @@
 import datetime
 import typing
 import unittest
-from unittest import mock
 
 import pydantic
 
-from imbi_common import age, blueprints, models
-from imbi_common.age import exceptions
-from tests import AGETestCase
+from imbi_common import blueprints, graph, models
+
+# -- Helpers ---------------------------------------------------------------
 
 
-class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
-    """Test cases for blueprints.get_model function."""
+def _schema(
+    properties: dict[str, typing.Any],
+    required: list[str] | None = None,
+) -> models.Schema:
+    raw: dict[str, typing.Any] = {
+        'type': 'object',
+        'properties': properties,
+    }
+    if required:
+        raw['required'] = required
+    return models.Schema.model_validate(raw)
 
-    async def asyncSetUp(self) -> None:
-        await super().asyncSetUp()
-        self.org = models.Organization(name='Org', slug='org')
-        # Mock age.fetch_nodes to return test blueprints
-        self.fetch_nodes_patcher = mock.patch('imbi_common.age.fetch_nodes')
-        self.mock_fetch_nodes = self.fetch_nodes_patcher.start()
-        self.addCleanup(self.fetch_nodes_patcher.stop)
 
-    def _make_blueprint(
-        self,
-        *,
-        properties: dict[str, typing.Any],
-        required: list[str] | None = None,
-        name: str = 'test',
-        priority: int = 0,
-    ) -> models.Blueprint:
-        schema: dict[str, typing.Any] = {
-            'type': 'object',
-            'properties': properties,
-        }
-        if required:
-            schema['required'] = required
-        return models.Blueprint(
-            name=name,
-            type='Environment',
-            priority=priority,
-            json_schema=models.Schema.model_validate(schema),
-        )
+def _blueprint(
+    *,
+    properties: dict[str, typing.Any],
+    required: list[str] | None = None,
+    name: str = 'test',
+    bp_type: str = 'Environment',
+    priority: int = 0,
+    bp_filter: dict[str, typing.Any] | None = None,
+) -> models.Blueprint:
+    return models.Blueprint(
+        name=name,
+        type=bp_type,
+        priority=priority,
+        json_schema=_schema(properties, required),
+        filter=bp_filter,
+    )
 
-    def _set_blueprints(self, *bps: models.Blueprint) -> None:
-        async def iterator():
-            for bp in bps:
-                yield bp
 
-        self.mock_fetch_nodes.return_value = iterator()
+ORG = models.Organization(name='Org', slug='org')
 
-    async def test_model_is_subclass_of_input(self) -> None:
-        """Verify the returned model is a true subclass, not just cast."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={'domain': {'type': 'string'}},
-            )
-        )
 
-        result_model = await blueprints.get_model(models.Environment)
+# -- _apply_blueprints tests ----------------------------------------------
 
-        self.assertTrue(issubclass(result_model, models.Environment))
 
-    async def test_get_model_no_blueprints(self) -> None:
-        """Test get_model with no blueprints returns base model."""
-        self._set_blueprints()
+class ApplyBlueprintsTests(unittest.TestCase):
+    def test_no_blueprints_returns_subclass(self) -> None:
+        result = blueprints._apply_blueprints(models.Environment, [])
+        self.assertTrue(issubclass(result, models.Environment))
+        self.assertEqual('Environment', result.__name__)
 
-        result_model = await blueprints.get_model(models.Environment)
-
-        # Should have same name and base fields
-        self.assertEqual(result_model.__name__, 'Environment')
-        self.assertIn('name', result_model.model_fields)
-        self.assertIn('slug', result_model.model_fields)
-        self.assertIn('description', result_model.model_fields)
-
-    async def test_get_model_with_string_fields(self) -> None:
-        """Test get_model with basic string fields from blueprints."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'domain': {
-                        'type': 'string',
-                        'description': 'Base domain',
-                    },
-                    'region': {'type': 'string'},
+    def test_string_field(self) -> None:
+        bp = _blueprint(
+            properties={
+                'domain': {
+                    'type': 'string',
+                    'description': 'Base domain',
                 },
-                required=['domain'],
-            )
+            },
+            required=['domain'],
         )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        # Check base fields exist
-        self.assertIn('name', result_model.model_fields)
-        self.assertIn('slug', result_model.model_fields)
-
-        # Check blueprint fields
-        self.assertIn('domain', result_model.model_fields)
-        self.assertIn('region', result_model.model_fields)
-
-        # Test instantiation with required field
-        instance = result_model(
-            name='Test Env',
-            slug='test-env',
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        self.assertIn('domain', result.model_fields)
+        instance = result(
+            name='Prod',
+            slug='prod',
             domain='example.com',
-            organization=self.org,
+            organization=ORG,
         )
-        self.assertEqual(instance.domain, 'example.com')
-        self.assertIsNone(instance.region)  # Optional field
+        self.assertEqual('example.com', instance.domain)
 
-        # Test that missing required field raises error
+    def test_required_field_raises_when_missing(self) -> None:
+        bp = _blueprint(
+            properties={'domain': {'type': 'string'}},
+            required=['domain'],
+        )
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
         with self.assertRaises(pydantic.ValidationError):
-            result_model(
-                name='Test', slug='test', organization=self.org
-            )  # Missing domain
+            result(name='T', slug='t', organization=ORG)
 
-    async def test_get_model_with_integer_and_number_fields(self) -> None:
-        """Test get_model with integer and number fields."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'max_instances': {'type': 'integer'},
-                    'cpu_threshold': {'type': 'number'},
-                },
-                required=['max_instances'],
-            )
+    def test_optional_field_defaults_to_none(self) -> None:
+        bp = _blueprint(
+            properties={'region': {'type': 'string'}},
         )
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        instance = result(name='T', slug='t', organization=ORG)
+        self.assertIsNone(instance.region)
 
-        result_model = await blueprints.get_model(models.Environment)
-
-        # Create instance and verify types
-        instance = result_model(
-            name='Test',
-            slug='test',
+    def test_integer_and_number_fields(self) -> None:
+        bp = _blueprint(
+            properties={
+                'max_instances': {'type': 'integer'},
+                'cpu_threshold': {'type': 'number'},
+            },
+            required=['max_instances'],
+        )
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        instance = result(
+            name='T',
+            slug='t',
             max_instances=10,
             cpu_threshold=0.75,
-            organization=self.org,
+            organization=ORG,
         )
-        self.assertEqual(instance.max_instances, 10)
-        self.assertEqual(instance.cpu_threshold, 0.75)
+        self.assertEqual(10, instance.max_instances)
+        self.assertEqual(0.75, instance.cpu_threshold)
 
-        # Test type validation
-        with self.assertRaises(pydantic.ValidationError):
-            result_model(
-                name='Test',
-                slug='test',
-                max_instances='not-an-int',
-                organization=self.org,
-            )
-
-    async def test_get_model_with_boolean_field(self) -> None:
-        """Test get_model with boolean field."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={'is_production': {'type': 'boolean'}}
-            )
+    def test_boolean_field(self) -> None:
+        bp = _blueprint(
+            properties={'is_production': {'type': 'boolean'}},
         )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        instance = result_model(
-            name='Test',
-            slug='test',
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        instance = result(
+            name='T',
+            slug='t',
             is_production=True,
-            organization=self.org,
+            organization=ORG,
         )
         self.assertTrue(instance.is_production)
 
-    async def test_get_model_with_array_fields(self) -> None:
-        """Test get_model with array fields."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'tags': {'type': 'array', 'items': {'type': 'string'}},
-                    'ports': {'type': 'array', 'items': {'type': 'integer'}},
-                    'generic_list': {'type': 'array'},
-                }
-            )
+    def test_array_fields(self) -> None:
+        bp = _blueprint(
+            properties={
+                'tags': {
+                    'type': 'array',
+                    'items': {'type': 'string'},
+                },
+                'ports': {
+                    'type': 'array',
+                    'items': {'type': 'integer'},
+                },
+                'generic_list': {'type': 'array'},
+            },
         )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        instance = result_model(
-            name='Test',
-            slug='test',
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        instance = result(
+            name='T',
+            slug='t',
             tags=['prod', 'web'],
             ports=[80, 443],
             generic_list=[1, 'two', True],
-            organization=self.org,
+            organization=ORG,
         )
-        self.assertEqual(instance.tags, ['prod', 'web'])
-        self.assertEqual(instance.ports, [80, 443])
-        self.assertEqual(instance.generic_list, [1, 'two', True])
+        self.assertEqual(['prod', 'web'], instance.tags)
+        self.assertEqual([80, 443], instance.ports)
 
-    async def test_get_model_with_object_field(self) -> None:
-        """Test get_model with object field."""
-        self._set_blueprints(
-            self._make_blueprint(properties={'metadata': {'type': 'object'}})
+    def test_object_field(self) -> None:
+        bp = _blueprint(
+            properties={'metadata': {'type': 'object'}},
         )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        instance = result_model(
-            name='Test',
-            slug='test',
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        instance = result(
+            name='T',
+            slug='t',
             metadata={'key': 'value'},
-            organization=self.org,
+            organization=ORG,
         )
-        self.assertEqual(instance.metadata, {'key': 'value'})
+        self.assertEqual({'key': 'value'}, instance.metadata)
 
-    async def test_get_model_with_email_format(self) -> None:
-        """Test get_model with email format string."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={'contact': {'type': 'string', 'format': 'email'}}
-            )
+    def test_email_format(self) -> None:
+        bp = _blueprint(
+            properties={
+                'contact': {'type': 'string', 'format': 'email'},
+            },
         )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        instance = result_model(
-            name='Test',
-            slug='test',
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        instance = result(
+            name='T',
+            slug='t',
             contact='user@example.com',
-            organization=self.org,
+            organization=ORG,
         )
-        self.assertEqual(str(instance.contact), 'user@example.com')
+        self.assertEqual('user@example.com', str(instance.contact))
 
-        # Test invalid email
         with self.assertRaises(pydantic.ValidationError):
-            result_model(
-                name='Test',
-                slug='test',
-                contact='not-an-email',
-                organization=self.org,
+            result(
+                name='T',
+                slug='t',
+                contact='bad',
+                organization=ORG,
             )
 
-    async def test_get_model_with_uri_format(self) -> None:
-        """Test get_model with uri/url format string."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={'homepage': {'type': 'string', 'format': 'uri'}}
-            )
+    def test_uri_format(self) -> None:
+        bp = _blueprint(
+            properties={
+                'homepage': {'type': 'string', 'format': 'uri'},
+            },
         )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        instance = result_model(
-            name='Test',
-            slug='test',
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        instance = result(
+            name='T',
+            slug='t',
             homepage='https://example.com',
-            organization=self.org,
+            organization=ORG,
         )
-        self.assertEqual(str(instance.homepage), 'https://example.com/')
-
-    async def test_get_model_with_datetime_formats(self) -> None:
-        """Test get_model with date-time, date, and time formats."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'created_at': {'type': 'string', 'format': 'date-time'},
-                    'launch_date': {'type': 'string', 'format': 'date'},
-                    'maintenance_window': {'type': 'string', 'format': 'time'},
-                }
-            )
+        self.assertEqual(
+            'https://example.com/',
+            str(instance.homepage),
         )
 
-        result_model = await blueprints.get_model(models.Environment)
-
+    def test_datetime_formats(self) -> None:
+        bp = _blueprint(
+            properties={
+                'ts': {'type': 'string', 'format': 'date-time'},
+                'day': {'type': 'string', 'format': 'date'},
+                'window': {'type': 'string', 'format': 'time'},
+            },
+        )
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
         now = datetime.datetime.now(datetime.UTC)
-        today = datetime.datetime.now(datetime.UTC).date()
-        maintenance = datetime.time(2, 0, 0)
-
-        instance = result_model(
-            name='Test',
-            slug='test',
-            created_at=now,
-            launch_date=today,
-            maintenance_window=maintenance,
-            organization=self.org,
+        today = now.date()
+        t = datetime.time(2, 0, 0)
+        instance = result(
+            name='T',
+            slug='t',
+            ts=now,
+            day=today,
+            window=t,
+            organization=ORG,
         )
-        self.assertEqual(instance.created_at, now)
-        self.assertEqual(instance.launch_date, today)
-        self.assertEqual(instance.maintenance_window, maintenance)
+        self.assertEqual(now, instance.ts)
+        self.assertEqual(today, instance.day)
+        self.assertEqual(t, instance.window)
 
-    async def test_get_model_with_enum(self) -> None:
-        """Test get_model with enum constraint."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'tier': {
-                        'type': 'string',
-                        'enum': ['dev', 'staging', 'production'],
-                    }
-                }
-            )
+    def test_enum_field(self) -> None:
+        bp = _blueprint(
+            properties={
+                'tier': {
+                    'type': 'string',
+                    'enum': ['dev', 'staging', 'production'],
+                },
+            },
         )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        instance = result_model(
-            name='Test',
-            slug='test',
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        instance = result(
+            name='T',
+            slug='t',
             tier='production',
-            organization=self.org,
+            organization=ORG,
         )
-        self.assertEqual(instance.tier, 'production')
+        self.assertEqual('production', instance.tier)
 
-        # Test invalid enum value
         with self.assertRaises(pydantic.ValidationError):
-            result_model(
-                name='Test',
-                slug='test',
+            result(
+                name='T',
+                slug='t',
                 tier='invalid',
-                organization=self.org,
+                organization=ORG,
             )
 
-    async def test_get_model_with_enum_case_coercion(self) -> None:
-        """Test that enum values are coerced to match canonical case."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'framework': {
-                        'type': 'string',
-                        'enum': ['Tornado', 'FastAPI', 'Pylons'],
-                    }
-                }
+    def test_enum_case_coercion(self) -> None:
+        bp = _blueprint(
+            properties={
+                'framework': {
+                    'type': 'string',
+                    'enum': ['Tornado', 'FastAPI', 'Pylons'],
+                },
+            },
+        )
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        for raw, expected in [
+            ('tornado', 'Tornado'),
+            ('FASTAPI', 'FastAPI'),
+            ('pYlOnS', 'Pylons'),
+            ('Tornado', 'Tornado'),
+        ]:
+            instance = result(
+                name='T',
+                slug='t',
+                framework=raw,
+                organization=ORG,
             )
-        )
+            self.assertEqual(expected, instance.framework)
 
-        result_model = await blueprints.get_model(models.Environment)
-
-        # Lowercase input should be coerced to canonical case
-        instance = result_model(
-            name='Test',
-            slug='test',
-            framework='tornado',
-            organization=self.org,
-        )
-        self.assertEqual(instance.framework, 'Tornado')
-
-        # UPPERCASE input should be coerced
-        instance2 = result_model(
-            name='Test',
-            slug='test',
-            framework='FASTAPI',
-            organization=self.org,
-        )
-        self.assertEqual(instance2.framework, 'FastAPI')
-
-        # Mixed case should be coerced
-        instance3 = result_model(
-            name='Test',
-            slug='test',
-            framework='pYlOnS',
-            organization=self.org,
-        )
-        self.assertEqual(instance3.framework, 'Pylons')
-
-        # Exact case still works
-        instance4 = result_model(
-            name='Test',
-            slug='test',
-            framework='Tornado',
-            organization=self.org,
-        )
-        self.assertEqual(instance4.framework, 'Tornado')
-
-        # Completely invalid value still fails
         with self.assertRaises(pydantic.ValidationError):
-            result_model(
-                name='Test',
-                slug='test',
+            result(
+                name='T',
+                slug='t',
                 framework='django',
-                organization=self.org,
+                organization=ORG,
             )
 
-    async def test_get_model_with_default_values(self) -> None:
-        """Test get_model with default values from schema."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'region': {'type': 'string', 'default': 'us-east-1'},
-                    'replicas': {'type': 'integer', 'default': 3},
-                }
-            )
+    def test_default_values(self) -> None:
+        bp = _blueprint(
+            properties={
+                'region': {
+                    'type': 'string',
+                    'default': 'us-east-1',
+                },
+                'replicas': {
+                    'type': 'integer',
+                    'default': 3,
+                },
+            },
         )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        # Create instance without providing optional fields
-        instance = result_model(
-            name='Test', slug='test', organization=self.org
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
         )
-        self.assertEqual(instance.region, 'us-east-1')
-        self.assertEqual(instance.replicas, 3)
+        instance = result(name='T', slug='t', organization=ORG)
+        self.assertEqual('us-east-1', instance.region)
+        self.assertEqual(3, instance.replicas)
 
-        # Override defaults
-        instance2 = result_model(
-            name='Test',
-            slug='test',
+        instance2 = result(
+            name='T',
+            slug='t',
             region='eu-west-1',
             replicas=5,
-            organization=self.org,
+            organization=ORG,
         )
-        self.assertEqual(instance2.region, 'eu-west-1')
-        self.assertEqual(instance2.replicas, 5)
+        self.assertEqual('eu-west-1', instance2.region)
+        self.assertEqual(5, instance2.replicas)
 
-    async def test_get_model_with_descriptions(self) -> None:
-        """Test get_model preserves field descriptions."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'domain': {
-                        'type': 'string',
-                        'description': 'Base domain name',
-                    }
-                }
-            )
-        )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        # Check that description is preserved in field info
-        field_info = result_model.model_fields['domain']
-        self.assertEqual(field_info.description, 'Base domain name')
-
-    async def test_get_model_multiple_blueprints_priority(self) -> None:
-        """Test get_model with multiple blueprints respects priority."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={'field1': {'type': 'string'}},
-                name='base',
-                priority=0,
-            ),
-            self._make_blueprint(
-                properties={'field2': {'type': 'integer'}},
-                name='extended',
-                priority=1,
-            ),
-        )
-
-        result_model = await blueprints.get_model(models.Environment)
-
-        # Both fields should be present
-        self.assertIn('field1', result_model.model_fields)
-        self.assertIn('field2', result_model.model_fields)
-
-        instance = result_model(
-            name='Test',
-            slug='test',
-            field1='test',
-            field2=42,
-            organization=self.org,
-        )
-        self.assertEqual(instance.field1, 'test')
-        self.assertEqual(instance.field2, 42)
-
-    async def test_get_model_json_schema_round_trip(self) -> None:
-        """Test get_model creates valid Pydantic model with JSON schema."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'domain': {
-                        'type': 'string',
-                        'description': 'Base domain name',
-                    },
-                    'region': {
-                        'type': 'string',
-                        'description': 'AWS region',
-                    },
+    def test_description_preserved(self) -> None:
+        bp = _blueprint(
+            properties={
+                'domain': {
+                    'type': 'string',
+                    'description': 'Base domain name',
                 },
-                required=['domain', 'region'],
-            )
+            },
         )
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        info = result.model_fields['domain']
+        self.assertEqual('Base domain name', info.description)
 
-        result_model = await blueprints.get_model(models.Environment)
+    def test_multiple_blueprints(self) -> None:
+        bp1 = _blueprint(
+            properties={'field1': {'type': 'string'}},
+            name='base',
+            priority=0,
+        )
+        bp2 = _blueprint(
+            properties={'field2': {'type': 'integer'}},
+            name='extended',
+            priority=1,
+        )
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp1, bp2],
+        )
+        self.assertIn('field1', result.model_fields)
+        self.assertIn('field2', result.model_fields)
 
-        # Should be able to get JSON schema from result
-        json_schema = result_model.model_json_schema()
-
-        # Verify the schema contains our fields
-        self.assertIn('properties', json_schema)
-        self.assertIn('domain', json_schema['properties'])
-        self.assertIn('region', json_schema['properties'])
-        self.assertIn('required', json_schema)
-        self.assertIn('domain', json_schema['required'])
-        self.assertIn('region', json_schema['required'])
-
-    async def test_get_model_validates_instances(self) -> None:
-        """Test that instances of returned model validate correctly."""
-        self._set_blueprints(
-            self._make_blueprint(
-                properties={
-                    'domain': {'type': 'string'},
-                    'max_instances': {'type': 'integer'},
+    def test_json_schema_round_trip(self) -> None:
+        bp = _blueprint(
+            properties={
+                'domain': {
+                    'type': 'string',
+                    'description': 'Base domain name',
                 },
-                required=['domain'],
-            )
+                'region': {
+                    'type': 'string',
+                    'description': 'AWS region',
+                },
+            },
+            required=['domain', 'region'],
         )
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        schema = result.model_json_schema()
+        self.assertIn('domain', schema['properties'])
+        self.assertIn('region', schema['properties'])
+        self.assertIn('domain', schema['required'])
+        self.assertIn('region', schema['required'])
 
-        result_model = await blueprints.get_model(models.Environment)
-
-        # Valid instance
-        instance = result_model(
+    def test_serialization(self) -> None:
+        bp = _blueprint(
+            properties={
+                'domain': {'type': 'string'},
+                'max_instances': {'type': 'integer'},
+            },
+            required=['domain'],
+        )
+        result = blueprints._apply_blueprints(
+            models.Environment,
+            [bp],
+        )
+        instance = result(
             name='Prod',
             slug='prod',
             domain='example.com',
             max_instances=10,
-            organization=self.org,
+            organization=ORG,
         )
-        self.assertEqual(instance.name, 'Prod')
-        self.assertEqual(instance.domain, 'example.com')
-        self.assertEqual(instance.max_instances, 10)
-
-        # Can serialize to dict
         data = instance.model_dump()
-        self.assertEqual(data['name'], 'Prod')
-        self.assertEqual(data['domain'], 'example.com')
+        self.assertEqual('Prod', data['name'])
+        self.assertEqual('example.com', data['domain'])
 
-        # Can serialize to JSON
         json_str = instance.model_dump_json()
         self.assertIn('Prod', json_str)
         self.assertIn('example.com', json_str)
 
 
-class CoerceEnumCaseTestCase(unittest.TestCase):
-    """Test _coerce_enum_case validator."""
+# -- _coerce_enum_case tests ----------------------------------------------
 
+
+class CoerceEnumCaseTests(unittest.TestCase):
     def test_non_string_passthrough(self) -> None:
-        """Test non-string values pass through unchanged."""
         coerce = blueprints._coerce_enum_case(['A', 'B'])
-        self.assertEqual(coerce(42), 42)
+        self.assertEqual(42, coerce(42))
         self.assertIsNone(coerce(None))
-        self.assertEqual(coerce(['a']), ['a'])
+        self.assertEqual(['a'], coerce(['a']))
 
 
-class MapArrayTypeTestCase(unittest.TestCase):
-    """Test _map_array_type for various item types."""
+# -- _map_array_type tests ------------------------------------------------
 
-    def _schema(self, **kwargs: typing.Any) -> mock.MagicMock:
-        obj = mock.MagicMock()
+
+class MapArrayTypeTests(unittest.TestCase):
+    def _schema(self, **kwargs: typing.Any) -> typing.Any:
+        class S:
+            pass
+
+        obj = S()
         for k, v in kwargs.items():
             setattr(obj, k, v)
         return obj
@@ -547,48 +463,47 @@ class MapArrayTypeTestCase(unittest.TestCase):
     def test_number_items(self) -> None:
         items = self._schema(type='number')
         schema = self._schema(items=items)
-        result = blueprints._map_array_type(schema)
-        self.assertEqual(result, list[float])
+        self.assertEqual(list[float], blueprints._map_array_type(schema))
 
     def test_boolean_items(self) -> None:
         items = self._schema(type='boolean')
         schema = self._schema(items=items)
-        result = blueprints._map_array_type(schema)
-        self.assertEqual(result, list[bool])
+        self.assertEqual(list[bool], blueprints._map_array_type(schema))
 
     def test_unknown_items_type(self) -> None:
         items = self._schema(type='object')
         schema = self._schema(items=items)
-        result = blueprints._map_array_type(schema)
-        self.assertEqual(result, list)
+        self.assertEqual(list, blueprints._map_array_type(schema))
 
     def test_no_items(self) -> None:
         schema = self._schema(items=None)
-        result = blueprints._map_array_type(schema)
-        self.assertEqual(result, list)
+        self.assertEqual(list, blueprints._map_array_type(schema))
 
 
-class MapSchemaTypeToPythonTestCase(unittest.TestCase):
-    """Test _map_schema_type_to_python for unknown types."""
+# -- _map_schema_type_to_python tests --------------------------------------
 
+
+class MapSchemaTypeToPythonTests(unittest.TestCase):
     def test_unknown_type(self) -> None:
-        schema = mock.MagicMock()
-        schema.type = None
-        result = blueprints._map_schema_type_to_python(schema)
-        self.assertEqual(result, typing.Any)
+        class S:
+            type = None
+
+        self.assertEqual(
+            typing.Any,
+            blueprints._map_schema_type_to_python(S()),
+        )
 
 
-class MakeResponseModelTestCase(unittest.TestCase):
-    """Test make_response_model."""
+# -- make_response_model tests --------------------------------------------
 
-    def test_creates_response_model(self) -> None:
-        """Test that response model adds relationships field."""
 
-        class SimpleModel(pydantic.BaseModel):
+class MakeResponseModelTests(unittest.TestCase):
+    def test_adds_relationships_field(self) -> None:
+        class Simple(pydantic.BaseModel):
             name: str
 
-        response_cls = blueprints.make_response_model(SimpleModel)
-        self.assertTrue(issubclass(response_cls, SimpleModel))
+        response_cls = blueprints.make_response_model(Simple)
+        self.assertTrue(issubclass(response_cls, Simple))
         self.assertIn('relationships', response_cls.model_fields)
 
         instance = response_cls(name='test')
@@ -597,72 +512,84 @@ class MakeResponseModelTestCase(unittest.TestCase):
         instance2 = response_cls(
             name='test',
             relationships={
-                'teams': models.RelationshipLink(href='/teams', count=5)
+                'teams': models.RelationshipLink(
+                    href='/teams',
+                    count=5,
+                ),
             },
         )
-        self.assertEqual(instance2.relationships['teams'].count, 5)
+        self.assertEqual(5, instance2.relationships['teams'].count)
 
 
-class MatchesFilterTestCase(unittest.TestCase):
-    """Test cases for blueprints._matches_filter."""
+# -- _matches_filter tests ------------------------------------------------
 
-    def _make_blueprint(
+
+class MatchesFilterTests(unittest.TestCase):
+    def _bp(
         self,
-        *,
         bp_filter: dict[str, typing.Any] | None = None,
     ) -> models.Blueprint:
-        return models.Blueprint(
-            name='test',
-            type='Project',
-            json_schema=models.Schema.model_validate(
-                {'type': 'object', 'properties': {}}
-            ),
-            filter=bp_filter,
+        return _blueprint(
+            properties={},
+            bp_type='Project',
+            bp_filter=bp_filter,
         )
 
     def test_no_filter_matches_everything(self) -> None:
-        bp = self._make_blueprint()
+        bp = self._bp()
         self.assertTrue(blueprints._matches_filter(bp, None))
         self.assertTrue(
-            blueprints._matches_filter(bp, {'project_type': 'apis'})
+            blueprints._matches_filter(
+                bp,
+                {'project_type': 'apis'},
+            ),
         )
 
     def test_filter_with_no_context_rejects(self) -> None:
-        bp = self._make_blueprint(bp_filter={'project_type': ['apis']})
+        bp = self._bp({'project_type': ['apis']})
         self.assertFalse(blueprints._matches_filter(bp, None))
 
     def test_filter_matches_context(self) -> None:
-        bp = self._make_blueprint(bp_filter={'project_type': ['apis']})
+        bp = self._bp({'project_type': ['apis']})
         self.assertTrue(
-            blueprints._matches_filter(bp, {'project_type': 'apis'})
+            blueprints._matches_filter(
+                bp,
+                {'project_type': 'apis'},
+            ),
         )
         self.assertFalse(
-            blueprints._matches_filter(bp, {'project_type': 'consumers'})
+            blueprints._matches_filter(
+                bp,
+                {'project_type': 'consumers'},
+            ),
         )
 
     def test_list_filter_matches_any(self) -> None:
-        bp = self._make_blueprint(
-            bp_filter={
-                'project_type': [
-                    'apis',
-                    'consumers',
-                    'daemons',
-                ]
-            }
+        bp = self._bp(
+            {'project_type': ['apis', 'consumers', 'daemons']},
         )
         self.assertTrue(
-            blueprints._matches_filter(bp, {'project_type': 'apis'})
+            blueprints._matches_filter(
+                bp,
+                {'project_type': 'apis'},
+            ),
         )
         self.assertTrue(
-            blueprints._matches_filter(bp, {'project_type': 'daemons'})
+            blueprints._matches_filter(
+                bp,
+                {'project_type': 'daemons'},
+            ),
         )
         self.assertFalse(
-            blueprints._matches_filter(bp, {'project_type': 'database'})
+            blueprints._matches_filter(
+                bp,
+                {'project_type': 'database'},
+            ),
         )
 
     def test_multiple_filter_fields_and(self) -> None:
-        bp = self._make_blueprint(
-            bp_filter={
+        bp = self._bp(
+            {
                 'project_type': ['apis'],
                 'environment': ['production'],
             }
@@ -674,7 +601,7 @@ class MatchesFilterTestCase(unittest.TestCase):
                     'project_type': 'apis',
                     'environment': 'production',
                 },
-            )
+            ),
         )
         self.assertFalse(
             blueprints._matches_filter(
@@ -683,274 +610,120 @@ class MatchesFilterTestCase(unittest.TestCase):
                     'project_type': 'apis',
                     'environment': 'staging',
                 },
-            )
+            ),
         )
-        # Missing key
         self.assertFalse(
-            blueprints._matches_filter(bp, {'project_type': 'apis'})
+            blueprints._matches_filter(
+                bp,
+                {'project_type': 'apis'},
+            ),
         )
 
     def test_list_context_value_matches(self) -> None:
-        """Test multi-type context (list) matches filter."""
-        bp = self._make_blueprint(bp_filter={'project_type': ['apis']})
+        bp = self._bp({'project_type': ['apis']})
         self.assertTrue(
             blueprints._matches_filter(
-                bp, {'project_type': ['apis', 'consumers']}
-            )
+                bp,
+                {'project_type': ['apis', 'consumers']},
+            ),
         )
 
     def test_list_context_value_no_match(self) -> None:
-        """Test multi-type context (list) rejects when none match."""
-        bp = self._make_blueprint(bp_filter={'project_type': ['apis']})
+        bp = self._bp({'project_type': ['apis']})
         self.assertFalse(
             blueprints._matches_filter(
-                bp, {'project_type': ['consumers', 'daemons']}
-            )
+                bp,
+                {'project_type': ['consumers', 'daemons']},
+            ),
         )
 
     def test_empty_filter_lists_match_everything(self) -> None:
-        bp = self._make_blueprint(
-            bp_filter={
+        bp = self._bp(
+            {
                 'project_type': [],
                 'environment': [],
             }
         )
         self.assertTrue(blueprints._matches_filter(bp, None))
         self.assertTrue(
-            blueprints._matches_filter(bp, {'project_type': 'apis'})
+            blueprints._matches_filter(
+                bp,
+                {'project_type': 'apis'},
+            ),
         )
 
 
-class GetModelFilterTestCase(unittest.IsolatedAsyncioTestCase):
-    """Test get_model with filter context."""
+# -- get_model integration test -------------------------------------------
+
+
+class GetModelIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    """Integration test for get_model with a real graph."""
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        self.org = models.Organization(name='Org', slug='org')
-        self.fetch_nodes_patcher = mock.patch('imbi_common.age.fetch_nodes')
-        self.mock_fetch_nodes = self.fetch_nodes_patcher.start()
-        self.addCleanup(self.fetch_nodes_patcher.stop)
-
-    def _make_blueprint(
-        self,
-        *,
-        properties: dict[str, typing.Any],
-        name: str = 'test',
-        bp_filter: dict[str, typing.Any] | None = None,
-        priority: int = 0,
-    ) -> models.Blueprint:
-        schema: dict[str, typing.Any] = {
-            'type': 'object',
-            'properties': properties,
-        }
-        return models.Blueprint(
-            name=name,
-            type='Project',
-            priority=priority,
-            json_schema=models.Schema.model_validate(schema),
-            filter=bp_filter,
+        self.graph = graph.Graph()
+        await self.graph.open()
+        await self.graph.execute(
+            'MATCH (b:Blueprint {{name: {name}}}) '
+            'DETACH DELETE b RETURN 1 AS ok',
+            {'name': 'test-rtt'},
         )
 
-    def _set_blueprints(self, *bps: models.Blueprint) -> None:
-        async def iterator():
-            for bp in bps:
-                yield bp
-
-        self.mock_fetch_nodes.return_value = iterator()
-
-    async def test_context_filters_blueprints(self) -> None:
-        self._set_blueprints(
-            self._make_blueprint(
-                name='common',
-                properties={'has_ci': {'type': 'boolean'}},
-            ),
-            self._make_blueprint(
-                name='api-facts',
-                properties={
-                    'framework': {
-                        'type': 'string',
-                        'enum': ['FastAPI', 'Tornado'],
-                    }
-                },
-                bp_filter={'project_type': ['apis']},
-            ),
-            self._make_blueprint(
-                name='db-facts',
-                properties={
-                    'database_type': {
-                        'type': 'string',
-                        'enum': ['PostgreSQL', 'MySQL'],
-                    }
-                },
-                bp_filter={'project_type': ['database']},
-            ),
+    async def asyncTearDown(self) -> None:
+        await self.graph.execute(
+            'MATCH (n) DETACH DELETE n RETURN count(n) AS deleted',
         )
+        await self.graph.close()
 
-        model = await blueprints.get_model(
-            models.Project,
-            context={'project_type': 'apis'},
-        )
-
-        self.assertIn('has_ci', model.model_fields)
-        self.assertIn('framework', model.model_fields)
-        self.assertNotIn('database_type', model.model_fields)
-
-    async def test_no_context_returns_unfiltered_only(
-        self,
-    ) -> None:
-        self._set_blueprints(
-            self._make_blueprint(
-                name='common',
-                properties={'has_ci': {'type': 'boolean'}},
-            ),
-            self._make_blueprint(
-                name='api-facts',
-                properties={'framework': {'type': 'string'}},
-                bp_filter={'project_type': ['apis']},
-            ),
-        )
-
-        model = await blueprints.get_model(models.Project)
-
-        self.assertIn('has_ci', model.model_fields)
-        self.assertNotIn('framework', model.model_fields)
-
-
-class GetModelIntegrationTestCase(AGETestCase):
-    """Integration tests for blueprints.get_model with real AGE."""
-
-    async def asyncSetUp(self) -> None:
-        await super().asyncSetUp()
-        await age.query(
-            "MATCH (b:Blueprint {name: 'test-rtt'})"
-            ' DETACH DELETE b RETURN 1 AS ok'
-        )
-
-    async def test_round_trip_with_age(self) -> None:
-        """Test round-trip: create blueprint in AGE and build model."""
-        # Create a test blueprint
-        blueprint = models.Blueprint(
+    async def test_round_trip(self) -> None:
+        bp = models.Blueprint(
             name='test-rtt',
             type='Environment',
             description='Round-trip test blueprint',
-            json_schema=models.Schema.model_validate(
-                {
-                    '$schema': 'http://json-schema.org/draft-07/schema#',
-                    'title': 'Environment Extensions',
-                    'description': 'Additional environment properties',
-                    'type': 'object',
-                    'properties': {
-                        'domain': {
-                            'title': 'Domain',
-                            'type': 'string',
-                            'description': 'Base domain for services.',
-                        },
-                        'region': {
-                            'title': 'AWS Region',
-                            'type': 'string',
-                            'description': 'AWS region for environment.',
-                        },
-                        'max_instances': {
-                            'title': 'Max Instances',
-                            'type': 'integer',
-                            'default': 10,
-                            'description': 'Maximum number of instances.',
-                        },
+            json_schema=_schema(
+                properties={
+                    'domain': {
+                        'title': 'Domain',
+                        'type': 'string',
+                        'description': 'Base domain for services.',
                     },
-                    'required': ['domain', 'region'],
-                }
+                    'region': {
+                        'title': 'AWS Region',
+                        'type': 'string',
+                        'description': 'AWS region for environment.',
+                    },
+                    'max_instances': {
+                        'title': 'Max Instances',
+                        'type': 'integer',
+                        'default': 10,
+                        'description': 'Maximum number of instances.',
+                    },
+                },
+                required=['domain', 'region'],
             ),
         )
+        await self.graph.merge(bp, match_on=['name'])
 
-        # Store blueprint in AGE (handle constraint errors if already exists)
-        try:
-            await age.create_node(blueprint)
-        except exceptions.ConstraintError:
-            pass  # Blueprint already exists from previous run
-
-        # Use get_model to fetch blueprints and build dynamic model
-        dynamic_model = await blueprints.get_model(models.Environment)
-
-        # Verify the dynamic model has base fields
-        self.assertIn('name', dynamic_model.model_fields)
-        self.assertIn('slug', dynamic_model.model_fields)
-        self.assertIn('description', dynamic_model.model_fields)
-
-        # Verify blueprint-defined fields are present
-        self.assertIn('domain', dynamic_model.model_fields)
-        self.assertIn('region', dynamic_model.model_fields)
-        self.assertIn('max_instances', dynamic_model.model_fields)
-
-        # Verify field metadata is preserved
-        domain_field = dynamic_model.model_fields['domain']
-        self.assertEqual(domain_field.description, 'Base domain for services.')
-
-        region_field = dynamic_model.model_fields['region']
-        self.assertEqual(
-            region_field.description, 'AWS region for environment.'
+        result = await blueprints.get_model(
+            self.graph,
+            models.Environment,
         )
 
-        max_instances_field = dynamic_model.model_fields['max_instances']
+        self.assertIn('domain', result.model_fields)
+        self.assertIn('region', result.model_fields)
+        self.assertIn('max_instances', result.model_fields)
+
         self.assertEqual(
-            max_instances_field.description, 'Maximum number of instances.'
+            'Base domain for services.',
+            result.model_fields['domain'].description,
         )
 
-        # Create an instance with required fields
-        org = models.Organization(name='Org', slug='org')
-        instance = dynamic_model(
+        instance = result(
             name='Production',
             slug='prod',
             domain='example.com',
             region='us-east-1',
-            organization=org,
+            organization=ORG,
         )
-
-        self.assertEqual(instance.name, 'Production')
-        self.assertEqual(instance.slug, 'prod')
-        self.assertEqual(instance.domain, 'example.com')
-        self.assertEqual(instance.region, 'us-east-1')
-        self.assertEqual(
-            instance.max_instances, 10
-        )  # Should use default value
-
-        # Override default value
-        instance2 = dynamic_model(
-            name='Staging',
-            slug='staging',
-            domain='staging.example.com',
-            region='us-west-2',
-            max_instances=5,
-            organization=org,
-        )
-        self.assertEqual(instance2.max_instances, 5)
-
-        # Test validation - missing required field should fail
-        with self.assertRaises(pydantic.ValidationError):
-            dynamic_model(
-                name='Test',
-                slug='test',
-                domain='test.com',
-                organization=org,
-            )  # Missing region
-
-        # Test JSON schema generation
-        json_schema = dynamic_model.model_json_schema()
-        self.assertIn('properties', json_schema)
-        self.assertIn('domain', json_schema['properties'])
-        self.assertIn('region', json_schema['properties'])
-        self.assertIn('max_instances', json_schema['properties'])
-        self.assertIn('required', json_schema)
-        self.assertIn('domain', json_schema['required'])
-        self.assertIn('region', json_schema['required'])
-
-        # Test serialization
-        data = instance.model_dump()
-        self.assertEqual(data['name'], 'Production')
-        self.assertEqual(data['domain'], 'example.com')
-        self.assertEqual(data['region'], 'us-east-1')
-        self.assertEqual(data['max_instances'], 10)
-
-        json_str = instance.model_dump_json()
-        self.assertIn('Production', json_str)
-        self.assertIn('example.com', json_str)
-        self.assertIn('us-east-1', json_str)
+        self.assertEqual('example.com', instance.domain)
+        self.assertEqual(10, instance.max_instances)

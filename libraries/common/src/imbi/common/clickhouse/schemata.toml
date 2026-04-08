@@ -24,7 +24,7 @@ ORDER BY (timestamp, session_id)
 PARTITION BY toYYYYMM(timestamp)
 TTL timestamp + INTERVAL 30 DAY;
 """
-enabled = true
+enabled = false
 
 # MFA Events
 # GDPR Compliance Notes:
@@ -43,4 +43,4 @@ ORDER BY (timestamp, user_id)
 PARTITION BY toYYYYMM(timestamp)
 TTL timestamp + INTERVAL 90 DAY;
 """
-enabled = true
+enabled = false

@@ -4,6 +4,7 @@ import pathlib
 import re
 import tomllib
 import typing
+from collections import abc
 from importlib import resources
 
 import click
@@ -130,7 +131,7 @@ def bind_entrypoint(
     entrypoint: str,
     *,
     default_port: int = 8000,
-) -> typing.Callable[..., None]:
+) -> abc.Callable[..., None]:
     """Create a wrapper for serve() with a pre-bound entrypoint.
 
     This helper function creates a new function that calls serve() with

@@ -24,15 +24,16 @@ docker:
         echo "docker compose port $* failed" >&2
         return 1
     }
+    docker compose down --remove-orphans
     docker compose up -d --wait --wait-timeout 120 || (docker compose logs && false)
     docker compose exec clickhouse clickhouse client -q "CREATE DATABASE IF NOT EXISTS imbi"
 
     test_host="${TEST_HOST:-127.0.0.1}"
     cat>.env<<EOF
     TEST_HOST="$test_host"
-    CLICKHOUSE_URL="http://default:password@$test_host:$(port clickhouse 8123)/imbi"
     FILE_CACHE_ENABLED="no"
-    AGE_URL="postgresql://postgres:secret@$test_host:$(port postgres 5432)/imbi"
+    CLICKHOUSE_URL="http://default:password@$test_host:$(port clickhouse 8123)/imbi"
+    POSTGRES_URL="postgresql://postgres:secret@$test_host:$(port postgres 5432)/imbi"
     EOF
 
 [doc("Generate docs")]
