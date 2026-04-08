@@ -20,7 +20,7 @@ from imbi_common import settings
 config = settings.load_config()
 
 # Access individual settings sections
-neo4j_config = settings.Neo4j()
+postgres_config = settings.Postgres()
 clickhouse_config = settings.Clickhouse()
 auth_config = settings.Auth()
 ```
@@ -33,10 +33,8 @@ auth_config = settings.Auth()
 
 ::: imbi_common.settings.Configuration
 
-::: imbi_common.settings.Neo4j
+::: imbi_common.settings.Postgres
 
 ::: imbi_common.settings.Clickhouse
-
-::: imbi_common.settings.ServerConfig
 
 ::: imbi_common.settings.Auth

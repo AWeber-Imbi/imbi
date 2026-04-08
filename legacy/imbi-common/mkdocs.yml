@@ -39,7 +39,7 @@ nav:
       - Configuration: configuration.md
   - API Reference:
       - Settings: api/settings.md
-      - Neo4j Client: api/neo4j.md
+      - Graph (Apache AGE): api/graph.md
       - ClickHouse Client: api/clickhouse.md
       - Models: api/models.md
       - Blueprints: api/blueprints.md
