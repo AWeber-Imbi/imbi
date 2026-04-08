@@ -44,7 +44,7 @@ def _fill_edge_defaults(
     return props
 
 
-def _parse_agtype(value: typing.Any) -> typing.Any:
+def parse_agtype(value: typing.Any) -> typing.Any:
     """Parse a single agtype value into a Python dict.
 
     AGE returns vertices as ``{...}::vertex`` strings.  This
@@ -124,7 +124,7 @@ class Graph:
         results: list[ModelT] = []
         for row in raw_rows:
             for value in row.values():
-                props = _parse_agtype(value)
+                props = parse_agtype(value)
                 if isinstance(props, dict):
                     _fill_edge_defaults(node_type, props)
                     results.append(
@@ -174,6 +174,7 @@ class Graph:
         conn: psycopg.AsyncConnection[typing.Any],
         query_template: str,
         params: dict[str, typing.Any] | None = None,
+        columns: list[str] | None = None,
     ) -> sql.Composed:
         """Build the full SQL statement for an AGE cypher() call.
 
@@ -181,7 +182,15 @@ class Graph:
         dollar-quoted string constant (``$$...$$``), not a
         single-quoted literal or a ``$1`` placeholder.
 
+        *columns* lists the names used in the ``AS (...)`` clause.
+        Each name becomes an ``agtype`` column.  Defaults to
+        ``['n']`` for single-column returns.
+
         """
+        columns = columns or ['n']
+        col_def = sql.SQL(', ').join(
+            sql.SQL('{c} agtype').format(c=sql.Identifier(c)) for c in columns
+        )
         literal_params = {
             k: (v if isinstance(v, sql.Composable) else sql.Literal(v))
             for k, v in (params or {}).items()
@@ -189,10 +198,11 @@ class Graph:
         query = sql.SQL(query_template).format(**literal_params)
         resolved = query.as_string(conn)
         return sql.SQL(
-            'SELECT * FROM cypher({graph_name}, $${query}$$) AS (n agtype)',
+            'SELECT * FROM cypher({graph_name}, $${query}$$) AS ({col_def})',
         ).format(
             graph_name=sql.Literal(self.settings.graph_name),
             query=sql.SQL(resolved),
+            col_def=col_def,
         )
 
     async def _execute_on(
@@ -200,12 +210,14 @@ class Graph:
         conn: psycopg.AsyncConnection[typing.Any],
         query_template: str,
         params: dict[str, typing.Any] | None = None,
+        columns: list[str] | None = None,
     ) -> list[dict[str, typing.Any]]:
         """Execute a single Cypher query on an existing connection."""
         cypher_sql = self._build_cypher_sql(
             conn,
             query_template,
             params,
+            columns,
         )
         async with conn.cursor(
             row_factory=rows.dict_row,
@@ -217,14 +229,17 @@ class Graph:
         self,
         query_template: str,
         params: dict[str, typing.Any] | None = None,
+        columns: list[str] | None = None,
     ) -> list[dict[str, typing.Any]]:
         """Wrap a Cypher query in SQL and execute it.
 
         Parameters in *params* are bound as ``sql.Literal`` values
         into the *query_template* via ``sql.SQL.format()``.
 
-        The Cypher query is wrapped in AGE's ``cypher()`` function
-        with the required ``AS (n agtype)`` column definition.
+        The Cypher query is wrapped in AGE's ``cypher()`` function.
+        *columns* defines the ``AS (...)`` clause — pass one name
+        per value in the Cypher ``RETURN`` clause.  Defaults to
+        ``['n']`` for single-column returns.
 
         """
         if not self.opened:
@@ -235,6 +250,7 @@ class Graph:
                 conn,
                 query_template,
                 params,
+                columns,
             )
 
 

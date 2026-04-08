@@ -14,10 +14,10 @@ dotenv.load_dotenv()
 
 class ParseAgtypeTests(unittest.TestCase):
     def test_none_passthrough(self) -> None:
-        self.assertIsNone(graph._parse_agtype(None))
+        self.assertIsNone(graph.parse_agtype(None))
 
     def test_non_string_passthrough(self) -> None:
-        self.assertEqual(42, graph._parse_agtype(42))
+        self.assertEqual(42, graph.parse_agtype(42))
 
     def test_vertex_extracts_properties(self) -> None:
         vertex = (
@@ -30,18 +30,18 @@ class ParseAgtypeTests(unittest.TestCase):
             )
             + '::vertex'
         )
-        result = graph._parse_agtype(vertex)
+        result = graph.parse_agtype(vertex)
         self.assertEqual('Acme', result['name'])
         self.assertEqual('acme', result['slug'])
 
     def test_bare_json_string(self) -> None:
         self.assertEqual(
             {'key': 'val'},
-            graph._parse_agtype('{"key": "val"}'),
+            graph.parse_agtype('{"key": "val"}'),
         )
 
     def test_non_json_string_passthrough(self) -> None:
-        self.assertEqual('hello', graph._parse_agtype('hello'))
+        self.assertEqual('hello', graph.parse_agtype('hello'))
 
     def test_edge_suffix_stripped(self) -> None:
         edge = (
@@ -56,7 +56,7 @@ class ParseAgtypeTests(unittest.TestCase):
             )
             + '::edge'
         )
-        result = graph._parse_agtype(edge)
+        result = graph.parse_agtype(edge)
         self.assertIsInstance(result, dict)
 
 
