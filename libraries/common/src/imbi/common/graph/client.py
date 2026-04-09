@@ -3,22 +3,20 @@ Apache AGE Database Interface
 
 """
 
-import contextlib
 import dataclasses
 import json
 import logging
 import re
 import typing
-from collections import abc
 
-import fastapi
 import psycopg
 import psycopg_pool
 import pydantic
 from pgvector.psycopg import register_vector_async
 from psycopg import rows, sql
 
-from imbi_common import cypher, lifespan, models, settings
+from imbi_common import models, settings
+from imbi_common.graph import cypher
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,26 +29,6 @@ GraphModelT = typing.TypeVar(
     'GraphModelT',
     bound=models.GraphModel,
 )
-
-
-def _strip_edge_fields(
-    node_type: type[pydantic.BaseModel],
-    props: dict[str, typing.Any],
-) -> dict[str, typing.Any]:
-    """Remove edge field keys from *props*.
-
-    AGE vertices only contain scalar properties; edge fields
-    are separate graph relationships.  Removing them lets
-    ``model_construct`` supply the field default (e.g. ``[]``
-    or ``None``) without type-validation conflicts.
-
-    """
-    for name, info in node_type.model_fields.items():
-        for md in info.metadata:
-            if isinstance(md, models.Edge):
-                props.pop(name, None)
-                break
-    return props
 
 
 def _embeddable_fields(
@@ -76,6 +54,26 @@ def _embeddable_fields(
                 )
                 break
     return result
+
+
+def _strip_edge_fields(
+    node_type: type[pydantic.BaseModel],
+    props: dict[str, typing.Any],
+) -> dict[str, typing.Any]:
+    """Remove edge field keys from *props*.
+
+    AGE vertices only contain scalar properties; edge fields
+    are separate graph relationships.  Removing them lets
+    ``model_construct`` supply the field default (e.g. ``[]``
+    or ``None``) without type-validation conflicts.
+
+    """
+    for name, info in node_type.model_fields.items():
+        for md in info.metadata:
+            if isinstance(md, models.Edge):
+                props.pop(name, None)
+                break
+    return props
 
 
 def parse_agtype(value: typing.Any) -> typing.Any:
@@ -154,7 +152,7 @@ class Graph:
 
     async def close(self) -> None:
         """Close the connection pool and release models."""
-        from imbi_common import embeddings
+        from imbi_common.graph import embeddings
 
         await self.pool.close()
         embeddings.close()
@@ -269,7 +267,7 @@ class Graph:
         """
         if not self.opened:
             raise RuntimeError('Graph pool is not open')
-        from imbi_common import embeddings
+        from imbi_common.graph import embeddings
 
         vector = await embeddings.aembed_one(
             query,
@@ -403,7 +401,7 @@ class Graph:
         if not fields:
             return
         try:
-            from imbi_common import chunk, embeddings
+            from imbi_common.graph import chunk, embeddings
 
             node_label = type(node).__name__
             async with self.pool.connection() as conn:
@@ -674,23 +672,3 @@ class Graph:
                 params,
                 columns,
             )
-
-
-@contextlib.asynccontextmanager
-async def graph_lifespan() -> abc.AsyncIterator[Graph]:
-    graph = Graph()
-    await graph.open()
-    yield graph
-    await graph.close()
-
-
-async def _inject_graph(
-    context: lifespan.InjectLifespan,
-) -> abc.AsyncIterator[Graph]:
-    yield context.get_state(graph_lifespan)
-
-
-Pool = typing.Annotated[
-    Graph,
-    fastapi.Depends(_inject_graph),
-]

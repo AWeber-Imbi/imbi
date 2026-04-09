@@ -1,0 +1,214 @@
+[[extensions]]
+name = "age"
+
+[[extensions]]
+name = "pg_cron"
+
+[[extensions]]
+name = "vector"
+
+[vlabels]
+name = [
+  "APIKey",
+  "Blueprint",
+  "ClientCredential",
+  "Conversation",
+  "Environment",
+  "LinkDefinition",
+  "Message",
+  "OAuthIdentity",
+  "Organization",
+  "Permission",
+  "Project",
+  "ProjectType",
+  "Role",
+  "ServiceAccount",
+  "ServiceApplication",
+  "Session",
+  "TOTPSecret",
+  "Team",
+  "ThirdPartyService",
+  "TokenMetadata",
+  "Upload",
+  "User",
+  "Webhook",
+  "WebhookImplementation",
+  "WebhookRule",
+]
+
+# Attribute indexes on vertex labels.
+# Each entry creates a B-tree index on the named agtype property.
+# `unique = true` creates a UNIQUE index.
+# `attributes` lists one or more property names; multiple names
+# produce a composite index.
+
+[[vlabel_indexes]]
+vlabel = "APIKey"
+attributes = ["key_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "APIKey"
+attributes = ["revoked"]
+
+[[vlabel_indexes]]
+vlabel = "Blueprint"
+attributes = ["name", "type"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "ClientCredential"
+attributes = ["client_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Conversation"
+attributes = ["updated_at"]
+
+[[vlabel_indexes]]
+vlabel = "Conversation"
+attributes = ["user_email"]
+
+[[vlabel_indexes]]
+vlabel = "LinkDefinition"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Message"
+attributes = ["conversation_id"]
+
+[[vlabel_indexes]]
+vlabel = "OAuthIdentity"
+attributes = ["email"]
+
+[[vlabel_indexes]]
+vlabel = "OAuthIdentity"
+attributes = ["provider", "provider_user_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Permission"
+attributes = ["name"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Permission"
+attributes = ["resource_type"]
+
+[[vlabel_indexes]]
+vlabel = "Project"
+attributes = ["name"]
+
+[[vlabel_indexes]]
+vlabel = "Project"
+attributes = ["slug"]
+
+[[vlabel_indexes]]
+vlabel = "Role"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Role"
+attributes = ["priority"]
+
+[[vlabel_indexes]]
+vlabel = "ServiceAccount"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "ServiceApplication"
+attributes = ["slug"]
+
+[[vlabel_indexes]]
+vlabel = "ServiceApplication"
+attributes = ["status"]
+
+[[vlabel_indexes]]
+vlabel = "Session"
+attributes = ["session_id"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "Session"
+attributes = ["expires_at"]
+
+[[vlabel_indexes]]
+vlabel = "Team"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "ThirdPartyService"
+attributes = ["slug"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "ThirdPartyService"
+attributes = ["status"]
+
+[[vlabel_indexes]]
+vlabel = "TokenMetadata"
+attributes = ["jti"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "User"
+attributes = ["email"]
+unique = true
+
+[[vlabel_indexes]]
+vlabel = "User"
+attributes = ["is_active"]
+
+# Embeddings table for pgvector similarity search.
+[embeddings]
+table = "public.embeddings"
+
+[embeddings.columns]
+node_label = "TEXT NOT NULL"
+node_id = "TEXT NOT NULL"
+attribute = "TEXT NOT NULL"
+chunk_index = "INTEGER NOT NULL DEFAULT 0"
+model_name = "TEXT NOT NULL DEFAULT 'text'"
+chunk_text = "TEXT NOT NULL"
+embedding = "VECTOR NOT NULL"
+created_at = "TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()"
+
+[embeddings.primary_key]
+columns = ["node_label", "node_id", "attribute", "chunk_index", "model_name"]
+
+[[embeddings.indexes]]
+name = "embeddings_node_idx"
+columns = ["node_label", "node_id"]
+
+# HNSW vector index — dimensions and model_name are derived from
+# the embedding settings at runtime so they stay in sync with
+# the configured default model.
+[embeddings.hnsw_index]
+name = "embeddings_text_hnsw_idx"
+ops = "vector_cosine_ops"
+
+# UDF for Cypher-to-SQL bridge vector distance queries.
+[[functions]]
+name = "public.embedding_distance"
+language = "sql"
+args = """
+    p_node_label AGTYPE,
+    p_node_id    AGTYPE,
+    p_query_vec  AGTYPE,
+    p_model      AGTYPE
+"""
+returns = "AGTYPE"
+body = """
+ SELECT COALESCE(
+            MIN(e.embedding <=> p_query_vec::text::vector),
+            1.0
+        )::float8::agtype
+   FROM public.embeddings e
+  WHERE e.node_label = p_node_label::text
+    AND e.node_id = p_node_id::text
+    AND e.model_name = p_model::text;
+"""

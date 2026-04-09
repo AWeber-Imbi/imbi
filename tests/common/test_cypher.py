@@ -3,7 +3,8 @@
 import typing
 import unittest
 
-from imbi_common import cypher, models
+from imbi_common import models
+from imbi_common.graph import cypher
 
 
 class Credential(models.GraphModel):

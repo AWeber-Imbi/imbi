@@ -10,14 +10,14 @@ import logging
 import threading
 import typing
 
-from fastembed import TextEmbedding
+import fastembed
 
 from imbi_common import settings
 
 LOGGER = logging.getLogger(__name__)
 
 _lock = threading.RLock()
-_models: dict[str, TextEmbedding] = {}
+_models: dict[str, fastembed.TextEmbedding] = {}
 _registry: dict[str, settings.EmbeddingModelConfig] | None = None
 _default_model: str | None = None
 
@@ -46,7 +46,7 @@ def _resolve(model_name: str | None) -> str:
     return default_model()
 
 
-def _get_model(model_name: str) -> TextEmbedding:
+def _get_model(model_name: str) -> fastembed.TextEmbedding:
     """Return a cached TextEmbedding, loading on first call."""
     with _lock:
         if model_name not in _models:
@@ -61,7 +61,7 @@ def _get_model(model_name: str) -> TextEmbedding:
                 model_name,
                 spec.fastembed_id,
             )
-            _models[model_name] = TextEmbedding(
+            _models[model_name] = fastembed.TextEmbedding(
                 model_name=spec.fastembed_id,
             )
     return _models[model_name]

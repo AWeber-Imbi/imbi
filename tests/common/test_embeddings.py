@@ -3,7 +3,8 @@
 import unittest
 from unittest import mock
 
-from imbi_common import embeddings, settings
+from imbi_common import settings
+from imbi_common.graph import embeddings
 
 
 class EmbeddingsRegistryTests(unittest.TestCase):
@@ -40,7 +41,7 @@ class EmbedSyncTests(unittest.TestCase):
     def tearDown(self) -> None:
         embeddings.close()
 
-    @mock.patch('imbi_common.embeddings.TextEmbedding')
+    @mock.patch('imbi_common.graph.embeddings.fastembed.TextEmbedding')
     def test_embed_calls_model(
         self,
         mock_cls: mock.MagicMock,
@@ -58,7 +59,7 @@ class EmbedSyncTests(unittest.TestCase):
         self.assertAlmostEqual(0.1, result[0][0], places=5)
         fake_model.embed.assert_called_once_with(['hello'])
 
-    @mock.patch('imbi_common.embeddings.TextEmbedding')
+    @mock.patch('imbi_common.graph.embeddings.fastembed.TextEmbedding')
     def test_embed_batch(
         self,
         mock_cls: mock.MagicMock,
@@ -79,7 +80,7 @@ class EmbedSyncTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             embeddings.embed(['test'], 'nonexistent')
 
-    @mock.patch('imbi_common.embeddings.TextEmbedding')
+    @mock.patch('imbi_common.graph.embeddings.fastembed.TextEmbedding')
     def test_model_cached(
         self,
         mock_cls: mock.MagicMock,
@@ -105,7 +106,7 @@ class EmbedAsyncTests(unittest.IsolatedAsyncioTestCase):
     def tearDown(self) -> None:
         embeddings.close()
 
-    @mock.patch('imbi_common.embeddings.TextEmbedding')
+    @mock.patch('imbi_common.graph.embeddings.fastembed.TextEmbedding')
     async def test_aembed_one(
         self,
         mock_cls: mock.MagicMock,

@@ -9,6 +9,7 @@ import fastapi
 import fastapi.testclient
 
 from imbi_common import graph, lifespan, models
+from imbi_common.graph import client
 
 dotenv.load_dotenv()
 
@@ -192,7 +193,7 @@ class EmbeddableFieldsTests(unittest.TestCase):
             slug='org',
             description='Desc',
         )
-        fields = graph._embeddable_fields(org)
+        fields = client._embeddable_fields(org)
         names = [f[0] for f in fields]
         self.assertIn('name', names)
         self.assertIn('description', names)
@@ -204,7 +205,7 @@ class EmbeddableFieldsTests(unittest.TestCase):
             slug='org',
             description=None,
         )
-        fields = graph._embeddable_fields(org)
+        fields = client._embeddable_fields(org)
         by_name = {f[0]: f[1] for f in fields}
         self.assertIn('description', by_name)
         self.assertIsNone(by_name['description'])
@@ -213,7 +214,7 @@ class EmbeddableFieldsTests(unittest.TestCase):
 class AutoEmbedTests(unittest.IsolatedAsyncioTestCase):
     """Test _auto_embed with mocked embeddings module."""
 
-    @mock.patch('imbi_common.embeddings.aembed')
+    @mock.patch('imbi_common.graph.embeddings.aembed')
     @mock.patch('imbi_common.settings.Embeddings')
     async def test_disabled_skips_embedding(
         self,
@@ -232,7 +233,7 @@ class AutoEmbedTests(unittest.IsolatedAsyncioTestCase):
         g = graph.Graph()
         g.opened = True
 
-        mock_pool = mock.AsyncMock()
+        mock_pool = mock.MagicMock()
         mock_pool.connection.side_effect = RuntimeError(
             'pool fail',
         )

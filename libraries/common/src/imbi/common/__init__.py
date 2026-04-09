@@ -5,9 +5,7 @@ from importlib import metadata
 from imbi_common import (
     auth,
     blueprints,
-    chunk,
     clickhouse,
-    embeddings,
     graph,
     logging,
     models,
@@ -27,9 +25,7 @@ except metadata.PackageNotFoundError:
 __all__ = [
     'auth',
     'blueprints',
-    'chunk',
     'clickhouse',
-    'embeddings',
     'graph',
     'logging',
     'models',
