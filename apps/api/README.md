@@ -31,18 +31,15 @@ Imbi helps organizations answer critical questions about their service landscape
 **Complete rewrite** using modern Python technologies for improved performance, scalability, and AI integration:
 
 - **FastAPI**: Modern async web framework with automatic OpenAPI documentation
-- **Neo4j**: Graph database for modeling service relationships and dependencies with native vector search
+- **Apache AGE**: Graph database (PostgreSQL extension) for modeling service relationships and dependencies
 - **ClickHouse**: Analytics and time-series data storage for operations logs and metrics
 - **Pydantic v2**: Type-safe data validation and settings management
-- **Cypherantic**: Type-safe Neo4j integration with automatic Pydantic model mapping
 
 ### What's New in v2
 
-- **Graph Database**: Neo4j replaces Postgres for intuitive relationship modeling and AI-friendly Cypher queries
-- **Vector Search**: Built-in support for AI-powered semantic search across the service graph
+- **Graph Database**: Apache AGE (PostgreSQL) for intuitive relationship modeling and AI-friendly Cypher queries
 - **Modern API**: FastAPI provides automatic OpenAPI docs, async performance, and better type safety
-- **Simplified Architecture**: Dropping OpenSearch dependency in favor of Neo4j's native capabilities
-- **AI-Ready**: Foundation for conversational AI, MCP server integration, and natural language queries
+- **Simplified Architecture**: Single PostgreSQL instance for relational and graph data
 - **Full Authentication**: OAuth2/OIDC (Google, GitHub, Keycloak) and local password authentication with JWT tokens
 - **Fine-Grained Authorization**: Permission-based access control with resource-level permissions and role management
 - **Analytics Ready**: ClickHouse integration for operations logs and time-series metrics
@@ -54,11 +51,14 @@ For developers, see [CLAUDE.md](CLAUDE.md) for development guide and architectur
 ### Development Environment
 
 ```bash
-# Bootstrap development environment (installs deps, starts Docker services)
-./bootstrap
+# Set up development environment (install deps, pre-commit hooks)
+just setup
 
-# Run development server with auto-reload
-uv run imbi-api serve --dev
+# Start Docker services and run the development server with auto-reload
+just serve --dev
+
+# Initialize Imbi (first time only — seeds roles/permissions, creates admin user)
+uv run imbi-api setup
 
 # Access the API
 curl http://localhost:8000/status
@@ -68,10 +68,10 @@ curl http://localhost:8000/status
 
 ```bash
 # Run all tests with coverage
-uv run pytest
+just test
 
-# Run pre-commit checks
-uv run pre-commit run --all-files
+# Run pre-commit checks + type checking
+just lint
 ```
 
 ## Core Concepts
@@ -133,126 +133,8 @@ curl http://localhost:8000/status
 curl http://localhost:8000/auth/providers
 
 # API documentation
-open http://localhost:8000/docs  # OpenAPI/ReDoc UI
+open http://localhost:8000/docs  # ReDoc UI
 ```
-
-**Available Endpoints**:
-- `GET /status` - Health check
-- `GET /auth/providers` - List available authentication providers
-- `POST /auth/login` - Authenticate with email/password
-- `POST /auth/token/refresh` - Refresh access token
-- `POST /auth/logout` - Logout (revoke tokens)
-- `GET /auth/oauth/{provider}` - OAuth login redirect
-- `GET /auth/oauth/{provider}/callback` - OAuth callback handler
-- `GET /blueprints` - List blueprints (requires authentication)
-- `POST /blueprints` - Create blueprint (requires `blueprint:write` permission)
-- `GET /blueprints/{slug}` - Get blueprint by slug
-- `PUT /blueprints/{slug}` - Update blueprint (requires `blueprint:write` permission)
-- `DELETE /blueprints/{slug}` - Delete blueprint (requires `blueprint:delete` permission)
-- `GET /users` - List users (requires `user:read` permission)
-- `POST /users` - Create user (requires `user:write` permission)
-- `GET /groups` - List groups (requires `group:read` permission)
-- `POST /groups` - Create group (requires `group:write` permission)
-- `GET /roles` - List roles (requires `role:read` permission)
-- `POST /roles` - Create role (requires `role:write` permission)
-
-## Roadmap
-
-### New Features and Improvements
-
-1. **Integrated deployment functionality** based on Tom's Deployment Dashboard, but using the integrated data collected
-   from the webhook service and a GitHub Application, instead of querying the GitHub API in real-time
-
-2. **Conversational AI** - Provide a way to work with Imbi agentically:
-    - *"When did x get y?"*
-    - *"Check the logs for x, spot any issues?"*
-    - *"Update everything using foo v1.2.3 to foo v1.4.5"*
-    - *"Create a new consumer project for me …"*
-
-3. **Webhook server with configurable workflows**
-    - Updating project facts based on GitHub events
-    - Automatic logging of deployments
-    - Recording of PagerDuty Events
-
-4. **Imbi-Automations as a background service**
-    - This will allow for workflows to be triggered and running in k8s, not just locally on laptops
-    - Bigger vision is the Imbi Automations workflow engine ends up being the core for how we do everything from mapping
-      values from Webhook calls to handling conversational AI tasks
-
-5. **Built-in MCP server**
-    - Expose Imbi's functionality to remote chatbots like AJ or Agents like Claude
-
-### Core Technical Changes
-
-1. **Move to Graph database from Postgres**
-    - The Postgres database required complex SQL queries to join across all the relations and mixed business logic with
-      the storage layer
-    - The data layer architecture ended up requiring us to implement OpenSearch to make the data easily searchable for
-      humans and AI
-    - The Cypher language is much easier to reason about for agents and we can more easily implement a query builder
-      with the node and relationship nature of a Graph database
-    - In addition, Neo4j supports vector based searching that we can implement in relationships to models to make it
-      easy for AI to search the entire graph
-
-2. **Move to ClickHouse for event / operations log** ✅
-    - If we're moving off of Postgres for the operations log, it makes sense to think about using the right tool for the
-      job with regard to how we should store it moving forward
-    - ClickHouse client integrated with async support, schema management, and insert/query operations
-
-3. **Ecosystem of services**
-    - Instead of merging different types of functionality into one monolithic API, we move to speciality APIs, all
-      bundled in a single Docker image
-    - The core API for Imbi will provide the CRUD layer to all of the business logic, but we'll likely have separate
-      APIs for things like Webhooks, LLM interaction, etc that will make each component easier to maintain
-    - Perhaps even a API specific to the UI that is independent of the CRUD API
-
-4. **Move to FastAPI from Tornado** ✅
-    - Move to a modern framework that makes it easier to implement endpoints
-    - We'll also be able to drop the OpenAPI repository all together as FastAPI auto-generates OpenAPI documents based
-      on Pydantic models
-
-5. **Rewrite the UI**
-    - The Imbi UI was a great learning experience for me with regard to writing a fully functional React application
-    - But I invented a lot of conventions to keep the code DRY
-    - There are frameworks for the things I've done, and with a Figma UI mockup, AI can rebuild the new UI much faster
-      using standard component libraries like Shadcn
-
-6. **Dropping OpenSearch**
-    - While OpenSearch enabled core functionality in Imbi like project searching and LLM integration, we will not need
-      it when we move to the Graph database
-
-### Other Improvements
-
-- **Removal of multiple auth models**: OAuth2 for base user auth, JWT for inter-service / frontend to backend requests ✅
-    - OAuth2/OIDC (Google, GitHub, Keycloak) and local password authentication implemented
-    - JWT access tokens (15 min) and refresh tokens (7 days)
-
-- **For token based auth move to `Authorization: Bearer`** ✅
-    - Follow a standard default header that LLMs will assume is the header to use for token based auth
-    - All authenticated endpoints use `Authorization: Bearer <token>` header
-
-- **Events impacting project score**
-    - Rolling 90 day window of PagerDuty issues
-    - Age of last CI build
-
-- **Project score factors** become native to the object types in the graph, not a standalone configurable and is managed
-  by direct associations instead of lookup tables
-
-- **Project score changes** recorded in ClickHouse and initiated by changes through the core API, not by database
-  triggers
-
-- **[Investigate gRPC](https://medium.com/@arturocuicas/fastapi-and-grpc-19c9b329b211)** for inter-service communication
-
-- **[Instrument with OTEL](https://opentelemetry.io/docs/languages/python/instrumentation/)** for observability
-    - Jaeger service configured in Docker Compose for trace collection
-    - OpenTelemetry configuration generated by bootstrap script
-
-- **Explore moving SBOM component information** to an internal instance
-  of [Dependency Track](https://docs.dependencytrack.org)
-    - If we can integrate with Dependency Track at the API level, it's a system specifically designed for what we want
-      out of component tracking
-    - It's a single system for tracking project package dependencies and is integrated with security databases and will
-      allow us to find which projects have CVE issues automatically
 
 ## License
 
