@@ -31,6 +31,26 @@ GraphModelT = typing.TypeVar(
 )
 
 
+def _dollar_quote_tag(body: str) -> str:
+    """Return a dollar-quote delimiter not present in *body*.
+
+    PostgreSQL dollar quoting uses ``$tag$...$tag$``.  If the
+    Cypher payload contains ``$$`` a static delimiter would let
+    a crafted value escape the quoted string.  This picks the
+    shortest safe tag.
+
+    """
+    tag = '$$'
+    if tag not in body:
+        return tag
+    n = 0
+    while True:
+        tag = f'$q{n}$'
+        if tag not in body:
+            return tag
+        n += 1
+
+
 def _embeddable_fields(
     node: models.Node,
 ) -> list[tuple[str, str | None, models.Embeddable]]:
@@ -582,6 +602,31 @@ class Graph:
             finally:
                 await conn.set_autocommit(True)
 
+    @staticmethod
+    def _cypher_param(value: typing.Any) -> sql.Composable:
+        """Convert a Python value to a Cypher-safe SQL fragment.
+
+        Parameters end up inside a ``$$``-quoted Cypher string,
+        so they need Cypher escaping, not PostgreSQL escaping.
+        ``sql.Literal`` doubles single quotes (``''``) which
+        Cypher does not understand; Cypher uses ``\\'``.
+
+        """
+        if isinstance(value, sql.Composable):
+            return value
+        if isinstance(value, list):
+            return sql.SQL(json.dumps(value))
+        if isinstance(value, dict):
+            value = json.dumps(value)
+        if isinstance(value, str):
+            escaped = value.replace('\\', '\\\\').replace("'", "\\'")
+            return sql.SQL("'" + escaped + "'")
+        if value is None:
+            return sql.SQL('null')
+        if isinstance(value, bool):
+            return sql.SQL('true' if value else 'false')
+        return sql.Literal(value)
+
     def _build_cypher_sql(
         self,
         conn: psycopg.AsyncConnection[typing.Any],
@@ -608,18 +653,21 @@ class Graph:
             for c in columns
         )
         literal_params = {
-            k: (v if isinstance(v, sql.Composable) else sql.Literal(v))
-            for k, v in (params or {}).items()
+            k: self._cypher_param(v) for k, v in (params or {}).items()
         }
         query = sql.SQL(query_template).format(
             **literal_params,
         )
         resolved = query.as_string(conn)
+        tag = _dollar_quote_tag(resolved)
         return sql.SQL(
-            'SELECT * FROM cypher({graph_name}, $${query}$$) AS ({col_def})',
+            'SELECT * FROM cypher({graph_name},'
+            ' {open}{query}{close}) AS ({col_def})',
         ).format(
             graph_name=sql.Literal(self.settings.graph_name),
+            open=sql.SQL(tag),
             query=sql.SQL(resolved),
+            close=sql.SQL(tag),
             col_def=col_def,
         )
 
@@ -651,8 +699,9 @@ class Graph:
     ) -> list[dict[str, typing.Any]]:
         """Wrap a Cypher query in SQL and execute it.
 
-        Parameters in *params* are bound as ``sql.Literal``
-        values into the *query_template* via
+        Parameters in *params* are serialized via
+        ``_cypher_param()`` using Cypher-compatible escaping
+        and interpolated into *query_template* via
         ``sql.SQL.format()``.
 
         The Cypher query is wrapped in AGE's ``cypher()``

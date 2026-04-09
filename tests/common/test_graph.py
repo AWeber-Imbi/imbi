@@ -62,6 +62,101 @@ class ParseAgtypeTests(unittest.TestCase):
         self.assertIsInstance(result, dict)
 
 
+class CypherParamTests(unittest.TestCase):
+    """Tests for Graph._cypher_param()."""
+
+    @staticmethod
+    def _render(value: object) -> str:
+        return client.Graph._cypher_param(value).as_string(None)
+
+    # -- strings --
+
+    def test_plain_string(self) -> None:
+        self.assertEqual(self._render('hello'), "'hello'")
+
+    def test_empty_string(self) -> None:
+        self.assertEqual(self._render(''), "''")
+
+    def test_string_with_single_quote(self) -> None:
+        self.assertEqual(self._render("it's"), "'it\\'s'")
+
+    def test_string_with_backslash(self) -> None:
+        self.assertEqual(self._render('a\\b'), "'a\\\\b'")
+
+    def test_string_with_dollar_quote(self) -> None:
+        self.assertEqual(self._render('a$$b'), "'a$$b'")
+
+    # -- lists --
+
+    def test_empty_list(self) -> None:
+        self.assertEqual(self._render([]), '[]')
+
+    def test_string_list(self) -> None:
+        self.assertEqual(self._render(['a', 'b']), '["a", "b"]')
+
+    def test_nested_list_of_dicts(self) -> None:
+        val = [{'k': 'v'}, {'k2': 'v2'}]
+        self.assertEqual(self._render(val), json.dumps(val))
+
+    # -- dicts --
+
+    def test_empty_dict(self) -> None:
+        self.assertEqual(self._render({}), "'{}'")
+
+    def test_dict_with_apostrophe(self) -> None:
+        result = self._render({'d': "it's"})
+        self.assertIn("\\'", result)
+        self.assertNotIn("''", result)
+
+    # -- None / bool --
+
+    def test_none(self) -> None:
+        self.assertEqual(self._render(None), 'null')
+
+    def test_true(self) -> None:
+        self.assertEqual(self._render(True), 'true')
+
+    def test_false(self) -> None:
+        self.assertEqual(self._render(False), 'false')
+
+    # -- numbers --
+
+    def test_integer(self) -> None:
+        self.assertEqual(self._render(42), '42')
+
+    def test_float(self) -> None:
+        self.assertEqual(self._render(3.14), '3.14')
+
+    # -- passthrough --
+
+    def test_composable_passthrough(self) -> None:
+        from psycopg import sql as psql
+
+        frag = psql.SQL('raw')
+        self.assertIs(client.Graph._cypher_param(frag), frag)
+
+
+class DollarQuoteTagTests(unittest.TestCase):
+    """Tests for _dollar_quote_tag()."""
+
+    def test_default_when_safe(self) -> None:
+        self.assertEqual(
+            client._dollar_quote_tag('MATCH (n) RETURN n'),
+            '$$',
+        )
+
+    def test_avoids_dollar_dollar(self) -> None:
+        tag = client._dollar_quote_tag('foo$$bar')
+        self.assertEqual(tag, '$q0$')
+        self.assertNotIn(tag, 'foo$$bar')
+
+    def test_avoids_multiple_tags(self) -> None:
+        body = 'foo$$bar$q0$baz'
+        tag = client._dollar_quote_tag(body)
+        self.assertEqual(tag, '$q1$')
+        self.assertNotIn(tag, body)
+
+
 class GraphInitTests(unittest.TestCase):
     def test_pool_not_opened_on_init(self) -> None:
         g = graph.Graph()
