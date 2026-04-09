@@ -32,7 +32,7 @@ def _parse_k8s_port(value: typing.Any) -> typing.Any:
 
 # Re-export shared settings
 Clickhouse = settings.Clickhouse
-Neo4j = settings.Neo4j
+Postgres = settings.Postgres
 base_settings_config = settings.base_settings_config
 
 
@@ -216,7 +216,7 @@ class APIConfiguration(settings.Configuration):  # type: ignore[misc]
         """Merge environment variables with config file data."""
         settings_fields: dict[str, type[pydantic_settings.BaseSettings]] = {
             'clickhouse': settings.Clickhouse,
-            'neo4j': settings.Neo4j,
+            'postgres': settings.Postgres,
             'server': ServerConfig,
             'auth': Auth,
             'email': Email,

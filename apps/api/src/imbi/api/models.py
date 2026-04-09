@@ -22,7 +22,6 @@ BlueprintAssignment = _common.BlueprintAssignment
 BlueprintEdge = _common.BlueprintEdge
 Environment = _common.Environment
 LinkDefinition = _common.LinkDefinition
-MODEL_TYPES = _common.MODEL_TYPES
 Node = _common.Node
 Organization = _common.Organization
 Project = _common.Project
@@ -30,6 +29,16 @@ ProjectType = _common.ProjectType
 RelationshipLink = _common.RelationshipLink
 Schema = _common.Schema
 Team = _common.Team
+
+# Blueprint-eligible model types for OpenAPI schema generation
+MODEL_TYPES: dict[str, type[_common.Node]] = {
+    'Environment': _common.Environment,
+    'LinkDefinition': _common.LinkDefinition,
+    'Organization': _common.Organization,
+    'Project': _common.Project,
+    'ProjectType': _common.ProjectType,
+    'Team': _common.Team,
+}
 
 # API-specific models from imbi_api.domain
 ThirdPartyService = _domain.ThirdPartyService

@@ -4,11 +4,11 @@ import datetime
 import unittest
 from unittest import mock
 
+import psycopg.errors
 from fastapi import testclient
-from imbi_common.auth import core
-from neo4j import exceptions
+from imbi_common import graph
 
-from imbi_api import app, models, settings
+from imbi_api import app, models
 from imbi_api.auth import password
 
 
@@ -17,22 +17,41 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
-        self.app = app.create_app()
-        self.client = testclient.TestClient(self.app)
+        from imbi_api.auth import permissions
+
+        self.test_app = app.create_app()
 
         self.test_user = models.User(
             email='admin@example.com',
             display_name='Admin User',
             is_active=True,
             is_admin=True,
-            password_hash=password.hash_password('testpassword123'),
+            password_hash=password.hash_password(
+                'testpassword123',
+            ),
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        self.auth_settings = settings.Auth(
-            jwt_secret='test-secret-key-min-32-chars-long',
-            api_key_max_lifetime_days=365,
+        self.auth_context = permissions.AuthContext(
+            user=self.test_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions=set(),
         )
+
+        async def mock_get_current_user():
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
+        self.client = testclient.TestClient(self.test_app)
 
         self.now = datetime.datetime.now(datetime.UTC)
 
@@ -44,84 +63,10 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
             created_at=self.now,
         )
 
-    def _create_mock_run(
-        self,
-        sa_node: models.ServiceAccount | None = None,
-        org_records: list[dict] | None = None,
-        membership_records: list[dict] | None = None,
-        deleted_count: int = 0,
-    ):
-        """Create a mock run side effect for service account tests.
-
-        Args:
-            sa_node: ServiceAccount to return for fetch queries.
-            org_records: Records to return for org membership
-                queries.
-            membership_records: Records to return for MEMBER_OF +
-                Organization + Role queries.
-            deleted_count: Count to return for DELETE membership
-                queries.
-
-        """
-
-        def mock_run_side_effect(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(
-                return_value=mock_result,
-            )
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-
-            # Org membership lookup (get_service_account)
-            if 'MEMBER_OF' in query and 'Organization' in query:
-                if 'DELETE' in query:
-                    mock_result.data = mock.AsyncMock(
-                        return_value=[{'deleted': deleted_count}],
-                    )
-                elif 'MERGE' in query or 'Role' in query:
-                    mock_result.data = mock.AsyncMock(
-                        return_value=membership_records or [],
-                    )
-                else:
-                    mock_result.data = mock.AsyncMock(
-                        return_value=org_records or [],
-                    )
-            # Cleanup query for delete
-            elif 'DETACH DELETE' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'deleted': 1}],
-                )
-            # Auth: token revocation check
-            elif 'TokenMetadata' in query and 'revoked' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'revoked': False}],
-                )
-            # Auth: user lookup
-            elif 'User' in query and 'email' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'u': user_dict}],
-                )
-            # Auth: permissions
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'permissions': []}],
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
-
-        return mock_run_side_effect
-
     def test_create_service_account_success(self) -> None:
-        """Test successful service account creation returns 201."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
-
-        membership_records = [
+        """Test successful service account creation."""
+        self.mock_db.create.return_value = self.sa_data
+        self.mock_db.execute.return_value = [
             {
                 'org_name': 'Acme Corp',
                 'org_slug': 'acme-corp',
@@ -129,25 +74,12 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
             },
         ]
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    membership_records=membership_records,
-                ),
-            ),
-            mock.patch('imbi_common.neo4j.create_node'),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
-            mock_settings.return_value = self.auth_settings
-
             response = self.client.post(
                 '/service-accounts',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
                 json={
                     'slug': 'test-bot',
                     'display_name': 'Test Bot',
@@ -157,67 +89,43 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
                 },
             )
 
-            self.assertEqual(response.status_code, 201)
-            data = response.json()
-            self.assertEqual(data['slug'], 'test-bot')
-            self.assertEqual(data['display_name'], 'Test Bot')
-            self.assertEqual(
-                data['description'],
-                'A test service account',
-            )
-            self.assertTrue(data['is_active'])
-            self.assertIn('created_at', data)
-            self.assertEqual(len(data['organizations']), 1)
-            self.assertEqual(
-                data['organizations'][0]['organization_slug'],
-                'acme-corp',
-            )
-
-    def test_create_service_account_duplicate(self) -> None:
-        """Test creating duplicate service account returns 409."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['slug'], 'test-bot')
+        self.assertEqual(data['display_name'], 'Test Bot')
+        self.assertEqual(
+            data['description'],
+            'A test service account',
+        )
+        self.assertTrue(data['is_active'])
+        self.assertIn('created_at', data)
+        self.assertEqual(len(data['organizations']), 1)
+        self.assertEqual(
+            data['organizations'][0]['organization_slug'],
+            'acme-corp',
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-            mock.patch(
-                'imbi_common.neo4j.create_node',
-                side_effect=exceptions.ConstraintError('Duplicate'),
-            ),
-        ):
-            mock_settings.return_value = self.auth_settings
+    def test_create_service_account_duplicate(self) -> None:
+        """Test creating duplicate service account."""
+        self.mock_db.create.side_effect = psycopg.errors.UniqueViolation(
+            'Duplicate'
+        )
 
-            response = self.client.post(
-                '/service-accounts',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={
-                    'slug': 'test-bot',
-                    'display_name': 'Test Bot',
-                    'organization_slug': 'acme-corp',
-                    'role_slug': 'deployer',
-                },
-            )
+        response = self.client.post(
+            '/service-accounts',
+            json={
+                'slug': 'test-bot',
+                'display_name': 'Test Bot',
+                'organization_slug': 'acme-corp',
+                'role_slug': 'deployer',
+            },
+        )
 
-            self.assertEqual(response.status_code, 409)
-            self.assertIn('already exists', response.json()['detail'])
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
 
     def test_list_service_accounts(self) -> None:
         """Test listing service accounts returns list."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
-
         mock_accounts = [
             models.ServiceAccount(
                 slug='bot-alpha',
@@ -233,48 +141,21 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
                 created_at=self.now,
             ),
         ]
+        self.mock_db.match.return_value = mock_accounts
 
-        async def mock_fetch(*_args, **_kwargs):
-            for account in mock_accounts:
-                yield account
+        response = self.client.get('/service-accounts')
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-            mock.patch(
-                'imbi_common.neo4j.fetch_nodes',
-                return_value=mock_fetch(),
-            ),
-        ):
-            mock_settings.return_value = self.auth_settings
-
-            response = self.client.get(
-                '/service-accounts',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-            )
-
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(len(data), 2)
-            self.assertEqual(data[0]['slug'], 'bot-alpha')
-            self.assertEqual(data[1]['slug'], 'bot-beta')
-            self.assertFalse(data[1]['is_active'])
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['slug'], 'bot-alpha')
+        self.assertEqual(data[1]['slug'], 'bot-beta')
+        self.assertFalse(data[1]['is_active'])
 
     def test_get_service_account(self) -> None:
-        """Test getting a service account with org memberships."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
-
-        org_records = [
+        """Test getting a service account with memberships."""
+        self.mock_db.match.return_value = [self.sa_data]
+        self.mock_db.execute.return_value = [
             {
                 'org_name': 'Acme Corp',
                 'org_slug': 'acme-corp',
@@ -282,529 +163,243 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
             },
         ]
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    org_records=org_records,
-                ),
-            ),
-            mock.patch(
-                'imbi_common.neo4j.fetch_node',
-                return_value=self.sa_data,
-            ),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
-            mock_settings.return_value = self.auth_settings
-
             response = self.client.get(
                 '/service-accounts/test-bot',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
             )
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data['slug'], 'test-bot')
-            self.assertEqual(data['display_name'], 'Test Bot')
-            self.assertEqual(len(data['organizations']), 1)
-            self.assertEqual(
-                data['organizations'][0]['organization_slug'],
-                'acme-corp',
-            )
-            self.assertEqual(
-                data['organizations'][0]['role'],
-                'deployer',
-            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['slug'], 'test-bot')
+        self.assertEqual(data['display_name'], 'Test Bot')
+        self.assertEqual(len(data['organizations']), 1)
+        self.assertEqual(
+            data['organizations'][0]['organization_slug'],
+            'acme-corp',
+        )
+        self.assertEqual(
+            data['organizations'][0]['role'],
+            'deployer',
+        )
 
     def test_get_service_account_not_found(self) -> None:
-        """Test getting nonexistent service account returns 404."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
+        """Test getting nonexistent SA returns 404."""
+        self.mock_db.match.return_value = []
+
+        response = self.client.get(
+            '/service-accounts/nonexistent',
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-            mock.patch(
-                'imbi_common.neo4j.fetch_node',
-                return_value=None,
-            ),
-        ):
-            mock_settings.return_value = self.auth_settings
-
-            response = self.client.get(
-                '/service-accounts/nonexistent',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-            )
-
-            self.assertEqual(response.status_code, 404)
-            self.assertIn('not found', response.json()['detail'])
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
 
     def test_update_service_account(self) -> None:
-        """Test updating a service account returns updated data."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
+        """Test updating a service account."""
+        self.mock_db.match.return_value = [self.sa_data]
+        self.mock_db.merge.return_value = self.sa_data
+
+        response = self.client.put(
+            '/service-accounts/test-bot',
+            json={
+                'slug': 'test-bot',
+                'display_name': 'Updated Bot',
+                'description': 'Updated description',
+                'is_active': False,
+            },
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-            mock.patch(
-                'imbi_common.neo4j.fetch_node',
-                return_value=self.sa_data,
-            ),
-            mock.patch('imbi_common.neo4j.upsert'),
-        ):
-            mock_settings.return_value = self.auth_settings
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['slug'], 'test-bot')
+        self.assertEqual(data['display_name'], 'Updated Bot')
+        self.assertEqual(
+            data['description'],
+            'Updated description',
+        )
+        self.assertFalse(data['is_active'])
 
-            response = self.client.put(
-                '/service-accounts/test-bot',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={
-                    'slug': 'test-bot',
-                    'display_name': 'Updated Bot',
-                    'description': 'Updated description',
-                    'is_active': False,
-                },
-            )
-
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data['slug'], 'test-bot')
-            self.assertEqual(data['display_name'], 'Updated Bot')
-            self.assertEqual(
-                data['description'],
-                'Updated description',
-            )
-            self.assertFalse(data['is_active'])
-
-    def test_update_service_account_slug_mismatch(self) -> None:
+    def test_update_service_account_slug_mismatch(
+        self,
+    ) -> None:
         """Test updating with mismatched slugs returns 400."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
+        response = self.client.put(
+            '/service-accounts/test-bot',
+            json={
+                'slug': 'different-slug',
+                'display_name': 'Mismatched',
+            },
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-        ):
-            mock_settings.return_value = self.auth_settings
-
-            response = self.client.put(
-                '/service-accounts/test-bot',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={
-                    'slug': 'different-slug',
-                    'display_name': 'Mismatched',
-                },
-            )
-
-            self.assertEqual(response.status_code, 400)
-            self.assertIn('must match', response.json()['detail'])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('must match', response.json()['detail'])
 
     def test_delete_service_account(self) -> None:
         """Test deleting a service account returns 204."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
+        self.mock_db.execute.return_value = [{'deleted': 1}]
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-            mock.patch(
-                'imbi_common.neo4j.delete_node',
-                return_value=True,
-            ),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
-            mock_settings.return_value = self.auth_settings
-
             response = self.client.delete(
                 '/service-accounts/test-bot',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
             )
 
-            self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204)
 
     def test_delete_service_account_not_found(self) -> None:
-        """Test deleting nonexistent service account returns 404."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
+        """Test deleting nonexistent SA returns 404."""
+        self.mock_db.execute.return_value = [{'deleted': 0}]
 
-        def mock_run_not_found(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(
-                return_value=mock_result,
-            )
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-
-            if 'DETACH DELETE' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'deleted': 0}],
-                )
-            elif 'TokenMetadata' in query and 'revoked' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'revoked': False}],
-                )
-            elif 'User' in query and 'email' in query:
-                user_dict = self.test_user.model_dump(
-                    mode='json',
-                )
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'u': user_dict}],
-                )
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'permissions': []}],
-                )
-            else:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[],
-                )
-
-            return mock_result
-
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=mock_run_not_found,
-            ),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
-            mock_settings.return_value = self.auth_settings
-
             response = self.client.delete(
                 '/service-accounts/nonexistent',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
             )
 
-            self.assertEqual(response.status_code, 404)
-            self.assertIn('not found', response.json()['detail'])
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
 
     def test_add_to_organization(self) -> None:
-        """Test adding service account to organization returns 204."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
-
-        membership_records = [
+        """Test adding service account to org returns 204."""
+        self.mock_db.execute.return_value = [
             {'s': {}, 'o': {}, 'r': {}},
         ]
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    membership_records=membership_records,
-                ),
-            ),
-        ):
-            mock_settings.return_value = self.auth_settings
+        response = self.client.post(
+            '/service-accounts/test-bot/organizations',
+            json={
+                'organization_slug': 'acme-corp',
+                'role_slug': 'deployer',
+            },
+        )
 
-            response = self.client.post(
-                '/service-accounts/test-bot/organizations',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={
-                    'organization_slug': 'acme-corp',
-                    'role_slug': 'deployer',
-                },
-            )
-
-            self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204)
 
     def test_create_service_account_rollback_on_missing_org_or_role(
         self,
     ) -> None:
-        """Test that the SA node is deleted when org or role not found."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
+        """Test SA node is deleted when org/role not found."""
+        self.mock_db.merge.return_value = self.sa_data
+        # First execute (membership) returns empty,
+        # second (rollback delete) returns
+        self.mock_db.execute.side_effect = [
+            [],  # membership query
+            [{'n': 'true'}],  # rollback delete
+        ]
+
+        response = self.client.post(
+            '/service-accounts',
+            json={
+                'slug': 'orphan-bot',
+                'display_name': 'Orphan Bot',
+                'organization_slug': 'nonexistent-org',
+                'role_slug': 'deployer',
+            },
         )
 
-        run_queries: list[str] = []
-        original_side_effect = self._create_mock_run()
-
-        def tracking_run(query: str, **params):
-            run_queries.append(query)
-            return original_side_effect(query, **params)
-
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=tracking_run,
-            ),
-            mock.patch('imbi_common.neo4j.create_node'),
-        ):
-            mock_settings.return_value = self.auth_settings
-
-            response = self.client.post(
-                '/service-accounts',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={
-                    'slug': 'orphan-bot',
-                    'display_name': 'Orphan Bot',
-                    'organization_slug': 'nonexistent-org',
-                    'role_slug': 'deployer',
-                },
-            )
-
-            self.assertEqual(response.status_code, 404)
-            self.assertIn(
-                'nonexistent-org',
-                response.json()['detail'],
-            )
-
-            # Verify the rollback DETACH DELETE ran
-            detach_queries = [q for q in run_queries if 'DETACH DELETE' in q]
-            self.assertEqual(
-                len(detach_queries),
-                1,
-                'Expected rollback DETACH DELETE query',
-            )
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(
+            'nonexistent-org',
+            response.json()['detail'],
+        )
+        # Verify rollback execute was called
+        self.assertEqual(self.mock_db.execute.call_count, 2)
 
     def test_create_service_account_rollback_detail_includes_role(
         self,
     ) -> None:
         """Test that the 404 detail mentions the role slug."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
+        self.mock_db.merge.return_value = self.sa_data
+        self.mock_db.execute.side_effect = [
+            [],  # membership query
+            [{'n': 'true'}],  # rollback delete
+        ]
+
+        response = self.client.post(
+            '/service-accounts',
+            json={
+                'slug': 'orphan-bot',
+                'display_name': 'Orphan Bot',
+                'organization_slug': 'acme-corp',
+                'role_slug': 'nonexistent-role',
+            },
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-            mock.patch('imbi_common.neo4j.create_node'),
-        ):
-            mock_settings.return_value = self.auth_settings
-
-            response = self.client.post(
-                '/service-accounts',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={
-                    'slug': 'orphan-bot',
-                    'display_name': 'Orphan Bot',
-                    'organization_slug': 'acme-corp',
-                    'role_slug': 'nonexistent-role',
-                },
-            )
-
-            self.assertEqual(response.status_code, 404)
-            detail = response.json()['detail']
-            self.assertIn('nonexistent-role', detail)
-            self.assertIn('acme-corp', detail)
+        self.assertEqual(response.status_code, 404)
+        detail = response.json()['detail']
+        self.assertIn('nonexistent-role', detail)
+        self.assertIn('acme-corp', detail)
 
     def test_create_service_account_missing_org(self) -> None:
-        """Test creating SA without organization_slug returns 422."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
+        """Test creating SA without org_slug returns 422."""
+        response = self.client.post(
+            '/service-accounts',
+            json={
+                'slug': 'test-bot',
+                'display_name': 'Test Bot',
+                'role_slug': 'deployer',
+            },
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-        ):
-            mock_settings.return_value = self.auth_settings
-
-            response = self.client.post(
-                '/service-accounts',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={
-                    'slug': 'test-bot',
-                    'display_name': 'Test Bot',
-                    'role_slug': 'deployer',
-                },
-            )
-
-            self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 422)
 
     def test_update_organization_role(self) -> None:
         """Test changing a SA's role in an organization."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
-
-        membership_records = [
+        self.mock_db.execute.return_value = [
             {'s': {}, 'o': {}, 'r': {}},
         ]
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    membership_records=membership_records,
-                ),
-            ),
-        ):
-            mock_settings.return_value = self.auth_settings
+        response = self.client.put(
+            '/service-accounts/test-bot/organizations/acme-corp',
+            json={'role_slug': 'admin'},
+        )
 
-            response = self.client.put(
-                '/service-accounts/test-bot/organizations/acme-corp',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={'role_slug': 'admin'},
-            )
+        self.assertEqual(response.status_code, 204)
 
-            self.assertEqual(response.status_code, 204)
-
-    def test_update_organization_role_missing_slug(self) -> None:
+    def test_update_organization_role_missing_slug(
+        self,
+    ) -> None:
         """Test updating role without role_slug returns 400."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
+        response = self.client.put(
+            '/service-accounts/test-bot/organizations/acme-corp',
+            json={},
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-        ):
-            mock_settings.return_value = self.auth_settings
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            'required',
+            response.json()['detail'],
+        )
 
-            response = self.client.put(
-                '/service-accounts/test-bot/organizations/acme-corp',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={},
-            )
-
-            self.assertEqual(response.status_code, 400)
-            self.assertIn(
-                'required',
-                response.json()['detail'],
-            )
-
-    def test_update_organization_role_not_found(self) -> None:
+    def test_update_organization_role_not_found(
+        self,
+    ) -> None:
         """Test updating role for non-existent membership."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
+        self.mock_db.execute.return_value = []
+
+        response = self.client.put(
+            '/service-accounts/test-bot/organizations/nonexistent',
+            json={'role_slug': 'admin'},
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
-            ),
-        ):
-            mock_settings.return_value = self.auth_settings
-
-            response = self.client.put(
-                '/service-accounts/test-bot/organizations/nonexistent',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
-                json={'role_slug': 'admin'},
-            )
-
-            self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 404)
 
     def test_remove_from_organization(self) -> None:
-        """Test removing service account from org returns 204."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
+        """Test removing service account from org."""
+        self.mock_db.execute.return_value = [{'deleted': 1}]
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-            ) as mock_settings,
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    deleted_count=1,
-                ),
-            ),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
-            mock_settings.return_value = self.auth_settings
-
             response = self.client.delete(
                 '/service-accounts/test-bot/organizations/acme-corp',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
             )
 
-            self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204)

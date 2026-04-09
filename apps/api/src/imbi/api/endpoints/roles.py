@@ -5,8 +5,8 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import neo4j
-from neo4j import exceptions
+import psycopg.errors
+from imbi_common import graph
 
 from imbi_api import models
 from imbi_api.auth import permissions
@@ -38,6 +38,7 @@ def _build_relationships(
 @roles_router.post('/', response_model=models.Role, status_code=201)
 async def create_role(
     role: models.Role,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('role:create')),
@@ -59,19 +60,20 @@ async def create_role(
     role.created_at = now
     role.updated_at = now
     try:
-        created = await neo4j.create_node(role)
-    except exceptions.ConstraintError as e:
+        created = await db.create(role)
+    except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=f'Role with slug {role.slug!r} already exists',
         ) from e
     result = created.model_dump()
-    result['relationships'] = _build_relationships(created.slug)
+    result['relationships'] = _build_relationships(role.slug)
     return result
 
 
 @roles_router.get('/')
 async def list_roles(
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('role:read')),
@@ -83,26 +85,29 @@ async def list_roles(
         Roles ordered by priority (descending) then name.
 
     """
-    query: typing.LiteralString = """
-    MATCH (r:Role)
-    OPTIONAL MATCH (r)-[:GRANTS]->(p:Permission)
-    WITH r, count(DISTINCT p) AS permission_count
-    OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->(o:Organization)
-    WHERE m.role = r.slug
-    WITH r, permission_count,
-         count(DISTINCT u) AS user_count
-    RETURN r{.*} AS role,
-           permission_count, user_count
-    ORDER BY r.priority DESC, r.name
-    """
+    query: typing.LiteralString = (
+        'MATCH (r:Role)'
+        ' OPTIONAL MATCH (r)-[:GRANTS]->(p:Permission)'
+        ' WITH r, count(DISTINCT p) AS permission_count'
+        ' OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->'
+        '(o:Organization)'
+        ' WHERE m.role = r.slug'
+        ' WITH r, permission_count,'
+        '      count(DISTINCT u) AS user_count'
+        ' RETURN r, permission_count, user_count'
+        ' ORDER BY r.priority DESC, r.name'
+    )
     roles: list[dict[str, typing.Any]] = []
-    records = await neo4j.query(query)
+    records = await db.execute(
+        query,
+        columns=['r', 'permission_count', 'user_count'],
+    )
     for record in records:
-        role = record['role']
+        role = graph.parse_agtype(record['r'])
         role['relationships'] = _build_relationships(
             role['slug'],
-            record['permission_count'],
-            record['user_count'],
+            graph.parse_agtype(record['permission_count']),
+            graph.parse_agtype(record['user_count']),
         )
         roles.append(role)
     return roles
@@ -111,6 +116,7 @@ async def list_roles(
 @roles_router.get('/{slug}')
 async def get_role(
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('role:read')),
@@ -129,7 +135,8 @@ async def get_role(
         404: If no role with the given slug exists.
 
     """
-    role = await neo4j.fetch_node(models.Role, {'slug': slug})
+    results = await db.match(models.Role, {'slug': slug})
+    role = results[0] if results else None
     if role is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -137,33 +144,51 @@ async def get_role(
         )
 
     # Load permissions via direct Cypher query
-    perm_query: typing.LiteralString = """
-    MATCH (r:Role {slug: $slug})-[:GRANTS]->(p:Permission)
-    RETURN p
-    ORDER BY p.name
-    """
-    records = await neo4j.query(perm_query, slug=slug)
-    role.permissions = [models.Permission(**r['p']) for r in records]
+    perm_query: typing.LiteralString = (
+        'MATCH (r:Role {{slug: {slug}}})-[:GRANTS]->'
+        '(p:Permission)'
+        ' RETURN p'
+        ' ORDER BY p.name'
+    )
+    records = await db.execute(
+        perm_query,
+        {'slug': slug},
+        columns=['p'],
+    )
+    role.permissions = [
+        models.Permission(**graph.parse_agtype(r['p'])) for r in records
+    ]
 
     permission_count = len(role.permissions)
 
     # Load parent role via direct Cypher query
-    parent_query: typing.LiteralString = """
-    MATCH (r:Role {slug: $slug})-[:INHERITS_FROM]->(parent:Role)
-    RETURN parent
-    """
-    records = await neo4j.query(parent_query, slug=slug)
+    parent_query: typing.LiteralString = (
+        'MATCH (r:Role {{slug: {slug}}})-[:INHERITS_FROM]->'
+        '(parent:Role)'
+        ' RETURN parent'
+    )
+    records = await db.execute(
+        parent_query,
+        {'slug': slug},
+        columns=['parent'],
+    )
     if records:
-        role.parent_role = models.Role(**records[0]['parent'])
+        role.parent_role = models.Role(
+            **graph.parse_agtype(records[0]['parent'])
+        )
 
     # Count users with this role
-    user_count_query: typing.LiteralString = """
-    MATCH (u:User)-[m:MEMBER_OF]->(o:Organization)
-    WHERE m.role = $slug
-    RETURN count(DISTINCT u) AS user_count
-    """
-    records = await neo4j.query(user_count_query, slug=slug)
-    user_count = records[0]['user_count'] if records else 0
+    user_count_query: typing.LiteralString = (
+        'MATCH (u:User)-[m:MEMBER_OF]->(o:Organization)'
+        ' WHERE m.role = {slug}'
+        ' RETURN count(DISTINCT u) AS user_count'
+    )
+    records = await db.execute(
+        user_count_query,
+        {'slug': slug},
+        columns=['user_count'],
+    )
+    user_count = graph.parse_agtype(records[0]['user_count']) if records else 0
 
     role_dict = role.model_dump()
     role_dict['relationships'] = _build_relationships(
@@ -180,6 +205,7 @@ async def get_role(
 )
 async def list_role_users(
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('role:read')),
@@ -198,21 +224,28 @@ async def list_role_users(
         404: If role not found.
 
     """
-    query: typing.LiteralString = """
-    MATCH (r:Role {slug: $slug})
-    OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->(o:Organization)
-    WHERE m.role = $slug
-    RETURN r, collect(DISTINCT u) AS users
-    """
-    records = await neo4j.query(query, slug=slug)
+    query: typing.LiteralString = (
+        'MATCH (r:Role {{slug: {slug}}})'
+        ' OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->'
+        '(o:Organization)'
+        ' WHERE m.role = {slug}'
+        ' RETURN r, collect(DISTINCT u) AS users'
+    )
+    records = await db.execute(
+        query,
+        {'slug': slug},
+        columns=['r', 'users'],
+    )
     if not records or not records[0].get('r'):
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Role with slug {slug!r} not found',
         )
 
-    user_data = records[0].get('users', [])
-    return [models.UserResponse(**u) for u in user_data if u]
+    raw_users: typing.Any = graph.parse_agtype(records[0].get('users', '[]'))
+    if isinstance(raw_users, str):
+        raw_users = []
+    return [models.UserResponse(**u) for u in raw_users if u]
 
 
 @roles_router.get(
@@ -221,12 +254,13 @@ async def list_role_users(
 )
 async def list_role_service_accounts(
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('role:read')),
     ],
 ) -> list[models.ServiceAccountResponse]:
-    """Retrieve service accounts assigned this role via org membership.
+    """Retrieve service accounts assigned this role.
 
     Parameters:
         slug: Role slug identifier.
@@ -239,27 +273,37 @@ async def list_role_service_accounts(
         404: If role not found.
 
     """
-    query: typing.LiteralString = """
-    MATCH (r:Role {slug: $slug})
-    OPTIONAL MATCH (s:ServiceAccount)-[m:MEMBER_OF]->(o:Organization)
-    WHERE m.role = $slug
-    RETURN r, collect(DISTINCT s) AS service_accounts
-    """
-    records = await neo4j.query(query, slug=slug)
+    query: typing.LiteralString = (
+        'MATCH (r:Role {{slug: {slug}}})'
+        ' OPTIONAL MATCH (s:ServiceAccount)-[m:MEMBER_OF]->'
+        '(o:Organization)'
+        ' WHERE m.role = {slug}'
+        ' RETURN r, collect(DISTINCT s) AS service_accounts'
+    )
+    records = await db.execute(
+        query,
+        {'slug': slug},
+        columns=['r', 'service_accounts'],
+    )
     if not records or not records[0].get('r'):
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Role with slug {slug!r} not found',
         )
 
-    sa_data = records[0].get('service_accounts', [])
-    return [models.ServiceAccountResponse(**sa) for sa in sa_data if sa]
+    raw_sa: typing.Any = graph.parse_agtype(
+        records[0].get('service_accounts', '[]')
+    )
+    if isinstance(raw_sa, str):
+        raw_sa = []
+    return [models.ServiceAccountResponse(**sa) for sa in raw_sa if sa]
 
 
 @roles_router.put('/{slug}', response_model=models.Role)
 async def update_role(
     slug: str,
     role: models.Role,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('role:update')),
@@ -279,10 +323,8 @@ async def update_role(
 
     """
     # Check if role is a system role
-    existing_role = await neo4j.fetch_node(
-        models.Role,
-        {'slug': slug},
-    )
+    results = await db.match(models.Role, {'slug': slug})
+    existing_role = results[0] if results else None
     if existing_role and existing_role.is_system:
         raise fastapi.HTTPException(
             status_code=400,
@@ -295,21 +337,28 @@ async def update_role(
     else:
         role.created_at = now
     role.updated_at = now
-    await neo4j.upsert(role, {'slug': slug})
+    await db.merge(role, match_on=['slug'])
 
     # Fetch actual relationship counts from the database
-    count_query: typing.LiteralString = """
-    MATCH (r:Role {slug: $slug})
-    OPTIONAL MATCH (r)-[:GRANTS]->(p:Permission)
-    WITH r, count(DISTINCT p) AS permission_count
-    OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->(o:Organization)
-    WHERE m.role = r.slug
-    RETURN count(DISTINCT u) AS user_count,
-           permission_count
-    """
-    records = await neo4j.query(count_query, slug=slug)
-    permission_count = records[0]['permission_count'] if records else 0
-    user_count = records[0]['user_count'] if records else 0
+    count_query: typing.LiteralString = (
+        'MATCH (r:Role {{slug: {slug}}})'
+        ' OPTIONAL MATCH (r)-[:GRANTS]->(p:Permission)'
+        ' WITH r, count(DISTINCT p) AS permission_count'
+        ' OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->'
+        '(o:Organization)'
+        ' WHERE m.role = r.slug'
+        ' RETURN count(DISTINCT u) AS user_count,'
+        '        permission_count'
+    )
+    records = await db.execute(
+        count_query,
+        {'slug': slug},
+        columns=['user_count', 'permission_count'],
+    )
+    permission_count = (
+        graph.parse_agtype(records[0]['permission_count']) if records else 0
+    )
+    user_count = graph.parse_agtype(records[0]['user_count']) if records else 0
 
     result = role.model_dump()
     result['relationships'] = _build_relationships(
@@ -323,6 +372,7 @@ async def update_role(
 @roles_router.delete('/{slug}', status_code=204)
 async def delete_role(
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('role:delete')),
@@ -341,7 +391,8 @@ async def delete_role(
 
     """
     # Check if role exists and is not a system role
-    role = await neo4j.fetch_node(models.Role, {'slug': slug})
+    results = await db.match(models.Role, {'slug': slug})
+    role = results[0] if results else None
     if role is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -354,11 +405,11 @@ async def delete_role(
             detail='Cannot delete system role',
         )
 
-    deleted = await neo4j.delete_node(
-        models.Role,
-        {'slug': slug},
+    query: typing.LiteralString = (
+        'MATCH (n:Role {{slug: {slug}}}) DETACH DELETE n RETURN n'
     )
-    if not deleted:
+    records = await db.execute(query, {'slug': slug})
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Role with slug {slug!r} not found',
@@ -368,6 +419,7 @@ async def delete_role(
 @roles_router.post('/{slug}/permissions', status_code=204)
 async def grant_permission(
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('role:update')),
@@ -385,10 +437,8 @@ async def grant_permission(
 
     """
     # Check if role exists
-    role = await neo4j.fetch_node(
-        models.Role,
-        {'slug': slug},
-    )
+    results = await db.match(models.Role, {'slug': slug})
+    role = results[0] if results else None
     if role is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -396,10 +446,11 @@ async def grant_permission(
         )
 
     # Check if permission exists
-    perm = await neo4j.fetch_node(
+    perm_results = await db.match(
         models.Permission,
         {'name': permission_name},
     )
+    perm = perm_results[0] if perm_results else None
     if perm is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -407,12 +458,16 @@ async def grant_permission(
         )
 
     # Create GRANTS relationship
-    query: typing.LiteralString = """
-    MATCH (role:Role {slug: $slug})
-    MATCH (perm:Permission {name: $permission_name})
-    MERGE (role)-[:GRANTS]->(perm)
-    """
-    await neo4j.query(query, slug=slug, permission_name=permission_name)
+    query: typing.LiteralString = (
+        'MATCH (role:Role {{slug: {slug}}})'
+        ' MATCH (perm:Permission {{name: {permission_name}}})'
+        ' MERGE (role)-[g:GRANTS]->(perm)'
+        ' RETURN g'
+    )
+    await db.execute(
+        query,
+        {'slug': slug, 'permission_name': permission_name},
+    )
 
     LOGGER.info(
         'Granted permission %s to role %s',
@@ -428,6 +483,7 @@ async def grant_permission(
 async def revoke_permission(
     slug: str,
     permission_name: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('role:update')),
@@ -445,10 +501,8 @@ async def revoke_permission(
 
     """
     # Check if role exists
-    role = await neo4j.fetch_node(
-        models.Role,
-        {'slug': slug},
-    )
+    results = await db.match(models.Role, {'slug': slug})
+    role = results[0] if results else None
     if role is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -456,16 +510,19 @@ async def revoke_permission(
         )
 
     # Delete GRANTS relationship
-    query: typing.LiteralString = """
-    MATCH (role:Role {slug: $slug})-[r:GRANTS]->
-          (perm:Permission {name: $permission_name})
-    DELETE r
-    RETURN count(r) AS deleted
-    """
-    records = await neo4j.query(
-        query, slug=slug, permission_name=permission_name
+    query: typing.LiteralString = (
+        'MATCH (role:Role {{slug: {slug}}})-[r:GRANTS]->'
+        '(perm:Permission {{name: {permission_name}}})'
+        ' DELETE r'
+        ' RETURN count(r) AS deleted'
     )
-    if not records or records[0]['deleted'] == 0:
+    records = await db.execute(
+        query,
+        {'slug': slug, 'permission_name': permission_name},
+        columns=['deleted'],
+    )
+    deleted_count = graph.parse_agtype(records[0]['deleted']) if records else 0
+    if not deleted_count:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Permission {permission_name!r} not granted'

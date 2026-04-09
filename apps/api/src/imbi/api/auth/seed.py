@@ -3,9 +3,7 @@
 import logging
 import typing
 
-from imbi_common import neo4j
-
-from imbi_api import models
+from imbi_common import graph
 
 LOGGER = logging.getLogger(__name__)
 
@@ -22,10 +20,30 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('role:update', 'role', 'update', 'Update role information'),
     ('role:delete', 'role', 'delete', 'Delete roles'),
     # Organization management
-    ('organization:create', 'organization', 'create', 'Create organizations'),
-    ('organization:read', 'organization', 'read', 'View organizations'),
-    ('organization:update', 'organization', 'update', 'Update organizations'),
-    ('organization:delete', 'organization', 'delete', 'Delete organizations'),
+    (
+        'organization:create',
+        'organization',
+        'create',
+        'Create organizations',
+    ),
+    (
+        'organization:read',
+        'organization',
+        'read',
+        'View organizations',
+    ),
+    (
+        'organization:update',
+        'organization',
+        'update',
+        'Update organizations',
+    ),
+    (
+        'organization:delete',
+        'organization',
+        'delete',
+        'Delete organizations',
+    ),
     # Team management
     ('team:create', 'team', 'create', 'Create teams'),
     ('team:read', 'team', 'read', 'View teams'),
@@ -34,7 +52,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     # Blueprint management
     ('blueprint:read', 'blueprint', 'read', 'View blueprints'),
     ('blueprint:write', 'blueprint', 'write', 'Create/update blueprints'),
-    ('blueprint:delete', 'blueprint', 'delete', 'Delete blueprints'),
+    (
+        'blueprint:delete',
+        'blueprint',
+        'delete',
+        'Delete blueprints',
+    ),
     # Project management
     ('project:create', 'project', 'create', 'Create projects'),
     ('project:read', 'project', 'read', 'View projects'),
@@ -66,15 +89,55 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
         'Delete link definitions',
     ),
     # Environment management
-    ('environment:create', 'environment', 'create', 'Create environments'),
-    ('environment:read', 'environment', 'read', 'View environments'),
-    ('environment:update', 'environment', 'update', 'Update environments'),
-    ('environment:delete', 'environment', 'delete', 'Delete environments'),
+    (
+        'environment:create',
+        'environment',
+        'create',
+        'Create environments',
+    ),
+    (
+        'environment:read',
+        'environment',
+        'read',
+        'View environments',
+    ),
+    (
+        'environment:update',
+        'environment',
+        'update',
+        'Update environments',
+    ),
+    (
+        'environment:delete',
+        'environment',
+        'delete',
+        'Delete environments',
+    ),
     # Project type management
-    ('project_type:create', 'project_type', 'create', 'Create project types'),
-    ('project_type:read', 'project_type', 'read', 'View project types'),
-    ('project_type:update', 'project_type', 'update', 'Update project types'),
-    ('project_type:delete', 'project_type', 'delete', 'Delete project types'),
+    (
+        'project_type:create',
+        'project_type',
+        'create',
+        'Create project types',
+    ),
+    (
+        'project_type:read',
+        'project_type',
+        'read',
+        'View project types',
+    ),
+    (
+        'project_type:update',
+        'project_type',
+        'update',
+        'Update project types',
+    ),
+    (
+        'project_type:delete',
+        'project_type',
+        'delete',
+        'Delete project types',
+    ),
     # Third-party service management
     (
         'third_party_service:create',
@@ -107,7 +170,12 @@ STANDARD_PERMISSIONS: list[tuple[str, str, str, str]] = [
     ('webhook:delete', 'webhook', 'delete', 'Delete webhooks'),
     # Upload management
     ('upload:create', 'upload', 'create', 'Upload files'),
-    ('upload:read', 'upload', 'read', 'View and download uploads'),
+    (
+        'upload:read',
+        'upload',
+        'read',
+        'View and download uploads',
+    ),
     ('upload:delete', 'upload', 'delete', 'Delete uploads'),
     # Service account management
     (
@@ -196,12 +264,15 @@ DEFAULT_ROLES: list[tuple[str, str, str, int, list[str]]] = [
 ]
 
 
-async def seed_permissions() -> int:
+async def seed_permissions(db: graph.Graph) -> int:
     """
     Seed standard permissions into the database.
 
-    Uses MERGE to make the operation idempotent - running multiple times
-    will not create duplicates.
+    Uses MERGE to make the operation idempotent - running multiple
+    times will not create duplicates.
+
+    Parameters:
+        db: Graph database connection.
 
     Returns:
         int: Number of permissions created (not updated).
@@ -209,50 +280,56 @@ async def seed_permissions() -> int:
     created_count = 0
 
     for name, resource_type, action, description in STANDARD_PERMISSIONS:
-        # Create Permission model
-        permission = models.Permission(
-            name=name,
-            resource_type=resource_type,
-            action=action,
-            description=description,
+        # Check if the permission already exists
+        check_query = (
+            'OPTIONAL MATCH (existing:Permission '
+            '{{name: {name}}}) '
+            'RETURN existing IS NULL AS is_new'
+        )
+        check_records = await db.execute(
+            check_query,
+            {'name': name},
+            columns=['is_new'],
+        )
+        is_new = False
+        if check_records:
+            raw = graph.parse_agtype(check_records[0].get('is_new'))
+            is_new = bool(raw)
+
+        # Merge the permission node
+        merge_query = (
+            'MERGE (p:Permission {{name: {name}}}) '
+            'SET p.resource_type = {resource_type}, '
+            'p.action = {action}, '
+            'p.description = {description} '
+            'RETURN p'
+        )
+        await db.execute(
+            merge_query,
+            {
+                'name': name,
+                'resource_type': resource_type,
+                'action': action,
+                'description': description,
+            },
         )
 
-        # Use MERGE to avoid duplicates
-        query = """
-        OPTIONAL MATCH (existing:Permission {name: $name})
-        WITH existing IS NULL AS is_new
-        MERGE (p:Permission {name: $name})
-        ON CREATE SET
-            p.resource_type = $resource_type,
-            p.action = $action,
-            p.description = $description
-        ON MATCH SET
-            p.resource_type = $resource_type,
-            p.action = $action,
-            p.description = $description
-        RETURN p, is_new
-        """
-
-        async with neo4j.run(
-            query,
-            name=permission.name,
-            resource_type=permission.resource_type,
-            action=permission.action,
-            description=permission.description,
-        ) as result:
-            records = await result.data()
-            if records and records[0].get('is_new'):
-                created_count += 1
+        if is_new:
+            created_count += 1
 
     LOGGER.info('Seeded %d permissions', created_count)
     return created_count
 
 
-async def seed_default_roles() -> int:
+async def seed_default_roles(db: graph.Graph) -> int:
     """
-    Seed default roles (admin, developer, readonly) into the database.
+    Seed default roles (admin, developer, readonly) into the
+    database.
 
     Uses MERGE to make the operation idempotent.
+
+    Parameters:
+        db: Graph database connection.
 
     Returns:
         int: Number of roles created (not updated).
@@ -260,53 +337,63 @@ async def seed_default_roles() -> int:
     created_count = 0
 
     for slug, name, description, priority, permission_names in DEFAULT_ROLES:
-        # Use MERGE to avoid duplicates
-        role_query = """
-        OPTIONAL MATCH (existing:Role {slug: $slug})
-        WITH existing IS NULL AS is_new
-        MERGE (r:Role {slug: $slug})
-        ON CREATE SET
-            r.name = $name,
-            r.description = $description,
-            r.priority = $priority,
-            r.is_system = $is_system
-        ON MATCH SET
-            r.name = $name,
-            r.description = $description,
-            r.priority = $priority,
-            r.is_system = $is_system
-        RETURN r, is_new
-        """
+        # Check if the role already exists
+        check_query = (
+            'OPTIONAL MATCH (existing:Role {{slug: {slug}}}) '
+            'RETURN existing IS NULL AS is_new'
+        )
+        check_records = await db.execute(
+            check_query,
+            {'slug': slug},
+            columns=['is_new'],
+        )
+        is_new = False
+        if check_records:
+            raw = graph.parse_agtype(check_records[0].get('is_new'))
+            is_new = bool(raw)
 
-        async with neo4j.run(
-            query=role_query,
-            slug=slug,
-            name=name,
-            description=description,
-            priority=priority,
-            is_system=True,
-        ) as result:
-            records = await result.data()
-            if records and records[0].get('is_new'):
-                created_count += 1
+        # Merge the role node
+        merge_query = (
+            'MERGE (r:Role {{slug: {slug}}}) '
+            'SET r.name = {name}, '
+            'r.description = {description}, '
+            'r.priority = {priority}, '
+            'r.is_system = {is_system} '
+            'RETURN r'
+        )
+        await db.execute(
+            merge_query,
+            {
+                'slug': slug,
+                'name': name,
+                'description': description,
+                'priority': priority,
+                'is_system': True,
+            },
+        )
+
+        if is_new:
+            created_count += 1
 
         # Grant permissions to role
         for perm_name in permission_names:
-            perm_query = """
-            MATCH (r:Role {slug: $slug})
-            MATCH (p:Permission {name: $perm_name})
-            MERGE (r)-[:GRANTS]->(p)
-            """
-            async with neo4j.run(
-                query=perm_query, slug=slug, perm_name=perm_name
-            ) as result:
-                await result.consume()
+            perm_query = (
+                'MATCH (r:Role {{slug: {slug}}}), '
+                '(p:Permission {{name: {perm_name}}}) '
+                'MERGE (r)-[g:GRANTS]->(p) '
+                'RETURN g'
+            )
+            await db.execute(
+                perm_query,
+                {'slug': slug, 'perm_name': perm_name},
+            )
 
     LOGGER.info('Seeded %d default roles', created_count)
     return created_count
 
 
 async def seed_default_organization(
+    db: graph.Graph,
     slug: str = 'default',
     name: str = 'Default',
 ) -> bool:
@@ -315,6 +402,7 @@ async def seed_default_organization(
     Creates the organization using MERGE to ensure idempotency.
 
     Args:
+        db: Graph database connection.
         slug: Organization slug (default: 'default').
         name: Organization display name (default: 'Default').
 
@@ -323,44 +411,59 @@ async def seed_default_organization(
         already existed.
 
     """
-    query: typing.LiteralString = """
-    OPTIONAL MATCH (existing:Organization {slug: $slug})
-    WITH existing IS NULL AS is_new
-    MERGE (o:Organization {slug: $slug})
-    ON CREATE SET
-        o.name = $name,
-        o.description = $description
-    ON MATCH SET
-        o.name = $name,
-        o.description = $description
-    RETURN o, is_new
-    """
-    async with neo4j.run(
-        query,
-        slug=slug,
-        name=name,
-        description=f'{name} organization',
-    ) as result:
-        records = await result.data()
-        created = bool(records and records[0].get('is_new'))
+    # Check if the organization already exists
+    check_query: typing.LiteralString = (
+        'OPTIONAL MATCH '
+        '(existing:Organization {{slug: {slug}}}) '
+        'RETURN existing IS NULL AS is_new'
+    )
+    check_records = await db.execute(
+        check_query,
+        {'slug': slug},
+        columns=['is_new'],
+    )
+    is_new = False
+    if check_records:
+        raw = graph.parse_agtype(check_records[0].get('is_new'))
+        is_new = bool(raw)
 
-    if created:
+    # Merge the organization node
+    description = f'{name} organization'
+    merge_query: typing.LiteralString = (
+        'MERGE (o:Organization {{slug: {slug}}}) '
+        'SET o.name = {name}, '
+        'o.description = {description} '
+        'RETURN o'
+    )
+    await db.execute(
+        merge_query,
+        {
+            'slug': slug,
+            'name': name,
+            'description': description,
+        },
+    )
+
+    if is_new:
         LOGGER.info('Created organization: %s (%s)', name, slug)
     else:
         LOGGER.info('Organization already exists: %s', slug)
-    return created
+    return is_new
 
 
 async def bootstrap_auth_system(
+    db: graph.Graph,
     org_slug: str = 'default',
     org_name: str = 'Default',
 ) -> dict[str, int | bool]:
     """Complete bootstrap of the authentication system.
 
     Seeds the organization, permissions, and default roles.
-    This operation is idempotent and can be run multiple times safely.
+    This operation is idempotent and can be run multiple times
+    safely.
 
     Args:
+        db: Graph database connection.
         org_slug: Organization slug (default: 'default').
         org_name: Organization display name (default: 'Default').
 
@@ -373,9 +476,9 @@ async def bootstrap_auth_system(
     """
     LOGGER.info('Starting authentication system bootstrap')
 
-    org_created = await seed_default_organization(org_slug, org_name)
-    permissions_created = await seed_permissions()
-    roles_created = await seed_default_roles()
+    org_created = await seed_default_organization(db, org_slug, org_name)
+    permissions_created = await seed_permissions(db)
+    roles_created = await seed_default_roles(db)
 
     result: dict[str, int | bool] = {
         'organization': org_created,
@@ -393,21 +496,47 @@ async def bootstrap_auth_system(
     return result
 
 
-async def check_if_seeded() -> bool:
-    """
-    Check if the authentication system has already been seeded.
+async def check_if_seeded(db: graph.Graph) -> bool:
+    """Check if the authentication system has been fully seeded.
+
+    Verifies that all standard permissions, default roles, and
+    at least one organization exist before reporting the system
+    as seeded.  This prevents a partial seed (e.g. permissions
+    created but roles missing) from being treated as complete.
+
+    Parameters:
+        db: Graph database connection.
 
     Returns:
-        bool: True if permissions exist in the database, False otherwise.
+        bool: True if the full seed is present, False otherwise.
     """
-    query = """
-    MATCH (p:Permission)
-    RETURN count(p) AS count
+    query: typing.LiteralString = """
+    OPTIONAL MATCH (p:Permission)
+    WITH count(p) AS perm_count
+    OPTIONAL MATCH (r:Role)
+    WITH perm_count, count(r) AS role_count
+    OPTIONAL MATCH (o:Organization)
+    RETURN perm_count, role_count, count(o) AS org_count
     """
-
-    async with neo4j.run(query) as result:
-        records = await result.data()
-        if records and records[0].get('count', 0) > 0:
-            return True
-
-    return False
+    records = await db.execute(
+        query,
+        columns=['perm_count', 'role_count', 'org_count'],
+    )
+    if not records:
+        return False
+    perm_count = graph.parse_agtype(
+        records[0].get('perm_count'),
+    )
+    role_count = graph.parse_agtype(
+        records[0].get('role_count'),
+    )
+    org_count = graph.parse_agtype(
+        records[0].get('org_count'),
+    )
+    expected_perms = len(STANDARD_PERMISSIONS)
+    expected_roles = len(DEFAULT_ROLES)
+    return (
+        (perm_count or 0) >= expected_perms
+        and (role_count or 0) >= expected_roles
+        and (org_count or 0) > 0
+    )

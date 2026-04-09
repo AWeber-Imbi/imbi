@@ -5,8 +5,8 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import neo4j
-from neo4j import exceptions
+import psycopg
+from imbi_common import graph
 
 from imbi_api import models
 from imbi_api.auth import permissions
@@ -19,10 +19,13 @@ service_accounts_router = fastapi.APIRouter(
 
 
 @service_accounts_router.post(
-    '', response_model=models.ServiceAccountResponse, status_code=201
+    '',
+    response_model=models.ServiceAccountResponse,
+    status_code=201,
 )
 async def create_service_account(
     sa_create: models.ServiceAccountCreate,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -40,53 +43,60 @@ async def create_service_account(
     )
 
     try:
-        await neo4j.create_node(sa)
-    except exceptions.ConstraintError as e:
+        await db.create(sa)
+    except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
-            detail=f'Service account with slug {sa.slug!r} already exists',
+            detail=(f'Service account with slug {sa.slug!r} already exists'),
         ) from e
 
     # Create MEMBER_OF relationship to organization with role
-    membership_query = """
-    MATCH (s:ServiceAccount {slug: $slug})
-    MATCH (o:Organization {slug: $org_slug})
-    MATCH (r:Role {slug: $role_slug})
+    membership_query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
+    MATCH (o:Organization {{slug: {org_slug}}})
+    MATCH (r:Role {{slug: {role_slug}}})
     MERGE (s)-[m:MEMBER_OF]->(o)
-    SET m.role = $role_slug
-    RETURN o.name AS org_name, o.slug AS org_slug, r.slug AS role
+    SET m.role = {role_slug}
+    RETURN o.name AS org_name,
+           o.slug AS org_slug,
+           r.slug AS role
     """
-    organizations: list[models.OrgMembership] = []
-    async with neo4j.run(
+    records = await db.execute(
         membership_query,
-        slug=sa.slug,
-        org_slug=sa_create.organization_slug,
-        role_slug=sa_create.role_slug,
-    ) as result:
-        records = await result.data()
-        if not records:
-            # Rollback: delete the service account node
-            query = """
-            MATCH (s:ServiceAccount {slug: $slug})
-            DETACH DELETE s
-            """
-            async with neo4j.run(query, slug=sa.slug) as _:
-                pass
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=(
-                    f'Organization {sa_create.organization_slug!r}'
-                    f' or role {sa_create.role_slug!r} not found'
-                ),
+        {
+            'slug': sa.slug,
+            'org_slug': sa_create.organization_slug,
+            'role_slug': sa_create.role_slug,
+        },
+        ['org_name', 'org_slug', 'role'],
+    )
+    if not records:
+        # Rollback: delete the service account node
+        del_query: typing.LiteralString = """
+        MATCH (s:ServiceAccount {{slug: {slug}}})
+        DETACH DELETE s
+        """
+        await db.execute(
+            del_query,
+            {'slug': sa.slug},
+        )
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Organization {sa_create.organization_slug!r}'
+                f' or role {sa_create.role_slug!r} not found'
+            ),
+        )
+
+    organizations: list[models.OrgMembership] = []
+    for record in records:
+        organizations.append(
+            models.OrgMembership(
+                organization_name=graph.parse_agtype(record['org_name']),
+                organization_slug=graph.parse_agtype(record['org_slug']),
+                role=graph.parse_agtype(record['role']),
             )
-        for record in records:
-            organizations.append(
-                models.OrgMembership(
-                    organization_name=record['org_name'],
-                    organization_slug=record['org_slug'],
-                    role=record['role'],
-                )
-            )
+        )
 
     return models.ServiceAccountResponse(
         slug=sa.slug,
@@ -102,6 +112,7 @@ async def create_service_account(
     '', response_model=list[models.ServiceAccountResponse]
 )
 async def list_service_accounts(
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -115,12 +126,14 @@ async def list_service_accounts(
     if is_active is not None:
         parameters['is_active'] = is_active
 
-    accounts: list[models.ServiceAccountResponse] = []
-    async for sa in neo4j.fetch_nodes(
+    nodes = await db.match(
         models.ServiceAccount,
         parameters if parameters else None,
         order_by='slug',
-    ):
+    )
+
+    accounts: list[models.ServiceAccountResponse] = []
+    for sa in nodes:
         accounts.append(
             models.ServiceAccountResponse(
                 slug=sa.slug,
@@ -139,6 +152,7 @@ async def list_service_accounts(
 )
 async def get_service_account(
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -147,7 +161,8 @@ async def get_service_account(
     ],
 ) -> models.ServiceAccountResponse:
     """Get a service account by slug."""
-    sa = await neo4j.fetch_node(models.ServiceAccount, {'slug': slug})
+    results = await db.match(models.ServiceAccount, {'slug': slug})
+    sa = results[0] if results else None
     if sa is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -155,25 +170,28 @@ async def get_service_account(
         )
 
     # Load organization memberships
-    org_query = """
-    MATCH (s:ServiceAccount {slug: $slug})
+    org_query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
           -[m:MEMBER_OF]->(o:Organization)
     RETURN o.name AS org_name,
            o.slug AS org_slug,
            m.role AS role
     ORDER BY o.name
     """
+    records = await db.execute(
+        org_query,
+        {'slug': slug},
+        ['org_name', 'org_slug', 'role'],
+    )
     organizations: list[models.OrgMembership] = []
-    async with neo4j.run(org_query, slug=slug) as result:
-        records = await result.data()
-        for record in records:
-            organizations.append(
-                models.OrgMembership(
-                    organization_name=record['org_name'],
-                    organization_slug=record['org_slug'],
-                    role=record['role'],
-                )
+    for record in records:
+        organizations.append(
+            models.OrgMembership(
+                organization_name=graph.parse_agtype(record['org_name']),
+                organization_slug=graph.parse_agtype(record['org_slug']),
+                role=graph.parse_agtype(record['role']),
             )
+        )
 
     return models.ServiceAccountResponse(
         slug=sa.slug,
@@ -192,6 +210,7 @@ async def get_service_account(
 async def update_service_account(
     slug: str,
     sa_update: models.ServiceAccountUpdate,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -207,7 +226,8 @@ async def update_service_account(
             f'slug in body ({sa_update.slug!r})',
         )
 
-    existing = await neo4j.fetch_node(models.ServiceAccount, {'slug': slug})
+    results = await db.match(models.ServiceAccount, {'slug': slug})
+    existing = results[0] if results else None
     if existing is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -222,7 +242,7 @@ async def update_service_account(
         created_at=existing.created_at,
         last_authenticated=existing.last_authenticated,
     )
-    await neo4j.upsert(updated, {'slug': slug})
+    await db.merge(updated, match_on=['slug'])
 
     return models.ServiceAccountResponse(
         slug=updated.slug,
@@ -237,6 +257,7 @@ async def update_service_account(
 @service_accounts_router.delete('/{slug}', status_code=204)
 async def delete_service_account(
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -245,16 +266,20 @@ async def delete_service_account(
     ],
 ) -> None:
     """Delete a service account and all related credentials."""
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
+    query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
     OPTIONAL MATCH (s)<-[:OWNED_BY]-(owned)
     DETACH DELETE owned, s
     RETURN count(s) AS deleted
     """
-    async with neo4j.run(query, slug=slug) as result:
-        records = await result.data()
+    records = await db.execute(
+        query,
+        {'slug': slug},
+        ['deleted'],
+    )
 
-    if not records or records[0]['deleted'] == 0:
+    deleted = graph.parse_agtype(records[0]['deleted']) if records else 0
+    if not records or deleted == 0:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Service account {slug!r} not found',
@@ -265,6 +290,7 @@ async def delete_service_account(
 async def add_to_organization(
     slug: str,
     membership: dict[str, str],
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -281,28 +307,30 @@ async def add_to_organization(
             detail='organization_slug and role_slug are required',
         )
 
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
-    MATCH (o:Organization {slug: $org_slug})
-    MATCH (r:Role {slug: $role_slug})
+    query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
+    MATCH (o:Organization {{slug: {org_slug}}})
+    MATCH (r:Role {{slug: {role_slug}}})
     MERGE (s)-[m:MEMBER_OF]->(o)
-    SET m.role = $role_slug
+    SET m.role = {role_slug}
     RETURN s, o, r
     """
-    async with neo4j.run(
+    records = await db.execute(
         query,
-        slug=slug,
-        org_slug=org_slug,
-        role_slug=role_slug,
-    ) as result:
-        records = await result.data()
-        if not records:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'Service account {slug!r}, '
-                f'organization {org_slug!r}, '
-                f'or role {role_slug!r} not found',
-            )
+        {
+            'slug': slug,
+            'org_slug': org_slug,
+            'role_slug': role_slug,
+        },
+        ['s', 'o', 'r'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Service account {slug!r}, '
+            f'organization {org_slug!r}, '
+            f'or role {role_slug!r} not found',
+        )
 
 
 @service_accounts_router.put(
@@ -313,6 +341,7 @@ async def update_organization_role(
     slug: str,
     org_slug: str,
     role_data: dict[str, str],
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -328,28 +357,30 @@ async def update_organization_role(
             detail='role_slug is required',
         )
 
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
-          -[m:MEMBER_OF]->(o:Organization {slug: $org_slug})
-    MATCH (r:Role {slug: $role_slug})
-    SET m.role = $role_slug
+    query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
+          -[m:MEMBER_OF]->(o:Organization {{slug: {org_slug}}})
+    MATCH (r:Role {{slug: {role_slug}}})
+    SET m.role = {role_slug}
     RETURN s, o, r
     """
-    async with neo4j.run(
+    records = await db.execute(
         query,
-        slug=slug,
-        org_slug=org_slug,
-        role_slug=role_slug,
-    ) as result:
-        records = await result.data()
-        if not records:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=(
-                    f'Membership for {slug!r} in {org_slug!r}'
-                    f' or role {role_slug!r} not found'
-                ),
-            )
+        {
+            'slug': slug,
+            'org_slug': org_slug,
+            'role_slug': role_slug,
+        },
+        ['s', 'o', 'r'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Membership for {slug!r} in {org_slug!r}'
+                f' or role {role_slug!r} not found'
+            ),
+        )
 
 
 @service_accounts_router.delete(
@@ -358,6 +389,7 @@ async def update_organization_role(
 async def remove_from_organization(
     slug: str,
     org_slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -366,17 +398,21 @@ async def remove_from_organization(
     ],
 ) -> None:
     """Remove a service account from an organization."""
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
-          -[m:MEMBER_OF]->(o:Organization {slug: $org_slug})
+    query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
+          -[m:MEMBER_OF]->(o:Organization {{slug: {org_slug}}})
     DELETE m
     RETURN count(m) AS deleted
     """
-    async with neo4j.run(query, slug=slug, org_slug=org_slug) as result:
-        records = await result.data()
-        if not records or records[0].get('deleted', 0) == 0:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'Service account {slug!r} is not a '
-                f'member of organization {org_slug!r}',
-            )
+    records = await db.execute(
+        query,
+        {'slug': slug, 'org_slug': org_slug},
+        ['deleted'],
+    )
+    deleted = graph.parse_agtype(records[0]['deleted']) if records else 0
+    if not records or deleted == 0:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Service account {slug!r} is not a '
+            f'member of organization {org_slug!r}',
+        )

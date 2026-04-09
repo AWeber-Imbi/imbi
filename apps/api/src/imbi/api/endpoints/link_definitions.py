@@ -5,9 +5,9 @@ import logging
 import typing
 
 import fastapi
+import psycopg.errors
 import pydantic
-from imbi_common import models, neo4j
-from neo4j import exceptions
+from imbi_common import graph, models
 
 from imbi_api.auth import permissions
 from imbi_api.relationships import relationship_link
@@ -17,6 +17,37 @@ LOGGER = logging.getLogger(__name__)
 link_definitions_router = fastapi.APIRouter(
     tags=['Link Definitions'],
 )
+
+
+def _props_template(props: dict[str, typing.Any]) -> str:
+    """Build a Cypher property-map template with double-escaped braces.
+
+    Each key becomes ``key: {key}`` inside doubled braces so that
+    ``psycopg.sql.SQL.format()`` resolves them correctly::
+
+        >>> _props_template({'name': 'x', 'slug': 'y'})
+        '{{name: {name}, slug: {slug}}}'
+
+    """
+    if not props:
+        return ''
+    pairs = [f'{k}: {{{k}}}' for k in props]
+    return '{{' + ', '.join(pairs) + '}}'
+
+
+def _set_clause(
+    alias: str,
+    props: dict[str, typing.Any],
+) -> str:
+    """Build a Cypher SET clause from a property dict.
+
+    Returns ``SET ld.name = {name}, ld.slug = {slug}``.
+
+    """
+    if not props:
+        return ''
+    assignments = ', '.join(f'{alias}.{k} = {{{k}}}' for k in props)
+    return f'SET {assignments}'
 
 
 def _add_relationships(
@@ -83,6 +114,7 @@ class LinkDefinitionResponse(pydantic.BaseModel):
 async def create_link_definition(
     org_slug: str,
     data: LinkDefinitionCreate,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -132,20 +164,21 @@ async def create_link_definition(
     link_def.updated_at = now
     props = link_def.model_dump(exclude={'organization'})
 
-    query: typing.LiteralString = """
-    MATCH (o:Organization {slug: $org_slug})
-    CREATE (ld:LinkDefinition $props)
-    CREATE (ld)-[:BELONGS_TO]->(o)
-    RETURN ld{.*, organization: o{.*}} AS link_definition,
-           0 AS project_count
-    """
+    create_tpl = _props_template(props)
+    query = (
+        f'MATCH (o:Organization {{{{slug: {{org_slug}}}}}})'
+        f' CREATE (ld:LinkDefinition {create_tpl})'
+        f' CREATE (ld)-[:BELONGS_TO]->(o)'
+        f' RETURN ld, o'
+    )
+    params = {**props, 'org_slug': org_slug}
     try:
-        records = await neo4j.query(
+        records = await db.execute(
             query,
-            org_slug=org_slug,
-            props=props,
+            params,
+            columns=['ld', 'o'],
         )
-    except exceptions.ConstraintError as e:
+    except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
@@ -159,14 +192,19 @@ async def create_link_definition(
             detail=(f'Organization with slug {org_slug!r} not found'),
         )
 
-    result: dict[str, typing.Any] = records[0]['link_definition']
-    _add_relationships(result, records[0]['project_count'])
+    result: dict[str, typing.Any] = graph.parse_agtype(
+        records[0]['ld'],
+    )
+    org = graph.parse_agtype(records[0]['o'])
+    result['organization'] = org
+    _add_relationships(result, 0)
     return result
 
 
 @link_definitions_router.get('/')
 async def list_link_definitions(
     org_slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -186,21 +224,28 @@ async def list_link_definitions(
         their organization.
 
     """
-    query: typing.LiteralString = """
+    query = """
     MATCH (ld:LinkDefinition)
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(:Team)
+                   -[:BELONGS_TO]->(o)
         WHERE p.links CONTAINS ('"' + ld.slug + '":')
     WITH ld, o, count(DISTINCT p) AS project_count
-    RETURN ld{.*, organization: o{.*}} AS link_definition,
-           project_count
+    RETURN ld, o, project_count
     ORDER BY ld.name
     """
-    records = await neo4j.query(query, org_slug=org_slug)
+    records = await db.execute(
+        query,
+        {'org_slug': org_slug},
+        columns=['ld', 'o', 'project_count'],
+    )
     results: list[dict[str, typing.Any]] = []
     for record in records:
-        ld = record['link_definition']
-        _add_relationships(ld, record['project_count'])
+        ld = graph.parse_agtype(record['ld'])
+        org = graph.parse_agtype(record['o'])
+        ld['organization'] = org
+        pc = graph.parse_agtype(record['project_count'])
+        _add_relationships(ld, pc or 0)
         results.append(ld)
     return results
 
@@ -209,6 +254,7 @@ async def list_link_definitions(
 async def get_link_definition(
     org_slug: str,
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -231,19 +277,19 @@ async def get_link_definition(
         404: Link definition not found
 
     """
-    query: typing.LiteralString = """
-    MATCH (ld:LinkDefinition {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
+    query = """
+    MATCH (ld:LinkDefinition {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(:Team)
+                   -[:BELONGS_TO]->(o)
         WHERE p.links CONTAINS ('"' + ld.slug + '":')
     WITH ld, o, count(DISTINCT p) AS project_count
-    RETURN ld{.*, organization: o{.*}} AS link_definition,
-           project_count
+    RETURN ld, o, project_count
     """
-    records = await neo4j.query(
+    records = await db.execute(
         query,
-        slug=slug,
-        org_slug=org_slug,
+        {'slug': slug, 'org_slug': org_slug},
+        columns=['ld', 'o', 'project_count'],
     )
 
     if not records:
@@ -251,8 +297,14 @@ async def get_link_definition(
             status_code=404,
             detail=(f'Link definition with slug {slug!r} not found'),
         )
-    result: dict[str, typing.Any] = records[0]['link_definition']
-    _add_relationships(result, records[0]['project_count'])
+
+    result: dict[str, typing.Any] = graph.parse_agtype(
+        records[0]['ld'],
+    )
+    org = graph.parse_agtype(records[0]['o'])
+    result['organization'] = org
+    pc = graph.parse_agtype(records[0]['project_count'])
+    _add_relationships(result, pc or 0)
     return result
 
 
@@ -261,6 +313,7 @@ async def update_link_definition(
     org_slug: str,
     slug: str,
     data: LinkDefinitionUpdate,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -289,15 +342,15 @@ async def update_link_definition(
     if 'slug' not in payload:
         payload['slug'] = slug
 
-    query: typing.LiteralString = """
-    MATCH (ld:LinkDefinition {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    RETURN ld{.*, organization: o{.*}} AS link_definition
+    fetch_query = """
+    MATCH (ld:LinkDefinition {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    RETURN ld, o
     """
-    records = await neo4j.query(
-        query,
-        slug=slug,
-        org_slug=org_slug,
+    records = await db.execute(
+        fetch_query,
+        {'slug': slug, 'org_slug': org_slug},
+        columns=['ld', 'o'],
     )
 
     if not records:
@@ -306,7 +359,9 @@ async def update_link_definition(
             detail=(f'Link definition with slug {slug!r} not found'),
         )
 
-    existing = records[0]['link_definition']
+    existing = graph.parse_agtype(records[0]['ld'])
+    existing_org = graph.parse_agtype(records[0]['o'])
+    existing['organization'] = existing_org
 
     try:
         link_def = models.LinkDefinition(
@@ -327,25 +382,28 @@ async def update_link_definition(
     link_def.updated_at = datetime.datetime.now(datetime.UTC)
     props = link_def.model_dump(exclude={'organization'})
 
-    update_query: typing.LiteralString = """
-    MATCH (ld:LinkDefinition {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    SET ld = $props
-    WITH ld, o
-    OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(:Team)-[:BELONGS_TO]->(o)
-        WHERE p.links CONTAINS ('"' + ld.slug + '":')
-    WITH ld, o, count(DISTINCT p) AS project_count
-    RETURN ld{.*, organization: o{.*}} AS link_definition,
-           project_count
-    """
+    set_stmt = _set_clause('ld', props)
+    update_query = (
+        f'MATCH (ld:LinkDefinition {{{{slug: {{slug}}}}}})'
+        f' -[:BELONGS_TO]->(o:Organization'
+        f' {{{{slug: {{org_slug}}}}}})'
+        f' {set_stmt}'
+        f' WITH ld, o'
+        f' OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(:Team)'
+        f' -[:BELONGS_TO]->(o)'
+        f' WHERE p.links CONTAINS'
+        f" ('\"' + ld.slug + '\":')"
+        f' WITH ld, o, count(DISTINCT p) AS project_count'
+        f' RETURN ld, o, project_count'
+    )
+    params = {**props, 'slug': slug, 'org_slug': org_slug}
     try:
-        updated = await neo4j.query(
+        updated = await db.execute(
             update_query,
-            slug=slug,
-            org_slug=org_slug,
-            props=props,
+            params,
+            columns=['ld', 'o', 'project_count'],
         )
-    except exceptions.ConstraintError as e:
+    except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=(
@@ -359,8 +417,13 @@ async def update_link_definition(
             detail=(f'Link definition with slug {slug!r} not found'),
         )
 
-    result: dict[str, typing.Any] = updated[0]['link_definition']
-    _add_relationships(result, updated[0]['project_count'])
+    result: dict[str, typing.Any] = graph.parse_agtype(
+        updated[0]['ld'],
+    )
+    org = graph.parse_agtype(updated[0]['o'])
+    result['organization'] = org
+    pc = graph.parse_agtype(updated[0]['project_count'])
+    _add_relationships(result, pc or 0)
     return result
 
 
@@ -368,6 +431,7 @@ async def update_link_definition(
 async def delete_link_definition(
     org_slug: str,
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -387,19 +451,18 @@ async def delete_link_definition(
         404: Link definition not found
 
     """
-    query: typing.LiteralString = """
-    MATCH (ld:LinkDefinition {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    query = """
+    MATCH (ld:LinkDefinition {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     DETACH DELETE ld
-    RETURN count(ld) AS deleted
+    RETURN ld
     """
-    records = await neo4j.query(
+    records = await db.execute(
         query,
-        slug=slug,
-        org_slug=org_slug,
+        {'slug': slug, 'org_slug': org_slug},
     )
 
-    if not records or records[0].get('deleted', 0) == 0:
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(f'Link definition with slug {slug!r} not found'),

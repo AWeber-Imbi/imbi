@@ -6,7 +6,9 @@ import unittest.mock
 import imbi_common.blueprints
 import imbi_common.models
 import pydantic
+from imbi_common import graph
 
+from imbi_api import models as imbi_models
 from imbi_api import openapi
 
 
@@ -20,6 +22,7 @@ class GenerateBlueprintModelsTestCase(
         openapi._blueprint_models = {}
         openapi._response_models = {}
         openapi._schema_cache = None
+        self.mock_db = unittest.mock.AsyncMock(spec=graph.Graph)
 
     async def test_generate_blueprint_models_no_blueprints(
         self,
@@ -29,22 +32,22 @@ class GenerateBlueprintModelsTestCase(
             'imbi_common.blueprints.get_model',
             new_callable=unittest.mock.AsyncMock,
         ) as mock_get_model:
-            mock_get_model.side_effect = lambda m: m
+            mock_get_model.side_effect = lambda _db, m: m
 
             (
                 write_models,
                 response_models,
-            ) = await openapi.generate_blueprint_models()
+            ) = await openapi.generate_blueprint_models(self.mock_db)
 
             self.assertEqual(
                 len(write_models),
-                len(imbi_common.models.MODEL_TYPES),
+                len(imbi_models.MODEL_TYPES),
             )
             self.assertEqual(
                 len(response_models),
-                len(imbi_common.models.MODEL_TYPES),
+                len(imbi_models.MODEL_TYPES),
             )
-            for model_name in imbi_common.models.MODEL_TYPES:
+            for model_name in imbi_models.MODEL_TYPES:
                 self.assertIn(model_name, write_models)
                 self.assertIn(model_name, response_models)
                 # Response model should have relationships
@@ -67,7 +70,7 @@ class GenerateBlueprintModelsTestCase(
                 custom_field=(str, 'default_value'),
             )
 
-            def mock_side_effect(model_class: type) -> type:
+            def mock_side_effect(_db: graph.Graph, model_class: type) -> type:
                 if model_class is imbi_common.models.Team:
                     return enhanced_team
                 return model_class
@@ -77,7 +80,7 @@ class GenerateBlueprintModelsTestCase(
             (
                 write_models,
                 response_models,
-            ) = await openapi.generate_blueprint_models()
+            ) = await openapi.generate_blueprint_models(self.mock_db)
 
             # Write model has custom_field
             self.assertIn('Team', write_models)
@@ -107,7 +110,7 @@ class GenerateBlueprintModelsTestCase(
             new_callable=unittest.mock.AsyncMock,
         ) as mock_get_model:
 
-            def mock_side_effect(model_class: type) -> type:
+            def mock_side_effect(_db: graph.Graph, model_class: type) -> type:
                 if model_class is imbi_common.models.Team:
                     raise ValueError('Test error')
                 return model_class
@@ -117,12 +120,12 @@ class GenerateBlueprintModelsTestCase(
             (
                 write_models,
                 response_models,
-            ) = await openapi.generate_blueprint_models()
+            ) = await openapi.generate_blueprint_models(self.mock_db)
 
             # Falls back to base model
             self.assertEqual(
                 write_models['Team'],
-                imbi_common.models.MODEL_TYPES['Team'],
+                imbi_models.MODEL_TYPES['Team'],
             )
             # Response model still created
             self.assertIn(
@@ -141,6 +144,7 @@ class RefreshBlueprintModelsTestCase(
         openapi._blueprint_models = {}
         openapi._response_models = {}
         openapi._schema_cache = None
+        self.mock_db = unittest.mock.AsyncMock(spec=graph.Graph)
 
     async def test_refresh_updates_cache(self) -> None:
         """Test that refresh updates the cached models."""
@@ -148,27 +152,27 @@ class RefreshBlueprintModelsTestCase(
             'imbi_common.blueprints.get_model',
             new_callable=unittest.mock.AsyncMock,
         ) as mock_get_model:
-            mock_get_model.side_effect = lambda m: m
+            mock_get_model.side_effect = lambda _db, m: m
 
             self.assertEqual(
                 openapi._blueprint_models,
                 {},
             )
 
-            models = await openapi.refresh_blueprint_models()
+            result = await openapi.refresh_blueprint_models(self.mock_db)
 
             self.assertEqual(
-                len(models),
-                len(imbi_common.models.MODEL_TYPES),
+                len(result),
+                len(imbi_models.MODEL_TYPES),
             )
             self.assertEqual(
                 openapi._blueprint_models,
-                models,
+                result,
             )
             # Response models also populated
             self.assertEqual(
                 len(openapi._response_models),
-                len(imbi_common.models.MODEL_TYPES),
+                len(imbi_models.MODEL_TYPES),
             )
 
     async def test_refresh_clears_schema_cache(self) -> None:
@@ -179,9 +183,9 @@ class RefreshBlueprintModelsTestCase(
             'imbi_common.blueprints.get_model',
             new_callable=unittest.mock.AsyncMock,
         ) as mock_get_model:
-            mock_get_model.side_effect = lambda m: m
+            mock_get_model.side_effect = lambda _db, m: m
 
-            await openapi.refresh_blueprint_models()
+            await openapi.refresh_blueprint_models(self.mock_db)
 
             self.assertIsNone(openapi._schema_cache)
 

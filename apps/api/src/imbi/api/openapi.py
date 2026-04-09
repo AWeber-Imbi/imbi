@@ -10,7 +10,7 @@ and response schemas:
 
 Usage:
     # In app.py lifespan:
-    await openapi.refresh_blueprint_models()
+    await openapi.refresh_blueprint_models(db)
 
     # In create_app():
     app.openapi = openapi.create_custom_openapi(app)
@@ -21,8 +21,10 @@ import typing
 
 import fastapi.openapi.utils
 import imbi_common.blueprints
-import imbi_common.models
 import pydantic
+from imbi_common import graph
+
+from imbi_api import models as imbi_models
 
 LOGGER = logging.getLogger(__name__)
 
@@ -49,7 +51,9 @@ PATH_MODEL_MAPPING: dict[str, str] = {
 }
 
 
-async def generate_blueprint_models() -> tuple[
+async def generate_blueprint_models(
+    db: graph.Graph,
+) -> tuple[
     dict[str, type[pydantic.BaseModel]],
     dict[str, type[pydantic.BaseModel]],
 ]:
@@ -62,9 +66,11 @@ async def generate_blueprint_models() -> tuple[
     write_models: dict[str, type[pydantic.BaseModel]] = {}
     response_models: dict[str, type[pydantic.BaseModel]] = {}
 
-    for model_name, model_class in imbi_common.models.MODEL_TYPES.items():
+    for model_name, model_class in imbi_models.MODEL_TYPES.items():
         try:
-            write_model = await imbi_common.blueprints.get_model(model_class)
+            write_model = await imbi_common.blueprints.get_model(
+                db, model_class
+            )
             write_models[model_name] = write_model
             response_models[model_name] = (
                 imbi_common.blueprints.make_response_model(write_model)
@@ -86,7 +92,9 @@ async def generate_blueprint_models() -> tuple[
     return write_models, response_models
 
 
-async def refresh_blueprint_models() -> dict[str, type[pydantic.BaseModel]]:
+async def refresh_blueprint_models(
+    db: graph.Graph,
+) -> dict[str, type[pydantic.BaseModel]]:
     """Refresh the cached blueprint models.
 
     Call this at startup and when blueprints change.
@@ -99,7 +107,7 @@ async def refresh_blueprint_models() -> dict[str, type[pydantic.BaseModel]]:
     global _blueprint_models, _response_models, _schema_cache
 
     LOGGER.info('Refreshing blueprint models for OpenAPI schema')
-    _blueprint_models, _response_models = await generate_blueprint_models()
+    _blueprint_models, _response_models = await generate_blueprint_models(db)
 
     _schema_cache = None
 

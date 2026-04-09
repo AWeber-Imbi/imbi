@@ -3,8 +3,7 @@ import unittest
 from unittest import mock
 
 import pydantic
-from imbi_common import blueprints, neo4j
-from neo4j import exceptions
+from imbi_common import blueprints, graph
 
 from imbi_api import models
 
@@ -14,24 +13,20 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        # Mock neo4j.fetch_nodes to return test blueprints
-        self.fetch_nodes_patcher = mock.patch('imbi_common.neo4j.fetch_nodes')
-        self.mock_fetch_nodes = self.fetch_nodes_patcher.start()
-        self.addCleanup(self.fetch_nodes_patcher.stop)
+        # Create a mock graph.Graph instance
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        # Default: return empty list from match()
+        self.mock_db.match = mock.AsyncMock(return_value=[])
         # Create a shared organization for model instantiation
         self.org = models.Organization(name='Test Org', slug='test-org')
 
     async def test_get_model_no_blueprints(self) -> None:
         """Test get_model with no blueprints returns base model."""
+        self.mock_db.match.return_value = []
 
-        # Mock empty blueprint list
-        async def empty_iterator():
-            return
-            yield  # Make it a generator
-
-        self.mock_fetch_nodes.return_value = empty_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         # Should have same name and base fields
         self.assertEqual(result_model.__name__, 'Environment')
@@ -58,13 +53,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         # Check base fields exist
         self.assertIn('name', result_model.model_fields)
@@ -92,7 +85,9 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 organization=self.org,
             )  # Missing domain
 
-    async def test_get_model_with_integer_and_number_fields(self) -> None:
+    async def test_get_model_with_integer_and_number_fields(
+        self,
+    ) -> None:
         """Test get_model with integer and number fields."""
         blueprint = models.Blueprint(
             name='test',
@@ -108,13 +103,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         # Create instance and verify types
         instance = result_model(
@@ -144,17 +137,17 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
             json_schema=models.Schema.model_validate(
                 {
                     'type': 'object',
-                    'properties': {'is_production': {'type': 'boolean'}},
+                    'properties': {
+                        'is_production': {'type': 'boolean'},
+                    },
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         instance = result_model(
             name='Test',
@@ -173,7 +166,10 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 {
                     'type': 'object',
                     'properties': {
-                        'tags': {'type': 'array', 'items': {'type': 'string'}},
+                        'tags': {
+                            'type': 'array',
+                            'items': {'type': 'string'},
+                        },
                         'ports': {
                             'type': 'array',
                             'items': {'type': 'integer'},
@@ -183,13 +179,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         instance = result_model(
             name='Test',
@@ -211,17 +205,17 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
             json_schema=models.Schema.model_validate(
                 {
                     'type': 'object',
-                    'properties': {'metadata': {'type': 'object'}},
+                    'properties': {
+                        'metadata': {'type': 'object'},
+                    },
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         instance = result_model(
             name='Test',
@@ -240,18 +234,19 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 {
                     'type': 'object',
                     'properties': {
-                        'contact': {'type': 'string', 'format': 'email'}
+                        'contact': {
+                            'type': 'string',
+                            'format': 'email',
+                        },
                     },
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         instance = result_model(
             name='Test',
@@ -279,18 +274,19 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 {
                     'type': 'object',
                     'properties': {
-                        'homepage': {'type': 'string', 'format': 'uri'}
+                        'homepage': {
+                            'type': 'string',
+                            'format': 'uri',
+                        },
                     },
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         instance = result_model(
             name='Test',
@@ -313,7 +309,10 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                             'type': 'string',
                             'format': 'date-time',
                         },
-                        'launch_date': {'type': 'string', 'format': 'date'},
+                        'launch_date': {
+                            'type': 'string',
+                            'format': 'date',
+                        },
                         'maintenance_window': {
                             'type': 'string',
                             'format': 'time',
@@ -322,13 +321,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         now = datetime.datetime.now(datetime.UTC)
         today = datetime.datetime.now(datetime.UTC).date()
@@ -357,19 +354,21 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                     'properties': {
                         'tier': {
                             'type': 'string',
-                            'enum': ['dev', 'staging', 'production'],
-                        }
+                            'enum': [
+                                'dev',
+                                'staging',
+                                'production',
+                            ],
+                        },
                     },
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         instance = result_model(
             name='Test',
@@ -401,18 +400,19 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                             'type': 'string',
                             'default': 'us-east-1',
                         },
-                        'replicas': {'type': 'integer', 'default': 3},
+                        'replicas': {
+                            'type': 'integer',
+                            'default': 3,
+                        },
                     },
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         # Create instance without providing optional fields
         instance = result_model(
@@ -446,25 +446,25 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                         'domain': {
                             'type': 'string',
                             'description': 'Base domain name',
-                        }
+                        },
                     },
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         # Check that description is preserved in field info
         field_info = result_model.model_fields['domain']
         self.assertEqual(field_info.description, 'Base domain name')
 
-    async def test_get_model_multiple_blueprints_priority(self) -> None:
-        """Test get_model with multiple blueprints respects priority."""
+    async def test_get_model_multiple_blueprints_priority(
+        self,
+    ) -> None:
+        """Test get_model with multiple blueprints."""
         blueprint1 = models.Blueprint(
             name='base',
             type='Environment',
@@ -487,14 +487,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint1, blueprint2]
 
-        async def blueprint_iterator():
-            yield blueprint1
-            yield blueprint2
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         # Both fields should be present
         self.assertIn('field1', result_model.model_fields)
@@ -511,7 +508,7 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(instance.field2, 42)
 
     async def test_get_model_json_schema_round_trip(self) -> None:
-        """Test get_model creates valid Pydantic model with JSON schema."""
+        """Test get_model creates valid Pydantic model."""
         blueprint = models.Blueprint(
             name='test',
             type='Environment',
@@ -532,13 +529,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         # Should be able to get JSON schema from result
         json_schema = result_model.model_json_schema()
@@ -552,7 +547,7 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('region', json_schema['required'])
 
     async def test_get_model_validates_instances(self) -> None:
-        """Test that instances of returned model validate correctly."""
+        """Test that instances of returned model validate."""
         blueprint = models.Blueprint(
             name='test',
             type='Environment',
@@ -567,13 +562,11 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
                 }
             ),
         )
+        self.mock_db.match.return_value = [blueprint]
 
-        async def blueprint_iterator():
-            yield blueprint
-
-        self.mock_fetch_nodes.return_value = blueprint_iterator()
-
-        result_model = await blueprints.get_model(models.Environment)
+        result_model = await blueprints.get_model(
+            self.mock_db, models.Environment
+        )
 
         # Valid instance
         instance = result_model(
@@ -596,156 +589,3 @@ class GetModelTestCase(unittest.IsolatedAsyncioTestCase):
         json_str = instance.model_dump_json()
         self.assertIn('Prod', json_str)
         self.assertIn('example.com', json_str)
-
-
-class GetModelIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
-    """Integration tests for blueprints.get_model with real Neo4j."""
-
-    async def asyncSetUp(self) -> None:
-        await super().asyncSetUp()
-        self.org = models.Organization(name='Test Org', slug='test-org')
-        # Initialize Neo4j connection
-        await neo4j.initialize()
-        # Clean up any existing test blueprints before starting
-        async with neo4j.session() as session:
-            await session.run(
-                "MATCH (b:Blueprint {type: 'Environment'}) DETACH DELETE b"
-            )
-
-    async def asyncTearDown(self) -> None:
-        # Clean up test blueprints
-        async with neo4j.session() as session:
-            await session.run(
-                "MATCH (b:Blueprint {name: 'test-rtt'}) DETACH DELETE b"
-            )
-        # Close Neo4j connection
-        await neo4j.aclose()
-        await super().asyncTearDown()
-
-    async def test_round_trip_with_neo4j(self) -> None:
-        """Test round-trip: create blueprint in Neo4j and build model."""
-        # Create a test blueprint
-        blueprint = models.Blueprint(
-            name='test-rtt',
-            type='Environment',
-            description='Round-trip test blueprint',
-            json_schema=models.Schema.model_validate(
-                {
-                    '$schema': 'http://json-schema.org/draft-07/schema#',
-                    'title': 'Environment Extensions',
-                    'description': 'Additional environment properties',
-                    'type': 'object',
-                    'properties': {
-                        'domain': {
-                            'title': 'Domain',
-                            'type': 'string',
-                            'description': 'Base domain for services.',
-                        },
-                        'region': {
-                            'title': 'AWS Region',
-                            'type': 'string',
-                            'description': 'AWS region for environment.',
-                        },
-                        'max_instances': {
-                            'title': 'Max Instances',
-                            'type': 'integer',
-                            'default': 10,
-                            'description': 'Maximum number of instances.',
-                        },
-                    },
-                    'required': ['domain', 'region'],
-                }
-            ),
-        )
-
-        # Store blueprint in Neo4j (handle constraint errors if already exists)
-        try:
-            await neo4j.create_node(blueprint)
-        except exceptions.ConstraintError:
-            pass  # Blueprint already exists from previous run
-
-        # Use get_model to fetch blueprints and build dynamic model
-        dynamic_model = await blueprints.get_model(models.Environment)
-
-        # Verify the dynamic model has base fields
-        self.assertIn('name', dynamic_model.model_fields)
-        self.assertIn('slug', dynamic_model.model_fields)
-        self.assertIn('description', dynamic_model.model_fields)
-
-        # Verify blueprint-defined fields are present
-        self.assertIn('domain', dynamic_model.model_fields)
-        self.assertIn('region', dynamic_model.model_fields)
-        self.assertIn('max_instances', dynamic_model.model_fields)
-
-        # Verify field metadata is preserved
-        domain_field = dynamic_model.model_fields['domain']
-        self.assertEqual(domain_field.description, 'Base domain for services.')
-
-        region_field = dynamic_model.model_fields['region']
-        self.assertEqual(
-            region_field.description, 'AWS region for environment.'
-        )
-
-        max_instances_field = dynamic_model.model_fields['max_instances']
-        self.assertEqual(
-            max_instances_field.description, 'Maximum number of instances.'
-        )
-
-        # Create an instance with required fields
-        instance = dynamic_model(
-            name='Production',
-            slug='prod',
-            organization=self.org,
-            domain='example.com',
-            region='us-east-1',
-        )
-
-        self.assertEqual(instance.name, 'Production')
-        self.assertEqual(instance.slug, 'prod')
-        self.assertEqual(instance.domain, 'example.com')
-        self.assertEqual(instance.region, 'us-east-1')
-        self.assertEqual(
-            instance.max_instances, 10
-        )  # Should use default value
-
-        # Override default value
-        instance2 = dynamic_model(
-            name='Staging',
-            slug='staging',
-            organization=self.org,
-            domain='staging.example.com',
-            region='us-west-2',
-            max_instances=5,
-        )
-        self.assertEqual(instance2.max_instances, 5)
-
-        # Test validation - missing required field should fail
-        with self.assertRaises(pydantic.ValidationError):
-            dynamic_model(
-                name='Test',
-                slug='test',
-                organization=self.org,
-                domain='test.com',
-            )  # Missing region
-
-        # Test JSON schema generation
-        json_schema = dynamic_model.model_json_schema()
-        self.assertIn('properties', json_schema)
-        self.assertIn('domain', json_schema['properties'])
-        self.assertIn('region', json_schema['properties'])
-        self.assertIn('max_instances', json_schema['properties'])
-        self.assertIn('required', json_schema)
-        self.assertIn('domain', json_schema['required'])
-        self.assertIn('region', json_schema['required'])
-
-        # Test serialization
-        data = instance.model_dump()
-        self.assertEqual(data['name'], 'Production')
-        self.assertEqual(data['domain'], 'example.com')
-        self.assertEqual(data['region'], 'us-east-1')
-        self.assertEqual(data['max_instances'], 10)
-
-        json_str = instance.model_dump_json()
-        self.assertIn('Production', json_str)
-        self.assertIn('example.com', json_str)
-        self.assertIn('us-east-1', json_str)

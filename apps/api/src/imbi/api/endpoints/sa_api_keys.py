@@ -6,14 +6,15 @@ with a ServiceAccount node instead of a User node.
 """
 
 import datetime
+import json
 import logging
 import secrets
 import typing
 
 import fastapi
-from imbi_common import neo4j
+from imbi_common import graph
 
-from imbi_api import settings
+from imbi_api import models, settings
 from imbi_api.auth import password, permissions
 from imbi_api.endpoints import api_keys
 
@@ -25,10 +26,14 @@ sa_api_keys_router = fastapi.APIRouter(
 )
 
 
-async def _get_service_account(slug: str) -> dict[str, typing.Any]:
+async def _get_service_account(
+    db: graph.Graph,
+    slug: str,
+) -> dict[str, typing.Any]:
     """Fetch and validate a service account exists by slug.
 
     Args:
+        db: Graph database instance
         slug: Service account slug identifier
 
     Returns:
@@ -38,19 +43,22 @@ async def _get_service_account(slug: str) -> dict[str, typing.Any]:
         HTTPException: 404 if service account not found
 
     """
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
+    query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
     RETURN s
     """
-    async with neo4j.run(query, slug=slug) as result:
-        records = await result.data()
+    records = await db.execute(
+        query,
+        {'slug': slug},
+        ['s'],
+    )
 
     if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail='Service account not found',
         )
-    sa_data: dict[str, typing.Any] = records[0]['s']
+    sa_data: dict[str, typing.Any] = graph.parse_agtype(records[0]['s'])
     return sa_data
 
 
@@ -62,6 +70,7 @@ async def _get_service_account(slug: str) -> dict[str, typing.Any]:
 async def create_sa_api_key(
     slug: str,
     key_request: api_keys.APIKeyCreate,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -71,9 +80,9 @@ async def create_sa_api_key(
 ) -> api_keys.APIKeyCreateResponse:
     """Create a new API key for a service account.
 
-    The API key secret is returned only once during creation. Store it
-    securely as it cannot be retrieved later. The key format is:
-    ik_<16chars>_<32chars>
+    The API key secret is returned only once during creation.
+    Store it securely as it cannot be retrieved later. The key
+    format is: ik_<16chars>_<32chars>
 
     Args:
         slug: Service account slug identifier
@@ -88,7 +97,7 @@ async def create_sa_api_key(
         HTTPException: 400 if expiration exceeds maximum allowed
 
     """
-    await _get_service_account(slug)
+    await _get_service_account(db, slug)
 
     auth_settings = settings.get_auth_settings()
 
@@ -115,32 +124,34 @@ async def create_sa_api_key(
             days=key_request.expires_in_days
         )
 
-    # Create API key node in Neo4j
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
-    CREATE (k:APIKey {
-        key_id: $key_id,
-        key_hash: $key_hash,
-        name: $name,
-        description: $description,
-        scopes: $scopes,
-        created_at: datetime(),
-        expires_at: $expires_at,
-        revoked: false
-    })-[:OWNED_BY]->(s)
-    RETURN k
-    """
-    async with neo4j.run(
-        query,
-        slug=slug,
+    # Create API key model
+    api_key = models.APIKey(
         key_id=key_id,
         key_hash=key_hash,
         name=key_request.name,
         description=key_request.description,
         scopes=key_request.scopes,
         expires_at=expires_at,
-    ) as result:
-        await result.consume()
+        revoked=False,
+    )
+
+    # Create API key node with relationship to ServiceAccount
+    props = api_key.model_dump(mode='json')
+    props.pop('user', None)
+    props['scopes'] = json.dumps(props.get('scopes', []))
+    keys = list(props.keys())
+    prop_map = ', '.join(f'{k}: {{{k}}}' for k in keys)
+    records = await db.execute(
+        f'MATCH (s:ServiceAccount {{{{slug: {{slug}}}}}})'
+        f' CREATE (k:APIKey {{{{{prop_map}}}}})'
+        f'-[:OWNED_BY]->(s) RETURN k',
+        {**props, 'slug': slug},
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Service account {slug!r} not found',
+        )
 
     LOGGER.info(
         'API key created for service account %s (expires: %s)',
@@ -164,6 +175,7 @@ async def create_sa_api_key(
 )
 async def list_sa_api_keys(
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -184,16 +196,19 @@ async def list_sa_api_keys(
         List of API key metadata
 
     """
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
+    query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
           <-[:OWNED_BY]-(k:APIKey)
     RETURN k ORDER BY k.created_at DESC
     """
-    async with neo4j.run(query, slug=slug) as result:
-        records = await result.data()
+    records = await db.execute(
+        query,
+        {'slug': slug},
+        ['k'],
+    )
 
     keys = [
-        api_keys.APIKeyResponse(**neo4j.convert_neo4j_types(record['k']))
+        api_keys.APIKeyResponse(**graph.parse_agtype(record['k']))
         for record in records
     ]
 
@@ -210,6 +225,7 @@ async def list_sa_api_keys(
 async def revoke_sa_api_key(
     slug: str,
     key_id: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -219,8 +235,8 @@ async def revoke_sa_api_key(
 ) -> None:
     """Revoke an API key for a service account (soft delete).
 
-    Revoked keys can no longer be used for authentication but remain
-    in the database for audit purposes.
+    Revoked keys can no longer be used for authentication but
+    remain in the database for audit purposes.
 
     Args:
         slug: Service account slug identifier
@@ -232,15 +248,19 @@ async def revoke_sa_api_key(
             service account
 
     """
+    now_str = datetime.datetime.now(datetime.UTC).isoformat()
     # Verify ownership and revoke atomically
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
-          <-[:OWNED_BY]-(k:APIKey {key_id: $key_id})
-    SET k.revoked = true, k.revoked_at = datetime()
+    query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
+          <-[:OWNED_BY]-(k:APIKey {{key_id: {key_id}}})
+    SET k.revoked = true, k.revoked_at = {now}
     RETURN k
     """
-    async with neo4j.run(query, slug=slug, key_id=key_id) as result:
-        records = await result.data()
+    records = await db.execute(
+        query,
+        {'slug': slug, 'key_id': key_id, 'now': now_str},
+        ['k'],
+    )
 
     if not records:
         raise fastapi.HTTPException(
@@ -263,6 +283,7 @@ async def revoke_sa_api_key(
 async def rotate_sa_api_key(
     slug: str,
     key_id: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(
@@ -272,9 +293,9 @@ async def rotate_sa_api_key(
 ) -> api_keys.APIKeyCreateResponse:
     """Rotate an API key secret for a service account.
 
-    Generates a new secret while keeping the same key_id and metadata.
-    The old secret is immediately invalidated and the new secret is
-    returned (shown only once).
+    Generates a new secret while keeping the same key_id and
+    metadata. The old secret is immediately invalidated and the
+    new secret is returned (shown only once).
 
     Args:
         slug: Service account slug identifier
@@ -291,13 +312,16 @@ async def rotate_sa_api_key(
 
     """
     # Verify ownership and fetch key
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
-          <-[:OWNED_BY]-(k:APIKey {key_id: $key_id})
+    query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
+          <-[:OWNED_BY]-(k:APIKey {{key_id: {key_id}}})
     RETURN k
     """
-    async with neo4j.run(query, slug=slug, key_id=key_id) as result:
-        records = await result.data()
+    records = await db.execute(
+        query,
+        {'slug': slug, 'key_id': key_id},
+        ['k'],
+    )
 
     if not records:
         raise fastapi.HTTPException(
@@ -305,7 +329,7 @@ async def rotate_sa_api_key(
             detail='API key not found or not owned by this service account',
         )
 
-    api_key_data = records[0]['k']
+    api_key_data = graph.parse_agtype(records[0]['k'])
 
     if api_key_data.get('revoked', False):
         raise fastapi.HTTPException(
@@ -313,21 +337,33 @@ async def rotate_sa_api_key(
             detail='Cannot rotate revoked API key',
         )
 
-    # Generate new secret and update atomically with ownership check
+    # Generate new secret and update atomically
     new_secret = secrets.token_urlsafe(32)
     new_key_hash = password.hash_password(new_secret)
+    now_str = datetime.datetime.now(datetime.UTC).isoformat()
 
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
-          <-[:OWNED_BY]-(k:APIKey {key_id: $key_id})
+    update_query: typing.LiteralString = """
+    MATCH (s:ServiceAccount {{slug: {slug}}})
+          <-[:OWNED_BY]-(k:APIKey {{key_id: {key_id}}})
     WHERE k.revoked = false
-    SET k.key_hash = $key_hash, k.last_rotated = datetime()
+    SET k.key_hash = {key_hash}, k.last_rotated = {now}
     RETURN k
     """
-    async with neo4j.run(
-        query, slug=slug, key_id=key_id, key_hash=new_key_hash
-    ) as result:
-        await result.consume()
+    updated = await db.execute(
+        update_query,
+        {
+            'slug': slug,
+            'key_id': key_id,
+            'key_hash': new_key_hash,
+            'now': now_str,
+        },
+        ['k'],
+    )
+    if not updated:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail='API key was modified during rotation',
+        )
 
     LOGGER.info(
         'API key %s rotated for service account %s by %s',

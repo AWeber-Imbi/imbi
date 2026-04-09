@@ -5,19 +5,11 @@ import json
 import unittest
 from unittest import mock
 
+import psycopg.errors
 from fastapi import testclient
-from neo4j import exceptions
+from imbi_common import graph
 
 from imbi_api import app, models
-
-
-def _mock_neo4j_result(data):
-    """Create a mock async context manager for neo4j.run()."""
-    result = mock.AsyncMock()
-    result.data.return_value = data
-    result.__aenter__.return_value = result
-    result.__aexit__.return_value = None
-    return result
 
 
 class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
@@ -57,6 +49,11 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
         self.client = testclient.TestClient(self.test_app)
 
         self.service_data = {
@@ -89,12 +86,12 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
     # -- Create --
 
     def test_create_success(self) -> None:
-        result = _mock_neo4j_result(
-            [{'service': self.service_data}],
-        )
+        self.mock_db.execute.return_value = [
+            {'service': self.service_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/organizations/engineering/third-party-services/',
@@ -114,10 +111,10 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         svc = dict(self.service_data)
         svc['team'] = {'name': 'Backend', 'slug': 'backend'}
 
-        result = _mock_neo4j_result([{'service': svc}])
+        self.mock_db.execute.return_value = [{'service': svc}]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/organizations/engineering/third-party-services/',
@@ -176,27 +173,27 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_create_duplicate_slug(self) -> None:
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            side_effect=exceptions.ConstraintError(),
-        ):
-            response = self.client.post(
-                '/organizations/engineering/third-party-services/',
-                json={
-                    'name': 'Stripe',
-                    'slug': 'stripe',
-                    'vendor': 'Stripe Inc',
-                },
-            )
+        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
+        response = self.client.post(
+            '/organizations/engineering/third-party-services/',
+            json={
+                'name': 'Stripe',
+                'slug': 'stripe',
+                'vendor': 'Stripe Inc',
+            },
+        )
 
         self.assertEqual(response.status_code, 409)
-        self.assertIn('already exists', response.json()['detail'])
+        self.assertIn(
+            'already exists',
+            response.json()['detail'],
+        )
 
     def test_create_org_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/organizations/nonexistent/third-party-services/',
@@ -211,10 +208,10 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertIn('not found', response.json()['detail'])
 
     def test_create_team_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/organizations/engineering/third-party-services/',
@@ -234,15 +231,15 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
     # -- List --
 
     def test_list_services(self) -> None:
-        result = _mock_neo4j_result(
-            [{'service': self.service_data}],
-        )
+        self.mock_db.execute.return_value = [
+            {'service': self.service_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/'
+                '/organizations/engineering/third-party-services/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -252,13 +249,13 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(data[0]['slug'], 'stripe')
 
     def test_list_services_empty(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/'
+                '/organizations/engineering/third-party-services/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -266,16 +263,20 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
 
     def test_list_deserializes_json_fields(self) -> None:
         svc = dict(self.service_data)
-        svc['links'] = json.dumps({'docs': 'https://docs.stripe.com'})
-        svc['identifiers'] = json.dumps({'account_id': 'acct_123'})
+        svc['links'] = json.dumps(
+            {'docs': 'https://docs.stripe.com'},
+        )
+        svc['identifiers'] = json.dumps(
+            {'account_id': 'acct_123'},
+        )
 
-        result = _mock_neo4j_result([{'service': svc}])
+        self.mock_db.execute.return_value = [{'service': svc}]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/'
+                '/organizations/engineering/third-party-services/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -292,12 +293,12 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
     # -- Get --
 
     def test_get_service(self) -> None:
-        result = _mock_neo4j_result(
-            [{'service': self.service_data}],
-        )
+        self.mock_db.execute.return_value = [
+            {'service': self.service_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/third-party-services/stripe',
@@ -309,10 +310,10 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(data['vendor'], 'Stripe Inc')
 
     def test_get_service_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/third-party-services/nonexistent',
@@ -327,19 +328,17 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         updated = dict(self.service_data)
         updated['description'] = 'Updated description'
 
-        fetch_result = _mock_neo4j_result(
+        self.mock_db.execute.side_effect = [
             [{'service': self.service_data}],
-        )
-        update_result = _mock_neo4j_result(
             [{'service': updated}],
-        )
+        ]
 
         payload = dict(self.service_update_json)
         payload['description'] = 'Updated description'
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            side_effect=[fetch_result, update_result],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/third-party-services/stripe',
@@ -354,21 +353,22 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
 
     def test_update_service_with_team(self) -> None:
         updated = dict(self.service_data)
-        updated['team'] = {'name': 'Backend', 'slug': 'backend'}
+        updated['team'] = {
+            'name': 'Backend',
+            'slug': 'backend',
+        }
 
-        fetch_result = _mock_neo4j_result(
+        self.mock_db.execute.side_effect = [
             [{'service': self.service_data}],
-        )
-        update_result = _mock_neo4j_result(
             [{'service': updated}],
-        )
+        ]
 
         payload = dict(self.service_update_json)
         payload['team_slug'] = 'backend'
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            side_effect=[fetch_result, update_result],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/third-party-services/stripe',
@@ -394,10 +394,10 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_update_service_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/third-party-services/nonexistent',
@@ -419,19 +419,17 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
     def test_update_slug_conflict(self) -> None:
-        fetch_result = _mock_neo4j_result(
+        self.mock_db.execute.side_effect = [
             [{'service': self.service_data}],
-        )
+            psycopg.errors.UniqueViolation(),
+        ]
 
         payload = dict(self.service_update_json)
         payload['slug'] = 'existing-slug'
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            side_effect=[
-                fetch_result,
-                exceptions.ConstraintError(),
-            ],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/third-party-services/stripe',
@@ -439,18 +437,21 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 409)
-        self.assertIn('already exists', response.json()['detail'])
+        self.assertIn(
+            'already exists',
+            response.json()['detail'],
+        )
 
     def test_update_concurrent_delete(self) -> None:
         """Service deleted between fetch and update."""
-        fetch_result = _mock_neo4j_result(
+        self.mock_db.execute.side_effect = [
             [{'service': self.service_data}],
-        )
-        empty_result = _mock_neo4j_result([])
+            [],
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            side_effect=[fetch_result, empty_result],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/third-party-services/stripe',
@@ -462,26 +463,18 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
     # -- Delete --
 
     def test_delete_service(self) -> None:
-        result = _mock_neo4j_result([{'deleted': 1}])
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
-        ):
-            response = self.client.delete(
-                '/organizations/engineering/third-party-services/stripe',
-            )
+        self.mock_db.execute.return_value = [{'deleted': 1}]
+        response = self.client.delete(
+            '/organizations/engineering/third-party-services/stripe',
+        )
 
         self.assertEqual(response.status_code, 204)
 
     def test_delete_service_not_found(self) -> None:
-        result = _mock_neo4j_result([{'deleted': 0}])
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
-        ):
-            response = self.client.delete(
-                '/organizations/engineering/third-party-services/nonexistent',
-            )
+        self.mock_db.execute.return_value = [{'deleted': 0}]
+        response = self.client.delete(
+            '/organizations/engineering/third-party-services/nonexistent',
+        )
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
@@ -519,6 +512,11 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
         self.client = testclient.TestClient(self.test_app)
 
         self.base_url = (
@@ -542,10 +540,10 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
             'rules': [],
         }
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(self.base_url)
 
@@ -554,19 +552,28 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['slug'], 'gh-pr-events')
-        self.assertEqual(data[0]['name'], 'GitHub PR Events')
-        self.assertEqual(data[0]['notification_path'], '/webhooks/gh-pr')
-        self.assertEqual(data[0]['third_party_service']['slug'], 'github')
+        self.assertEqual(
+            data[0]['name'],
+            'GitHub PR Events',
+        )
+        self.assertEqual(
+            data[0]['notification_path'],
+            '/webhooks/gh-pr',
+        )
+        self.assertEqual(
+            data[0]['third_party_service']['slug'],
+            'github',
+        )
         self.assertEqual(
             data[0]['identifier_selector'],
             '$.repository.full_name',
         )
 
     def test_list_service_webhooks_empty(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(self.base_url)
 
@@ -581,7 +588,10 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
                     'slug': 'first',
                     'notification_path': '/webhooks/first',
                 },
-                'tps': {'name': 'GitHub', 'slug': 'github'},
+                'tps': {
+                    'name': 'GitHub',
+                    'slug': 'github',
+                },
                 'identifier_selector': None,
                 'rules': [],
             },
@@ -591,16 +601,19 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
                     'slug': 'second',
                     'notification_path': '/webhooks/second',
                 },
-                'tps': {'name': 'GitHub', 'slug': 'github'},
+                'tps': {
+                    'name': 'GitHub',
+                    'slug': 'github',
+                },
                 'identifier_selector': None,
                 'rules': [],
             },
         ]
 
-        result = _mock_neo4j_result(records)
+        self.mock_db.execute.return_value = records
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(self.base_url)
 
@@ -617,26 +630,29 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
                 'slug': 'gh-events',
                 'notification_path': '/webhooks/gh',
             },
-            'tps': {'name': 'GitHub', 'slug': 'github'},
+            'tps': {
+                'name': 'GitHub',
+                'slug': 'github',
+            },
             'identifier_selector': None,
             'rules': [
                 {
-                    'filter_expression': '$.action == "opened"',
+                    'filter_expression': ('$.action == "opened"'),
                     'handler': 'pr.handler',
                     'handler_config': '{"notify": true}',
                 },
                 {
-                    'filter_expression': '$.action == "closed"',
+                    'filter_expression': ('$.action == "closed"'),
                     'handler': 'close.handler',
                     'handler_config': '{}',
                 },
             ],
         }
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(self.base_url)
 
@@ -645,39 +661,55 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
         rules = data[0]['rules']
         self.assertEqual(len(rules), 2)
         self.assertEqual(rules[0]['handler'], 'pr.handler')
-        self.assertEqual(rules[0]['handler_config'], {'notify': True})
-        self.assertEqual(rules[1]['handler'], 'close.handler')
+        self.assertEqual(
+            rules[0]['handler_config'],
+            {'notify': True},
+        )
+        self.assertEqual(
+            rules[1]['handler'],
+            'close.handler',
+        )
 
-    def test_list_service_webhooks_null_rules_filtered(self) -> None:
+    def test_list_service_webhooks_null_rules_filtered(
+        self,
+    ) -> None:
         record = {
             'webhook': {
                 'name': 'GitHub Events',
                 'slug': 'gh-events',
                 'notification_path': '/webhooks/gh',
             },
-            'tps': {'name': 'GitHub', 'slug': 'github'},
+            'tps': {
+                'name': 'GitHub',
+                'slug': 'github',
+            },
             'identifier_selector': None,
             'rules': [None],
         }
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(self.base_url)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]['rules'], [])
 
-    def test_list_service_webhooks_malformed_config(self) -> None:
+    def test_list_service_webhooks_malformed_config(
+        self,
+    ) -> None:
         record = {
             'webhook': {
                 'name': 'GitHub Events',
                 'slug': 'gh-events',
                 'notification_path': '/webhooks/gh',
             },
-            'tps': {'name': 'GitHub', 'slug': 'github'},
+            'tps': {
+                'name': 'GitHub',
+                'slug': 'github',
+            },
             'identifier_selector': None,
             'rules': [
                 {
@@ -688,15 +720,18 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
             ],
         }
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(self.base_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()[0]['rules'][0]['handler_config'], {})
+        self.assertEqual(
+            response.json()[0]['rules'][0]['handler_config'],
+            {},
+        )
 
     def test_list_service_webhooks_without_tps(self) -> None:
         record = {
@@ -710,15 +745,17 @@ class ServiceWebhooksEndpointsTestCase(unittest.TestCase):
             'rules': [],
         }
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(self.base_url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.json()[0]['third_party_service'])
+        self.assertIsNone(
+            response.json()[0]['third_party_service'],
+        )
 
 
 class ServiceApplicationEndpointsTestCase(unittest.TestCase):
@@ -756,6 +793,11 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
 
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
+        )
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -811,15 +853,17 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     # -- List applications --
 
     def test_list_applications(self) -> None:
-        result = _mock_neo4j_result(
-            [{'app': self.app_data}],
-        )
+        self.mock_db.execute.return_value = [
+            {'app': self.app_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/stripe/applications/',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -832,13 +876,15 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertNotIn('webhook_secret', data[0])
 
     def test_list_applications_empty(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/stripe/applications/',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -849,13 +895,17 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         app_data['scopes'] = json.dumps(['read', 'write'])
         app_data['settings'] = json.dumps({'debug': True})
 
-        result = _mock_neo4j_result([{'app': app_data}])
+        self.mock_db.execute.return_value = [
+            {'app': app_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/stripe/applications/',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -866,20 +916,22 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     # -- Create application --
 
     def test_create_application(self) -> None:
-        check_result = _mock_neo4j_result([{'cnt': 0}])
-        create_result = _mock_neo4j_result(
+        self.mock_db.execute.side_effect = [
+            [{'cnt': 0}],
             [{'app': self.app_data}],
-        )
+        ]
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[check_result, create_result],
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.post(
-                '/organizations/engineering/third-party-services/stripe/applications/',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
                 json=self.app_create_json,
             )
 
@@ -889,36 +941,45 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertNotIn('client_secret', data)
 
     def test_create_application_duplicate(self) -> None:
-        check_result = _mock_neo4j_result([{'cnt': 1}])
+        self.mock_db.execute.return_value = [{'cnt': 1}]
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=check_result,
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.post(
-                '/organizations/engineering/third-party-services/stripe/applications/',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
                 json=self.app_create_json,
             )
 
         self.assertEqual(response.status_code, 409)
-        self.assertIn('already exists', response.json()['detail'])
+        self.assertIn(
+            'already exists',
+            response.json()['detail'],
+        )
 
     def test_create_application_service_not_found(self) -> None:
-        check_result = _mock_neo4j_result([{'cnt': 0}])
-        create_result = _mock_neo4j_result([])
+        self.mock_db.execute.side_effect = [
+            [{'cnt': 0}],
+            [],
+        ]
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[check_result, create_result],
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.post(
-                '/organizations/engineering/third-party-services/nonexistent/applications/',
+                '/organizations/engineering'
+                '/third-party-services/nonexistent'
+                '/applications/',
                 json=self.app_create_json,
             )
 
@@ -926,20 +987,22 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertIn('not found', response.json()['detail'])
 
     def test_create_application_encrypts_secrets(self) -> None:
-        check_result = _mock_neo4j_result([{'cnt': 0}])
-        create_result = _mock_neo4j_result(
+        self.mock_db.execute.side_effect = [
+            [{'cnt': 0}],
             [{'app': self.app_data}],
-        )
+        ]
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[check_result, create_result],
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.post(
-                '/organizations/engineering/third-party-services/stripe/applications/',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
                 json=self.app_create_json,
             )
 
@@ -957,24 +1020,26 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         payload['private_key'] = 'pk-data'
         payload['signing_secret'] = 'sig-data'
 
-        check_result = _mock_neo4j_result([{'cnt': 0}])
-
         app_data = dict(self.app_data)
         app_data['private_key'] = 'enc:pk-data'
         app_data['signing_secret'] = 'enc:sig-data'
-        create_result = _mock_neo4j_result(
+
+        self.mock_db.execute.side_effect = [
+            [{'cnt': 0}],
             [{'app': app_data}],
-        )
+        ]
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[check_result, create_result],
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.post(
-                '/organizations/engineering/third-party-services/stripe/applications/',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
                 json=payload,
             )
 
@@ -988,15 +1053,17 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     # -- Get application --
 
     def test_get_application(self) -> None:
-        result = _mock_neo4j_result(
-            [{'app': self.app_data}],
-        )
+        self.mock_db.execute.return_value = [
+            {'app': self.app_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -1005,13 +1072,15 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertNotIn('client_secret', data)
 
     def test_get_application_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/stripe/applications/nonexistent',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/nonexistent',
             )
 
         self.assertEqual(response.status_code, 404)
@@ -1022,22 +1091,29 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         app_data['client_secret'] = 'enc:real-secret'
         app_data['webhook_secret'] = 'enc:real-webhook'
 
-        result = _mock_neo4j_result([{'app': app_data}])
+        self.mock_db.execute.return_value = [
+            {'app': app_data},
+        ]
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=result,
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets',
             )
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['client_secret'], 'real-secret')
-        self.assertEqual(data['webhook_secret'], 'real-webhook')
+        self.assertEqual(
+            data['webhook_secret'],
+            'real-webhook',
+        )
 
     def test_get_secrets_non_admin(self) -> None:
         from imbi_api.auth import permissions
@@ -1065,13 +1141,17 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
-        result = _mock_neo4j_result([{'app': self.app_data}])
+        self.mock_db.execute.return_value = [
+            {'app': self.app_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets',
             )
 
         self.assertEqual(response.status_code, 403)
@@ -1080,23 +1160,24 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     # -- Update application --
 
     def test_update_application(self) -> None:
-        fetch_result = _mock_neo4j_result(
-            [{'app': self.app_data}],
-        )
         updated_app = dict(self.app_data)
         updated_app['name'] = 'Updated App'
-        update_result = _mock_neo4j_result(
+
+        self.mock_db.execute.side_effect = [
+            [{'app': self.app_data}],
             [{'app': updated_app}],
-        )
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            side_effect=[fetch_result, update_result],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             payload = dict(self.app_update_json)
             payload['name'] = 'Updated App'
             response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
                 json=payload,
             )
 
@@ -1106,44 +1187,47 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertNotIn('client_secret', data)
 
     def test_update_preserves_existing_secrets(self) -> None:
-        """Update carries forward existing encrypted secret values."""
-        fetch_result = _mock_neo4j_result(
+        """Update carries forward existing encrypted values."""
+        self.mock_db.execute.side_effect = [
             [{'app': self.app_data}],
-        )
-        update_result = _mock_neo4j_result(
             [{'app': self.app_data}],
-        )
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            side_effect=[fetch_result, update_result],
-        ) as mock_run:
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
             response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
                 json=self.app_update_json,
             )
 
         self.assertEqual(response.status_code, 200)
         # Verify existing encrypted values were preserved
-        update_call = mock_run.call_args_list[1]
-        props = update_call.kwargs['props']
+        # (props are now expanded as individual scalar params)
+        update_call = self.mock_db.execute.call_args_list[1]
+        params = update_call.args[1]
         self.assertEqual(
-            props['client_secret'],
+            params['client_secret'],
             self.app_data['client_secret'],
         )
         self.assertEqual(
-            props['webhook_secret'],
+            params['webhook_secret'],
             self.app_data['webhook_secret'],
         )
 
     def test_update_application_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe/applications/nonexistent',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/nonexistent',
                 json=self.app_update_json,
             )
 
@@ -1152,17 +1236,19 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
 
     def test_update_application_concurrent_delete(self) -> None:
         """App deleted between fetch and update."""
-        fetch_result = _mock_neo4j_result(
+        self.mock_db.execute.side_effect = [
             [{'app': self.app_data}],
-        )
-        empty_result = _mock_neo4j_result([])
+            [],
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            side_effect=[fetch_result, empty_result],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app',
                 json=self.app_update_json,
             )
 
@@ -1171,26 +1257,22 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     # -- Delete application --
 
     def test_delete_application(self) -> None:
-        result = _mock_neo4j_result([{'deleted': 1}])
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
-        ):
-            response = self.client.delete(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app',
-            )
+        self.mock_db.execute.return_value = [{'deleted': 1}]
+        response = self.client.delete(
+            '/organizations/engineering'
+            '/third-party-services/stripe'
+            '/applications/my-app',
+        )
 
         self.assertEqual(response.status_code, 204)
 
     def test_delete_application_not_found(self) -> None:
-        result = _mock_neo4j_result([{'deleted': 0}])
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
-        ):
-            response = self.client.delete(
-                '/organizations/engineering/third-party-services/stripe/applications/nonexistent',
-            )
+        self.mock_db.execute.return_value = [{'deleted': 0}]
+        response = self.client.delete(
+            '/organizations/engineering'
+            '/third-party-services/stripe'
+            '/applications/nonexistent',
+        )
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
@@ -1203,13 +1285,17 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         app_data['scopes'] = None
         app_data['settings'] = None
 
-        result = _mock_neo4j_result([{'app': app_data}])
+        self.mock_db.execute.return_value = [
+            {'app': app_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/stripe/applications/',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -1217,19 +1303,25 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertEqual(data['scopes'], [])
         self.assertEqual(data['settings'], {})
 
-    def test_list_applications_malformed_json_fields(self) -> None:
+    def test_list_applications_malformed_json_fields(
+        self,
+    ) -> None:
         """Malformed JSON strings in fields use defaults."""
         app_data = dict(self.app_data)
         app_data['scopes'] = '{not valid json'
         app_data['settings'] = '{also broken'
 
-        result = _mock_neo4j_result([{'app': app_data}])
+        self.mock_db.execute.return_value = [
+            {'app': app_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
-                '/organizations/engineering/third-party-services/stripe/applications/',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/',
             )
 
         self.assertEqual(response.status_code, 200)
@@ -1240,24 +1332,25 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     # -- Update application secrets --
 
     def test_update_secrets(self) -> None:
-        fetch_result = _mock_neo4j_result(
-            [{'app': self.app_data}],
-        )
         updated_app = dict(self.app_data)
         updated_app['client_secret'] = 'enc:new-secret'
-        update_result = _mock_neo4j_result(
+
+        self.mock_db.execute.side_effect = [
+            [{'app': self.app_data}],
             [{'app': updated_app}],
-        )
+        ]
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[fetch_result, update_result],
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets',
                 json={'client_secret': 'new-secret'},
             )
 
@@ -1266,33 +1359,34 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
         self.assertEqual(data['client_secret'], 'new-secret')
 
     def test_update_secrets_preserves_unchanged(self) -> None:
-        """Fields not provided keep their existing encrypted values."""
-        fetch_result = _mock_neo4j_result(
-            [{'app': self.app_data}],
-        )
+        """Fields not provided keep existing values."""
         updated_app = dict(self.app_data)
         updated_app['webhook_secret'] = 'enc:new-webhook'
-        update_result = _mock_neo4j_result(
+
+        self.mock_db.execute.side_effect = [
+            [{'app': self.app_data}],
             [{'app': updated_app}],
-        )
+        ]
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[fetch_result, update_result],
-            ) as mock_run,
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets',
                 json={'webhook_secret': 'new-webhook'},
             )
 
         self.assertEqual(response.status_code, 200)
         # Existing client_secret should be preserved
-        update_call = mock_run.call_args_list[1]
+        update_call = self.mock_db.execute.call_args_list[1]
         self.assertEqual(
-            update_call.kwargs['client_secret'],
+            update_call.args[1]['client_secret'],
             self.app_data['client_secret'],
         )
 
@@ -1322,13 +1416,17 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
-        result = _mock_neo4j_result([{'app': self.app_data}])
+        self.mock_db.execute.return_value = [
+            {'app': self.app_data},
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/my-app/secrets',
                 json={'client_secret': 'new-secret'},
             )
 
@@ -1338,26 +1436,30 @@ class ServiceApplicationEndpointsTestCase(unittest.TestCase):
     def test_update_secrets_empty_body_rejected(self) -> None:
         """At least one secret field must be provided."""
         response = self.client.put(
-            '/organizations/engineering/third-party-services/stripe/applications/my-app/secrets',
+            '/organizations/engineering'
+            '/third-party-services/stripe'
+            '/applications/my-app/secrets',
             json={},
         )
         self.assertEqual(response.status_code, 422)
 
     def test_update_secrets_not_found(self) -> None:
-        fetch_result = _mock_neo4j_result(
+        self.mock_db.execute.side_effect = [
             [{'app': self.app_data}],
-        )
-        empty_result = _mock_neo4j_result([])
+            [],
+        ]
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[fetch_result, empty_result],
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.put(
-                '/organizations/engineering/third-party-services/stripe/applications/missing/secrets',
+                '/organizations/engineering'
+                '/third-party-services/stripe'
+                '/applications/missing/secrets',
                 json={'client_secret': 'new-secret'},
             )
 

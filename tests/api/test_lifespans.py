@@ -31,13 +31,20 @@ class ApplicationLifespanTestCase(unittest.TestCase):
 
     def test_openapi_refresh_blueprint_failure(self) -> None:
         failure = RuntimeError()
-        with unittest.mock.patch(
-            'imbi_api.lifespans.openapi.refresh_blueprint_models',
-            new=unittest.mock.AsyncMock(side_effect=failure),
-        ) as refresh_blueprint_models:
-            with self.assertLogs(lifespans.LOGGER, level='WARNING') as cm:
-                with testclient.TestClient(app.create_app()):
-                    pass  # nothing to do here
+        mock_graph = unittest.mock.AsyncMock()
+        with (
+            unittest.mock.patch(
+                'imbi_api.lifespans.graph.Graph',
+                return_value=mock_graph,
+            ),
+            unittest.mock.patch(
+                'imbi_api.lifespans.openapi.refresh_blueprint_models',
+                new=unittest.mock.AsyncMock(side_effect=failure),
+            ) as refresh_blueprint_models,
+            self.assertLogs(lifespans.LOGGER, level='WARNING') as cm,
+        ):
+            with testclient.TestClient(app.create_app()):
+                pass
 
         refresh_blueprint_models.assert_awaited_once()
         self.assertIn(

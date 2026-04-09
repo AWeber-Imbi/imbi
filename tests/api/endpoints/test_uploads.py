@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
+from imbi_common import graph
 
 from imbi_api import app, models
 from imbi_api.storage.client import StorageClient
@@ -43,6 +44,11 @@ class UploadEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
         # Create a mock storage client for DI override
         self.mock_storage = mock.AsyncMock(spec=StorageClient)
 
@@ -67,7 +73,6 @@ class UploadEndpointsTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-    @mock.patch('imbi_common.neo4j.upsert')
     @mock.patch(
         'imbi_api.endpoints.uploads.thumbnails.can_thumbnail',
         return_value=False,
@@ -79,15 +84,18 @@ class UploadEndpointsTestCase(unittest.TestCase):
         self,
         mock_validate,
         mock_can_thumb,
-        mock_upsert,
     ) -> None:
         """Test successful file upload."""
-        mock_upsert.return_value = 'element123'
+        self.mock_db.merge.return_value = mock.MagicMock()
 
         response = self.client.post(
             '/uploads/',
             files={
-                'file': ('test.txt', b'hello world', 'image/png'),
+                'file': (
+                    'test.txt',
+                    b'hello world',
+                    'image/png',
+                ),
             },
         )
 
@@ -117,14 +125,17 @@ class UploadEndpointsTestCase(unittest.TestCase):
         response = self.client.post(
             '/uploads/',
             files={
-                'file': ('bad.exe', b'data', 'text/plain'),
+                'file': (
+                    'bad.exe',
+                    b'data',
+                    'text/plain',
+                ),
             },
         )
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('bad file', response.json()['detail'])
 
-    @mock.patch('imbi_common.neo4j.upsert')
     @mock.patch(
         'imbi_api.endpoints.uploads.thumbnails.can_thumbnail',
         return_value=True,
@@ -142,15 +153,18 @@ class UploadEndpointsTestCase(unittest.TestCase):
         mock_validate,
         mock_gen_thumb,
         mock_can_thumb,
-        mock_upsert,
     ) -> None:
         """Test upload generates thumbnail for images."""
-        mock_upsert.return_value = 'element123'
+        self.mock_db.merge.return_value = mock.MagicMock()
 
         response = self.client.post(
             '/uploads/',
             files={
-                'file': ('photo.jpg', b'image-data', 'image/jpeg'),
+                'file': (
+                    'photo.jpg',
+                    b'image-data',
+                    'image/jpeg',
+                ),
             },
         )
 
@@ -162,33 +176,18 @@ class UploadEndpointsTestCase(unittest.TestCase):
 
     def test_list_uploads_empty(self) -> None:
         """Test listing uploads when none exist."""
+        self.mock_db.match.return_value = []
 
-        async def empty_generator():
-            """Yield nothing."""
-            return
-            yield
-
-        with mock.patch(
-            'imbi_common.neo4j.fetch_nodes',
-            return_value=empty_generator(),
-        ):
-            response = self.client.get('/uploads/')
+        response = self.client.get('/uploads/')
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), [])
 
     def test_list_uploads_with_data(self) -> None:
         """Test listing uploads returns data."""
+        self.mock_db.match.return_value = [self.test_upload]
 
-        async def upload_generator():
-            """Yield test upload."""
-            yield self.test_upload
-
-        with mock.patch(
-            'imbi_common.neo4j.fetch_nodes',
-            return_value=upload_generator(),
-        ):
-            response = self.client.get('/uploads/')
+        response = self.client.get('/uploads/')
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -197,21 +196,14 @@ class UploadEndpointsTestCase(unittest.TestCase):
 
     def test_list_uploads_with_filter(self) -> None:
         """Test listing uploads with content_type filter."""
+        self.mock_db.match.return_value = [self.test_upload]
 
-        async def upload_generator():
-            """Yield test upload."""
-            yield self.test_upload
-
-        with mock.patch(
-            'imbi_common.neo4j.fetch_nodes',
-            return_value=upload_generator(),
-        ) as mock_fetch:
-            response = self.client.get(
-                '/uploads/?content_type=image/png',
-            )
+        response = self.client.get(
+            '/uploads/?content_type=image/png',
+        )
 
         self.assertEqual(response.status_code, 200)
-        call_args = mock_fetch.call_args
+        call_args = self.mock_db.match.call_args
         self.assertEqual(
             call_args[0][1]['content_type'],
             'image/png',
@@ -220,12 +212,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
     def test_get_upload_serves_content(self) -> None:
         """Test getting upload serves file content."""
         self.mock_storage.download.return_value = b'file-data'
+        self.mock_db.match.return_value = [self.test_upload]
 
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-            return_value=self.test_upload,
-        ):
-            response = self.client.get('/uploads/test-uuid-1234')
+        response = self.client.get('/uploads/test-uuid-1234')
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b'file-data')
@@ -239,7 +228,7 @@ class UploadEndpointsTestCase(unittest.TestCase):
         )
 
     def test_get_upload_s3_missing(self) -> None:
-        """Test getting upload when S3 object is missing returns 404."""
+        """Test getting upload when S3 object is missing."""
         from botocore import (  # pyright: ignore[reportMissingTypeStubs]
             exceptions as botocore_exceptions,
         )
@@ -255,12 +244,9 @@ class UploadEndpointsTestCase(unittest.TestCase):
                 'GetObject',
             )
         )
+        self.mock_db.match.return_value = [self.test_upload]
 
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-            return_value=self.test_upload,
-        ):
-            response = self.client.get('/uploads/test-uuid-1234')
+        response = self.client.get('/uploads/test-uuid-1234')
 
         self.assertEqual(response.status_code, 404)
         self.assertIn(
@@ -270,23 +256,19 @@ class UploadEndpointsTestCase(unittest.TestCase):
 
     def test_get_upload_not_found(self) -> None:
         """Test getting non-existent upload returns 404."""
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-            return_value=None,
-        ):
-            response = self.client.get('/uploads/nonexistent')
+        self.mock_db.match.return_value = []
+
+        response = self.client.get('/uploads/nonexistent')
 
         self.assertEqual(response.status_code, 404)
 
     def test_get_upload_meta(self) -> None:
         """Test getting upload metadata."""
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-            return_value=self.test_upload,
-        ):
-            response = self.client.get(
-                '/uploads/test-uuid-1234/meta',
-            )
+        self.mock_db.match.return_value = [self.test_upload]
+
+        response = self.client.get(
+            '/uploads/test-uuid-1234/meta',
+        )
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -297,14 +279,11 @@ class UploadEndpointsTestCase(unittest.TestCase):
     def test_get_thumbnail_serves_content(self) -> None:
         """Test getting thumbnail serves image content."""
         self.mock_storage.download.return_value = b'thumb-data'
+        self.mock_db.match.return_value = [self.test_upload]
 
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-            return_value=self.test_upload,
-        ):
-            response = self.client.get(
-                '/uploads/test-uuid-1234/thumbnail',
-            )
+        response = self.client.get(
+            '/uploads/test-uuid-1234/thumbnail',
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b'thumb-data')
@@ -334,14 +313,11 @@ class UploadEndpointsTestCase(unittest.TestCase):
                 'GetObject',
             )
         )
+        self.mock_db.match.return_value = [self.test_upload]
 
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-            return_value=self.test_upload,
-        ):
-            response = self.client.get(
-                '/uploads/test-uuid-1234/thumbnail',
-            )
+        response = self.client.get(
+            '/uploads/test-uuid-1234/thumbnail',
+        )
 
         self.assertEqual(response.status_code, 404)
         self.assertIn(
@@ -361,14 +337,11 @@ class UploadEndpointsTestCase(unittest.TestCase):
             uploaded_by='admin@example.com',
             created_at=datetime.datetime.now(datetime.UTC),
         )
+        self.mock_db.match.return_value = [upload_no_thumb]
 
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-            return_value=upload_no_thumb,
-        ):
-            response = self.client.get(
-                '/uploads/no-thumb/thumbnail',
-            )
+        response = self.client.get(
+            '/uploads/no-thumb/thumbnail',
+        )
 
         self.assertEqual(response.status_code, 404)
         self.assertIn(
@@ -378,19 +351,12 @@ class UploadEndpointsTestCase(unittest.TestCase):
 
     def test_delete_upload(self) -> None:
         """Test deleting an upload."""
-        with (
-            mock.patch(
-                'imbi_common.neo4j.fetch_node',
-                return_value=self.test_upload,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.delete_node',
-                return_value=True,
-            ),
-        ):
-            response = self.client.delete(
-                '/uploads/test-uuid-1234',
-            )
+        self.mock_db.match.return_value = [self.test_upload]
+        self.mock_db.execute.return_value = [{'n': 'true'}]
+
+        response = self.client.delete(
+            '/uploads/test-uuid-1234',
+        )
 
         self.assertEqual(response.status_code, 204)
         # Should delete original + thumbnail
@@ -398,13 +364,11 @@ class UploadEndpointsTestCase(unittest.TestCase):
 
     def test_delete_upload_not_found(self) -> None:
         """Test deleting non-existent upload returns 404."""
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-            return_value=None,
-        ):
-            response = self.client.delete(
-                '/uploads/nonexistent',
-            )
+        self.mock_db.match.return_value = []
+
+        response = self.client.delete(
+            '/uploads/nonexistent',
+        )
 
         self.assertEqual(response.status_code, 404)
 
@@ -412,15 +376,8 @@ class UploadEndpointsTestCase(unittest.TestCase):
         """Test that upload endpoints reject unauthenticated."""
         from imbi_api.auth import permissions
 
-        self.test_app.dependency_overrides.clear()
-
-        # Re-add storage override so we only test auth
-        def mock_get_storage():
-            return self.mock_storage
-
-        self.test_app.dependency_overrides[_get_storage_client] = (
-            mock_get_storage
-        )
+        # Remove auth override only; keep graph + storage DI
+        del self.test_app.dependency_overrides[permissions.get_current_user]
 
         unauth_client = testclient.TestClient(self.test_app)
 
@@ -429,15 +386,24 @@ class UploadEndpointsTestCase(unittest.TestCase):
 
         response = unauth_client.post(
             '/uploads/',
-            files={'file': ('test.txt', b'data', 'text/plain')},
+            files={
+                'file': (
+                    'test.txt',
+                    b'data',
+                    'text/plain',
+                ),
+            },
         )
         self.assertEqual(response.status_code, 401)
 
-        # Restore override
+        # Restore overrides
         async def mock_get_current_user():
             """Return test auth context."""
             return self.auth_context
 
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
+        )
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
         )

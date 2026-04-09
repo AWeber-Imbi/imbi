@@ -4,7 +4,9 @@ import datetime
 import unittest
 from unittest import mock
 
+import psycopg.errors
 from fastapi import testclient
+from imbi_common import graph
 
 from imbi_api import app, models
 
@@ -13,22 +15,11 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
     """Test cases for blueprint CRUD endpoints."""
 
     def setUp(self) -> None:
-        """
-        Prepare the test fixture by creating a FastAPI app, an
-        authenticated admin context, a TestClient, and a sample
+        """Prepare the test fixture.
+
+        Creates a FastAPI app, an authenticated admin context,
+        a mock Graph instance, a TestClient, and a sample
         Blueprint model.
-
-        Sets the following attributes on self:
-        - test_app: FastAPI application instance used by tests.
-        - admin_user: admin User model used for authentication.
-        - auth_context: AuthContext returned by the overridden
-            dependency.
-        - client: TestClient bound to the test_app.
-        - test_blueprint: Blueprint model instance used in endpoint
-            tests.
-
-        Overrides the get_current_user dependency to return the admin
-        auth context so tests run with elevated permissions.
         """
         from imbi_api.auth import permissions
 
@@ -39,7 +30,7 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
             email='admin@example.com',
             display_name='Admin User',
             is_active=True,
-            is_admin=True,  # Admin has all permissions
+            is_admin=True,
             is_service_account=False,
             created_at=datetime.datetime.now(datetime.UTC),
         )
@@ -48,22 +39,19 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
             user=self.admin_user,
             session_id='test-session',
             auth_method='jwt',
-            permissions=set(),  # Admin bypasses permission checks
+            permissions=set(),
         )
 
-        # Override the get_current_user dependency
         async def mock_get_current_user():
-            """
-            Provide the preconfigured authentication context for tests.
-
-            Returns:
-                The test's authentication context object used to
-                    simulate an authenticated user.
-            """
             return self.auth_context
 
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
+        )
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
         )
 
         self.client = testclient.TestClient(self.test_app)
@@ -79,59 +67,59 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
 
     def test_create_blueprint_success(self) -> None:
         """Test successful blueprint creation."""
-        with mock.patch('imbi_common.neo4j.create_node') as mock_create:
-            # Mock node that can be converted to dict
-            mock_node = {
+        created = models.Blueprint(
+            name='New Blueprint',
+            slug='new-blueprint',
+            type='Environment',
+            description=None,
+            enabled=True,
+            priority=0,
+            json_schema=models.Schema.model_validate(
+                {'type': 'object', 'properties': {}}
+            ),
+            version=0,
+        )
+        self.mock_db.merge.return_value = created
+
+        response = self.client.post(
+            '/blueprints/',
+            json={
                 'name': 'New Blueprint',
-                'slug': 'new-blueprint',
                 'type': 'Environment',
-                'description': None,
-                'enabled': True,
-                'priority': 0,
-                'filter': None,
-                'json_schema': '{"type": "object", "properties": {}}',
-                'version': 0,
-            }
-            mock_create.return_value = mock_node
-
-            response = self.client.post(
-                '/blueprints/',
-                json={
-                    'name': 'New Blueprint',
-                    'type': 'Environment',
-                    'json_schema': {'type': 'object', 'properties': {}},
+                'json_schema': {
+                    'type': 'object',
+                    'properties': {},
                 },
-            )
+            },
+        )
 
-            self.assertEqual(response.status_code, 201)
-            data = response.json()
-            self.assertEqual(data['name'], 'New Blueprint')
-            self.assertEqual(data['type'], 'Environment')
-            self.assertEqual(data['slug'], 'new-blueprint')
-            mock_create.assert_called_once()
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertEqual(data['name'], 'New Blueprint')
+        self.assertEqual(data['type'], 'Environment')
+        self.assertEqual(data['slug'], 'new-blueprint')
+        self.mock_db.merge.assert_called_once()
 
     def test_create_blueprint_duplicate(self) -> None:
         """Test creating duplicate blueprint returns 409."""
-        import neo4j
+        self.mock_db.merge.side_effect = psycopg.errors.UniqueViolation(
+            'Constraint violation'
+        )
 
-        with (
-            mock.patch('imbi_common.neo4j.create_node') as mock_create,
-        ):
-            mock_create.side_effect = neo4j.exceptions.ConstraintError(
-                'Constraint violation'
-            )
-
-            response = self.client.post(
-                '/blueprints/',
-                json={
-                    'name': 'Duplicate',
-                    'type': 'Project',
-                    'json_schema': {'type': 'object', 'properties': {}},
+        response = self.client.post(
+            '/blueprints/',
+            json={
+                'name': 'Duplicate',
+                'type': 'Project',
+                'json_schema': {
+                    'type': 'object',
+                    'properties': {},
                 },
-            )
+            },
+        )
 
-            self.assertEqual(response.status_code, 409)
-            self.assertIn('already exists', response.json()['detail'])
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('already exists', response.json()['detail'])
 
     def test_create_blueprint_invalid_data(self) -> None:
         """Test creating blueprint with invalid data returns 422."""
@@ -147,256 +135,209 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
 
     def test_list_blueprints_empty(self) -> None:
         """Test listing blueprints when none exist."""
+        self.mock_db.match.return_value = []
 
-        async def empty_generator():
-            """
-            Async generator that yields no items.
+        response = self.client.get('/blueprints/')
 
-            Returns:
-                Async iterator: An asynchronous iterator that yields no values.
-            """
-            return
-            yield  # Make this a generator
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.fetch_nodes', return_value=empty_generator()
-            ),
-        ):
-            response = self.client.get('/blueprints/')
-
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data, [])
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data, [])
 
     def test_list_blueprints_with_data(self) -> None:
         """Test listing blueprints returns data."""
+        self.mock_db.match.return_value = [
+            self.test_blueprint,
+        ]
 
-        async def blueprint_generator():
-            """
-            Yield the test blueprint model instance used by the test
-            case.
+        response = self.client.get('/blueprints/')
 
-            Returns:
-                An asynchronous generator that yields the single
-                    blueprint model `self.test_blueprint`.
-            """
-            yield self.test_blueprint
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.fetch_nodes',
-                return_value=blueprint_generator(),
-            ),
-        ):
-            response = self.client.get('/blueprints/')
-
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(len(data), 1)
-            self.assertEqual(data[0]['name'], 'Test Blueprint')
-            self.assertEqual(data[0]['slug'], 'test-blueprint')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['name'], 'Test Blueprint')
+        self.assertEqual(data[0]['slug'], 'test-blueprint')
 
     def test_list_blueprints_with_enabled_filter(self) -> None:
         """Test listing blueprints with enabled filter."""
+        self.mock_db.match.return_value = [
+            self.test_blueprint,
+        ]
 
-        async def blueprint_generator():
-            """
-            Yield the test blueprint model instance used by the test
-            case.
+        response = self.client.get(
+            '/blueprints/?enabled=true',
+        )
 
-            Returns:
-                An asynchronous generator that yields the single
-                    blueprint model `self.test_blueprint`.
-            """
-            yield self.test_blueprint
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.fetch_nodes',
-                return_value=blueprint_generator(),
-            ) as mock_fetch,
-        ):
-            response = self.client.get('/blueprints/?enabled=true')
-
-            self.assertEqual(response.status_code, 200)
-            # Verify filter was passed to fetch_nodes
-            call_args = mock_fetch.call_args
-            self.assertIn('enabled', call_args[0][1])
-            self.assertTrue(call_args[0][1]['enabled'])
+        self.assertEqual(response.status_code, 200)
+        # Verify filter was passed to db.match
+        call_args = self.mock_db.match.call_args
+        self.assertIn('enabled', call_args[0][1])
+        self.assertTrue(call_args[0][1]['enabled'])
 
     def test_list_blueprints_by_type(self) -> None:
         """Test listing blueprints filtered by type."""
+        self.mock_db.match.return_value = [
+            self.test_blueprint,
+        ]
 
-        async def blueprint_generator():
-            """
-            Yield the test blueprint model instance used by the test
-            case.
+        response = self.client.get('/blueprints/Project')
 
-            Returns:
-                An asynchronous generator that yields the single
-                    blueprint model `self.test_blueprint`.
-            """
-            yield self.test_blueprint
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['type'], 'Project')
 
-        with (
-            mock.patch(
-                'imbi_common.neo4j.fetch_nodes',
-                return_value=blueprint_generator(),
-            ) as mock_fetch,
-        ):
-            response = self.client.get('/blueprints/Project')
+        # Verify type filter was passed
+        call_args = self.mock_db.match.call_args
+        self.assertEqual(call_args[0][1]['type'], 'Project')
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(len(data), 1)
-            self.assertEqual(data[0]['type'], 'Project')
-
-            # Verify type filter was passed
-            call_args = mock_fetch.call_args
-            self.assertEqual(call_args[0][1]['type'], 'Project')
-
-    def test_list_blueprints_by_type_with_enabled_filter(self) -> None:
+    def test_list_blueprints_by_type_with_enabled_filter(
+        self,
+    ) -> None:
         """Test listing blueprints by type with enabled filter."""
+        self.mock_db.match.return_value = [
+            self.test_blueprint,
+        ]
 
-        async def blueprint_generator():
-            """
-            Yield the test blueprint model instance used by the test
-            case.
+        response = self.client.get(
+            '/blueprints/Project?enabled=false',
+        )
 
-            Returns:
-                An asynchronous generator that yields the single
-                    blueprint model `self.test_blueprint`.
-            """
-            yield self.test_blueprint
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.fetch_nodes',
-                return_value=blueprint_generator(),
-            ) as mock_fetch,
-        ):
-            response = self.client.get('/blueprints/Project?enabled=false')
-
-            self.assertEqual(response.status_code, 200)
-            # Verify both filters were passed
-            call_args = mock_fetch.call_args
-            parameters = call_args[0][1]
-            self.assertEqual(parameters['type'], 'Project')
-            self.assertFalse(parameters['enabled'])
+        self.assertEqual(response.status_code, 200)
+        # Verify both filters were passed
+        call_args = self.mock_db.match.call_args
+        parameters = call_args[0][1]
+        self.assertEqual(parameters['type'], 'Project')
+        self.assertFalse(parameters['enabled'])
 
     def test_get_blueprint_success(self) -> None:
         """Test getting a specific blueprint."""
-        with (
-            mock.patch(
-                'imbi_common.neo4j.fetch_node',
-                return_value=self.test_blueprint,
-            ),
-        ):
-            response = self.client.get('/blueprints/Project/test-blueprint')
+        self.mock_db.match.return_value = [
+            self.test_blueprint,
+        ]
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data['name'], 'Test Blueprint')
-            self.assertEqual(data['slug'], 'test-blueprint')
-            self.assertEqual(data['type'], 'Project')
+        response = self.client.get(
+            '/blueprints/Project/test-blueprint',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['name'], 'Test Blueprint')
+        self.assertEqual(data['slug'], 'test-blueprint')
+        self.assertEqual(data['type'], 'Project')
 
     def test_get_blueprint_not_found(self) -> None:
         """Test getting non-existent blueprint returns 404."""
-        with (
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=None),
-        ):
-            response = self.client.get('/blueprints/Project/nonexistent-slug')
+        self.mock_db.match.return_value = []
 
-            self.assertEqual(response.status_code, 404)
-            self.assertIn('not found', response.json()['detail'])
+        response = self.client.get(
+            '/blueprints/Project/nonexistent-slug',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
 
     def test_update_blueprint_success(self) -> None:
         """Test updating a blueprint."""
-        with (
-            mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
-        ):
-            mock_upsert.return_value = 'element123'
+        updated = models.Blueprint(
+            name='Updated Blueprint',
+            slug='test-blueprint',
+            type='Project',
+            description='Updated description',
+            json_schema=models.Schema.model_validate(
+                {'type': 'object', 'properties': {}}
+            ),
+        )
+        self.mock_db.merge.return_value = updated
 
-            response = self.client.put(
-                '/blueprints/Project/test-blueprint',
-                json={
-                    'name': 'Updated Blueprint',
-                    'slug': 'test-blueprint',
-                    'type': 'Project',
-                    'description': 'Updated description',
-                    'json_schema': {'type': 'object', 'properties': {}},
+        response = self.client.put(
+            '/blueprints/Project/test-blueprint',
+            json={
+                'name': 'Updated Blueprint',
+                'slug': 'test-blueprint',
+                'type': 'Project',
+                'description': 'Updated description',
+                'json_schema': {
+                    'type': 'object',
+                    'properties': {},
                 },
-            )
+            },
+        )
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data['name'], 'Updated Blueprint')
-            self.assertEqual(data['description'], 'Updated description')
-            mock_upsert.assert_called_once()
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['name'], 'Updated Blueprint')
+        self.assertEqual(data['description'], 'Updated description')
+        self.mock_db.merge.assert_called_once()
 
-    def test_update_blueprint_slug_rename(self) -> None:
-        """Test updating blueprint with different slug renames it."""
-        with mock.patch('imbi_common.neo4j.upsert') as mock_upsert:
-            response = self.client.put(
-                '/blueprints/Project/test-blueprint',
-                json={
-                    'name': 'Test',
-                    'slug': 'new-slug',
-                    'type': 'Project',
-                    'json_schema': {
-                        'type': 'object',
-                        'properties': {},
-                    },
+    def test_update_blueprint_slug_mismatch_rejected(
+        self,
+    ) -> None:
+        """Mismatched slug in body vs URL returns 400."""
+        response = self.client.put(
+            '/blueprints/Project/test-blueprint',
+            json={
+                'name': 'Test',
+                'slug': 'new-slug',
+                'type': 'Project',
+                'json_schema': {
+                    'type': 'object',
+                    'properties': {},
                 },
-            )
+            },
+        )
 
-            self.assertEqual(response.status_code, 200)
-            mock_upsert.assert_called_once()
-            call_args = mock_upsert.call_args
-            self.assertEqual(call_args[0][0].slug, 'new-slug')
-            self.assertEqual(
-                call_args[0][1],
-                {'slug': 'test-blueprint', 'type': 'Project'},
-            )
+        self.assertEqual(response.status_code, 400)
+        self.mock_db.merge.assert_not_called()
+
+    def test_update_blueprint_type_mismatch_rejected(
+        self,
+    ) -> None:
+        """Mismatched type in body vs URL returns 400."""
+        response = self.client.put(
+            '/blueprints/Project/test-blueprint',
+            json={
+                'name': 'Test',
+                'slug': 'test-blueprint',
+                'type': 'Team',
+                'json_schema': {
+                    'type': 'object',
+                    'properties': {},
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.mock_db.merge.assert_not_called()
 
     def test_delete_blueprint_success(self) -> None:
         """Test deleting a blueprint."""
-        with (
-            mock.patch('imbi_common.neo4j.delete_node', return_value=True),
-        ):
-            response = self.client.delete('/blueprints/Project/test-blueprint')
+        self.mock_db.execute.return_value = [{'n': 'true'}]
 
-            self.assertEqual(response.status_code, 204)
-            self.assertEqual(response.content, b'')
+        response = self.client.delete(
+            '/blueprints/Project/test-blueprint',
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.content, b'')
 
     def test_delete_blueprint_not_found(self) -> None:
         """Test deleting non-existent blueprint returns 404."""
-        with (
-            mock.patch('imbi_common.neo4j.delete_node', return_value=False),
-        ):
-            response = self.client.delete(
-                '/blueprints/Project/nonexistent-slug'
-            )
+        self.mock_db.execute.return_value = []
 
-            self.assertEqual(response.status_code, 404)
-            self.assertIn('not found', response.json()['detail'])
+        response = self.client.delete(
+            '/blueprints/Project/nonexistent-slug',
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
 
     def test_blueprint_requires_authentication(self) -> None:
-        """
-        Verify that blueprint endpoints reject unauthenticated requests.
-
-        Sends unauthenticated GET and POST requests to the blueprints
-        endpoints and asserts each responds with HTTP 401. Restores the
-        test's authentication dependency override after the checks to
-        avoid affecting other tests.
-        """
+        """Verify blueprint endpoints reject unauthenticated."""
         from imbi_api.auth import permissions
 
-        # Clear dependency overrides to test actual authentication
-        self.test_app.dependency_overrides.clear()
+        # Remove auth override only; keep graph DI override
+        del self.test_app.dependency_overrides[permissions.get_current_user]
 
-        # Create a new client without auth override
         client_no_auth = testclient.TestClient(self.test_app)
 
         response = client_no_auth.get('/blueprints/')
@@ -412,17 +353,13 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 401)
 
-        # Restore the override for other tests
+        # Restore the overrides for other tests
         async def mock_get_current_user():
-            """
-            Provide the preconfigured authentication context for tests.
-
-            Returns:
-                The test's authentication context object used to
-                    simulate an authenticated user.
-            """
             return self.auth_context
 
         self.test_app.dependency_overrides[permissions.get_current_user] = (
             mock_get_current_user
+        )
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
         )

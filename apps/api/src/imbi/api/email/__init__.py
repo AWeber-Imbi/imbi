@@ -13,7 +13,7 @@ rendered using Jinja2 templates with both HTML and plain text versions.
 import logging
 from urllib import parse
 
-from imbi_common import clickhouse, neo4j
+from imbi_common import clickhouse, graph
 
 from .client import EmailClient
 from .dependencies import InjectEmailClient, InjectTemplateManager
@@ -87,6 +87,7 @@ async def send_welcome_email(
 async def send_password_reset(
     email_client: EmailClient,
     template_manager: TemplateManager,
+    db: graph.Graph,
     *,
     username: str,
     email: str,
@@ -98,6 +99,7 @@ async def send_password_reset(
     Args:
         email_client: SMTP client for sending emails.
         template_manager: Jinja2 template renderer.
+        db: Graph database connection for storing the reset token.
         username: User's username
         email: User's email address
         display_name: User's display name for personalization
@@ -115,9 +117,9 @@ async def send_password_reset(
         email=email,
     )
 
-    # Store token in Neo4j
-    await neo4j.create_node(token_model)
-    LOGGER.debug('Password reset token stored in Neo4j for %s', username)
+    # Store token in graph
+    await db.merge(token_model)
+    LOGGER.debug('Password reset token stored in graph for %s', username)
 
     # Build reset URL with token (handle existing query params)
     parsed = parse.urlparse(reset_url_base)

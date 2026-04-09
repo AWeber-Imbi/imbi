@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Imbi is a DevOps Service Management Platform designed to manage large environments containing many services and applications. Version 2 (currently in alpha) is a complete rewrite using FastAPI, Neo4j for graph data, and ClickHouse for analytics.
+Imbi is a DevOps Service Management Platform designed to manage large environments containing many services and applications. Version 2 (currently in alpha) is a complete rewrite using FastAPI, Apache AGE (PostgreSQL) for graph data, and ClickHouse for analytics.
 
 **See [README.md](README.md)** for project overview, core concepts, and full v2 roadmap including conversational AI, webhook workflows, MCP server integration, and ecosystem of services.
 
@@ -35,19 +35,17 @@ The `imbi-api setup` command (run once per instance):
 ### Environment Configuration
 
 **Docker services** (configured in `compose.yaml`):
-- **Neo4j**: ports 7474 (HTTP), 7687 (Bolt) - `NEO4J_AUTH=none`
+- **PostgreSQL+AGE**: port 5432
 - **ClickHouse**: ports 8123 (HTTP), 9000 (Native) - default/password
 - **Jaeger**: ports 4317 (OTLP), 16686 (UI) - for OpenTelemetry tracing
 
 The `docker` recipe (run automatically by `just serve` and `just test`) starts Docker Compose services, creates the ClickHouse database, and generates a `.env` file with dynamically assigned ports and OpenTelemetry configuration. You can override settings via environment variables:
 
 ```bash
-NEO4J_URL=neo4j://localhost:7687
-NEO4J_USER=username
-NEO4J_PASSWORD=password
+POSTGRES_URL=postgresql://postgres:secret@localhost:5432/imbi
 ```
 
-**Neo4j URL credential extraction**: The settings model automatically extracts credentials from URLs like `neo4j://user:pass@host:7687`, URL-decodes them, and strips them from the connection URL for security. Explicit `NEO4J_USER`/`NEO4J_PASSWORD` take precedence over URL credentials.
+**PostgreSQL connection**: Settings use `POSTGRES_URL` environment variable with standard PostgreSQL DSN format. Pool size configured via `POSTGRES_MIN_POOL_SIZE` and `POSTGRES_MAX_POOL_SIZE`.
 
 
 ## Development Commands
@@ -72,11 +70,11 @@ The server starts on `localhost:8000` by default (configurable via `IMBI_HOST` a
 ### Running Tests Directly
 ```bash
 # Run specific test file
-just test tests/neo4j/test_client.py
+just test tests/auth/test_permissions.py
 
 # Run specific test class or method
-just test tests/neo4j/test_client.py::Neo4jClientTestCase
-just test tests/neo4j/test_client.py::Neo4jClientTestCase::test_singleton
+just test tests/auth/test_permissions.py::PermissionTests
+just test tests/auth/test_permissions.py::PermissionTests::test_get_permissions
 
 # Run with verbose output
 just test -v
@@ -120,10 +118,8 @@ just test -v
   - `models.py`: Core domain models (Blueprint, User, Group, Role, Permission, Project, etc.)
   - `settings.py`: Configuration via Pydantic Settings with URL credential extraction
   - `blueprints.py`: Blueprint filtering and schema validation logic
-  - `neo4j/`: Neo4j graph database integration layer
-    - `client.py`: Singleton driver with event loop awareness
-    - `__init__.py`: High-level API and cypherantic wrappers
-    - `constants.py`: Index definitions and vector configuration
+  - `graph.py`: Apache AGE (PostgreSQL) async connection pool, Cypher execution, DI via `graph.Pool`
+  - `cypher.py`: Cypher query generation from Pydantic models
   - `clickhouse/`: ClickHouse analytics database integration
     - `client.py`: Async ClickHouse client with connection pooling
     - `__init__.py`: High-level API for queries and inserts
@@ -162,53 +158,49 @@ await clickhouse.aclose()
 - Support for nested/complex types via flattening
 - Connection pooling and health checks
 
-### Neo4j Integration Pattern
+### Graph Integration Pattern (Apache AGE)
 
-The Neo4j module uses a **singleton pattern with event loop awareness**:
+The graph module uses **dependency injection via FastAPI**:
 
 ```python
-from imbi_common import neo4j
+from imbi_common import graph
 
-# Module-level APIs (preferred):
-async with neo4j.session() as sess:
-    # Use session
-    pass
+# In endpoint handlers — injected automatically:
+@router.get('/items/')
+async def list_items(db: graph.Pool) -> list[Item]:
+    return await db.match(Item)
 
-async with neo4j.run('MATCH (n) RETURN n', param=value) as result:
-    records = await result.data()
+# High-level CRUD:
+await db.create(node)           # Create node + edges
+await db.merge(node, ['slug'])  # Upsert by match keys
+results = await db.match(Model, {'slug': 'foo'})
+await db.delete(node)           # DETACH DELETE
 
-# High-level operations:
-await neo4j.initialize()  # Set up indexes
-element_id = await neo4j.upsert(node_model, {'id': '123'})
-await neo4j.aclose()  # Cleanup
-
-# Cypherantic wrapper functions (type-safe Pydantic integration):
-node_id = await neo4j.create_node(model_instance)  # Create node from model
-edge_id = await neo4j.create_relationship(
-    source_model, target_model, rel_type='DEPENDS_ON'
+# Raw Cypher (AGE-compatible):
+records = await db.execute(
+    'MATCH (n:User {{email: {email}}}) RETURN n',
+    {'email': 'user@example.com'},
 )
-await neo4j.refresh_relationship(model, 'dependencies')  # Lazy-load relationships
-edges = await neo4j.retrieve_relationship_edges(model, 'dependencies')
+# Multi-column returns:
+records = await db.execute(
+    'MATCH (u:User)-[r]->(o:Organization) RETURN u, o',
+    columns=['u', 'o'],
+)
+# Parse raw agtype values:
+props = graph.parse_agtype(records[0]['u'])
 ```
 
-**Implementation details** (`imbi_common/neo4j/client.py`):
-- `Neo4j.get_instance()`: Returns singleton driver instance
-- Automatically reinitializes if event loop changes (important for FastAPI)
-- Manages connection pool with keep-alive and max connection settings
-- `initialize()` creates indexes defined in `neo4j/constants.py`
+**Cypher template syntax** (AGE + `psycopg.sql.SQL.format()`):
+- Parameters use `{param}` placeholders (NOT `$param`)
+- Property maps must double-escape braces: `{{key: {value}}}`
+- AGE has no `ON CREATE SET` / `ON MATCH SET` — use plain `SET`
+- Timestamps are stored as ISO strings (no `datetime()` function)
 
-**Upsert pattern** (`imbi_common/neo4j/__init__.py:upsert()`):
-- Uses Cypher `MERGE` with `ON CREATE SET` and `ON MATCH SET`
-- Takes constraint dict for matching (e.g., `{'id': '123'}`)
-- Automatically maps Pydantic model properties to node properties
-- Returns Neo4j elementId of created/updated node
-
-**Cypherantic integration** (`imbi_common/neo4j/__init__.py`):
-- `create_node()`: Create Neo4j nodes from Pydantic models with automatic label/property mapping
-- `create_relationship()`: Create typed relationships between nodes with optional properties
-- `refresh_relationship()`: Lazy-load relationship properties from graph (on-demand fetching)
-- `retrieve_relationship_edges()`: Fetch relationship edges as Pydantic models
-- Full type safety with TypeVars preserving model types through operations
+**Implementation** (`imbi_common/graph.py`):
+- `Graph` class wraps `psycopg_pool.AsyncConnectionPool`
+- `graph_lifespan()` manages pool open/close in FastAPI lifespan
+- `Pool` type alias for DI: `typing.Annotated[Graph, Depends(...)]`
+- Settings from `settings.Postgres` (env prefix `POSTGRES_`)
 
 ### Authentication & Authorization Pattern
 
@@ -269,12 +261,11 @@ app = create_app()  # Returns configured FastAPI instance
 **Lifespan management**: The application uses `imbi_common.lifespan.Lifespan` to compose multiple async context manager hooks (`src/imbi_api/lifespans.py`):
 
 1. `clickhouse_hook` — init/close ClickHouse connection
-2. `neo4j_hook` — init/close Neo4j driver
-3. `neo4j_setup_hook` — create API-specific indexes, refresh blueprint models for OpenAPI
-4. `email_hook` — creates `EmailClient` + `TemplateManager`, yields `tuple[EmailClient, TemplateManager]`
-5. `storage_hook` — creates `StorageClient`, yields it
+2. `graph.graph_lifespan` — open/close Graph connection pool and refresh blueprint models for OpenAPI schema (combined via monkey-patch in `lifespans.py`)
+3. `email_hook` — creates `EmailClient` + `TemplateManager`, yields `tuple[EmailClient, TemplateManager]`
+4. `storage_hook` — creates `StorageClient`, yields it
 
-Hooks that yield resources (email, storage) use the `Lifespan.get_state()` DI pattern — see "Dependency Injection Pattern" below. Neo4j and ClickHouse still use module-level singletons in `imbi_common` and are not yet DI'd.
+Hooks that yield resources (email, storage, graph) use the `Lifespan.get_state()` DI pattern — see "Dependency Injection Pattern" below. Graph is DI-managed via `graph.Pool`; ClickHouse still uses a module-level singleton.
 
 **Endpoint registration** (`src/imbi_api/endpoints/`):
 - Each endpoint module exports an `APIRouter`
@@ -316,22 +307,22 @@ mock_storage = unittest.mock.AsyncMock(spec=StorageClient)
 app.dependency_overrides[_get_storage_client] = lambda: mock_storage
 ```
 
-**Not yet DI'd**: Neo4j and ClickHouse still use module-level singletons in `imbi_common`. Full DI for these requires refactoring the shared library to expose client objects.
+**Not yet DI'd**: ClickHouse still uses a module-level singleton in `imbi_common`.
 
 ### Data Modeling Conventions
 
 1. **Pydantic models** (`imbi_common/models.py`):
    - Domain entities use `pydantic.BaseModel`
    - Keep models simple, focused on data structure
-   - Model class names become Neo4j labels (lowercase)
+   - Model class names become AGE vertex labels
    - Includes: Blueprint, User, Group, Role, Permission, Project, Organization, Team, etc.
-   - **Prefer `typing.Literal` over `enum.StrEnum`** for constrained string fields (e.g., `typing.Literal['active', 'inactive']`). Simple strings are the only type natively supported across Neo4j, ClickHouse, PostgreSQL, JSON, and msgpack — avoid enums, pattern matching on enum values, or other alternatives.
+   - **Prefer `typing.Literal` over `enum.StrEnum`** for constrained string fields (e.g., `typing.Literal['active', 'inactive']`). Simple strings are the only type natively supported across AGE/PostgreSQL, ClickHouse, JSON, and msgpack — avoid enums, pattern matching on enum values, or other alternatives.
 
 2. **Settings** (`imbi_common/settings.py`):
    - Use `pydantic_settings.BaseSettings` for configuration
-   - Prefix environment variables (e.g., `NEO4J_URL`, `CLICKHOUSE_URL`)
+   - Prefix environment variables (e.g., `POSTGRES_URL`, `CLICKHOUSE_URL`)
    - Support `.env` files
-   - Separate settings classes for auth, Neo4j, ClickHouse, server, email
+   - Separate settings classes for auth, Postgres, ClickHouse, server, email
 
 3. **Auth models** (`imbi_common/auth/models.py`):
    - JWT token payloads and metadata
@@ -345,16 +336,15 @@ Tests use `unittest.IsolatedAsyncioTestCase` for async support:
 ```python
 class MyTestCase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        # Reset singleton for test isolation (Neo4j, ClickHouse)
-        client.Neo4j._instance = None
+        self.mock_db = unittest.mock.AsyncMock(spec=graph.Graph)
         # Set up mocks
 
     async def test_something(self) -> None:
-        # Test async code
+        # Pass mock_db to functions: await some_func(self.mock_db, ...)
         pass
 ```
 
-**DI-managed services** (email, storage): Use `dependency_overrides` on the FastAPI app instead of resetting singletons:
+**DI-managed services** (graph, email, storage): Use `dependency_overrides` on the FastAPI app:
 
 ```python
 from imbi_api.storage.dependencies import _get_storage_client
@@ -393,7 +383,7 @@ mock_session.__aexit__.return_value = None
 - `TRY003`: Message text in exception initializers is okay
 - `TRY400`: logging.exception is not always preferable
 - `UP040`: Allow non-PEP 695 type aliases
-- `UP047`: Allow non-PEP 695 generic functions (TypeVars for cypherantic compatibility)
+- `UP047`: Allow non-PEP 695 generic functions
 
 **Formatting**:
 - Always run `just format <filename>` on modified files before returning control to the user, running tests, or committing
@@ -413,7 +403,7 @@ mock_session.__aexit__.return_value = None
    - Runs pre-commit checks (linting, formatting)
    - Executes full test suite via `uv run pytest`
    - Uploads coverage reports to Codecov (90% minimum required)
-   - Starts Docker services (Neo4j, ClickHouse, Jaeger) via bootstrap
+   - Starts Docker services (PostgreSQL+AGE, ClickHouse, Jaeger) via bootstrap
 
 2. **`docs.yaml`**: Builds and deploys documentation to GitHub Pages
    - Triggers on pushes to `main` affecting docs/ or mkdocs.yml
@@ -475,10 +465,10 @@ gh pr create --base main --title "Add new feature" --body "..."
 **Current development status**: This is a v2 alpha rewrite. Core infrastructure and authentication complete (~30% test coverage):
 
 ✅ **Implemented**:
-- FastAPI application with lifespan management (Email, Storage DI-managed via lifespan hooks; Neo4j, ClickHouse remain module-level singletons)
+- FastAPI application with lifespan management (Graph, Email, Storage DI-managed via lifespan hooks; ClickHouse remains module-level singleton)
 - Status endpoint with health check (`GET /status`)
 - CLI with `serve` and `setup` commands (development and production modes)
-- Neo4j integration with singleton pattern, cypherantic wrappers, indexes, upsert operations
+- Apache AGE integration with DI-managed Graph pool, Cypher execution, model CRUD
 - ClickHouse integration with async client, schema management, insert/query operations
 - Settings management via Pydantic with URL credential extraction
 - Core domain models (Blueprint, User, Group, Role, Permission, Project, Organization, Team)
@@ -496,7 +486,7 @@ gh pr create --base main --title "Add new feature" --body "..."
   - Role-based authorization with group support
 - Email notification system (DI-managed via lifespan hooks)
 - S3-compatible object storage with upload validation and thumbnails (DI-managed)
-- Docker Compose development environment (Neo4j, ClickHouse, Jaeger, Mailpit)
+- Docker Compose development environment (PostgreSQL+AGE, ClickHouse, Jaeger, Mailpit)
 - Pre-commit hooks with Ruff linting and formatting
 - Justfile for consistent developer workflow (matching imbi-common and imbi-gateway)
 - Test suite (coverage being expanded to 90%+)
@@ -510,9 +500,9 @@ gh pr create --base main --title "Add new feature" --body "..."
 - UI rewrite
 
 **Database strategy**:
-- **Neo4j**: Graph database for service relationships, dependencies, and user/permission model
+- **Apache AGE (PostgreSQL)**: Graph database for service relationships, dependencies, and user/permission model
 - **ClickHouse**: Analytics and time-series data for operations logs and metrics
 
-**Vector embeddings**: Configuration present for 1536-dimensional vectors with cosine similarity for AI-powered search (see `imbi_common/neo4j/constants.py`)
+**Vector embeddings**: Configuration present for AI-powered search using pgvector (PostgreSQL extension)
 
 **Authentication/Authorization**: Full OAuth2/OIDC support with multiple providers, local password auth, JWT tokens, and fine-grained permission system integrated with all endpoints

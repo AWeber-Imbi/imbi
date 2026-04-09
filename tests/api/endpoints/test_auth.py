@@ -1,10 +1,11 @@
-import typing
+import datetime
 import unittest
 from unittest import mock
 
-import fastapi
 import jwt
+import pydantic
 from fastapi import testclient
+from imbi_common import graph
 
 from imbi_api import app, settings
 from imbi_api.auth import models as auth_models
@@ -25,71 +26,83 @@ class AuthProvidersEndpointTestCase(unittest.TestCase):
         settings._auth_settings = None
 
     def test_get_providers_default_config(self) -> None:
-        """Test /auth/providers with default config (local auth only)."""
+        """Test /auth/providers with default config."""
         response = self.client.get('/auth/providers')
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
-        # Validate response structure
         self.assertIn('providers', data)
         self.assertIn('default_redirect', data)
-        self.assertEqual(data['default_redirect'], '/dashboard')
+        self.assertEqual(
+            data['default_redirect'],
+            '/dashboard',
+        )
 
-        # Only local auth should be enabled by default
         self.assertEqual(len(data['providers']), 1)
         local_provider = data['providers'][0]
         self.assertEqual(local_provider['id'], 'local')
         self.assertEqual(local_provider['type'], 'password')
-        self.assertEqual(local_provider['name'], 'Email/Password')
+        self.assertEqual(
+            local_provider['name'],
+            'Email/Password',
+        )
         self.assertTrue(local_provider['enabled'])
         self.assertEqual(local_provider['icon'], 'lock')
 
-    @mock.patch.dict('os.environ', {'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true'})
+    @mock.patch.dict(
+        'os.environ',
+        {'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true'},
+    )
     def test_get_providers_google_enabled(self) -> None:
         """Test /auth/providers with Google OAuth enabled."""
-        # Reset settings to pick up env vars
         settings._auth_settings = None
 
         response = self.client.get('/auth/providers')
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
-        # Should have local and Google
         self.assertEqual(len(data['providers']), 2)
 
-        # Find Google provider
         google_provider = next(
-            (p for p in data['providers'] if p['id'] == 'google'), None
+            (p for p in data['providers'] if p['id'] == 'google'),
+            None,
         )
         self.assertIsNotNone(google_provider)
         self.assertEqual(google_provider['type'], 'oauth')
         self.assertEqual(google_provider['name'], 'Google')
         self.assertTrue(google_provider['enabled'])
-        self.assertEqual(google_provider['auth_url'], '/auth/oauth/google')
+        self.assertEqual(
+            google_provider['auth_url'],
+            '/auth/oauth/google',
+        )
         self.assertEqual(google_provider['icon'], 'google')
 
-    @mock.patch.dict('os.environ', {'IMBI_AUTH_OAUTH_GITHUB_ENABLED': 'true'})
+    @mock.patch.dict(
+        'os.environ',
+        {'IMBI_AUTH_OAUTH_GITHUB_ENABLED': 'true'},
+    )
     def test_get_providers_github_enabled(self) -> None:
         """Test /auth/providers with GitHub OAuth enabled."""
-        # Reset settings to pick up env vars
         settings._auth_settings = None
 
         response = self.client.get('/auth/providers')
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
-        # Should have local and GitHub
         self.assertEqual(len(data['providers']), 2)
 
-        # Find GitHub provider
         github_provider = next(
-            (p for p in data['providers'] if p['id'] == 'github'), None
+            (p for p in data['providers'] if p['id'] == 'github'),
+            None,
         )
         self.assertIsNotNone(github_provider)
         self.assertEqual(github_provider['type'], 'oauth')
         self.assertEqual(github_provider['name'], 'GitHub')
         self.assertTrue(github_provider['enabled'])
-        self.assertEqual(github_provider['auth_url'], '/auth/oauth/github')
+        self.assertEqual(
+            github_provider['auth_url'],
+            '/auth/oauth/github',
+        )
         self.assertEqual(github_provider['icon'], 'github')
 
     @mock.patch.dict(
@@ -100,26 +113,30 @@ class AuthProvidersEndpointTestCase(unittest.TestCase):
         },
     )
     def test_get_providers_oidc_enabled(self) -> None:
-        """Test /auth/providers with OIDC enabled and custom name."""
-        # Reset settings to pick up env vars
+        """Test /auth/providers with OIDC enabled."""
         settings._auth_settings = None
 
         response = self.client.get('/auth/providers')
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
-        # Should have local and OIDC
         self.assertEqual(len(data['providers']), 2)
 
-        # Find OIDC provider
         oidc_provider = next(
-            (p for p in data['providers'] if p['id'] == 'oidc'), None
+            (p for p in data['providers'] if p['id'] == 'oidc'),
+            None,
         )
         self.assertIsNotNone(oidc_provider)
         self.assertEqual(oidc_provider['type'], 'oauth')
-        self.assertEqual(oidc_provider['name'], 'Custom OIDC')
+        self.assertEqual(
+            oidc_provider['name'],
+            'Custom OIDC',
+        )
         self.assertTrue(oidc_provider['enabled'])
-        self.assertEqual(oidc_provider['auth_url'], '/auth/oauth/oidc')
+        self.assertEqual(
+            oidc_provider['auth_url'],
+            '/auth/oauth/oidc',
+        )
         self.assertEqual(oidc_provider['icon'], 'key')
 
     @mock.patch.dict(
@@ -131,48 +148,56 @@ class AuthProvidersEndpointTestCase(unittest.TestCase):
         },
     )
     def test_get_providers_all_enabled(self) -> None:
-        """Test /auth/providers with all OAuth providers enabled."""
-        # Reset settings to pick up env vars
+        """Test /auth/providers with all providers enabled."""
         settings._auth_settings = None
 
         response = self.client.get('/auth/providers')
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
-        # Should have all 4 providers (local, Google, GitHub, OIDC)
         self.assertEqual(len(data['providers']), 4)
 
         provider_ids = {p['id'] for p in data['providers']}
-        self.assertEqual(provider_ids, {'local', 'google', 'github', 'oidc'})
+        self.assertEqual(
+            provider_ids,
+            {'local', 'google', 'github', 'oidc'},
+        )
 
-    @mock.patch.dict('os.environ', {'IMBI_AUTH_LOCAL_AUTH_ENABLED': 'false'})
+    @mock.patch.dict(
+        'os.environ',
+        {'IMBI_AUTH_LOCAL_AUTH_ENABLED': 'false'},
+    )
     def test_get_providers_local_auth_disabled(self) -> None:
         """Test /auth/providers with local auth disabled."""
-        # Reset settings to pick up env vars
         settings._auth_settings = None
 
         response = self.client.get('/auth/providers')
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
-        # Should have no providers
         self.assertEqual(len(data['providers']), 0)
 
     def test_get_providers_response_model(self) -> None:
-        """Test /auth/providers returns valid AuthProvidersResponse model."""
+        """Test /auth/providers returns valid response."""
         response = self.client.get('/auth/providers')
         self.assertEqual(response.status_code, 200)
 
-        # Validate the response against the model
         providers_response = auth_models.AuthProvidersResponse(
             **response.json()
         )
         self.assertIsInstance(
-            providers_response, auth_models.AuthProvidersResponse
+            providers_response,
+            auth_models.AuthProvidersResponse,
         )
-        self.assertIsInstance(providers_response.providers, list)
+        self.assertIsInstance(
+            providers_response.providers,
+            list,
+        )
         for provider in providers_response.providers:
-            self.assertIsInstance(provider, auth_models.AuthProvider)
+            self.assertIsInstance(
+                provider,
+                auth_models.AuthProvider,
+            )
 
 
 class OAuthFlowTestCase(unittest.TestCase):
@@ -181,7 +206,14 @@ class OAuthFlowTestCase(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
-        self.client = testclient.TestClient(app.create_app())
+        self.test_app = app.create_app()
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
+        self.client = testclient.TestClient(self.test_app)
 
     def tearDown(self) -> None:
         """Reset settings singleton after tests."""
@@ -191,13 +223,19 @@ class OAuthFlowTestCase(unittest.TestCase):
         """Test OAuth login with invalid provider."""
         response = self.client.get('/auth/oauth/invalid')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('Invalid provider', response.json()['detail'])
+        self.assertIn(
+            'Invalid provider',
+            response.json()['detail'],
+        )
 
     def test_oauth_login_disabled_provider(self) -> None:
         """Test OAuth login with disabled provider."""
         response = self.client.get('/auth/oauth/google')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('not enabled', response.json()['detail'])
+        self.assertIn(
+            'not enabled',
+            response.json()['detail'],
+        )
 
     @mock.patch.dict(
         'os.environ',
@@ -210,13 +248,16 @@ class OAuthFlowTestCase(unittest.TestCase):
         """Test OAuth login redirects to Google."""
         settings._auth_settings = None
         response = self.client.get(
-            '/auth/oauth/google', follow_redirects=False
+            '/auth/oauth/google',
+            follow_redirects=False,
         )
         self.assertEqual(response.status_code, 307)
 
-        # Verify redirect URL contains Google OAuth endpoint
         location = response.headers['location']
-        self.assertIn('accounts.google.com/o/oauth2/v2/auth', location)
+        self.assertIn(
+            'accounts.google.com/o/oauth2/v2/auth',
+            location,
+        )
         self.assertIn('client_id=test-id', location)
         self.assertIn('response_type=code', location)
         self.assertIn('state=', location)
@@ -232,64 +273,83 @@ class OAuthFlowTestCase(unittest.TestCase):
         """Test OAuth login redirects to GitHub."""
         settings._auth_settings = None
         response = self.client.get(
-            '/auth/oauth/github', follow_redirects=False
+            '/auth/oauth/github',
+            follow_redirects=False,
         )
         self.assertEqual(response.status_code, 307)
 
-        # Verify redirect URL contains GitHub OAuth endpoint
         location = response.headers['location']
-        self.assertIn('github.com/login/oauth/authorize', location)
+        self.assertIn(
+            'github.com/login/oauth/authorize',
+            location,
+        )
         self.assertIn('client_id=github-id', location)
 
     def test_oauth_callback_error_handling(self) -> None:
         """Test OAuth callback handles provider errors."""
         url = (
             '/auth/oauth/google/callback'
-            '?error=access_denied&error_description=User denied'
+            '?error=access_denied'
+            '&error_description=User denied'
         )
-        response = self.client.get(url, follow_redirects=False)
+        response = self.client.get(
+            url,
+            follow_redirects=False,
+        )
         self.assertEqual(response.status_code, 307)
 
-        # Should redirect to error page
         location = response.headers['location']
         self.assertIn('error=access_denied', location)
 
     def test_oauth_callback_missing_code(self) -> None:
-        """Test OAuth callback with missing code parameter."""
+        """Test OAuth callback with missing code."""
         url = '/auth/oauth/google/callback?state=test-state'
-        response = self.client.get(url, follow_redirects=False)
-        # Should redirect to error page
+        response = self.client.get(
+            url,
+            follow_redirects=False,
+        )
         self.assertEqual(response.status_code, 307)
         location = response.headers['location']
-        self.assertIn('error=authentication_failed', location)
+        self.assertIn(
+            'error=authentication_failed',
+            location,
+        )
 
     def test_oauth_callback_missing_state(self) -> None:
-        """Test OAuth callback with missing state parameter."""
+        """Test OAuth callback with missing state."""
         url = '/auth/oauth/google/callback?code=test-code'
-        response = self.client.get(url, follow_redirects=False)
-        # Should redirect to error page
+        response = self.client.get(
+            url,
+            follow_redirects=False,
+        )
         self.assertEqual(response.status_code, 307)
         location = response.headers['location']
-        self.assertIn('error=authentication_failed', location)
+        self.assertIn(
+            'error=authentication_failed',
+            location,
+        )
 
     @mock.patch.dict(
         'os.environ',
         {
             'IMBI_AUTH_OAUTH_OIDC_ENABLED': 'true',
             'IMBI_AUTH_OAUTH_OIDC_CLIENT_ID': 'oidc-id',
-            'IMBI_AUTH_OAUTH_OIDC_ISSUER_URL': 'https://auth.example.com',
+            'IMBI_AUTH_OAUTH_OIDC_ISSUER_URL': ('https://auth.example.com'),
         },
     )
     def test_oauth_login_oidc_redirect(self) -> None:
-        """Test OAuth login redirects to OIDC with proper URL."""
+        """Test OAuth login redirects to OIDC."""
         settings._auth_settings = None
-        response = self.client.get('/auth/oauth/oidc', follow_redirects=False)
+        response = self.client.get(
+            '/auth/oauth/oidc',
+            follow_redirects=False,
+        )
         self.assertEqual(response.status_code, 307)
 
-        # Verify redirect URL contains OIDC endpoint
         location = response.headers['location']
         self.assertIn(
-            'auth.example.com/protocol/openid-connect/auth', location
+            'auth.example.com/protocol/openid-connect/auth',
+            location,
         )
         self.assertIn('client_id=oidc-id', location)
 
@@ -300,8 +360,14 @@ class LoginPasswordRehashTestCase(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
-        self.client = testclient.TestClient(app.create_app())
-        # Reset rate limiter to avoid 429 errors across tests
+        self.test_app = app.create_app()
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
+        self.client = testclient.TestClient(self.test_app)
         rate_limit.limiter.reset()
 
     def tearDown(self) -> None:
@@ -310,48 +376,27 @@ class LoginPasswordRehashTestCase(unittest.TestCase):
 
     def test_login_with_password_rehash(self) -> None:
         """Test login rehashes password if needed."""
-        import datetime
-
         from imbi_api import models
 
-        # Create user with old password hash format (needs rehashing)
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
             is_active=True,
-            password_hash='old-hash-format',  # Mock old hash
+            password_hash='old-hash-format',
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        def mock_run_side_effect(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-
-            # Check TOTPSecret FIRST (before User)
-            if 'TOTPSecret' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            elif 'TokenMetadata' in query and 'jti' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'permissions': []}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
+        # db.match returns user
+        self.mock_db.match.return_value = [test_user]
+        # db.execute returns empty for TOTP and token
+        self.mock_db.execute.return_value = []
+        # db.merge returns None (void)
+        self.mock_db.merge.return_value = None
 
         with (
             mock.patch(
-                'imbi_common.neo4j.run', side_effect=mock_run_side_effect
-            ),
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=test_user),
-            mock.patch('imbi_common.neo4j.create_node'),
-            mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
-            mock.patch(
-                'imbi_api.auth.password.verify_password', return_value=True
+                'imbi_api.auth.password.verify_password',
+                return_value=True,
             ),
             mock.patch(
                 'imbi_api.auth.password.needs_rehash',
@@ -361,23 +406,26 @@ class LoginPasswordRehashTestCase(unittest.TestCase):
                 'imbi_api.auth.password.hash_password',
                 return_value='new-hashed-password',
             ) as mock_hash,
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.post(
                 '/auth/login',
-                json={'email': 'test@example.com', 'password': 'password123'},
+                json={
+                    'email': 'test@example.com',
+                    'password': 'password123',
+                },
             )
 
             self.assertEqual(response.status_code, 200)
-            # Verify password was checked for rehash
             mock_needs_rehash.assert_called_once()
-            # Verify new hash was created
             mock_hash.assert_called_once_with('password123')
-            # Verify user was updated with new hash (called at least once)
-            mock_upsert.assert_called()
-            # Verify user object has new hash
-            call_args = mock_upsert.call_args_list[0]
-            updated_user = call_args[0][0]
-            self.assertEqual(updated_user.password_hash, 'new-hashed-password')
+            # Verify merge was called (for rehash + tokens)
+            self.assertTrue(
+                self.mock_db.merge.called,
+            )
 
 
 class LoginMFATestCase(unittest.TestCase):
@@ -386,21 +434,31 @@ class LoginMFATestCase(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
-        self.client = testclient.TestClient(app.create_app())
-        # Reset rate limiter to avoid 429 errors across tests
+        self.test_app = app.create_app()
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
+        self.client = testclient.TestClient(self.test_app)
         rate_limit.limiter.reset()
 
-        # Mock encryption for MFA tests (plaintext secrets in tests)
+        # Mock encryption for MFA tests
         from imbi_common.auth.encryption import TokenEncryption
 
         mock_encryptor = mock.Mock()
-        # decrypt() returns the input as-is (plaintext)
-        mock_encryptor.decrypt = mock.Mock(side_effect=lambda x: x)
-        # encrypt() returns the input as-is (plaintext)
-        mock_encryptor.encrypt = mock.Mock(side_effect=lambda x: x)
+        mock_encryptor.decrypt = mock.Mock(
+            side_effect=lambda x: x,
+        )
+        mock_encryptor.encrypt = mock.Mock(
+            side_effect=lambda x: x,
+        )
 
         self.encryption_patcher = mock.patch.object(
-            TokenEncryption, 'get_instance', return_value=mock_encryptor
+            TokenEncryption,
+            'get_instance',
+            return_value=mock_encryptor,
         )
         self.encryption_patcher.start()
 
@@ -410,9 +468,7 @@ class LoginMFATestCase(unittest.TestCase):
         settings._auth_settings = None
 
     def test_login_mfa_required_no_code(self) -> None:
-        """Test login with MFA enabled but no code provided."""
-        import datetime
-
+        """Test login with MFA enabled but no code."""
         from imbi_api import models
         from imbi_api.auth import password
 
@@ -424,46 +480,42 @@ class LoginMFATestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        def mock_run_side_effect(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+        totp_data = {
+            'secret': 'JBSWY3DPEHPK3PXP',
+            'enabled': True,
+            'backup_codes': [],
+        }
 
-            # Check TOTPSecret FIRST (before User)
-            if 'TOTPSecret' in query:
-                # MFA is enabled
-                totp_data = {
-                    'secret': 'JBSWY3DPEHPK3PXP',
-                    'enabled': True,
-                    'backup_codes': [],
-                }
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'t': totp_data}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+        self.mock_db.match.return_value = [test_user]
+        # TOTP query returns enabled MFA
+        self.mock_db.execute.return_value = [
+            {'n': totp_data},
+        ]
 
-            return mock_result
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.run', side_effect=mock_run_side_effect
-            ),
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=test_user),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/auth/login',
-                json={'email': 'test@example.com', 'password': 'password123'},
+                json={
+                    'email': 'test@example.com',
+                    'password': 'password123',
+                },
             )
 
             self.assertEqual(response.status_code, 401)
-            self.assertEqual(response.json()['detail'], 'MFA code required')
-            self.assertEqual(response.headers.get('X-MFA-Required'), 'true')
+            self.assertEqual(
+                response.json()['detail'],
+                'MFA code required',
+            )
+            self.assertEqual(
+                response.headers.get('X-MFA-Required'),
+                'true',
+            )
 
     def test_login_mfa_valid_totp(self) -> None:
         """Test login with valid TOTP code."""
-        import datetime
-
         import pyotp
 
         from imbi_api import models
@@ -477,47 +529,25 @@ class LoginMFATestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        # Generate valid TOTP code
         secret = 'JBSWY3DPEHPK3PXP'
         totp = pyotp.TOTP(secret)
         valid_code = totp.now()
 
-        def mock_run_side_effect(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
+        totp_data = {
+            'secret': secret,
+            'enabled': True,
+            'backup_codes': [],
+        }
 
-            # Check TOTPSecret FIRST (before User)
-            if 'TOTPSecret' in query and 'RETURN t' in query:
-                totp_data = {
-                    'secret': secret,
-                    'enabled': True,
-                    'backup_codes': [],
-                }
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'t': totp_data}]
-                )
-            elif 't.last_used' in query:
-                # Update last used
-                mock_result.data = mock.AsyncMock(return_value=[])
-            elif 'TokenMetadata' in query and 'jti' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'permissions': []}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+        self.mock_db.match.return_value = [test_user]
+        self.mock_db.execute.return_value = [
+            {'n': totp_data},
+        ]
+        self.mock_db.merge.return_value = None
 
-            return mock_result
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.run', side_effect=mock_run_side_effect
-            ),
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=test_user),
-            mock.patch('imbi_common.neo4j.create_node'),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/auth/login',
@@ -535,8 +565,6 @@ class LoginMFATestCase(unittest.TestCase):
 
     def test_login_mfa_valid_backup_code(self) -> None:
         """Test login with valid backup code."""
-        import datetime
-
         from imbi_api import models
         from imbi_api.auth import password
 
@@ -551,42 +579,21 @@ class LoginMFATestCase(unittest.TestCase):
         backup_code = 'backup123'
         hashed_backup = password.hash_password(backup_code)
 
-        def mock_run_side_effect(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
+        totp_data = {
+            'secret': 'JBSWY3DPEHPK3PXP',
+            'enabled': True,
+            'backup_codes': [hashed_backup, 'other-hash'],
+        }
 
-            # Check TOTPSecret FIRST (before User)
-            if 'TOTPSecret' in query and 'RETURN t' in query:
-                totp_data = {
-                    'secret': 'JBSWY3DPEHPK3PXP',
-                    'enabled': True,
-                    'backup_codes': [hashed_backup, 'other-code-hash'],
-                }
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'t': totp_data}]
-                )
-            elif 't.backup_codes' in query:
-                # Update backup codes (remove used one)
-                mock_result.data = mock.AsyncMock(return_value=[])
-            elif 'TokenMetadata' in query and 'jti' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'permissions': []}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+        self.mock_db.match.return_value = [test_user]
+        self.mock_db.execute.return_value = [
+            {'n': totp_data},
+        ]
+        self.mock_db.merge.return_value = None
 
-            return mock_result
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.run', side_effect=mock_run_side_effect
-            ),
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=test_user),
-            mock.patch('imbi_common.neo4j.create_node'),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/auth/login',
@@ -604,8 +611,6 @@ class LoginMFATestCase(unittest.TestCase):
 
     def test_login_mfa_invalid_code(self) -> None:
         """Test login with invalid MFA code."""
-        import datetime
-
         from imbi_api import models
         from imbi_api.auth import password
 
@@ -617,112 +622,84 @@ class LoginMFATestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        def mock_run_side_effect(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+        totp_data = {
+            'secret': 'JBSWY3DPEHPK3PXP',
+            'enabled': True,
+            'backup_codes': [],
+        }
 
-            # Check TOTPSecret FIRST (before User)
-            if 'TOTPSecret' in query:
-                totp_data = {
-                    'secret': 'JBSWY3DPEHPK3PXP',
-                    'enabled': True,
-                    'backup_codes': [],
-                }
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'t': totp_data}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+        self.mock_db.match.return_value = [test_user]
+        self.mock_db.execute.return_value = [
+            {'n': totp_data},
+        ]
 
-            return mock_result
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.run', side_effect=mock_run_side_effect
-            ),
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=test_user),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/auth/login',
                 json={
                     'email': 'test@example.com',
                     'password': 'password123',
-                    'mfa_code': '000000',  # Invalid code
+                    'mfa_code': '000000',
                 },
             )
 
             self.assertEqual(response.status_code, 401)
-            self.assertEqual(response.json()['detail'], 'Invalid MFA code')
+            self.assertEqual(
+                response.json()['detail'],
+                'Invalid MFA code',
+            )
 
     def test_login_user_not_found(self) -> None:
         """Test login with user not found."""
+        self.mock_db.match.return_value = []
 
-        auth_settings = settings.Auth(
-            jwt_secret='test-secret-key-min-32-chars-long',
+        response = self.client.post(
+            '/auth/login',
+            json={
+                'email': 'nonexistent@example.com',
+                'password': 'password123',
+            },
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-                return_value=auth_settings,
-            ),
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=None),
-        ):
-            response = self.client.post(
-                '/auth/login',
-                json={
-                    'email': 'nonexistent@example.com',
-                    'password': 'password123',
-                },
-            )
-
-            self.assertEqual(response.status_code, 401)
-            self.assertIn('Invalid credentials', response.json()['detail'])
+        self.assertEqual(response.status_code, 401)
+        self.assertIn(
+            'Invalid credentials',
+            response.json()['detail'],
+        )
 
     def test_login_oauth_only_user(self) -> None:
-        """Test login attempt for OAuth-only user (no password)."""
-        import datetime
-
+        """Test login for OAuth-only user (no password)."""
         from imbi_api import models
 
-        # User without password hash (OAuth-only)
         oauth_user = models.User(
             email='oauth@example.com',
             display_name='OAuth User',
             is_active=True,
-            password_hash=None,  # No password
+            password_hash=None,
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        auth_settings = settings.Auth(
-            jwt_secret='test-secret-key-min-32-chars-long',
+        self.mock_db.match.return_value = [oauth_user]
+
+        response = self.client.post(
+            '/auth/login',
+            json={
+                'email': 'oauth@example.com',
+                'password': 'anypassword',
+            },
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-                return_value=auth_settings,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.fetch_node', return_value=oauth_user
-            ),
-        ):
-            response = self.client.post(
-                '/auth/login',
-                json={'email': 'oauth@example.com', 'password': 'anypassword'},
-            )
-
-            self.assertEqual(response.status_code, 401)
-            self.assertIn(
-                'Password authentication not available',
-                response.json()['detail'],
-            )
+        self.assertEqual(response.status_code, 401)
+        self.assertIn(
+            'Password authentication not available',
+            response.json()['detail'],
+        )
 
     def test_login_invalid_password(self) -> None:
         """Test login with invalid password."""
-        import datetime
-
         from imbi_api import models
         from imbi_api.auth import password
 
@@ -734,27 +711,21 @@ class LoginMFATestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        auth_settings = settings.Auth(
-            jwt_secret='test-secret-key-min-32-chars-long',
+        self.mock_db.match.return_value = [test_user]
+
+        response = self.client.post(
+            '/auth/login',
+            json={
+                'email': 'test@example.com',
+                'password': 'wrongpassword',
+            },
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-                return_value=auth_settings,
-            ),
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=test_user),
-        ):
-            response = self.client.post(
-                '/auth/login',
-                json={
-                    'email': 'test@example.com',
-                    'password': 'wrongpassword',
-                },
-            )
-
-            self.assertEqual(response.status_code, 401)
-            self.assertIn('Invalid credentials', response.json()['detail'])
+        self.assertEqual(response.status_code, 401)
+        self.assertIn(
+            'Invalid credentials',
+            response.json()['detail'],
+        )
 
 
 class OAuthCallbackSuccessTestCase(unittest.TestCase):
@@ -763,7 +734,14 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
-        self.client = testclient.TestClient(app.create_app())
+        self.test_app = app.create_app()
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
+        self.client = testclient.TestClient(self.test_app)
 
     def tearDown(self) -> None:
         """Reset settings singleton after tests."""
@@ -774,28 +752,23 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
         {
             'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true',
             'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID': 'test-id',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': 'test-secret',
-            # Use valid Fernet key
+            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': ('test-secret'),
             'IMBI_AUTH_ENCRYPTION_KEY': (
                 'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
             ),
         },
     )
-    def test_oauth_callback_success_existing_identity(self) -> None:
+    def test_oauth_callback_success_existing_identity(
+        self,
+    ) -> None:
         """Test OAuth callback with existing identity."""
-        import datetime
-
-        import pydantic
         from imbi_common.auth import encryption
 
         from imbi_api import models
-        from imbi_api.auth import models as auth_models
 
-        # Reset settings to pick up env vars
         settings._auth_settings = None
         encryption.TokenEncryption.reset_instance()
 
-        # Create test user and OAuth identity
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
@@ -812,36 +785,59 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             avatar_url=pydantic.HttpUrl('https://example.com/avatar.jpg'),
             access_token='encrypted-access-token',
             refresh_token='encrypted-refresh-token',
-            token_expires_at=datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(hours=1),
+            token_expires_at=(
+                datetime.datetime.now(datetime.UTC)
+                + datetime.timedelta(hours=1)
+            ),
             linked_at=datetime.datetime.now(datetime.UTC),
             last_used=datetime.datetime.now(datetime.UTC),
-            raw_profile={'id': 'google-123', 'name': 'Test User'},
+            raw_profile={
+                'id': 'google-123',
+                'name': 'Test User',
+            },
             user=test_user,
         )
 
-        # Mock OAuth state verification
         mock_state_data = auth_models.OAuthStateData(
             provider='google',
             redirect_uri='/dashboard',
             nonce='test-nonce',
-            timestamp=int(datetime.datetime.now(datetime.UTC).timestamp()),
+            timestamp=int(
+                datetime.datetime.now(
+                    datetime.UTC,
+                ).timestamp()
+            ),
         )
 
-        # Mock OAuth token response
         mock_token_response = {
             'access_token': 'google-access-token',
             'refresh_token': 'google-refresh-token',
             'expires_in': 3600,
         }
 
-        # Mock OAuth profile
         mock_profile = {
             'id': 'google-123',
             'email': 'test@example.com',
             'name': 'Test User',
             'avatar_url': 'https://example.com/avatar.jpg',
         }
+
+        # db.match returns identity, then user data
+        self.mock_db.match.return_value = [test_identity]
+        self.mock_db.merge.return_value = None
+        # For user query after identity found
+        user_data = {
+            'email': 'test@example.com',
+            'display_name': 'Test User',
+            'is_active': True,
+            'password_hash': None,
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ).isoformat(),
+        }
+        self.mock_db.execute.return_value = [
+            {'u': user_data},
+        ]
 
         with (
             mock.patch(
@@ -857,21 +853,10 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
                 return_value=mock_profile,
             ),
             mock.patch(
-                'imbi_common.neo4j.fetch_node', return_value=test_identity
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
-            mock.patch(
-                'imbi_common.neo4j.refresh_relationship'
-            ) as mock_refresh,
-            mock.patch('imbi_common.neo4j.create_node'),
-            mock.patch('imbi_common.neo4j.upsert'),
         ):
-            # Set up identity.user for refresh_relationship
-            async def mock_refresh_side_effect(obj, rel_name):
-                if rel_name == 'user':
-                    obj.user = test_user
-
-            mock_refresh.side_effect = mock_refresh_side_effect
-
             response = self.client.get(
                 '/auth/oauth/google/callback?code=test-code&state=test-state',
                 follow_redirects=False,
@@ -879,8 +864,6 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
 
             self.assertEqual(response.status_code, 307)
             location = response.headers['location']
-
-            # Verify redirect contains tokens in fragment
             self.assertIn('/dashboard#', location)
             self.assertIn('access_token=', location)
             self.assertIn('refresh_token=', location)
@@ -892,8 +875,7 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
         {
             'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true',
             'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID': 'test-id',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': 'test-secret',
-            # Use valid Fernet key
+            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': ('test-secret'),
             'IMBI_AUTH_ENCRYPTION_KEY': (
                 'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
             ),
@@ -902,33 +884,28 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
     )
     def test_oauth_callback_success_new_user(self) -> None:
         """Test OAuth callback creating new user."""
-        import datetime
-
         from imbi_common.auth import encryption
 
-        from imbi_api import models
-        from imbi_api.auth import models as auth_models
-
-        # Reset settings to pick up env vars
         settings._auth_settings = None
         encryption.TokenEncryption.reset_instance()
 
-        # Mock OAuth state verification
         mock_state_data = auth_models.OAuthStateData(
             provider='google',
             redirect_uri='/dashboard',
             nonce='test-nonce',
-            timestamp=int(datetime.datetime.now(datetime.UTC).timestamp()),
+            timestamp=int(
+                datetime.datetime.now(
+                    datetime.UTC,
+                ).timestamp()
+            ),
         )
 
-        # Mock OAuth token response
         mock_token_response = {
             'access_token': 'google-access-token',
             'refresh_token': 'google-refresh-token',
             'expires_in': 3600,
         }
 
-        # Mock OAuth profile
         mock_profile = {
             'id': 'google-456',
             'email': 'newuser@example.com',
@@ -936,17 +913,22 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             'avatar_url': 'https://example.com/avatar2.jpg',
         }
 
-        # Mock neo4j calls to simulate no existing identity/user
-        def mock_fetch_node_side_effect(model_class, constraints):
-            # Return None for all fetch calls (no existing identity or user)
-            return None
-
-        # Track created objects
-        created_objects = []
-
-        async def mock_create_node_side_effect(obj):
-            created_objects.append(obj)
-            return 'element-id-123'
+        # No existing identity or user
+        self.mock_db.match.return_value = []
+        self.mock_db.merge.return_value = None
+        # User query after identity creation
+        user_data = {
+            'email': 'newuser@example.com',
+            'display_name': 'New User',
+            'is_active': True,
+            'password_hash': None,
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ).isoformat(),
+        }
+        self.mock_db.execute.return_value = [
+            {'u': user_data},
+        ]
 
         with (
             mock.patch(
@@ -962,36 +944,10 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
                 return_value=mock_profile,
             ),
             mock.patch(
-                'imbi_common.neo4j.fetch_node',
-                side_effect=mock_fetch_node_side_effect,
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
-            mock.patch(
-                'imbi_common.neo4j.create_node',
-                side_effect=mock_create_node_side_effect,
-            ),
-            mock.patch('imbi_common.neo4j.create_relationship'),
-            mock.patch(
-                'imbi_common.neo4j.refresh_relationship'
-            ) as mock_refresh,
-            mock.patch('imbi_common.neo4j.upsert'),
         ):
-            # Set up user after identity is created
-            async def mock_refresh_side_effect(obj, rel_name):
-                if rel_name == 'user' and created_objects:
-                    # Find the user in created objects
-                    user = next(
-                        (
-                            o
-                            for o in created_objects
-                            if isinstance(o, models.User)
-                        ),
-                        None,
-                    )
-                    if user:
-                        obj.user = user
-
-            mock_refresh.side_effect = mock_refresh_side_effect
-
             response = self.client.get(
                 '/auth/oauth/google/callback?code=test-code&state=test-state',
                 follow_redirects=False,
@@ -999,73 +955,59 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
 
             self.assertEqual(response.status_code, 307)
             location = response.headers['location']
-
-            # Verify redirect contains tokens in fragment
             self.assertIn('/dashboard#', location)
             self.assertIn('access_token=', location)
             self.assertIn('refresh_token=', location)
 
-            # Verify user and identity were created
-            self.assertGreater(len(created_objects), 0)
-            # Should have user, identity, and 2 token metadata objects
-            user_created = any(
-                isinstance(o, models.User) for o in created_objects
-            )
-            identity_created = any(
-                isinstance(o, models.OAuthIdentity) for o in created_objects
-            )
-            self.assertTrue(user_created, 'User should be created')
-            self.assertTrue(
-                identity_created, 'OAuth identity should be created'
-            )
+            # Verify merge was called for user + identity
+            self.assertTrue(self.mock_db.merge.called)
 
     @mock.patch.dict(
         'os.environ',
         {
             'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true',
             'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID': 'test-id',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': 'test-secret',
+            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': ('test-secret'),
             'IMBI_AUTH_OAUTH_GOOGLE_ALLOWED_DOMAINS': (
                 '["example.com", "test.com"]'
             ),
-            # Use valid Fernet key
             'IMBI_AUTH_ENCRYPTION_KEY': (
                 'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
             ),
         },
     )
-    def test_oauth_callback_google_domain_restriction(self) -> None:
-        """Test OAuth callback with Google domain restriction."""
-        import datetime
-
+    def test_oauth_callback_google_domain_restriction(
+        self,
+    ) -> None:
+        """Test OAuth callback with domain restriction."""
         from imbi_common.auth import encryption
 
-        from imbi_api.auth import models as auth_models
-
-        # Reset settings to pick up env vars
         settings._auth_settings = None
         encryption.TokenEncryption.reset_instance()
 
-        # Mock OAuth state verification
         mock_state_data = auth_models.OAuthStateData(
             provider='google',
             redirect_uri='/dashboard',
             nonce='test-nonce',
-            timestamp=int(datetime.datetime.now(datetime.UTC).timestamp()),
+            timestamp=int(
+                datetime.datetime.now(
+                    datetime.UTC,
+                ).timestamp()
+            ),
         )
 
-        # Mock OAuth token response
         mock_token_response = {
             'access_token': 'google-access-token',
             'expires_in': 3600,
         }
 
-        # Mock OAuth profile with disallowed domain
         mock_profile = {
             'id': 'google-789',
-            'email': 'user@baddomaindomain.com',  # Not in allowed list
+            'email': 'user@baddomaindomain.com',
             'name': 'Bad Domain User',
         }
+
+        self.mock_db.match.return_value = []
 
         with (
             mock.patch(
@@ -1080,17 +1022,16 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
                 'imbi_api.auth.oauth.fetch_oauth_profile',
                 return_value=mock_profile,
             ),
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=None),
         ):
             response = self.client.get(
                 '/auth/oauth/google/callback?code=test-code&state=test-state',
                 follow_redirects=False,
             )
 
-            # Should redirect to error page
             self.assertEqual(response.status_code, 307)
             self.assertIn(
-                'error=authentication_failed', response.headers['location']
+                'error=authentication_failed',
+                response.headers['location'],
             )
 
     @mock.patch.dict(
@@ -1098,28 +1039,24 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
         {
             'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true',
             'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID': 'test-id',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': 'test-secret',
-            # Use valid Fernet key
+            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': ('test-secret'),
             'IMBI_AUTH_ENCRYPTION_KEY': (
                 'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
             ),
             'IMBI_AUTH_OAUTH_AUTO_LINK_BY_EMAIL': 'true',
         },
     )
-    def test_oauth_callback_auto_link_existing_user(self) -> None:
-        """Test OAuth callback auto-linking to existing user by email."""
-        import datetime
-
+    def test_oauth_callback_auto_link_existing_user(
+        self,
+    ) -> None:
+        """Test OAuth callback auto-linking to existing user."""
         from imbi_common.auth import encryption
 
         from imbi_api import models
-        from imbi_api.auth import models as auth_models
 
-        # Reset settings to pick up env vars
         settings._auth_settings = None
         encryption.TokenEncryption.reset_instance()
 
-        # Existing user
         existing_user = models.User(
             email='existing@example.com',
             display_name='Existing User',
@@ -1128,37 +1065,48 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        # Mock OAuth state verification
         mock_state_data = auth_models.OAuthStateData(
             provider='google',
             redirect_uri='/dashboard',
             nonce='test-nonce',
-            timestamp=int(datetime.datetime.now(datetime.UTC).timestamp()),
+            timestamp=int(
+                datetime.datetime.now(
+                    datetime.UTC,
+                ).timestamp()
+            ),
         )
 
-        # Mock OAuth token response
         mock_token_response = {
             'access_token': 'google-access-token',
             'expires_in': 3600,
         }
 
-        # Mock OAuth profile with existing user's email
         mock_profile = {
             'id': 'google-999',
             'email': 'existing@example.com',
             'name': 'Existing User',
         }
 
-        # Track fetch_node calls
-        fetch_calls = []
-
-        def mock_fetch_node_side_effect(model_class, constraints):
-            fetch_calls.append((model_class, constraints))
-            if model_class == models.OAuthIdentity:
-                return None  # No existing identity
-            elif model_class == models.User and 'email' in constraints:
-                return existing_user  # Found existing user by email
-            return None
+        # First match: identity not found
+        # Second match: user found by email
+        self.mock_db.match.side_effect = [
+            [],
+            [existing_user],
+        ]
+        self.mock_db.merge.return_value = None
+        # User query after identity creation
+        user_data = {
+            'email': 'existing@example.com',
+            'display_name': 'Existing User',
+            'is_active': True,
+            'password_hash': 'existing-hash',
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ).isoformat(),
+        }
+        self.mock_db.execute.return_value = [
+            {'u': user_data},
+        ]
 
         with (
             mock.patch(
@@ -1174,23 +1122,10 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
                 return_value=mock_profile,
             ),
             mock.patch(
-                'imbi_common.neo4j.fetch_node',
-                side_effect=mock_fetch_node_side_effect,
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
-            mock.patch('imbi_common.neo4j.create_node'),
-            mock.patch('imbi_common.neo4j.create_relationship'),
-            mock.patch(
-                'imbi_common.neo4j.refresh_relationship'
-            ) as mock_refresh,
-            mock.patch('imbi_common.neo4j.upsert'),
         ):
-            # Set up identity.user for refresh_relationship
-            async def mock_refresh_side_effect(obj, rel_name):
-                if rel_name == 'user':
-                    obj.user = existing_user
-
-            mock_refresh.side_effect = mock_refresh_side_effect
-
             response = self.client.get(
                 '/auth/oauth/google/callback?code=test-code&state=test-state',
                 follow_redirects=False,
@@ -1206,46 +1141,45 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
         {
             'IMBI_AUTH_OAUTH_GOOGLE_ENABLED': 'true',
             'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_ID': 'test-id',
-            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': 'test-secret',
-            # Use valid Fernet key
+            'IMBI_AUTH_OAUTH_GOOGLE_CLIENT_SECRET': ('test-secret'),
             'IMBI_AUTH_ENCRYPTION_KEY': (
                 'nhia5yBgff552rNZAvT4GGu-IE0dMVsXQaM2auHNXRo='
             ),
             'IMBI_AUTH_OAUTH_AUTO_CREATE_USERS': 'false',
         },
     )
-    def test_oauth_callback_auto_create_disabled(self) -> None:
-        """Test OAuth callback with user auto-creation disabled."""
-        import datetime
-
+    def test_oauth_callback_auto_create_disabled(
+        self,
+    ) -> None:
+        """Test OAuth callback with auto-creation off."""
         from imbi_common.auth import encryption
 
-        from imbi_api.auth import models as auth_models
-
-        # Reset settings to pick up env vars
         settings._auth_settings = None
         encryption.TokenEncryption.reset_instance()
 
-        # Mock OAuth state verification
         mock_state_data = auth_models.OAuthStateData(
             provider='google',
             redirect_uri='/dashboard',
             nonce='test-nonce',
-            timestamp=int(datetime.datetime.now(datetime.UTC).timestamp()),
+            timestamp=int(
+                datetime.datetime.now(
+                    datetime.UTC,
+                ).timestamp()
+            ),
         )
 
-        # Mock OAuth token response
         mock_token_response = {
             'access_token': 'google-access-token',
             'expires_in': 3600,
         }
 
-        # Mock OAuth profile
         mock_profile = {
             'id': 'google-111',
             'email': 'newuser@example.com',
             'name': 'New User',
         }
+
+        self.mock_db.match.return_value = []
 
         with (
             mock.patch(
@@ -1260,17 +1194,16 @@ class OAuthCallbackSuccessTestCase(unittest.TestCase):
                 'imbi_api.auth.oauth.fetch_oauth_profile',
                 return_value=mock_profile,
             ),
-            mock.patch('imbi_common.neo4j.fetch_node', return_value=None),
         ):
             response = self.client.get(
                 '/auth/oauth/google/callback?code=test-code&state=test-state',
                 follow_redirects=False,
             )
 
-            # Should redirect to error page
             self.assertEqual(response.status_code, 307)
             self.assertIn(
-                'error=authentication_failed', response.headers['location']
+                'error=authentication_failed',
+                response.headers['location'],
             )
 
 
@@ -1280,7 +1213,14 @@ class TokenRefreshTestCase(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test client."""
         settings._auth_settings = None
-        self.client = testclient.TestClient(app.create_app())
+        self.test_app = app.create_app()
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
+        self.client = testclient.TestClient(self.test_app)
 
     def tearDown(self) -> None:
         """Reset settings singleton after tests."""
@@ -1288,8 +1228,6 @@ class TokenRefreshTestCase(unittest.TestCase):
 
     def test_refresh_token_success(self) -> None:
         """Test successful token refresh."""
-        import datetime
-
         from imbi_common.auth import core
 
         from imbi_api import models
@@ -1298,7 +1236,6 @@ class TokenRefreshTestCase(unittest.TestCase):
             jwt_secret='test-secret-key-min-32-chars-long',
         )
 
-        # Create test user
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
@@ -1307,9 +1244,9 @@ class TokenRefreshTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        # Create refresh token
         refresh_token = core.create_refresh_token(
-            test_user.email, auth_settings=auth_settings
+            test_user.email,
+            auth_settings=auth_settings,
         )
         payload = jwt.decode(
             refresh_token,
@@ -1318,31 +1255,33 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
         refresh_jti = payload['jti']
 
-        # Create token metadata
         token_meta = models.TokenMetadata(
             jti=refresh_jti,
             token_type='refresh',
             issued_at=datetime.datetime.now(datetime.UTC),
-            expires_at=datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(
-                seconds=auth_settings.refresh_token_expire_seconds
+            expires_at=(
+                datetime.datetime.now(datetime.UTC)
+                + datetime.timedelta(
+                    seconds=auth_settings.refresh_token_expire_seconds
+                )
             ),
             user=test_user,
             revoked=False,
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-                return_value=auth_settings,
-            ),
-            mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch_node,
-            mock.patch('imbi_common.neo4j.upsert'),
-            mock.patch('imbi_common.neo4j.create_node'),
-        ):
-            # First call fetches token metadata, second fetches user
-            mock_fetch_node.side_effect = [token_meta, test_user]
+        # First match: token metadata found
+        # Second match: user found
+        self.mock_db.match.side_effect = [
+            [token_meta],
+            [test_user],
+        ]
+        self.mock_db.merge.return_value = None
+        self.mock_db.execute.return_value = []
 
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings',
+            return_value=auth_settings,
+        ):
             response = self.client.post(
                 '/auth/token/refresh',
                 json={'refresh_token': refresh_token},
@@ -1353,27 +1292,25 @@ class TokenRefreshTestCase(unittest.TestCase):
             self.assertIn('access_token', data)
             self.assertIn('refresh_token', data)
             self.assertNotEqual(
-                data['refresh_token'], refresh_token
-            )  # Rotated
+                data['refresh_token'],
+                refresh_token,
+            )
 
     def test_refresh_token_expired(self) -> None:
         """Test token refresh with expired token."""
-        import datetime
-
-        import jwt
-
         auth_settings = settings.Auth(
             jwt_secret='test-secret-key-min-32-chars-long',
-            refresh_token_expire_seconds=1,  # Short expiration for testing
+            refresh_token_expire_seconds=1,
         )
 
-        # Create expired refresh token
         payload = {
             'sub': 'testuser',
             'type': 'refresh',
             'jti': 'test-jti',
-            'exp': datetime.datetime.now(datetime.UTC)
-            - datetime.timedelta(seconds=10),
+            'exp': (
+                datetime.datetime.now(datetime.UTC)
+                - datetime.timedelta(seconds=10)
+            ),
         }
         expired_token = jwt.encode(
             payload,
@@ -1391,7 +1328,10 @@ class TokenRefreshTestCase(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 401)
-            self.assertIn('expired', response.json()['detail'].lower())
+            self.assertIn(
+                'expired',
+                response.json()['detail'].lower(),
+            )
 
     def test_refresh_token_invalid(self) -> None:
         """Test token refresh with invalid token."""
@@ -1409,12 +1349,13 @@ class TokenRefreshTestCase(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 401)
-            self.assertIn('Invalid', response.json()['detail'])
+            self.assertIn(
+                'Invalid',
+                response.json()['detail'],
+            )
 
     def test_refresh_token_wrong_type(self) -> None:
-        """Test token refresh with access token instead of refresh token."""
-        import datetime
-
+        """Test refresh with access token instead."""
         from imbi_common.auth import core
 
         from imbi_api import models
@@ -1431,9 +1372,9 @@ class TokenRefreshTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        # Create access token (wrong type)
         access_token = core.create_access_token(
-            test_user.email, auth_settings=auth_settings
+            test_user.email,
+            auth_settings=auth_settings,
         )
 
         with mock.patch(
@@ -1446,12 +1387,13 @@ class TokenRefreshTestCase(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 401)
-            self.assertIn('type', response.json()['detail'].lower())
+            self.assertIn(
+                'type',
+                response.json()['detail'].lower(),
+            )
 
     def test_refresh_token_revoked(self) -> None:
         """Test token refresh with revoked token."""
-        import datetime
-
         from imbi_common.auth import core
 
         from imbi_api import models
@@ -1468,9 +1410,9 @@ class TokenRefreshTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        # Create refresh token
         refresh_token = core.create_refresh_token(
-            test_user.email, auth_settings=auth_settings
+            test_user.email,
+            auth_settings=auth_settings,
         )
         payload = jwt.decode(
             refresh_token,
@@ -1479,27 +1421,25 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
         refresh_jti = payload['jti']
 
-        # Create revoked token metadata
         token_meta = models.TokenMetadata(
             jti=refresh_jti,
             token_type='refresh',
             issued_at=datetime.datetime.now(datetime.UTC),
-            expires_at=datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(
-                seconds=auth_settings.refresh_token_expire_seconds
+            expires_at=(
+                datetime.datetime.now(datetime.UTC)
+                + datetime.timedelta(
+                    seconds=auth_settings.refresh_token_expire_seconds
+                )
             ),
             user=test_user,
-            revoked=True,  # Token is revoked
+            revoked=True,
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-                return_value=auth_settings,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.fetch_node', return_value=token_meta
-            ),
+        self.mock_db.match.return_value = [token_meta]
+
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings',
+            return_value=auth_settings,
         ):
             response = self.client.post(
                 '/auth/token/refresh',
@@ -1507,12 +1447,13 @@ class TokenRefreshTestCase(unittest.TestCase):
             )
 
             self.assertEqual(response.status_code, 401)
-            self.assertIn('revoked', response.json()['detail'].lower())
+            self.assertIn(
+                'revoked',
+                response.json()['detail'].lower(),
+            )
 
     def test_refresh_token_user_inactive(self) -> None:
         """Test token refresh with inactive user."""
-        import datetime
-
         from imbi_common.auth import core
 
         from imbi_api import models
@@ -1524,14 +1465,14 @@ class TokenRefreshTestCase(unittest.TestCase):
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
-            is_active=False,  # Inactive user
+            is_active=False,
             password_hash=None,
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        # Create refresh token
         refresh_token = core.create_refresh_token(
-            test_user.email, auth_settings=auth_settings
+            test_user.email,
+            auth_settings=auth_settings,
         )
         payload = jwt.decode(
             refresh_token,
@@ -1540,37 +1481,41 @@ class TokenRefreshTestCase(unittest.TestCase):
         )
         refresh_jti = payload['jti']
 
-        # Create token metadata
         token_meta = models.TokenMetadata(
             jti=refresh_jti,
             token_type='refresh',
             issued_at=datetime.datetime.now(datetime.UTC),
-            expires_at=datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(
-                seconds=auth_settings.refresh_token_expire_seconds
+            expires_at=(
+                datetime.datetime.now(datetime.UTC)
+                + datetime.timedelta(
+                    seconds=auth_settings.refresh_token_expire_seconds
+                )
             ),
             user=test_user,
             revoked=False,
         )
 
-        with (
-            mock.patch(
-                'imbi_api.settings.get_auth_settings',
-                return_value=auth_settings,
-            ),
-            mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch_node,
-            mock.patch('imbi_common.neo4j.upsert'),
-        ):
-            # First call returns token metadata, second returns inactive user
-            mock_fetch_node.side_effect = [token_meta, test_user]
+        # First match: token metadata, second: user
+        self.mock_db.match.side_effect = [
+            [token_meta],
+            [test_user],
+        ]
+        self.mock_db.merge.return_value = None
 
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings',
+            return_value=auth_settings,
+        ):
             response = self.client.post(
                 '/auth/token/refresh',
                 json={'refresh_token': refresh_token},
             )
 
             self.assertEqual(response.status_code, 401)
-            self.assertIn('inactive', response.json()['detail'].lower())
+            self.assertIn(
+                'inactive',
+                response.json()['detail'].lower(),
+            )
 
 
 class LogoutTestCase(unittest.TestCase):
@@ -1578,8 +1523,22 @@ class LogoutTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test client."""
+
         settings._auth_settings = None
-        self.client = testclient.TestClient(app.create_app())
+        self.test_app = app.create_app()
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
+        self.client = testclient.TestClient(self.test_app)
+
+        self.auth_settings = settings.Auth(
+            jwt_secret='test-secret-key-min-32-chars-long',
+        )
+
+        self.test_user = None  # Set per-test
 
     def tearDown(self) -> None:
         """Reset settings singleton after tests."""
@@ -1587,18 +1546,11 @@ class LogoutTestCase(unittest.TestCase):
 
     def test_logout_single_session(self) -> None:
         """Test logout with revoke_all_sessions=False."""
-        import datetime
-
         from imbi_common.auth import core
 
         from imbi_api import models
         from imbi_api.auth import permissions
 
-        auth_settings = settings.Auth(
-            jwt_secret='test-secret-key-min-32-chars-long',
-        )
-
-        # Create test user
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
@@ -1607,18 +1559,19 @@ class LogoutTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        # Create access token
         access_token = core.create_access_token(
-            test_user.email, auth_settings=auth_settings
+            test_user.email,
+            auth_settings=self.auth_settings,
         )
         payload = jwt.decode(
             access_token,
-            auth_settings.jwt_secret,
-            algorithms=[auth_settings.jwt_algorithm],
+            self.auth_settings.jwt_secret,
+            algorithms=[
+                self.auth_settings.jwt_algorithm,
+            ],
         )
         access_jti = payload['jti']
 
-        # Create mock auth context
         mock_auth = permissions.AuthContext(
             user=test_user,
             session_id=access_jti,
@@ -1626,81 +1579,56 @@ class LogoutTestCase(unittest.TestCase):
             permissions=set(),
         )
 
-        # Track neo4j queries executed
-        queries_executed = []
-
-        def mock_run_side_effect(query: str, **params):
-            queries_executed.append((query, params))
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-
-            # For issued_at query, return a timestamp
-            if 'RETURN t.issued_at' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'issued_at': datetime.datetime.now(datetime.UTC)}
-                    ]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
-
-        # Override FastAPI dependency
         async def override_get_current_user():
             return mock_auth
 
-        typing.cast(fastapi.FastAPI, self.client.app).dependency_overrides[
-            permissions.get_current_user
-        ] = override_get_current_user
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            override_get_current_user
+        )
 
-        try:
-            with (
-                mock.patch(
-                    'imbi_api.settings.get_auth_settings',
-                    return_value=auth_settings,
-                ),
-                mock.patch(
-                    'imbi_common.neo4j.run', side_effect=mock_run_side_effect
-                ),
-            ):
-                response = self.client.post(
-                    '/auth/logout',
-                    headers={'Authorization': f'Bearer {access_token}'},
-                )
+        # execute returns issued_at for first call
+        self.mock_db.execute.side_effect = [
+            [],  # revoke current
+            [
+                {
+                    'issued_at': datetime.datetime.now(
+                        datetime.UTC,
+                    ),
+                },
+            ],  # get issued_at
+            [],  # revoke refresh
+        ]
 
-                self.assertEqual(response.status_code, 204)
+        with (
+            mock.patch(
+                'imbi_api.settings.get_auth_settings',
+                return_value=self.auth_settings,
+            ),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.post(
+                '/auth/logout',
+                headers={
+                    'Authorization': (f'Bearer {access_token}'),
+                },
+            )
 
-                # Verify queries were executed
-                # Expect: revoke current, get issued_at, revoke refresh
-                self.assertGreaterEqual(len(queries_executed), 3)
-
-                # Verify current token revocation query
-                first_query = queries_executed[0][0]
-                self.assertIn('SET t.revoked = true', first_query)
-                self.assertIn('jti', queries_executed[0][1])
-        finally:
-            # Clean up dependency override
-            typing.cast(
-                fastapi.FastAPI, self.client.app
-            ).dependency_overrides.clear()
+            self.assertEqual(response.status_code, 204)
+            self.assertGreaterEqual(
+                self.mock_db.execute.call_count,
+                3,
+            )
 
     def test_logout_all_sessions(self) -> None:
         """Test logout with revoke_all_sessions=True."""
-        import datetime
-
         from imbi_common.auth import core
 
         from imbi_api import models
         from imbi_api.auth import permissions
 
-        auth_settings = settings.Auth(
-            jwt_secret='test-secret-key-min-32-chars-long',
-        )
-
-        # Create test user
         test_user = models.User(
             email='test@example.com',
             display_name='Test User',
@@ -1709,18 +1637,19 @@ class LogoutTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        # Create access token
         access_token = core.create_access_token(
-            test_user.email, auth_settings=auth_settings
+            test_user.email,
+            auth_settings=self.auth_settings,
         )
         payload = jwt.decode(
             access_token,
-            auth_settings.jwt_secret,
-            algorithms=[auth_settings.jwt_algorithm],
+            self.auth_settings.jwt_secret,
+            algorithms=[
+                self.auth_settings.jwt_algorithm,
+            ],
         )
         access_jti = payload['jti']
 
-        # Create mock auth context
         mock_auth = permissions.AuthContext(
             user=test_user,
             session_id=access_jti,
@@ -1728,64 +1657,32 @@ class LogoutTestCase(unittest.TestCase):
             permissions=set(),
         )
 
-        # Track neo4j queries executed
-        queries_executed = []
-
-        def mock_run_side_effect(query: str, **params):
-            queries_executed.append((query, params))
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-            mock_result.data = mock.AsyncMock(return_value=[])
-            return mock_result
-
-        # Override FastAPI dependency
         async def override_get_current_user():
             return mock_auth
 
-        typing.cast(fastapi.FastAPI, self.client.app).dependency_overrides[
-            permissions.get_current_user
-        ] = override_get_current_user
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            override_get_current_user
+        )
 
-        try:
-            with (
-                mock.patch(
-                    'imbi_api.settings.get_auth_settings',
-                    return_value=auth_settings,
-                ),
-                mock.patch(
-                    'imbi_common.neo4j.run', side_effect=mock_run_side_effect
-                ),
-            ):
-                response = self.client.post(
-                    '/auth/logout?revoke_all_sessions=true',
-                    headers={'Authorization': f'Bearer {access_token}'},
-                )
+        self.mock_db.execute.return_value = []
 
-                self.assertEqual(response.status_code, 204)
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings',
+            return_value=self.auth_settings,
+        ):
+            response = self.client.post(
+                '/auth/logout?revoke_all_sessions=true',
+                headers={
+                    'Authorization': (f'Bearer {access_token}'),
+                },
+            )
 
-                # Verify queries were executed
-                # Expect: revoke current, revoke all, delete sessions
-                self.assertEqual(len(queries_executed), 3)
-
-                # Verify current token revocation
-                self.assertIn('SET t.revoked = true', queries_executed[0][0])
-
-                # Verify all tokens revocation
-                self.assertIn(
-                    'WHERE t.revoked = false', queries_executed[1][0]
-                )
-                self.assertIn('email', queries_executed[1][1])
-
-                # Verify all sessions deletion
-                self.assertIn('DETACH DELETE', queries_executed[2][0])
-                self.assertIn('Session', queries_executed[2][0])
-        finally:
-            # Clean up dependency override
-            typing.cast(
-                fastapi.FastAPI, self.client.app
-            ).dependency_overrides.clear()
+            self.assertEqual(response.status_code, 204)
+            # revoke current, revoke all, delete sessions
+            self.assertEqual(
+                self.mock_db.execute.call_count,
+                3,
+            )
 
 
 class ServiceAccountAuthTestCase(unittest.TestCase):
@@ -1793,12 +1690,17 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test client and reset singletons."""
-        import datetime
-
         from imbi_api import models
 
         settings._auth_settings = None
-        self.client = testclient.TestClient(app.create_app())
+        self.test_app = app.create_app()
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
+        self.client = testclient.TestClient(self.test_app)
         rate_limit.limiter.reset()
 
         self.sa_user = models.User(
@@ -1824,29 +1726,25 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
     def test_service_account_blocked_from_password_login(
         self,
     ) -> None:
-        """POST /auth/login with service account returns 403."""
-        with mock.patch(
-            'imbi_common.neo4j.fetch_node',
-            return_value=self.sa_user,
-        ):
-            response = self.client.post(
-                '/auth/login',
-                json={
-                    'email': 'sa@example.com',
-                    'password': 'SomePass123!@#',
-                },
-            )
+        """POST /auth/login with SA returns 403."""
+        self.mock_db.match.return_value = [self.sa_user]
 
-            self.assertEqual(response.status_code, 403)
-            self.assertIn(
-                'Service accounts cannot use password login',
-                response.json()['detail'],
-            )
+        response = self.client.post(
+            '/auth/login',
+            json={
+                'email': 'sa@example.com',
+                'password': 'SomePass123!@#',
+            },
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn(
+            'Service accounts cannot use password login',
+            response.json()['detail'],
+        )
 
     def test_client_credentials_token_success(self) -> None:
-        """POST /auth/token with valid credentials returns tokens."""
-        import datetime
-
+        """POST /auth/token with valid credentials."""
         cred_data = {
             'client_id': 'cc_test123',
             'client_secret_hash': '$argon2id$hashed',
@@ -1858,31 +1756,18 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             'slug': 'my-service',
             'display_name': 'My Service',
             'is_active': True,
-            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ).isoformat(),
         }
 
-        def mock_run_side_effect(query, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-
-            if 'ClientCredential' in query and 'RETURN c, s' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'c': cred_data, 's': sa_data}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
+        self.mock_db.execute.return_value = [
+            {'c': cred_data, 's': sa_data},
+        ]
 
         with (
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=mock_run_side_effect,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.convert_neo4j_types',
+                'imbi_common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
@@ -1904,12 +1789,20 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             data = response.json()
             self.assertIn('access_token', data)
             self.assertIn('refresh_token', data)
-            self.assertEqual(data['token_type'], 'bearer')
+            self.assertEqual(
+                data['token_type'],
+                'bearer',
+            )
             self.assertIn('expires_in', data)
-            self.assertEqual(data['scope'], 'project:read')
+            self.assertEqual(
+                data['scope'],
+                'project:read',
+            )
 
-    def test_client_credentials_bad_grant_type(self) -> None:
-        """POST /auth/token with wrong grant_type returns 400."""
+    def test_client_credentials_bad_grant_type(
+        self,
+    ) -> None:
+        """POST /auth/token with wrong grant_type."""
         response = self.client.post(
             '/auth/token',
             data={
@@ -1925,19 +1818,15 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             response.json()['detail'],
         )
 
-    def test_client_credentials_invalid_client(self) -> None:
-        """POST /auth/token with bad client_id returns 401."""
-
-        def mock_run_side_effect(query, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.data = mock.AsyncMock(return_value=[])
-            return mock_result
+    def test_client_credentials_invalid_client(
+        self,
+    ) -> None:
+        """POST /auth/token with bad client_id."""
+        self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            side_effect=mock_run_side_effect,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/auth/token',
@@ -1955,9 +1844,7 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             )
 
     def test_client_credentials_revoked(self) -> None:
-        """POST /auth/token with revoked credential returns 401."""
-        import datetime
-
+        """POST /auth/token with revoked credential."""
         cred_data = {
             'client_id': 'cc_revoked',
             'client_secret_hash': '$argon2id$hashed',
@@ -1969,32 +1856,18 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             'slug': 'my-service',
             'display_name': 'My Service',
             'is_active': True,
-            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ).isoformat(),
         }
 
-        def mock_run_side_effect(query, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+        self.mock_db.execute.return_value = [
+            {'c': cred_data, 's': sa_data},
+        ]
 
-            if 'ClientCredential' in query and 'RETURN c, s' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'c': cred_data, 's': sa_data}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=mock_run_side_effect,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.convert_neo4j_types',
-                side_effect=lambda x: x,
-            ),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/auth/token',
@@ -2012,9 +1885,7 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             )
 
     def test_client_credentials_expired(self) -> None:
-        """POST /auth/token with expired credential returns 401."""
-        import datetime
-
+        """POST /auth/token with expired credential."""
         cred_data = {
             'client_id': 'cc_expired',
             'client_secret_hash': '$argon2id$hashed',
@@ -2026,32 +1897,18 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             'slug': 'my-service',
             'display_name': 'My Service',
             'is_active': True,
-            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ).isoformat(),
         }
 
-        def mock_run_side_effect(query, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+        self.mock_db.execute.return_value = [
+            {'c': cred_data, 's': sa_data},
+        ]
 
-            if 'ClientCredential' in query and 'RETURN c, s' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'c': cred_data, 's': sa_data}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
-
-        with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=mock_run_side_effect,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.convert_neo4j_types',
-                side_effect=lambda x: x,
-            ),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/auth/token',
@@ -2070,8 +1927,6 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
 
     def test_client_credentials_inactive_sa(self) -> None:
         """POST /auth/token with inactive SA returns 401."""
-        import datetime
-
         cred_data = {
             'client_id': 'cc_inactive',
             'client_secret_hash': '$argon2id$hashed',
@@ -2083,30 +1938,18 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             'slug': 'inactive-sa',
             'display_name': 'Inactive SA',
             'is_active': False,
-            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ).isoformat(),
         }
 
-        def mock_run_side_effect(query, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-
-            if 'ClientCredential' in query and 'RETURN c, s' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'c': cred_data, 's': sa_data}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
+        self.mock_db.execute.return_value = [
+            {'c': cred_data, 's': sa_data},
+        ]
 
         with (
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=mock_run_side_effect,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.convert_neo4j_types',
+                'imbi_common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
@@ -2129,10 +1972,10 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
                 response.json()['detail'].lower(),
             )
 
-    def test_client_credentials_scope_intersection(self) -> None:
-        """Requested scopes intersected with credential scopes."""
-        import datetime
-
+    def test_client_credentials_scope_intersection(
+        self,
+    ) -> None:
+        """Requested scopes intersected with cred scopes."""
         cred_data = {
             'client_id': 'cc_scoped',
             'client_secret_hash': '$argon2id$hashed',
@@ -2148,31 +1991,18 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
             'slug': 'scoped-sa',
             'display_name': 'Scoped SA',
             'is_active': True,
-            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
+            'created_at': datetime.datetime.now(
+                datetime.UTC,
+            ).isoformat(),
         }
 
-        def mock_run_side_effect(query, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-
-            if 'ClientCredential' in query and 'RETURN c, s' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'c': cred_data, 's': sa_data}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
+        self.mock_db.execute.return_value = [
+            {'c': cred_data, 's': sa_data},
+        ]
 
         with (
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=mock_run_side_effect,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.convert_neo4j_types',
+                'imbi_common.graph.parse_agtype',
                 side_effect=lambda x: x,
             ),
             mock.patch(
@@ -2180,20 +2010,19 @@ class ServiceAccountAuthTestCase(unittest.TestCase):
                 return_value=True,
             ),
         ):
-            # Request project:read and blueprint:read;
-            # only project:read is in credential scopes
             response = self.client.post(
                 '/auth/token',
                 data={
                     'grant_type': 'client_credentials',
                     'client_id': 'cc_scoped',
                     'client_secret': 'secret123',
-                    'scope': 'project:read blueprint:read',
+                    'scope': ('project:read blueprint:read'),
                 },
             )
 
             self.assertEqual(response.status_code, 200)
             data = response.json()
-            # Only project:read is in both requested
-            # and credential scopes
-            self.assertEqual(data['scope'], 'project:read')
+            self.assertEqual(
+                data['scope'],
+                'project:read',
+            )

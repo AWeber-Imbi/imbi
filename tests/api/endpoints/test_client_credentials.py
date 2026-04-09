@@ -5,10 +5,10 @@ import unittest
 from unittest import mock
 
 from fastapi import testclient
-from imbi_common.auth import core
+from imbi_common import graph
 
 from imbi_api import app, models, settings
-from imbi_api.auth import password
+from imbi_api.auth import password, permissions
 
 
 class ClientCredentialsEndpointsTestCase(unittest.TestCase):
@@ -16,15 +16,16 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
-        self.app = app.create_app()
-        self.client = testclient.TestClient(self.app)
+        self.test_app = app.create_app()
 
         self.test_user = models.User(
             email='admin@example.com',
             display_name='Admin User',
             is_active=True,
             is_admin=True,
-            password_hash=password.hash_password('testpassword123'),
+            password_hash=password.hash_password(
+                'testpassword123',
+            ),
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
@@ -35,121 +36,57 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
 
         self.now = datetime.datetime.now(datetime.UTC)
 
-    def _create_mock_run(
-        self,
-        sa_exists: bool = True,
-        credential_data: dict | None = None,
-        credential_list: list[dict] | None = None,
-    ):
-        """Create a mock run side effect for client credential tests.
+        # Set up auth context
+        self.auth_context = permissions.AuthContext(
+            user=self.test_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions=set(),
+        )
 
-        Args:
-            sa_exists: Whether the service account lookup should
-                return a result.
-            credential_data: Single credential record for
-                ownership/fetch queries.
-            credential_list: List of credential records for list
-                queries.
+        async def mock_get_current_user():
+            return self.auth_context
 
-        """
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
 
-        def mock_run_side_effect(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(
-                return_value=mock_result,
-            )
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
+        # Set up mock graph database
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
 
-            # Service account lookup
-            if (
-                'ServiceAccount' in query
-                and 'ClientCredential' not in query
-                and 'RETURN s' in query
-            ):
-                if sa_exists:
-                    mock_result.data = mock.AsyncMock(
-                        return_value=[
-                            {
-                                's': {
-                                    'slug': 'test-bot',
-                                    'display_name': 'Test Bot',
-                                    'is_active': True,
-                                },
-                            }
-                        ],
-                    )
-                else:
-                    mock_result.data = mock.AsyncMock(
-                        return_value=[],
-                    )
-            # OWNED_BY relationship creation
-            elif 'OWNED_BY' in query and 'CREATE' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            # Credential ownership verification / list
-            elif 'ClientCredential' in query and 'OWNED_BY' in query:
-                if credential_list is not None:
-                    mock_result.data = mock.AsyncMock(
-                        return_value=credential_list,
-                    )
-                elif credential_data is not None:
-                    mock_result.data = mock.AsyncMock(
-                        return_value=[{'c': credential_data}],
-                    )
-                else:
-                    mock_result.data = mock.AsyncMock(
-                        return_value=[],
-                    )
-            # Credential update (revoke / rotate)
-            elif 'ClientCredential' in query and 'SET' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            # Auth: token revocation check
-            elif 'TokenMetadata' in query and 'revoked' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'revoked': False}],
-                )
-            # Auth: user lookup
-            elif 'User' in query and 'email' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'u': user_dict}],
-                )
-            # Auth: permissions
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'permissions': []}],
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
-
-        return mock_run_side_effect
+        self.client = testclient.TestClient(self.test_app)
 
     def test_create_client_credential(self) -> None:
         """Test creating a client credential returns 201."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
+        # SA lookup returns a result
+        # create_node mock not needed -- merge handles it
+        self.mock_db.execute.return_value = [
+            {
+                's': {
+                    'slug': 'test-bot',
+                    'display_name': 'Test Bot',
+                    'is_active': True,
+                },
+            },
+        ]
+        self.mock_db.merge.return_value = None
 
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(),
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
-            mock.patch('imbi_common.neo4j.create_node'),
         ):
             mock_settings.return_value = self.auth_settings
 
             response = self.client.post(
                 '/service-accounts/test-bot/client-credentials',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
                 json={
                     'name': 'Deploy Credential',
                     'description': 'For CI/CD pipelines',
@@ -160,8 +97,13 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
             data = response.json()
             self.assertIn('client_id', data)
             self.assertIn('client_secret', data)
-            self.assertTrue(data['client_id'].startswith('cc_'))
-            self.assertEqual(data['name'], 'Deploy Credential')
+            self.assertTrue(
+                data['client_id'].startswith('cc_'),
+            )
+            self.assertEqual(
+                data['name'],
+                'Deploy Credential',
+            )
             self.assertEqual(
                 data['description'],
                 'For CI/CD pipelines',
@@ -170,11 +112,6 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
 
     def test_list_client_credentials(self) -> None:
         """Test listing client credentials returns list."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
-
         credential_list = [
             {
                 'c': {
@@ -206,32 +143,35 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
             },
         ]
 
+        self.mock_db.execute.return_value = credential_list
+
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    credential_list=credential_list,
-                ),
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_settings.return_value = self.auth_settings
 
             response = self.client.get(
                 '/service-accounts/test-bot/client-credentials',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
             )
 
             self.assertEqual(response.status_code, 200)
             data = response.json()
             self.assertEqual(len(data), 2)
-            self.assertEqual(data[0]['client_id'], 'cc_abc123')
+            self.assertEqual(
+                data[0]['client_id'],
+                'cc_abc123',
+            )
             self.assertEqual(data[0]['name'], 'Cred 1')
-            self.assertEqual(data[1]['client_id'], 'cc_def456')
+            self.assertEqual(
+                data[1]['client_id'],
+                'cc_def456',
+            )
             self.assertEqual(
                 data[1]['scopes'],
                 ['read:projects'],
@@ -239,76 +179,62 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
 
     def test_revoke_client_credential(self) -> None:
         """Test revoking a client credential returns 204."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
-
         credential_data = {
             'client_id': 'cc_abc123',
             'name': 'Cred 1',
             'revoked': False,
         }
 
+        # First call: fetch credential, second: revoke
+        self.mock_db.execute.side_effect = [
+            [{'c': credential_data}],
+            [],
+        ]
+
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    credential_data=credential_data,
-                ),
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_settings.return_value = self.auth_settings
 
             response = self.client.delete(
                 '/service-accounts/test-bot/client-credentials/cc_abc123',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
             )
 
             self.assertEqual(response.status_code, 204)
 
     def test_revoke_not_found(self) -> None:
         """Test revoking nonexistent credential returns 404."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
+        self.mock_db.execute.return_value = []
 
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    credential_data=None,
-                ),
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_settings.return_value = self.auth_settings
 
             response = self.client.delete(
                 '/service-accounts/test-bot/client-credentials/cc_nonexistent',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
             )
 
             self.assertEqual(response.status_code, 404)
-            self.assertIn('not found', response.json()['detail'])
+            self.assertIn(
+                'not found',
+                response.json()['detail'],
+            )
 
     def test_rotate_client_credential(self) -> None:
         """Test rotating a credential returns new secret."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
-
         credential_data = {
             'client_id': 'cc_abc123',
             'name': 'Cred 1',
@@ -318,15 +244,19 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
             'revoked': False,
         }
 
+        # First call: fetch, second: update
+        self.mock_db.execute.side_effect = [
+            [{'c': credential_data}],
+            [{'c': credential_data}],
+        ]
+
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    credential_data=credential_data,
-                ),
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_settings.return_value = self.auth_settings
@@ -334,14 +264,14 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
             response = self.client.post(
                 '/service-accounts/test-bot'
                 '/client-credentials/cc_abc123/rotate',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
             )
 
             self.assertEqual(response.status_code, 200)
             data = response.json()
-            self.assertEqual(data['client_id'], 'cc_abc123')
+            self.assertEqual(
+                data['client_id'],
+                'cc_abc123',
+            )
             self.assertIn('client_secret', data)
             self.assertEqual(data['name'], 'Cred 1')
             self.assertEqual(
@@ -355,26 +285,23 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
 
     def test_rotate_revoked_credential(self) -> None:
         """Test rotating a revoked credential returns 400."""
-        access_token = core.create_access_token(
-            self.test_user.email,
-            auth_settings=self.auth_settings,
-        )
-
         credential_data = {
             'client_id': 'cc_revoked',
             'name': 'Revoked Cred',
             'revoked': True,
         }
 
+        self.mock_db.execute.return_value = [
+            {'c': credential_data},
+        ]
+
         with (
             mock.patch(
                 'imbi_api.settings.get_auth_settings',
             ) as mock_settings,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=self._create_mock_run(
-                    credential_data=credential_data,
-                ),
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_settings.return_value = self.auth_settings
@@ -382,10 +309,10 @@ class ClientCredentialsEndpointsTestCase(unittest.TestCase):
             response = self.client.post(
                 '/service-accounts/test-bot'
                 '/client-credentials/cc_revoked/rotate',
-                headers={
-                    'Authorization': f'Bearer {access_token}',
-                },
             )
 
             self.assertEqual(response.status_code, 400)
-            self.assertIn('revoked', response.json()['detail'])
+            self.assertIn(
+                'revoked',
+                response.json()['detail'],
+            )

@@ -9,7 +9,6 @@ description = "Imbi is a DevOps Service Management Platform designed to provide 
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "BSD-3-Clause" }
-license-file = "LICENSE"
 authors = [
   { name = "Alex Campbell", email = "alexc@aweber.com" },
   { name = "Dave Shawley", email = "daves@aweber.com" },
@@ -42,11 +41,12 @@ dependencies = [
   "pyotp>=2.9.0",
   "python-multipart>=0.0.22",
   "qrcode>=8.0",
-  "slowapi==0.1.9", # Pin: alpha quality, API may change
+  "slowapi==0.1.9",  # Pin: alpha quality, API may change
   "typer",
   "uvicorn",
   "yarl",
 ]
+license-file = "LICENSE"
 
 [project.optional-dependencies]
 otel = [

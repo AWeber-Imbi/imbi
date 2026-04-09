@@ -33,17 +33,21 @@ class SetupTestCase(unittest.TestCase):
             'roles': 3,
         }
 
-        # Database lifecycle
-        self.mock_neo4j_init = self.enterContext(
+        # Graph database lifecycle
+        self.mock_graph = mock.MagicMock()
+        self.mock_graph.open = mock.AsyncMock()
+        self.mock_graph.close = mock.AsyncMock()
+        self.mock_graph.execute = mock.AsyncMock(return_value=[])
+        self.mock_graph.merge = mock.AsyncMock(return_value=[])
+        self.mock_graph_cls = self.enterContext(
             mock.patch.object(
-                entrypoint.neo4j, 'initialize', new_callable=mock.AsyncMock
+                entrypoint.graph,
+                'Graph',
+                return_value=self.mock_graph,
             )
         )
-        self.mock_neo4j_close = self.enterContext(
-            mock.patch.object(
-                entrypoint.neo4j, 'aclose', new_callable=mock.AsyncMock
-            )
-        )
+
+        # ClickHouse lifecycle
         self.mock_ch_init = self.enterContext(
             mock.patch.object(
                 entrypoint.clickhouse,
@@ -53,7 +57,9 @@ class SetupTestCase(unittest.TestCase):
         )
         self.mock_ch_close = self.enterContext(
             mock.patch.object(
-                entrypoint.clickhouse, 'aclose', new_callable=mock.AsyncMock
+                entrypoint.clickhouse,
+                'aclose',
+                new_callable=mock.AsyncMock,
             )
         )
         self.mock_ch_schema = self.enterContext(
@@ -93,7 +99,9 @@ class SetupTestCase(unittest.TestCase):
         # Admin user creation
         self.mock_create_admin = self.enterContext(
             mock.patch.object(
-                entrypoint, '_create_admin_user', new_callable=mock.AsyncMock
+                entrypoint,
+                '_create_admin_user',
+                new_callable=mock.AsyncMock,
             )
         )
         self.mock_create_admin.return_value = self.admin_user
@@ -101,7 +109,9 @@ class SetupTestCase(unittest.TestCase):
         # Password input (getpass reads /dev/tty, not stdin)
         self.mock_getpass = self.enterContext(
             mock.patch.object(
-                entrypoint.getpass, 'getpass', return_value='s3cret'
+                entrypoint.getpass,
+                'getpass',
+                return_value='s3cret',
             )
         )
 
@@ -119,12 +129,13 @@ class SetupTestCase(unittest.TestCase):
         self.assertIn('ClickHouse schema created', result.output)
 
         self.mock_create_admin.assert_awaited_once_with(
+            mock.ANY,
             email='admin@example.com',
             display_name='Administrator',
             password='s3cret',
             org_slug='aweber',
         )
-        self.mock_neo4j_close.assert_awaited_once()
+        self.mock_graph.close.assert_awaited_once()
         self.mock_ch_close.assert_awaited_once()
 
     def test_setup_custom_email_and_display_name(self) -> None:
@@ -137,6 +148,7 @@ class SetupTestCase(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0)
         self.mock_create_admin.assert_awaited_once_with(
+            mock.ANY,
             email='dave@example.com',
             display_name='Dave',
             password='s3cret',
@@ -167,7 +179,7 @@ class SetupTestCase(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn('Setup cancelled', result.output)
         self.mock_bootstrap.assert_not_awaited()
-        self.mock_neo4j_close.assert_awaited_once()
+        self.mock_graph.close.assert_awaited_once()
         self.mock_ch_close.assert_awaited_once()
 
     def test_setup_existing_entities_no_new(self) -> None:
@@ -182,14 +194,14 @@ class SetupTestCase(unittest.TestCase):
         self.assertIn('Organization already exists: aweber', result.output)
         self.assertIn('already exist', result.output)
 
-    def test_setup_neo4j_connection_failure(self) -> None:
-        """Test setup when Neo4j connection fails."""
-        self.mock_neo4j_init.side_effect = ConnectionError('refused')
+    def test_setup_graph_connection_failure(self) -> None:
+        """Test setup when PostgreSQL/Graph connection fails."""
+        self.mock_graph.open.side_effect = ConnectionError('refused')
 
         result = self.runner.invoke(entrypoint.main, ['setup'])
 
         self.assertEqual(result.exit_code, 1)
-        self.assertIn('Failed to connect to Neo4j', result.output)
+        self.assertIn('Failed to connect to PostgreSQL', result.output)
         self.mock_ch_init.assert_not_awaited()
 
     def test_setup_clickhouse_connection_failure(self) -> None:
@@ -200,7 +212,7 @@ class SetupTestCase(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn('Failed to connect to ClickHouse', result.output)
-        self.mock_neo4j_close.assert_awaited_once()
+        self.mock_graph.close.assert_awaited_once()
 
     def test_setup_empty_password(self) -> None:
         """Test setup rejects empty password."""
@@ -236,7 +248,7 @@ class SetupTestCase(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn('Failed to create admin user', result.output)
-        self.mock_neo4j_close.assert_awaited_once()
+        self.mock_graph.close.assert_awaited_once()
         self.mock_ch_close.assert_awaited_once()
 
     def test_setup_clickhouse_schema_failure(self) -> None:
@@ -249,5 +261,5 @@ class SetupTestCase(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 1)
         self.assertIn('Failed to set up ClickHouse schema', result.output)
-        self.mock_neo4j_close.assert_awaited_once()
+        self.mock_graph.close.assert_awaited_once()
         self.mock_ch_close.assert_awaited_once()

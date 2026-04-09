@@ -8,6 +8,7 @@ for account recovery.
 import base64
 import datetime
 import io
+import json
 import logging
 import secrets
 import typing
@@ -16,7 +17,7 @@ import fastapi
 import pydantic
 import pyotp
 import qrcode
-from imbi_common import neo4j
+from imbi_common import graph
 from imbi_common.auth import encryption
 
 from imbi_api import models, settings
@@ -34,10 +35,12 @@ class MFASetupResponse(pydantic.BaseModel):
         ..., description='Base32-encoded TOTP secret (store securely)'
     )
     provisioning_uri: str = pydantic.Field(
-        ..., description='TOTP provisioning URI for authenticator apps'
+        ...,
+        description=('TOTP provisioning URI for authenticator apps'),
     )
     backup_codes: list[str] = pydantic.Field(
-        ..., description='One-time backup codes for account recovery'
+        ...,
+        description='One-time backup codes for account recovery',
     )
     qr_code: str = pydantic.Field(
         ..., description='Base64-encoded PNG QR code image'
@@ -48,7 +51,9 @@ class MFAVerifyRequest(pydantic.BaseModel):
     """Request model for MFA code verification."""
 
     code: str = pydantic.Field(
-        ..., description='6-digit TOTP code or backup code', min_length=6
+        ...,
+        description='6-digit TOTP code or backup code',
+        min_length=6,
     )
 
 
@@ -63,8 +68,10 @@ class MFAStatusResponse(pydantic.BaseModel):
 
 @mfa_router.get('/status', response_model=MFAStatusResponse)
 async def get_mfa_status(
+    db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
     ],
 ) -> MFAStatusResponse:
     """Get MFA status for the authenticated user.
@@ -76,38 +83,46 @@ async def get_mfa_status(
         MFA status including enabled flag and backup codes remaining
 
     """
-    # Fetch TOTP secret from Neo4j
-    query = """
-    MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
-    RETURN t
+    # Fetch TOTP secret from graph
+    query: typing.LiteralString = """
+    MATCH (u:User {{email: {email}}})
+          <-[:MFA_FOR]-(t:TOTPSecret)
+    RETURN t AS n
     """
-    async with neo4j.run(query, email=auth.require_user.email) as result:
-        records = await result.data()
+    records = await db.execute(
+        query,
+        {'email': auth.require_user.email},
+    )
 
     if not records:
         return MFAStatusResponse(enabled=False, backup_codes_remaining=0)
 
-    totp_data = records[0]['t']
+    totp_data = graph.parse_agtype(records[0]['n'])
 
     if not totp_data.get('enabled', False):
         return MFAStatusResponse(enabled=False, backup_codes_remaining=0)
 
     backup_codes = totp_data.get('backup_codes', [])
     return MFAStatusResponse(
-        enabled=True, backup_codes_remaining=len(backup_codes)
+        enabled=True,
+        backup_codes_remaining=len(backup_codes),
     )
 
 
 @mfa_router.post('/setup', response_model=MFASetupResponse)
 async def setup_mfa(
+    db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
     ],
 ) -> MFASetupResponse:
-    """Setup MFA for the authenticated user (not enabled until verified).
+    """Setup MFA for the authenticated user (not enabled until
+    verified).
 
-    Generates a TOTP secret, QR code, and backup codes. MFA is not enabled
-    until the user verifies a code using the /mfa/verify endpoint.
+    Generates a TOTP secret, QR code, and backup codes. MFA is not
+    enabled until the user verifies a code using the /mfa/verify
+    endpoint.
 
     Args:
         auth: Current authenticated user context
@@ -150,16 +165,16 @@ async def setup_mfa(
         password.hash_password(code) for code in backup_codes
     ]
 
-    # Store TOTP secret in Neo4j (encrypted, not enabled yet)
     # First, delete any existing TOTP secret
-    delete_query = """
-    MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
+    delete_query: typing.LiteralString = """
+    MATCH (u:User {{email: {email}}})
+          <-[:MFA_FOR]-(t:TOTPSecret)
     DETACH DELETE t
     """
-    async with neo4j.run(
-        delete_query, email=auth.require_user.email
-    ) as result:
-        await result.consume()
+    await db.execute(
+        delete_query,
+        {'email': auth.require_user.email},
+    )
 
     # Encrypt TOTP secret before storage
     encryptor = encryption.TokenEncryption.get_instance()
@@ -173,15 +188,19 @@ async def setup_mfa(
     )
     totp_secret.set_encrypted_secret(secret, encryptor)
 
-    await neo4j.create_node(totp_secret)
-    # Relationship created automatically by create_node via model annotation
+    await db.merge(totp_secret)
+    # Relationship created automatically by merge via model
+    # annotation
 
-    LOGGER.info('MFA setup initiated for user %s', auth.require_user.email)
+    LOGGER.info(
+        'MFA setup initiated for user %s',
+        auth.require_user.email,
+    )
 
     return MFASetupResponse(
         secret=secret,
         provisioning_uri=provisioning_uri,
-        backup_codes=backup_codes,  # Plaintext codes (shown only once)
+        backup_codes=backup_codes,  # Plaintext (shown once)
         qr_code=qr_code_base64,
     )
 
@@ -189,15 +208,17 @@ async def setup_mfa(
 @mfa_router.post('/verify', status_code=204)
 async def verify_and_enable_mfa(
     verify_request: MFAVerifyRequest,
+    db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
     ],
 ) -> None:
     """Verify TOTP code and enable MFA for the authenticated user.
 
-    This endpoint must be called after /mfa/setup to enable MFA. The user
-    must provide a valid TOTP code from their authenticator app to prove
-    they have successfully configured it.
+    This endpoint must be called after /mfa/setup to enable MFA.
+    The user must provide a valid TOTP code from their authenticator
+    app to prove they have successfully configured it.
 
     Args:
         verify_request: TOTP code to verify
@@ -209,20 +230,24 @@ async def verify_and_enable_mfa(
     """
     auth_settings = settings.get_auth_settings()
 
-    # Fetch TOTP secret from Neo4j
-    query = """
-    MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
-    RETURN t
+    # Fetch TOTP secret from graph
+    query: typing.LiteralString = """
+    MATCH (u:User {{email: {email}}})
+          <-[:MFA_FOR]-(t:TOTPSecret)
+    RETURN t AS n
     """
-    async with neo4j.run(query, email=auth.require_user.email) as result:
-        records = await result.data()
+    records = await db.execute(
+        query,
+        {'email': auth.require_user.email},
+    )
 
     if not records:
         raise fastapi.HTTPException(
-            status_code=404, detail='MFA not setup for this user'
+            status_code=404,
+            detail='MFA not setup for this user',
         )
 
-    totp_data = records[0]['t']
+    totp_data = graph.parse_agtype(records[0]['n'])
     encrypted_secret = totp_data['secret']
 
     # Decrypt TOTP secret
@@ -234,7 +259,8 @@ async def verify_and_enable_mfa(
     except (ValueError, TypeError) as err:
         LOGGER.error('Failed to decrypt TOTP secret: %s', err)
         raise fastapi.HTTPException(
-            status_code=500, detail='Failed to decrypt MFA secret'
+            status_code=500,
+            detail='Failed to decrypt MFA secret',
         ) from err
 
     # Verify TOTP code or backup code
@@ -248,7 +274,7 @@ async def verify_and_enable_mfa(
     used_backup_code = False
     backup_codes = typing.cast(list[str], totp_data.get('backup_codes', []))
 
-    # First try TOTP verification (allow 1 time step before/after for skew)
+    # First try TOTP verification (allow 1 time step for skew)
     if totp.verify(verify_request.code, valid_window=1):
         is_valid = True
     else:
@@ -264,40 +290,54 @@ async def verify_and_enable_mfa(
     if not is_valid:
         raise fastapi.HTTPException(status_code=401, detail='Invalid MFA code')
 
+    now_str = datetime.datetime.now(datetime.UTC).isoformat()
+
     # Enable MFA and update backup codes if one was used
     if used_backup_code:
-        update_query = """
-        MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
+        update_query: typing.LiteralString = """
+        MATCH (u:User {{email: {email}}})
+              <-[:MFA_FOR]-(t:TOTPSecret)
         SET t.enabled = true,
-            t.last_used = datetime(),
-            t.backup_codes = $backup_codes
+            t.last_used = {now},
+            t.backup_codes = {backup_codes}
         """
-        async with neo4j.run(
+        await db.execute(
             update_query,
-            email=auth.require_user.email,
-            backup_codes=backup_codes,
-        ) as result:
-            await result.consume()
+            {
+                'email': auth.require_user.email,
+                'backup_codes': json.dumps(backup_codes),
+                'now': now_str,
+            },
+        )
         LOGGER.info(
             'MFA enabled for user %s (used backup code)',
             auth.require_user.email,
         )
     else:
-        update_query = """
-        MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
-        SET t.enabled = true, t.last_used = datetime()
+        update_query2: typing.LiteralString = """
+        MATCH (u:User {{email: {email}}})
+              <-[:MFA_FOR]-(t:TOTPSecret)
+        SET t.enabled = true, t.last_used = {now}
         """
-        async with neo4j.run(
-            update_query, email=auth.require_user.email
-        ) as result:
-            await result.consume()
-        LOGGER.info('MFA enabled for user %s', auth.require_user.email)
+        await db.execute(
+            update_query2,
+            {
+                'email': auth.require_user.email,
+                'now': now_str,
+            },
+        )
+        LOGGER.info(
+            'MFA enabled for user %s',
+            auth.require_user.email,
+        )
 
 
 @mfa_router.delete('/disable', status_code=204)
 async def disable_mfa(
+    db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
     ],
     current_password: str | None = fastapi.Body(default=None, embed=True),
     mfa_code: str | None = fastapi.Body(default=None, embed=True),
@@ -312,11 +352,13 @@ async def disable_mfa(
 
     Args:
         auth: Current authenticated user context
-        current_password: User's current password (for password-based users)
+        current_password: User's current password (for
+            password-based users)
         mfa_code: MFA code (for OAuth-only users without password)
 
     Raises:
-        HTTPException: 401 if verification fails or neither credential provided
+        HTTPException: 401 if verification fails or neither
+            credential provided
 
     """
     auth_settings = settings.get_auth_settings()
@@ -345,21 +387,22 @@ async def disable_mfa(
             )
 
         # Fetch and verify MFA code
-        totp_query = """
-        MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
-        RETURN t
+        totp_query: typing.LiteralString = """
+        MATCH (u:User {{email: {email}}})
+              <-[:MFA_FOR]-(t:TOTPSecret)
+        RETURN t AS n
         """
-        async with neo4j.run(
-            totp_query, email=auth.require_user.email
-        ) as result:
-            totp_records = await result.data()
+        totp_records = await db.execute(
+            totp_query,
+            {'email': auth.require_user.email},
+        )
 
         if not totp_records:
             raise fastapi.HTTPException(
                 status_code=404, detail='MFA not enabled'
             )
 
-        totp_data = totp_records[0]['t']
+        totp_data = graph.parse_agtype(totp_records[0]['n'])
 
         # Decrypt TOTP secret
         encryptor = encryption.TokenEncryption.get_instance()
@@ -370,7 +413,8 @@ async def disable_mfa(
         except (ValueError, TypeError) as err:
             LOGGER.error('Failed to decrypt TOTP secret: %s', err)
             raise fastapi.HTTPException(
-                status_code=500, detail='Failed to decrypt MFA secret'
+                status_code=500,
+                detail='Failed to decrypt MFA secret',
             ) from err
 
         # Verify MFA code
@@ -399,11 +443,14 @@ async def disable_mfa(
             )
 
     # Delete TOTP secret
-    query = """
-    MATCH (u:User {email: $email})<-[:MFA_FOR]-(t:TOTPSecret)
+    query: typing.LiteralString = """
+    MATCH (u:User {{email: {email}}})
+          <-[:MFA_FOR]-(t:TOTPSecret)
     DETACH DELETE t
     """
-    async with neo4j.run(query, email=auth.require_user.email) as result:
-        await result.consume()
+    await db.execute(
+        query,
+        {'email': auth.require_user.email},
+    )
 
     LOGGER.info('MFA disabled for user %s', auth.require_user.email)

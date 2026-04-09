@@ -4,8 +4,8 @@ import logging
 import typing
 
 import fastapi
-from imbi_common import models, neo4j
-from neo4j import exceptions
+import psycopg.errors
+from imbi_common import graph, models
 
 from imbi_api import openapi
 from imbi_api.auth import permissions
@@ -18,6 +18,7 @@ blueprint_router = fastapi.APIRouter(prefix='/blueprints', tags=['Blueprints'])
 @blueprint_router.post('/', response_model=models.Blueprint, status_code=201)
 async def create_blueprint(
     blueprint: models.Blueprint,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('blueprint:write')),
@@ -39,22 +40,23 @@ async def create_blueprint(
         409: Blueprint with the same name and type already exists.
     """
     try:
-        result = await neo4j.create_node(blueprint)
-    except exceptions.ConstraintError as e:
+        await db.merge(blueprint)
+    except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=f'Blueprint with name {blueprint.name!r} and type '
             f'{blueprint.type!r} already exists',
         ) from e
     try:
-        await openapi.refresh_blueprint_models()
+        await openapi.refresh_blueprint_models(db)
     except Exception:
         LOGGER.exception('Failed to refresh blueprint models')
-    return result
+    return blueprint
 
 
 @blueprint_router.get('/', response_model=list[models.Blueprint])
 async def list_blueprints(
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('blueprint:read')),
@@ -75,14 +77,11 @@ async def list_blueprints(
     if enabled is not None:
         parameters['enabled'] = enabled
 
-    blueprints: list[models.Blueprint] = []
-    async for blueprint in neo4j.fetch_nodes(
+    return await db.match(
         models.Blueprint,
         parameters if parameters else None,
         order_by='name',
-    ):
-        blueprints.append(blueprint)
-    return blueprints
+    )
 
 
 @blueprint_router.get('/{type}', response_model=list[models.Blueprint])
@@ -91,6 +90,7 @@ async def list_blueprints_by_type(
         typing.Literal['Team', 'Environment', 'ProjectType', 'Project'],
         fastapi.Path(alias='type'),
     ],
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('blueprint:read')),
@@ -110,16 +110,13 @@ async def list_blueprints_by_type(
         list[models.Blueprint]: Blueprints of the specified type,
             ordered by name and filtered by `enabled` when given.
     """
-    parameters: dict[str, typing.Any] = {'type': blueprint_type}
+    parameters: dict[str, typing.Any] = {
+        'type': blueprint_type,
+    }
     if enabled is not None:
         parameters['enabled'] = enabled
 
-    blueprints: list[models.Blueprint] = []
-    async for blueprint in neo4j.fetch_nodes(
-        models.Blueprint, parameters, order_by='name'
-    ):
-        blueprints.append(blueprint)
-    return blueprints
+    return await db.match(models.Blueprint, parameters, order_by='name')
 
 
 @blueprint_router.get('/{type}/{slug}', response_model=models.Blueprint)
@@ -129,6 +126,7 @@ async def get_blueprint(
         fastapi.Path(alias='type'),
     ],
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('blueprint:read')),
@@ -146,9 +144,11 @@ async def get_blueprint(
     Raises:
         404: If no blueprint exists with the given type and slug.
     """
-    blueprint = await neo4j.fetch_node(
-        models.Blueprint, {'slug': slug, 'type': blueprint_type}
+    results = await db.match(
+        models.Blueprint,
+        {'slug': slug, 'type': blueprint_type},
     )
+    blueprint = results[0] if results else None
     if blueprint is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -166,6 +166,7 @@ async def update_blueprint(
     ],
     slug: str,
     blueprint: models.Blueprint,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('blueprint:write')),
@@ -189,13 +190,17 @@ async def update_blueprint(
         400: If the URL `slug` does not match `blueprint.slug` or the
             URL `type` does not match `blueprint.type`.
     """
-    await neo4j.upsert(
+    if blueprint.slug != slug or blueprint.type != blueprint_type:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Blueprint slug/type in body must match URL',
+        )
+    await db.merge(
         blueprint,
-        {'slug': slug, 'type': blueprint_type},
-        auto_increment=['version'],
+        match_on=['slug', 'type'],
     )
     try:
-        await openapi.refresh_blueprint_models()
+        await openapi.refresh_blueprint_models(db)
     except Exception:
         LOGGER.exception('Failed to refresh blueprint models')
     return blueprint
@@ -208,6 +213,7 @@ async def delete_blueprint(
         fastapi.Path(alias='type'),
     ],
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('blueprint:delete')),
@@ -224,16 +230,22 @@ async def delete_blueprint(
     Raises:
         404: If no blueprint with the given type and slug exists.
     """
-    deleted = await neo4j.delete_node(
-        models.Blueprint, {'slug': slug, 'type': blueprint_type}
+    query: typing.LiteralString = (
+        'MATCH (n:Blueprint {{slug: {slug},'
+        ' type: {blueprint_type}}})'
+        ' DETACH DELETE n RETURN n'
     )
-    if not deleted:
+    records = await db.execute(
+        query,
+        {'slug': slug, 'blueprint_type': blueprint_type},
+    )
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Blueprint with slug {slug!r} and type '
             f'{blueprint_type!r} not found',
         )
     try:
-        await openapi.refresh_blueprint_models()
+        await openapi.refresh_blueprint_models(db)
     except Exception:
         LOGGER.exception('Failed to refresh blueprint models')

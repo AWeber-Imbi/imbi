@@ -9,7 +9,7 @@ import fastapi
 import jwt
 import pydantic
 from fastapi import security
-from imbi_common import neo4j
+from imbi_common import graph
 from imbi_common.auth import core
 
 from imbi_api import models, settings
@@ -58,7 +58,7 @@ class AuthContext(pydantic.BaseModel):
         return self.user
 
 
-async def load_user_permissions(email: str) -> set[str]:
+async def load_user_permissions(db: graph.Graph, email: str) -> set[str]:
     """
     Get permission names granted to a user.
 
@@ -67,29 +67,39 @@ async def load_user_permissions(email: str) -> set[str]:
     Role inheritance is followed to collect all granted permissions.
 
     Parameters:
+        db: Graph database connection.
         email (str): Email of user whose permissions will be resolved.
 
     Returns:
         set[str]: Set of permission names (for example,
             'blueprint:read', 'project:write').
     """
-    query = """
-    MATCH (u:User {email: $email})-[m:MEMBER_OF]->(o:Organization)
-    MATCH (r:Role {slug: m.role})
-    OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role)
-    WITH DISTINCT parent
-    OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission)
-    RETURN collect(DISTINCT perm.name) AS permissions
-    """
-    async with neo4j.run(query, email=email) as result:
-        records = await result.data()
-        if not records:
-            return set()
-        permission_list: list[str] = records[0].get('permissions', [])
-        return set(permission_list)
+    query = (
+        'MATCH (u:User {{email: {email}}})'
+        '-[m:MEMBER_OF]->(o:Organization) '
+        'MATCH (r:Role {{slug: m.role}}) '
+        'OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role) '
+        'WITH DISTINCT parent '
+        'OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission) '
+        'RETURN collect(DISTINCT perm.name)'
+    )
+    records = await db.execute(
+        query, {'email': email}, columns=['permissions']
+    )
+    if not records:
+        return set()
+    raw: typing.Any = graph.parse_agtype(records[0].get('permissions'))
+    if isinstance(raw, list):
+        return {
+            item
+            for item in typing.cast(list[str | typing.Any], raw)
+            if isinstance(item, str)
+        }
+    return set()
 
 
 async def load_service_account_permissions(
+    db: graph.Graph,
     slug: str,
 ) -> set[str]:
     """Get permissions granted to a service account.
@@ -98,37 +108,46 @@ async def load_service_account_permissions(
     memberships, following role inheritance.
 
     Parameters:
+        db: Graph database connection.
         slug: Slug of the service account.
 
     Returns:
         Set of permission names.
 
     """
-    query = """
-    MATCH (s:ServiceAccount {slug: $slug})
-          -[m:MEMBER_OF]->(o:Organization)
-    MATCH (r:Role {slug: m.role})
-    OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role)
-    WITH DISTINCT parent
-    OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission)
-    RETURN collect(DISTINCT perm.name) AS permissions
-    """
-    async with neo4j.run(query, slug=slug) as result:
-        records = await result.data()
-        if not records:
-            return set()
-        permission_list: list[str] = records[0].get('permissions', [])
-        return set(permission_list)
+    query = (
+        'MATCH (s:ServiceAccount {{slug: {slug}}})'
+        '-[m:MEMBER_OF]->(o:Organization) '
+        'MATCH (r:Role {{slug: m.role}}) '
+        'OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role) '
+        'WITH DISTINCT parent '
+        'OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission) '
+        'RETURN collect(DISTINCT perm.name)'
+    )
+    records = await db.execute(query, {'slug': slug}, columns=['permissions'])
+    if not records:
+        return set()
+    raw: typing.Any = graph.parse_agtype(records[0].get('permissions'))
+    if isinstance(raw, list):
+        return {
+            item
+            for item in typing.cast(list[str | typing.Any], raw)
+            if isinstance(item, str)
+        }
+    return set()
 
 
 async def authenticate_jwt(
-    token: str, auth_settings: settings.Auth
+    db: graph.Graph,
+    token: str,
+    auth_settings: settings.Auth,
 ) -> AuthContext:
     """
     Validate a JWT, load the corresponding user and their permissions,
     and return an AuthContext.
 
     Parameters:
+        db: Graph database connection.
         token (str): JWT access token string.
         auth_settings (settings.Auth): Configuration used to decode
             and validate the token.
@@ -163,13 +182,11 @@ async def authenticate_jwt(
 
     # Check if token is revoked
     jti = claims.get('jti')
-    query = """
-    MATCH (t:TokenMetadata {jti: $jti})
-    RETURN t.revoked AS revoked
-    """
-    async with neo4j.run(query, jti=jti) as result:
-        records = await result.data()
-        if records and records[0].get('revoked'):
+    query = 'MATCH (t:TokenMetadata {{jti: {jti}}}) RETURN t.revoked'
+    records = await db.execute(query, {'jti': jti}, columns=['revoked'])
+    if records:
+        revoked = graph.parse_agtype(records[0].get('revoked'))
+        if revoked:
             raise fastapi.HTTPException(
                 status_code=401, detail='Token revoked'
             )
@@ -185,19 +202,13 @@ async def authenticate_jwt(
 
     if auth_method == 'client_credentials':
         # Service account token
-        sa_query = """
-        MATCH (s:ServiceAccount {slug: $slug})
-        RETURN s
-        """
-        async with neo4j.run(sa_query, slug=subject) as result:
-            records = await result.data()
-            if not records:
-                raise fastapi.HTTPException(
-                    status_code=401,
-                    detail='Service account not found',
-                )
-            sa_data = neo4j.convert_neo4j_types(records[0]['s'])
-            sa = models.ServiceAccount(**sa_data)
+        sa_results = await db.match(models.ServiceAccount, {'slug': subject})
+        if not sa_results:
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail='Service account not found',
+            )
+        sa = sa_results[0]
 
         if not sa.is_active:
             raise fastapi.HTTPException(
@@ -205,7 +216,7 @@ async def authenticate_jwt(
                 detail='Service account is inactive',
             )
 
-        perms = await load_service_account_permissions(subject)
+        perms = await load_service_account_permissions(db, subject)
         return AuthContext(
             service_account=sa,
             session_id=jti,
@@ -214,18 +225,10 @@ async def authenticate_jwt(
         )
 
     # Standard user token
-    user_query = """
-    MATCH (u:User {email: $email})
-    RETURN u
-    """
-    async with neo4j.run(user_query, email=subject) as result:
-        records = await result.data()
-        if not records:
-            raise fastapi.HTTPException(
-                status_code=401, detail='User not found'
-            )
-        user_data = neo4j.convert_neo4j_types(records[0]['u'])
-        user = models.User(**user_data)
+    user_results = await db.match(models.User, {'email': subject})
+    if not user_results:
+        raise fastapi.HTTPException(status_code=401, detail='User not found')
+    user = user_results[0]
 
     # Check if user is active
     if not user.is_active:
@@ -234,7 +237,7 @@ async def authenticate_jwt(
         )
 
     # Load permissions
-    perms = await load_user_permissions(subject)
+    perms = await load_user_permissions(db, subject)
 
     return AuthContext(
         user=user,
@@ -245,7 +248,9 @@ async def authenticate_jwt(
 
 
 async def authenticate_api_key(
-    key: str, auth_settings: settings.Auth
+    db: graph.Graph,
+    key: str,
+    auth_settings: settings.Auth,
 ) -> AuthContext:
     """
     Validate an API key, load the corresponding user and their
@@ -254,6 +259,7 @@ async def authenticate_api_key(
     API keys have the format: ik_<key_id>_<secret>
 
     Parameters:
+        db: Graph database connection.
         key (str): Full API key string.
         auth_settings (settings.Auth): Configuration for validation.
 
@@ -277,23 +283,24 @@ async def authenticate_api_key(
     key_secret = parts[2]
 
     # Fetch API key and owner (User or ServiceAccount)
-    query = """
-    MATCH (k:APIKey {key_id: $key_id})
-    OPTIONAL MATCH (k)-[:OWNED_BY]->(u:User)
-    OPTIONAL MATCH (k)-[:OWNED_BY]->(s:ServiceAccount)
-    RETURN k, u, s
-    """
-    async with neo4j.run(query, key_id=key_id) as result:
-        records = await result.data()
+    query = (
+        'MATCH (k:APIKey {{key_id: {key_id}}}) '
+        'OPTIONAL MATCH (k)-[:OWNED_BY]->(u:User) '
+        'OPTIONAL MATCH (k)-[:OWNED_BY]->(s:ServiceAccount) '
+        'RETURN k, u, s'
+    )
+    records = await db.execute(
+        query, {'key_id': key_id}, columns=['k', 'u', 's']
+    )
 
     if not records:
         raise fastapi.HTTPException(
             status_code=401, detail='Invalid or revoked API key'
         )
 
-    api_key_data = neo4j.convert_neo4j_types(records[0]['k'])
-    user_data = neo4j.convert_neo4j_types(records[0]['u'])
-    sa_data = neo4j.convert_neo4j_types(records[0]['s'])
+    api_key_data = graph.parse_agtype(records[0]['k'])
+    user_data = graph.parse_agtype(records[0]['u'])
+    sa_data = graph.parse_agtype(records[0]['s'])
 
     if not user_data and not sa_data:
         raise fastapi.HTTPException(
@@ -306,24 +313,24 @@ async def authenticate_api_key(
             status_code=401, detail='Invalid or revoked API key'
         )
 
-    # Check if key is expired
+    # Check if key is expired -- AGE stores datetime as ISO strings
     expires_at = api_key_data.get('expires_at')
-    if expires_at and expires_at < datetime.datetime.now(datetime.UTC):
-        raise fastapi.HTTPException(status_code=401, detail='API key expired')
+    if expires_at:
+        if isinstance(expires_at, str):
+            expires_at = datetime.datetime.fromisoformat(
+                expires_at,
+            )
+        if expires_at < datetime.datetime.now(datetime.UTC):
+            raise fastapi.HTTPException(
+                status_code=401,
+                detail='API key expired',
+            )
 
     # Verify key secret (hashed)
     if not password.verify_password(key_secret, api_key_data['key_hash']):
         raise fastapi.HTTPException(
             status_code=401, detail='Invalid or revoked API key'
         )
-
-    # Update last_used timestamp
-    update_query = """
-    MATCH (k:APIKey {key_id: $key_id})
-    SET k.last_used = datetime()
-    """
-    async with neo4j.run(update_query, key_id=key_id) as result:
-        await result.consume()
 
     # Resolve owner and permissions
     scopes = api_key_data.get('scopes', [])
@@ -335,8 +342,16 @@ async def authenticate_api_key(
                 status_code=401,
                 detail='Service account is inactive',
             )
-        all_perms = await load_service_account_permissions(sa.slug)
+        all_perms = await load_service_account_permissions(db, sa.slug)
         filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+
+        # Update last_used only after all validation passes
+        now = datetime.datetime.now(datetime.UTC).isoformat()
+        update_query = (
+            'MATCH (k:APIKey {{key_id: {key_id}}}) SET k.last_used = {now}'
+        )
+        await db.execute(update_query, {'key_id': key_id, 'now': now})
+
         return AuthContext(
             service_account=sa,
             session_id=key_id,
@@ -350,8 +365,15 @@ async def authenticate_api_key(
             status_code=401, detail='User account is inactive'
         )
 
-    all_perms = await load_user_permissions(user.email)
+    all_perms = await load_user_permissions(db, user.email)
     filtered = all_perms.intersection(set(scopes)) if scopes else all_perms
+
+    # Update last_used only after all validation passes
+    now = datetime.datetime.now(datetime.UTC).isoformat()
+    update_query = (
+        'MATCH (k:APIKey {{key_id: {key_id}}}) SET k.last_used = {now}'
+    )
+    await db.execute(update_query, {'key_id': key_id, 'now': now})
 
     return AuthContext(
         user=user,
@@ -362,16 +384,19 @@ async def authenticate_api_key(
 
 
 async def get_current_user(
+    db: graph.Pool,
     credentials: security.HTTPAuthorizationCredentials
     | None = fastapi.Depends(oauth2_scheme),  # noqa: B008
 ) -> AuthContext:
-    """FastAPI dependency to get the current authenticated user (Phase 5).
+    """FastAPI dependency to get the current authenticated user.
 
-    Supports both JWT and API key authentication. API keys are detected
-    by the 'ik_' prefix.
+    Supports both JWT and API key authentication. API keys are
+    detected by the 'ik_' prefix.
 
     Args:
-        credentials: HTTP Bearer credentials from Authorization header
+        db: Graph database connection (injected by FastAPI).
+        credentials: HTTP Bearer credentials from Authorization
+            header.
 
     Returns:
         AuthContext with user and permissions
@@ -392,9 +417,9 @@ async def get_current_user(
 
     # Detect API key format (ik_<id>_<secret>)
     if token.startswith('ik_'):
-        return await authenticate_api_key(token, auth_settings)
+        return await authenticate_api_key(db, token, auth_settings)
     else:
-        return await authenticate_jwt(token, auth_settings)
+        return await authenticate_jwt(db, token, auth_settings)
 
 
 def require_permission(
@@ -452,13 +477,18 @@ def require_permission(
 
 
 async def check_resource_permission(
-    email: str, resource_type: str, resource_slug: str, action: str
+    db: graph.Graph,
+    email: str,
+    resource_type: str,
+    resource_slug: str,
+    action: str,
 ) -> bool:
     """
     Determine whether the given user is allowed to perform the
     specified action on the named resource.
 
     Parameters:
+        db: Graph database connection.
         email (str): Email of the user to check.
         resource_type (str): Resource label to match (e.g.,
             'Blueprint', 'Project').
@@ -470,32 +500,34 @@ async def check_resource_permission(
         bool: `True` if the user has the requested action for the
             resource, `False` otherwise.
     """
-    query = """
-    MATCH (u:User {email: $email})
-    MATCH (resource {slug: $resource_slug})
-    WHERE $resource_type IN labels(resource)
-    MATCH (u)-[access:CAN_ACCESS]->(resource)
-    UNWIND access.actions AS action_item
-    RETURN collect(DISTINCT action_item) AS actions
-    """
-    async with neo4j.run(
+    query = (
+        'MATCH (u:User {{email: {email}}}) '
+        'MATCH (resource {{slug: {resource_slug}}}) '
+        'WHERE {resource_type} IN labels(resource) '
+        'MATCH (u)-[access:CAN_ACCESS]->(resource) '
+        'UNWIND access.actions AS action_item '
+        'RETURN collect(DISTINCT action_item)'
+    )
+    records = await db.execute(
         query,
-        email=email,
-        resource_type=resource_type,
-        resource_slug=resource_slug,
-    ) as result:
-        records = await result.data()
-        if not records:
-            return False
-        actions: list[str] = records[0].get('actions', [])
+        {
+            'email': email,
+            'resource_type': resource_type,
+            'resource_slug': resource_slug,
+        },
+        columns=['actions'],
+    )
+    if not records:
+        return False
+    actions = graph.parse_agtype(records[0].get('actions'))
+    if isinstance(actions, list):
         return action in actions
+    return False
 
 
 def require_resource_access(
     resource_type: str, action: str
-) -> typing.Callable[
-    [str, AuthContext], collections.abc.Awaitable[AuthContext]
-]:
+) -> typing.Callable[..., collections.abc.Awaitable[AuthContext]]:
     """
     Create a FastAPI dependency that enforces access for a specific
     resource and action.
@@ -521,12 +553,14 @@ def require_resource_access(
     async def check_access(
         slug: str,
         auth: typing.Annotated[AuthContext, fastapi.Depends(get_current_user)],
+        db: graph.Pool,
     ) -> AuthContext:
         """Enforce access to a specific resource.
 
         Parameters:
             slug: The resource identifier to check.
             auth: The authentication context.
+            db: Graph database connection (injected by FastAPI).
 
         Returns:
             AuthContext when access is granted.
@@ -546,7 +580,7 @@ def require_resource_access(
                 word.capitalize() for word in resource_type.split('_')
             )
             has_access = await check_resource_permission(
-                auth.user.email, label, slug, action
+                db, auth.user.email, label, slug, action
             )
             if has_access:
                 return auth

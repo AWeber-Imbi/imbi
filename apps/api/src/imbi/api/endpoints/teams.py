@@ -5,9 +5,9 @@ import logging
 import typing
 
 import fastapi
+import psycopg.errors
 import pydantic
-from imbi_common import blueprints, models, neo4j
-from neo4j import exceptions
+from imbi_common import blueprints, graph, models
 
 from imbi_api.auth import permissions
 from imbi_api.relationships import relationship_link
@@ -15,6 +15,37 @@ from imbi_api.relationships import relationship_link
 LOGGER = logging.getLogger(__name__)
 
 teams_router = fastapi.APIRouter(tags=['Teams'])
+
+
+def _props_template(props: dict[str, typing.Any]) -> str:
+    """Build a Cypher property-map template with double-escaped braces.
+
+    Each key becomes ``key: {key}`` inside doubled braces so that
+    ``psycopg.sql.SQL.format()`` resolves them correctly::
+
+        >>> _props_template({'name': 'x', 'slug': 'y'})
+        '{{name: {name}, slug: {slug}}}'
+
+    """
+    if not props:
+        return ''
+    pairs = [f'{k}: {{{k}}}' for k in props]
+    return '{{' + ', '.join(pairs) + '}}'
+
+
+def _set_clause(
+    alias: str,
+    props: dict[str, typing.Any],
+) -> str:
+    """Build a Cypher SET clause from a property dict.
+
+    Returns a string like ``SET t.name = {name}, t.slug = {slug}``.
+
+    """
+    if not props:
+        return ''
+    assignments = ', '.join(f'{alias}.{k} = {{{k}}}' for k in props)
+    return f'SET {assignments}'
 
 
 def _add_relationships(
@@ -42,6 +73,7 @@ def _add_relationships(
 async def create_team(
     org_slug: str,
     data: dict[str, typing.Any],
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('team:create')),
@@ -62,7 +94,7 @@ async def create_team(
         409: Team with slug already exists
 
     """
-    dynamic_model = await blueprints.get_model(models.Team)
+    dynamic_model = await blueprints.get_model(db, models.Team)
 
     # Defensive copy: remove organization fields to prevent
     # duplicate keyword arguments when unpacking into model
@@ -95,19 +127,21 @@ async def create_team(
         exclude={'organization'},
     )
 
-    query: typing.LiteralString = """
-    MATCH (o:Organization {slug: $org_slug})
-    CREATE (t:Team $props)
-    CREATE (t)-[:BELONGS_TO]->(o)
-    RETURN t{.*, organization: o{.*}} AS team
-    """
+    create_tpl = _props_template(props)
+    query = (
+        f'MATCH (o:Organization {{{{slug: {{org_slug}}}}}})'
+        f' CREATE (t:Team {create_tpl})'
+        f' CREATE (t)-[:BELONGS_TO]->(o)'
+        f' RETURN t, o'
+    )
+    params = {**props, 'org_slug': org_slug}
     try:
-        records = await neo4j.query(
+        records = await db.execute(
             query,
-            org_slug=org_slug,
-            props=props,
+            params,
+            columns=['t', 'o'],
         )
-    except exceptions.ConstraintError as e:
+    except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=(f'Team with slug {props["slug"]!r} already exists'),
@@ -119,12 +153,16 @@ async def create_team(
             detail=(f'Organization with slug {org_slug!r} not found'),
         )
 
-    return _add_relationships(records[0]['team'], org_slug)
+    team_props = graph.parse_agtype(records[0]['t'])
+    org_props = graph.parse_agtype(records[0]['o'])
+    team_props['organization'] = org_props
+    return _add_relationships(team_props, org_slug)
 
 
 @teams_router.get('/')
 async def list_teams(
     org_slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('team:read')),
@@ -140,25 +178,32 @@ async def list_teams(
         organization and relationships.
 
     """
-    query: typing.LiteralString = """
-    MATCH (t:Team)-[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    query = """
+    MATCH (t:Team)-[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t)
     OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)
     WITH t, o, count(DISTINCT p) AS project_count,
                 count(DISTINCT u) AS member_count
-    RETURN t{.*, organization: o{.*}} AS team,
-           project_count, member_count
+    RETURN t, o, project_count, member_count
     ORDER BY t.name
     """
     teams: list[dict[str, typing.Any]] = []
-    records = await neo4j.query(query, org_slug=org_slug)
+    records = await db.execute(
+        query,
+        {'org_slug': org_slug},
+        columns=['t', 'o', 'project_count', 'member_count'],
+    )
     for record in records:
-        team = record['team']
+        team = graph.parse_agtype(record['t'])
+        org = graph.parse_agtype(record['o'])
+        team['organization'] = org
+        pc = graph.parse_agtype(record['project_count'])
+        mc = graph.parse_agtype(record['member_count'])
         _add_relationships(
             team,
             org_slug,
-            record['project_count'],
-            record['member_count'],
+            pc or 0,
+            mc or 0,
         )
         teams.append(team)
     return teams
@@ -168,6 +213,7 @@ async def list_teams(
 async def get_team(
     org_slug: str,
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('team:read')),
@@ -186,20 +232,19 @@ async def get_team(
         404: Team not found
 
     """
-    query: typing.LiteralString = """
-    MATCH (t:Team {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    query = """
+    MATCH (t:Team {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t)
     OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)
     WITH t, o, count(DISTINCT p) AS project_count,
                 count(DISTINCT u) AS member_count
-    RETURN t{.*, organization: o{.*}} AS team,
-           project_count, member_count
+    RETURN t, o, project_count, member_count
     """
-    records = await neo4j.query(
+    records = await db.execute(
         query,
-        slug=slug,
-        org_slug=org_slug,
+        {'slug': slug, 'org_slug': org_slug},
+        columns=['t', 'o', 'project_count', 'member_count'],
     )
 
     if not records:
@@ -207,12 +252,13 @@ async def get_team(
             status_code=404,
             detail=f'Team with slug {slug!r} not found',
         )
-    return _add_relationships(
-        records[0]['team'],
-        org_slug,
-        records[0]['project_count'],
-        records[0]['member_count'],
-    )
+
+    team = graph.parse_agtype(records[0]['t'])
+    org = graph.parse_agtype(records[0]['o'])
+    team['organization'] = org
+    pc = graph.parse_agtype(records[0]['project_count'])
+    mc = graph.parse_agtype(records[0]['member_count'])
+    return _add_relationships(team, org_slug, pc or 0, mc or 0)
 
 
 @teams_router.put('/{slug}')
@@ -220,6 +266,7 @@ async def update_team(
     org_slug: str,
     slug: str,
     data: dict[str, typing.Any],
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('team:update')),
@@ -251,18 +298,18 @@ async def update_team(
     payload.pop('organization_slug', None)
     payload.pop('organization', None)
 
-    dynamic_model = await blueprints.get_model(models.Team)
+    dynamic_model = await blueprints.get_model(db, models.Team)
 
     # Fetch team with its organization relationship
-    query: typing.LiteralString = """
-    MATCH (t:Team {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    RETURN t{.*, organization: o{.*}} AS team
+    fetch_query = """
+    MATCH (t:Team {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    RETURN t, o
     """
-    records = await neo4j.query(
-        query,
-        slug=slug,
-        org_slug=org_slug,
+    records = await db.execute(
+        fetch_query,
+        {'slug': slug, 'org_slug': org_slug},
+        columns=['t', 'o'],
     )
 
     if not records:
@@ -271,7 +318,9 @@ async def update_team(
             detail=f'Team with slug {slug!r} not found',
         )
 
-    existing = records[0]['team']
+    existing = graph.parse_agtype(records[0]['t'])
+    existing_org = graph.parse_agtype(records[0]['o'])
+    existing['organization'] = existing_org
 
     try:
         team = dynamic_model(
@@ -293,26 +342,26 @@ async def update_team(
     team.updated_at = datetime.datetime.now(datetime.UTC)
     props = team.model_dump(exclude={'organization'})
 
-    update_query: typing.LiteralString = """
-    MATCH (t:Team {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    SET t = $props
-    WITH t, o
-    OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t)
-    OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)
-    WITH t, o, count(DISTINCT p) AS project_count,
-                count(DISTINCT u) AS member_count
-    RETURN t{.*, organization: o{.*}} AS team,
-           project_count, member_count
-    """
+    set_stmt = _set_clause('t', props)
+    update_query = (
+        f'MATCH (t:Team {{{{slug: {{slug}}}}}})'
+        f' -[:BELONGS_TO]->(o:Organization {{{{slug: {{org_slug}}}}}})'
+        f' {set_stmt}'
+        f' WITH t, o'
+        f' OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t)'
+        f' OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)'
+        f' WITH t, o, count(DISTINCT p) AS project_count,'
+        f' count(DISTINCT u) AS member_count'
+        f' RETURN t, o, project_count, member_count'
+    )
+    params = {**props, 'slug': slug, 'org_slug': org_slug}
     try:
-        updated = await neo4j.query(
+        updated = await db.execute(
             update_query,
-            slug=slug,
-            org_slug=org_slug,
-            props=props,
+            params,
+            columns=['t', 'o', 'project_count', 'member_count'],
         )
-    except exceptions.ConstraintError as e:
+    except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
             status_code=409,
             detail=(f'Team with slug {payload["slug"]!r} already exists'),
@@ -324,11 +373,16 @@ async def update_team(
             detail=f'Team with slug {slug!r} not found',
         )
 
+    team_data = graph.parse_agtype(updated[0]['t'])
+    org_data = graph.parse_agtype(updated[0]['o'])
+    team_data['organization'] = org_data
+    pc = graph.parse_agtype(updated[0]['project_count'])
+    mc = graph.parse_agtype(updated[0]['member_count'])
     return _add_relationships(
-        updated[0]['team'],
+        team_data,
         org_slug,
-        updated[0]['project_count'],
-        updated[0]['member_count'],
+        pc or 0,
+        mc or 0,
     )
 
 
@@ -336,6 +390,7 @@ async def update_team(
 async def delete_team(
     org_slug: str,
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('team:delete')),
@@ -351,19 +406,18 @@ async def delete_team(
         404: Team not found
 
     """
-    query: typing.LiteralString = """
-    MATCH (t:Team {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    query = """
+    MATCH (t:Team {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     DETACH DELETE t
-    RETURN count(t) AS deleted
+    RETURN t
     """
-    records = await neo4j.query(
+    records = await db.execute(
         query,
-        slug=slug,
-        org_slug=org_slug,
+        {'slug': slug, 'org_slug': org_slug},
     )
 
-    if not records or records[0].get('deleted', 0) == 0:
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Team with slug {slug!r} not found',
@@ -374,6 +428,7 @@ async def delete_team(
 async def list_team_members(
     org_slug: str,
     slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('team:read')),
@@ -392,30 +447,53 @@ async def list_team_members(
         404: Team not found
 
     """
-    query: typing.LiteralString = """
-    MATCH (t:Team {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
-    OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)
-    RETURN t, collect({
-        email: u.email,
-        display_name: u.display_name,
-        is_active: COALESCE(u.is_active, false),
-        is_admin: COALESCE(u.is_admin, false)
-    }) AS members
+    # First verify the team exists
+    team_check = """
+    MATCH (t:Team {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    RETURN t
     """
-    records = await neo4j.query(
-        query,
-        slug=slug,
-        org_slug=org_slug,
+    team_records = await db.execute(
+        team_check,
+        {'slug': slug, 'org_slug': org_slug},
     )
-
-    if not records or not records[0].get('t'):
+    if not team_records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Team with slug {slug!r} not found',
         )
-    members = records[0].get('members', [])
-    return [m for m in members if m.get('email')]
+
+    # Then fetch members
+    member_query = """
+    MATCH (u:User)-[:MEMBER_OF]->(t:Team {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    RETURN u.email, u.display_name, u.is_active, u.is_admin
+    ORDER BY u.email
+    """
+    records = await db.execute(
+        member_query,
+        {'slug': slug, 'org_slug': org_slug},
+        columns=['email', 'display_name', 'is_active', 'is_admin'],
+    )
+    members: list[dict[str, typing.Any]] = []
+    for record in records:
+        email = graph.parse_agtype(record['email'])
+        if email:
+            members.append(
+                {
+                    'email': email,
+                    'display_name': graph.parse_agtype(
+                        record['display_name'],
+                    ),
+                    'is_active': graph.parse_agtype(
+                        record.get('is_active', False),
+                    ),
+                    'is_admin': graph.parse_agtype(
+                        record.get('is_admin', False),
+                    ),
+                }
+            )
+    return members
 
 
 @teams_router.post('/{slug}/members', status_code=201)
@@ -423,6 +501,7 @@ async def add_team_member(
     org_slug: str,
     slug: str,
     data: dict[str, str],
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('team:update')),
@@ -450,18 +529,17 @@ async def add_team_member(
             detail='email is required',
         )
 
-    query: typing.LiteralString = """
-    MATCH (u:User {email: $email})
-    MATCH (t:Team {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    query = """
+    MATCH (u:User {{email: {email}}}),
+          (t:Team {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     MERGE (u)-[:MEMBER_OF]->(t)
     RETURN u, t
     """
-    records = await neo4j.query(
+    records = await db.execute(
         query,
-        email=email,
-        slug=slug,
-        org_slug=org_slug,
+        {'email': email, 'slug': slug, 'org_slug': org_slug},
+        columns=['u', 't'],
     )
 
     if not records:
@@ -480,6 +558,7 @@ async def remove_team_member(
     org_slug: str,
     slug: str,
     email: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('team:update')),
@@ -496,20 +575,20 @@ async def remove_team_member(
         404: Membership not found
 
     """
-    query: typing.LiteralString = """
-    MATCH (u:User {email: $email})-[m:MEMBER_OF]->(t:Team {slug: $slug})
-          -[:BELONGS_TO]->(o:Organization {slug: $org_slug})
+    query = """
+    MATCH (u:User {{email: {email}}})-[m:MEMBER_OF]->
+          (t:Team {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     DELETE m
-    RETURN count(m) AS deleted
+    RETURN m
     """
-    records = await neo4j.query(
+    records = await db.execute(
         query,
-        email=email,
-        slug=slug,
-        org_slug=org_slug,
+        {'email': email, 'slug': slug, 'org_slug': org_slug},
+        columns=['m'],
     )
 
-    if not records or records[0].get('deleted', 0) == 0:
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=(f'Membership for {email!r} in team {slug!r} not found'),

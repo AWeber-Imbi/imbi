@@ -4,8 +4,9 @@ import datetime
 import unittest
 from unittest import mock
 
+import fastapi.testclient
 import jwt
-from fastapi import testclient
+from imbi_common import graph
 from imbi_common.auth import core
 
 from imbi_api import app, models, settings
@@ -143,16 +144,14 @@ class LoginEndpointTestCase(unittest.TestCase):
     """Test login endpoint."""
 
     def setUp(self) -> None:
-        """
-        Set up a TestClient and a default active test User instance
-        used by tests.
-
-        Initializes self.client as a TestClient for the application
-        and self.test_user as an active, non-admin, non-service-account
-        User whose password_hash is populated with a hashed password
-        and whose created_at is the current time.
-        """
-        self.client = testclient.TestClient(app.create_app())
+        """Set up TestClient and test User."""
+        self.application = app.create_app()
+        self.client = fastapi.testclient.TestClient(self.application)
+        self.mock_db = mock.AsyncMock()
+        # Override graph dependency
+        self.application.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
         # Reset rate limiter to avoid 429 errors across tests
         rate_limit.limiter.reset()
 
@@ -166,69 +165,67 @@ class LoginEndpointTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
+    def tearDown(self) -> None:
+        """Remove dependency overrides."""
+        self.application.dependency_overrides.clear()
+
     def test_login_success(self) -> None:
         """Test successful login."""
-        # Mock neo4j.run for MFA query (returns empty result = no MFA)
-        mock_result = mock.AsyncMock()
-        mock_result.data = mock.AsyncMock(return_value=[])
-        mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-        mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+        # match() returns the user
+        self.mock_db.match.return_value = [self.test_user]
+        # merge() for token metadata and last_login update
+        self.mock_db.merge.return_value = None
+        # execute() for MFA check (returns empty = no MFA)
+        self.mock_db.execute.return_value = []
 
-        with (
-            mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch,
-            mock.patch('imbi_common.neo4j.create_node'),
-            mock.patch('imbi_common.neo4j.upsert') as mock_upsert,
-            mock.patch('imbi_common.neo4j.run', return_value=mock_result),
-        ):
-            mock_fetch.return_value = self.test_user
+        response = self.client.post(
+            '/auth/login',
+            json={
+                'email': 'test@example.com',
+                'password': 'TestPassword123!',
+            },
+        )
 
-            response = self.client.post(
-                '/auth/login',
-                json={
-                    'email': 'test@example.com',
-                    'password': 'TestPassword123!',
-                },
-            )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('access_token', data)
+        self.assertIn('refresh_token', data)
+        self.assertEqual(data['token_type'], 'bearer')
+        self.assertIn('expires_in', data)
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertIn('access_token', data)
-            self.assertIn('refresh_token', data)
-            self.assertEqual(data['token_type'], 'bearer')
-            self.assertIn('expires_in', data)
-
-            # Verify Neo4j calls
-            mock_fetch.assert_called()
-            mock_upsert.assert_called()  # Update last_login
+        # Verify graph calls
+        self.mock_db.match.assert_called()
+        self.mock_db.merge.assert_called()
 
     def test_login_invalid_email(self) -> None:
         """Test login with invalid email."""
-        with mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch:
-            mock_fetch.return_value = None
+        self.mock_db.match.return_value = []
 
-            response = self.client.post(
-                '/auth/login',
-                json={'email': 'invalid@example.com', 'password': 'password'},
-            )
+        response = self.client.post(
+            '/auth/login',
+            json={
+                'email': 'invalid@example.com',
+                'password': 'password',
+            },
+        )
 
-            self.assertEqual(response.status_code, 401)
-            self.assertIn('detail', response.json())
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('detail', response.json())
 
     def test_login_invalid_password(self) -> None:
         """Test login with invalid password."""
-        with mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch:
-            mock_fetch.return_value = self.test_user
+        self.mock_db.match.return_value = [self.test_user]
 
-            response = self.client.post(
-                '/auth/login',
-                json={
-                    'email': 'test@example.com',
-                    'password': 'WrongPassword!',
-                },
-            )
+        response = self.client.post(
+            '/auth/login',
+            json={
+                'email': 'test@example.com',
+                'password': 'WrongPassword!',
+            },
+        )
 
-            self.assertEqual(response.status_code, 401)
-            self.assertIn('detail', response.json())
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('detail', response.json())
 
     def test_login_inactive_user(self) -> None:
         """Test login with inactive user."""
@@ -242,15 +239,17 @@ class LoginEndpointTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        with mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch:
-            mock_fetch.return_value = inactive_user
+        self.mock_db.match.return_value = [inactive_user]
 
-            response = self.client.post(
-                '/auth/login',
-                json={'email': 'inactive@example.com', 'password': 'password'},
-            )
+        response = self.client.post(
+            '/auth/login',
+            json={
+                'email': 'inactive@example.com',
+                'password': 'password',
+            },
+        )
 
-            self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.status_code, 401)
 
     def test_login_no_password_hash(self) -> None:
         """Test login for user without password authentication."""
@@ -264,32 +263,31 @@ class LoginEndpointTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        with mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch:
-            mock_fetch.return_value = oauth_user
+        self.mock_db.match.return_value = [oauth_user]
 
-            response = self.client.post(
-                '/auth/login',
-                json={'email': 'oauth@example.com', 'password': 'anypassword'},
-            )
+        response = self.client.post(
+            '/auth/login',
+            json={
+                'email': 'oauth@example.com',
+                'password': 'anypassword',
+            },
+        )
 
-            self.assertEqual(response.status_code, 401)
-            self.assertIn('not available', response.json()['detail'])
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('not available', response.json()['detail'])
 
 
 class TokenRefreshEndpointTestCase(unittest.TestCase):
     """Test token refresh endpoint."""
 
     def setUp(self) -> None:
-        """
-        Prepare test fixtures for authentication endpoint tests.
-
-        Creates a FastAPI test client and default authentication
-        settings, and constructs a default active, non-admin test user
-        assigned to `self.test_user`. The test user has a username,
-        email, display name, active status, service-account flag, admin
-        flag, and creation timestamp.
-        """
-        self.client = testclient.TestClient(app.create_app())
+        """Prepare test fixtures."""
+        self.application = app.create_app()
+        self.client = fastapi.testclient.TestClient(self.application)
+        self.mock_db = mock.AsyncMock()
+        self.application.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
         # Reset rate limiter to avoid 429 errors across tests
         rate_limit.limiter.reset()
 
@@ -304,6 +302,10 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
             is_service_account=False,
             created_at=datetime.datetime.now(datetime.UTC),
         )
+
+    def tearDown(self) -> None:
+        """Remove dependency overrides."""
+        self.application.dependency_overrides.clear()
 
     def test_token_refresh_success(self) -> None:
         """Test successful token refresh."""
@@ -329,30 +331,32 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
             user=self.test_user,
         )
 
-        with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
-            mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch,
-            mock.patch('imbi_common.neo4j.create_node'),
-            mock.patch('imbi_common.neo4j.upsert'),
-        ):
-            # Mock settings to use our test JWT secret
-            mock_settings.return_value = self.auth_settings
+        # match() returns token metadata first, then user
+        self.mock_db.match.side_effect = [
+            [token_metadata],
+            [self.test_user],
+        ]
+        # merge() for revoking old token
+        self.mock_db.merge.return_value = None
+        # execute() for storing new token metadata
+        self.mock_db.execute.return_value = []
 
-            # First call returns token metadata (not revoked)
-            # Second call returns user
-            mock_fetch.side_effect = [token_metadata, self.test_user]
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings'
+        ) as mock_settings:
+            mock_settings.return_value = self.auth_settings
 
             response = self.client.post(
                 '/auth/token/refresh',
                 json={'refresh_token': refresh_token},
             )
 
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertIn('access_token', data)
-            self.assertIn('refresh_token', data)
-            # Token rotation: new refresh token should be different
-            self.assertNotEqual(data['refresh_token'], refresh_token)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('access_token', data)
+        self.assertIn('refresh_token', data)
+        # Token rotation: new refresh token should be different
+        self.assertNotEqual(data['refresh_token'], refresh_token)
 
     def test_token_refresh_expired(self) -> None:
         """Test refresh with expired token."""
@@ -368,7 +372,6 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         with mock.patch(
             'imbi_api.settings.get_auth_settings'
         ) as mock_settings:
-            # Mock settings to use our test JWT secret
             mock_settings.return_value = expired_settings
 
             response = self.client.post(
@@ -376,8 +379,8 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
                 json={'refresh_token': refresh_token},
             )
 
-            self.assertEqual(response.status_code, 401)
-            self.assertIn('expired', response.json()['detail'].lower())
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('expired', response.json()['detail'].lower())
 
     def test_token_refresh_invalid(self) -> None:
         """Test refresh with invalid token."""
@@ -389,7 +392,7 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_token_refresh_wrong_type(self) -> None:
-        """Test refresh with access token instead of refresh token."""
+        """Test refresh with access token instead of refresh."""
         # Use access token instead of refresh token
         access_token = core.create_access_token(
             self.test_user.email, auth_settings=self.auth_settings
@@ -398,7 +401,6 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
         with mock.patch(
             'imbi_api.settings.get_auth_settings'
         ) as mock_settings:
-            # Mock settings to use our test JWT secret
             mock_settings.return_value = self.auth_settings
 
             response = self.client.post(
@@ -406,8 +408,8 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
                 json={'refresh_token': access_token},
             )
 
-            self.assertEqual(response.status_code, 401)
-            self.assertIn('type', response.json()['detail'].lower())
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('type', response.json()['detail'].lower())
 
     def test_token_refresh_revoked(self) -> None:
         """Test refresh with revoked token."""
@@ -432,28 +434,32 @@ class TokenRefreshEndpointTestCase(unittest.TestCase):
             user=self.test_user,
         )
 
-        with (
-            mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
-            mock.patch('imbi_common.neo4j.fetch_node') as mock_fetch,
-        ):
-            # Mock settings to use our test JWT secret
+        self.mock_db.match.return_value = [revoked_token]
+
+        with mock.patch(
+            'imbi_api.settings.get_auth_settings'
+        ) as mock_settings:
             mock_settings.return_value = self.auth_settings
-            mock_fetch.return_value = revoked_token
 
             response = self.client.post(
                 '/auth/token/refresh',
                 json={'refresh_token': refresh_token},
             )
 
-            self.assertEqual(response.status_code, 401)
-            self.assertIn('revoked', response.json()['detail'].lower())
+        self.assertEqual(response.status_code, 401)
+        self.assertIn('revoked', response.json()['detail'].lower())
 
 
 class LogoutEndpointTestCase(unittest.TestCase):
     """Test logout endpoint."""
 
     def setUp(self) -> None:
-        self.client = testclient.TestClient(app.create_app())
+        self.application = app.create_app()
+        self.client = fastapi.testclient.TestClient(self.application)
+        self.mock_db = mock.AsyncMock()
+        self.application.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
         # Reset rate limiter to avoid 429 errors across tests
         rate_limit.limiter.reset()
 
@@ -469,46 +475,38 @@ class LogoutEndpointTestCase(unittest.TestCase):
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
+    def tearDown(self) -> None:
+        """Remove dependency overrides."""
+        self.application.dependency_overrides.clear()
+
     def test_logout(self) -> None:
         """Test logout endpoint revokes tokens."""
         # Create access token
         access_token = core.create_access_token(
-            self.test_user.email, auth_settings=self.auth_settings
+            self.test_user.email,
+            auth_settings=self.auth_settings,
         )
 
-        # Mock Neo4j run calls - different results for different queries
-        def mock_run_side_effect(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.consume = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-
+        def execute_side_effect(query, params=None, columns=None):
             # Check if token is revoked (authenticate_jwt)
             if 'TokenMetadata' in query and 'revoked' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'revoked': False}]
-                )
-            # Load user (authenticate_jwt)
-            elif 'User' in query and 'email' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'u': user_dict}]
-                )
-            # Load permissions (load_user_permissions)
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'permissions': []}]
-                )
+                return [{'revoked': False}]
+            # Load permissions (must check before User since
+            # the permissions query also contains 'User')
+            elif 'MEMBER_OF' in query:
+                return [{'permissions': []}]
             # Logout operations (revoke token, delete sessions)
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+            return []
 
-            return mock_result
+        self.mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        # authenticate_jwt uses db.match() for user lookup
+        self.mock_db.match.return_value = [self.test_user]
 
         with (
             mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
             mock.patch(
-                'imbi_common.neo4j.run', side_effect=mock_run_side_effect
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_settings.return_value = self.auth_settings
@@ -518,4 +516,4 @@ class LogoutEndpointTestCase(unittest.TestCase):
                 headers={'Authorization': f'Bearer {access_token}'},
             )
 
-            self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 204)

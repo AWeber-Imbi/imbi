@@ -1,6 +1,7 @@
 """Tests for API key authentication in permissions module."""
 
 import datetime
+import typing
 import unittest
 from unittest import mock
 
@@ -43,52 +44,60 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_authenticate_api_key_success(self) -> None:
         """Test successful API key authentication."""
+        mock_db = mock.AsyncMock()
+        user_dict = self.test_user.model_dump(mode='json')
 
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-
-            # API key fetch query
+        def execute_side_effect(query, params=None, columns=None):
             if 'APIKey' in query and 'OWNED_BY' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': self.api_key_data, 'u': user_dict, 's': None}
-                    ]
-                )
-            # Update last_used query
+                return [
+                    {
+                        'k': self.api_key_data,
+                        'u': user_dict,
+                        's': None,
+                    }
+                ]
             elif 'last_used' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            # Load permissions query
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'permissions': ['read:projects', 'write:projects']}
-                    ]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                return []
+            elif (
+                'Permission' in query
+                or 'GRANTS' in query
+                or 'MEMBER_OF' in query
+            ):
+                return [
+                    {
+                        'permissions': [
+                            'read:projects',
+                            'write:projects',
+                        ]
+                    }
+                ]
+            return []
 
-            return mock_result
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
-        with mock.patch('imbi_common.neo4j.run', side_effect=mock_run):
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
             auth_context = await permissions.authenticate_api_key(
-                self.full_key, self.auth_settings
+                mock_db, self.full_key, self.auth_settings
             )
 
-            self.assertEqual(auth_context.user.email, 'test@example.com')
-            self.assertEqual(auth_context.session_id, self.key_id)
-            self.assertEqual(auth_context.auth_method, 'api_key')
-            self.assertIn('read:projects', auth_context.permissions)
-            self.assertIn('write:projects', auth_context.permissions)
+        self.assertEqual(auth_context.user.email, 'test@example.com')
+        self.assertEqual(auth_context.session_id, self.key_id)
+        self.assertEqual(auth_context.auth_method, 'api_key')
+        self.assertIn('read:projects', auth_context.permissions)
+        self.assertIn('write:projects', auth_context.permissions)
 
-    async def test_authenticate_api_key_invalid_format(self) -> None:
+    async def test_authenticate_api_key_invalid_format(
+        self,
+    ) -> None:
         """Test authentication with invalid key format."""
+        mock_db = mock.AsyncMock()
+
         with self.assertRaises(fastapi.HTTPException) as cm:
             await permissions.authenticate_api_key(
-                'invalid-key-format', self.auth_settings
+                mock_db, 'invalid-key-format', self.auth_settings
             )
 
         self.assertEqual(cm.exception.status_code, 401)
@@ -96,50 +105,45 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_authenticate_api_key_not_found(self) -> None:
         """Test authentication with non-existent API key."""
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
 
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.data = mock.AsyncMock(return_value=[])
-            return mock_result
-
-        with (
-            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
-            self.assertRaises(fastapi.HTTPException) as cm,
-        ):
+        with self.assertRaises(fastapi.HTTPException) as cm:
             await permissions.authenticate_api_key(
-                self.full_key, self.auth_settings
+                mock_db, self.full_key, self.auth_settings
             )
 
         self.assertEqual(cm.exception.status_code, 401)
         self.assertEqual(cm.exception.detail, 'Invalid or revoked API key')
 
-    async def test_authenticate_api_key_user_not_found(self) -> None:
+    async def test_authenticate_api_key_user_not_found(
+        self,
+    ) -> None:
         """Test authentication when API key user is missing."""
+        mock_db = mock.AsyncMock()
 
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-
+        def execute_side_effect(query, params=None, columns=None):
             if 'APIKey' in query and 'OWNED_BY' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': self.api_key_data, 'u': None, 's': None}
-                    ]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                return [
+                    {
+                        'k': self.api_key_data,
+                        'u': None,
+                        's': None,
+                    }
+                ]
+            return []
 
-            return mock_result
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
         with (
-            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
-                self.full_key, self.auth_settings
+                mock_db, self.full_key, self.auth_settings
             )
 
         self.assertEqual(cm.exception.status_code, 401)
@@ -150,29 +154,31 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
         revoked_key_data = self.api_key_data.copy()
         revoked_key_data['revoked'] = True
 
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+        mock_db = mock.AsyncMock()
+        user_dict = self.test_user.model_dump(mode='json')
 
+        def execute_side_effect(query, params=None, columns=None):
             if 'APIKey' in query and 'OWNED_BY' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': revoked_key_data, 'u': user_dict, 's': None}
-                    ]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                return [
+                    {
+                        'k': revoked_key_data,
+                        'u': user_dict,
+                        's': None,
+                    }
+                ]
+            return []
 
-            return mock_result
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
         with (
-            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
-                self.full_key, self.auth_settings
+                mock_db, self.full_key, self.auth_settings
             )
 
         self.assertEqual(cm.exception.status_code, 401)
@@ -180,103 +186,113 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_authenticate_api_key_expired(self) -> None:
         """Test authentication with expired API key."""
-        expired_key_data = self.api_key_data.copy()
-        expired_key_data['expires_at'] = (  # type: ignore[assignment]
-            datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=1)
-        )
+        expired_key_data: dict[str, typing.Any] = self.api_key_data.copy()
+        expired_key_data['expires_at'] = datetime.datetime.now(
+            datetime.UTC
+        ) - datetime.timedelta(days=1)
 
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+        mock_db = mock.AsyncMock()
+        user_dict = self.test_user.model_dump(mode='json')
 
+        def execute_side_effect(query, params=None, columns=None):
             if 'APIKey' in query and 'OWNED_BY' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': expired_key_data, 'u': user_dict, 's': None}
-                    ]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                return [
+                    {
+                        'k': expired_key_data,
+                        'u': user_dict,
+                        's': None,
+                    }
+                ]
+            return []
 
-            return mock_result
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
         with (
-            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
-                self.full_key, self.auth_settings
+                mock_db, self.full_key, self.auth_settings
             )
 
         self.assertEqual(cm.exception.status_code, 401)
         self.assertEqual(cm.exception.detail, 'API key expired')
 
-    async def test_authenticate_api_key_invalid_secret(self) -> None:
+    async def test_authenticate_api_key_invalid_secret(
+        self,
+    ) -> None:
         """Test authentication with wrong API key secret."""
         wrong_key = f'{self.key_id}_wrongsecret'
 
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+        mock_db = mock.AsyncMock()
+        user_dict = self.test_user.model_dump(mode='json')
 
+        def execute_side_effect(query, params=None, columns=None):
             if 'APIKey' in query and 'OWNED_BY' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': self.api_key_data, 'u': user_dict, 's': None}
-                    ]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                return [
+                    {
+                        'k': self.api_key_data,
+                        'u': user_dict,
+                        's': None,
+                    }
+                ]
+            return []
 
-            return mock_result
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
         with (
-            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
-                wrong_key, self.auth_settings
+                mock_db, wrong_key, self.auth_settings
             )
 
         self.assertEqual(cm.exception.status_code, 401)
         self.assertEqual(cm.exception.detail, 'Invalid or revoked API key')
 
-    async def test_authenticate_api_key_user_inactive(self) -> None:
+    async def test_authenticate_api_key_user_inactive(
+        self,
+    ) -> None:
         """Test authentication with inactive user."""
         inactive_user = models.User(
             email='inactive@example.com',
             display_name='Inactive User',
-            is_active=False,  # Inactive user
+            is_active=False,
             created_at=datetime.datetime.now(datetime.UTC),
         )
 
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
+        mock_db = mock.AsyncMock()
+        user_dict = inactive_user.model_dump(mode='json')
 
+        def execute_side_effect(query, params=None, columns=None):
             if 'APIKey' in query and 'OWNED_BY' in query:
-                user_dict = inactive_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': self.api_key_data, 'u': user_dict, 's': None}
-                    ]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                return [
+                    {
+                        'k': self.api_key_data,
+                        'u': user_dict,
+                        's': None,
+                    }
+                ]
+            return []
 
-            return mock_result
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
         with (
-            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
             self.assertRaises(fastapi.HTTPException) as cm,
         ):
             await permissions.authenticate_api_key(
-                self.full_key, self.auth_settings
+                mock_db, self.full_key, self.auth_settings
             )
 
         self.assertEqual(cm.exception.status_code, 401)
@@ -285,134 +301,50 @@ class AuthenticateAPIKeyTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_authenticate_api_key_with_scopes(self) -> None:
         """Test API key authentication with scoped permissions."""
         scoped_key_data = self.api_key_data.copy()
-        scoped_key_data['scopes'] = ['read:projects']  # Limit to read only
+        scoped_key_data['scopes'] = ['read:projects']
 
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
+        mock_db = mock.AsyncMock()
+        user_dict = self.test_user.model_dump(mode='json')
 
+        def execute_side_effect(query, params=None, columns=None):
             if 'APIKey' in query and 'OWNED_BY' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': scoped_key_data, 'u': user_dict, 's': None}
-                    ]
-                )
+                return [
+                    {
+                        'k': scoped_key_data,
+                        'u': user_dict,
+                        's': None,
+                    }
+                ]
             elif 'last_used' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            elif 'Permission' in query or 'GRANTS' in query:
-                # User has both read and write permissions
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'permissions': ['read:projects', 'write:projects']}
-                    ]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                return []
+            elif (
+                'Permission' in query
+                or 'GRANTS' in query
+                or 'MEMBER_OF' in query
+            ):
+                return [
+                    {
+                        'permissions': [
+                            'read:projects',
+                            'write:projects',
+                        ]
+                    }
+                ]
+            return []
 
-            return mock_result
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
-        with mock.patch('imbi_common.neo4j.run', side_effect=mock_run):
-            auth_context = await permissions.authenticate_api_key(
-                self.full_key, self.auth_settings
-            )
-
-            # Should only have read permission (filtered by scope)
-            self.assertIn('read:projects', auth_context.permissions)
-            self.assertNotIn('write:projects', auth_context.permissions)
-
-    async def test_authenticate_api_key_neo4j_datetime_expiration(
-        self,
-    ) -> None:
-        """Test API key expiration with Neo4j DateTime object."""
-
-        # Create Neo4j DateTime-like object with to_native() method
-        class MockNeo4jDateTime:
-            def to_native(self):
-                return datetime.datetime.now(
-                    datetime.UTC
-                ) - datetime.timedelta(days=1)
-
-        expired_key_data = self.api_key_data.copy()
-        expired_key_data['expires_at'] = MockNeo4jDateTime()  # type: ignore[assignment]
-
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-
-            if 'APIKey' in query and 'OWNED_BY' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': expired_key_data, 'u': user_dict, 's': None}
-                    ]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
-
-        with (
-            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
-            self.assertRaises(fastapi.HTTPException) as cm,
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
-            await permissions.authenticate_api_key(
-                self.full_key, self.auth_settings
-            )
-
-        self.assertEqual(cm.exception.status_code, 401)
-        self.assertEqual(cm.exception.detail, 'API key expired')
-
-    async def test_authenticate_api_key_neo4j_datetime_not_expired(
-        self,
-    ) -> None:
-        """Test API key with Neo4j DateTime that is NOT expired."""
-
-        # Create Neo4j DateTime-like object with future expiration
-        class MockNeo4jDateTime:
-            def to_native(self):
-                return datetime.datetime.now(
-                    datetime.UTC
-                ) + datetime.timedelta(days=30)
-
-        valid_key_data = self.api_key_data.copy()
-        valid_key_data['expires_at'] = MockNeo4jDateTime()  # type: ignore[assignment]
-
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-
-            if 'APIKey' in query and 'OWNED_BY' in query:
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': valid_key_data, 'u': user_dict, 's': None}
-                    ]
-                )
-            elif 'last_used' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'permissions': ['read:projects']}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
-
-            return mock_result
-
-        with mock.patch('imbi_common.neo4j.run', side_effect=mock_run):
             auth_context = await permissions.authenticate_api_key(
-                self.full_key, self.auth_settings
+                mock_db, self.full_key, self.auth_settings
             )
 
-            # Should succeed - key not expired
-            self.assertEqual(auth_context.user.email, 'test@example.com')
-            self.assertEqual(auth_context.session_id, self.key_id)
+        # Should only have read permission (filtered by scope)
+        self.assertIn('read:projects', auth_context.permissions)
+        self.assertNotIn('write:projects', auth_context.permissions)
 
 
 class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
@@ -437,13 +369,10 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_current_user_with_api_key(self) -> None:
         """Test get_current_user detects and authenticates API key."""
+        mock_db = mock.AsyncMock()
+        user_dict = self.test_user.model_dump(mode='json')
 
-        def mock_run(query: str, **params):
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-            mock_result.consume = mock.AsyncMock()
-
+        def execute_side_effect(query, params=None, columns=None):
             if 'APIKey' in query and 'OWNED_BY' in query:
                 api_key_data = {
                     'key_id': self.key_id,
@@ -452,36 +381,42 @@ class GetCurrentUserTestCase(unittest.IsolatedAsyncioTestCase):
                     'revoked': False,
                     'expires_at': None,
                 }
-                user_dict = self.test_user.model_dump(mode='json')
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {'k': api_key_data, 'u': user_dict, 's': None}
-                    ]
-                )
+                return [
+                    {
+                        'k': api_key_data,
+                        'u': user_dict,
+                        's': None,
+                    }
+                ]
             elif 'last_used' in query:
-                mock_result.data = mock.AsyncMock(return_value=[])
-            elif 'Permission' in query or 'GRANTS' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'permissions': ['read:projects']}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                return []
+            elif (
+                'Permission' in query
+                or 'GRANTS' in query
+                or 'MEMBER_OF' in query
+            ):
+                return [{'permissions': ['read:projects']}]
+            return []
 
-            return mock_result
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
 
         with (
             mock.patch('imbi_api.settings.get_auth_settings') as mock_settings,
-            mock.patch('imbi_common.neo4j.run', side_effect=mock_run),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             mock_settings.return_value = self.auth_settings
 
-            # Create credentials with API key format
             credentials = security.HTTPAuthorizationCredentials(
                 scheme='Bearer', credentials=self.full_key
             )
 
-            auth_context = await permissions.get_current_user(credentials)
+            auth_context = await permissions.get_current_user(
+                mock_db, credentials
+            )
 
-            self.assertEqual(auth_context.user.email, 'test@example.com')
-            self.assertEqual(auth_context.session_id, self.key_id)
-            self.assertEqual(auth_context.auth_method, 'api_key')
+        self.assertEqual(auth_context.user.email, 'test@example.com')
+        self.assertEqual(auth_context.session_id, self.key_id)
+        self.assertEqual(auth_context.auth_method, 'api_key')

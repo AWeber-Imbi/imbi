@@ -9,7 +9,7 @@ import fastapi
 from botocore import (  # pyright: ignore[reportMissingTypeStubs]
     exceptions as botocore_exceptions,
 )
-from imbi_common import neo4j
+from imbi_common import graph
 
 from imbi_api import models, settings, storage
 from imbi_api.auth import permissions
@@ -52,6 +52,7 @@ def _upload_response(upload: models.Upload) -> UploadResponse:
 async def create_upload(
     file: fastapi.UploadFile,
     storage_client: storage.InjectStorageClient,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('upload:create')),
@@ -61,7 +62,7 @@ async def create_upload(
 
     Accepts a multipart file upload, validates the content type and
     size, stores the file in S3, generates a thumbnail for raster
-    images, and creates an Upload node in Neo4j.
+    images, and creates an Upload node in the graph.
 
     Returns:
         Upload metadata including the generated ID.
@@ -118,7 +119,7 @@ async def create_upload(
                 upload_id,
             )
 
-    # Create Neo4j node
+    # Create graph node
     upload_model = models.Upload(
         id=upload_id,
         filename=filename,
@@ -132,7 +133,7 @@ async def create_upload(
     )
 
     try:
-        await neo4j.upsert(upload_model, {'id': upload_id})
+        await db.merge(upload_model, match_on=['id'])
     except Exception:
         LOGGER.exception(
             'Failed to save upload metadata for %s, rolling back S3 objects',
@@ -156,6 +157,7 @@ async def create_upload(
 
 @uploads_router.get('/')
 async def list_uploads(
+    db: graph.Pool,
     _auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('upload:read')),
@@ -179,20 +181,19 @@ async def list_uploads(
     if uploaded_by is not None:
         parameters['uploaded_by'] = uploaded_by
 
-    uploads: list[UploadResponse] = []
-    async for upload in neo4j.fetch_nodes(
+    uploads = await db.match(
         models.Upload,
         parameters if parameters else None,
         order_by='created_at',
-    ):
-        uploads.append(_upload_response(upload))
-    return uploads
+    )
+    return [_upload_response(u) for u in uploads]
 
 
 @uploads_router.get('/{upload_id}')
 async def get_upload(
     upload_id: str,
     storage_client: storage.InjectStorageClient,
+    db: graph.Pool,
 ) -> fastapi.responses.Response:
     """Serve the uploaded file.
 
@@ -205,10 +206,11 @@ async def get_upload(
         404: If the upload does not exist.
 
     """
-    upload = await neo4j.fetch_node(
+    results = await db.match(
         models.Upload,
         {'id': upload_id},
     )
+    upload = results[0] if results else None
     if upload is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -226,7 +228,7 @@ async def get_upload(
         if error_code == 'NoSuchKey':
             raise fastapi.HTTPException(
                 status_code=404,
-                detail=f'Upload {upload_id!r} content not found',
+                detail=(f'Upload {upload_id!r} content not found'),
             ) from err
         raise
     return fastapi.responses.Response(
@@ -239,6 +241,7 @@ async def get_upload(
 @uploads_router.get('/{upload_id}/meta')
 async def get_upload_meta(
     upload_id: str,
+    db: graph.Pool,
 ) -> UploadResponse:
     """Return upload metadata as JSON.
 
@@ -246,10 +249,11 @@ async def get_upload_meta(
         404: If the upload does not exist.
 
     """
-    upload = await neo4j.fetch_node(
+    results = await db.match(
         models.Upload,
         {'id': upload_id},
     )
+    upload = results[0] if results else None
     if upload is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -262,6 +266,7 @@ async def get_upload_meta(
 async def get_upload_thumbnail(
     upload_id: str,
     storage_client: storage.InjectStorageClient,
+    db: graph.Pool,
 ) -> fastapi.responses.Response:
     """Serve the upload thumbnail.
 
@@ -274,10 +279,11 @@ async def get_upload_thumbnail(
         404: If the upload does not exist or has no thumbnail.
 
     """
-    upload = await neo4j.fetch_node(
+    results = await db.match(
         models.Upload,
         {'id': upload_id},
     )
+    upload = results[0] if results else None
     if upload is None:
         raise fastapi.HTTPException(
             status_code=404,
@@ -314,6 +320,7 @@ async def get_upload_thumbnail(
 async def delete_upload(
     upload_id: str,
     storage_client: storage.InjectStorageClient,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('upload:delete')),
@@ -321,29 +328,36 @@ async def delete_upload(
 ) -> None:
     """Delete an upload and its S3 objects.
 
-    Removes the Neo4j node and deletes the original file and
+    Removes the graph node and deletes the original file and
     thumbnail (if present) from S3.
 
     Raises:
         404: If the upload does not exist.
 
     """
-    upload = await neo4j.fetch_node(
+    results = await db.match(
         models.Upload,
         {'id': upload_id},
     )
+    upload = results[0] if results else None
     if upload is None:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Upload {upload_id!r} not found',
         )
 
-    # Delete Neo4j node first to avoid broken metadata on S3 failure
-    await neo4j.delete_node(models.Upload, {'id': upload_id})
+    # Delete graph node first to avoid broken metadata on
+    # S3 failure
+    await db.delete(upload)
 
-    # Delete S3 objects (orphans can be cleaned up later if this fails)
+    # Delete S3 objects (orphans can be cleaned up later
+    # if this fails)
     await storage_client.delete(upload.s3_key)
     if upload.thumbnail_s3_key:
         await storage_client.delete(upload.thumbnail_s3_key)
 
-    LOGGER.info('Upload %s deleted by %s', upload_id, auth.require_user.email)
+    LOGGER.info(
+        'Upload %s deleted by %s',
+        upload_id,
+        auth.require_user.email,
+    )

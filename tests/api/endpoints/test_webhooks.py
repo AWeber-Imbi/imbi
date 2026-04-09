@@ -7,19 +7,11 @@ import typing
 import unittest
 from unittest import mock
 
+import psycopg.errors
 from fastapi import testclient
-from neo4j import exceptions
+from imbi_common import graph
 
 from imbi_api import app, models
-
-
-def _mock_neo4j_result(data):
-    """Create a mock async context manager for neo4j.run()."""
-    result = mock.AsyncMock()
-    result.data.return_value = data
-    result.__aenter__.return_value = result
-    result.__aexit__.return_value = None
-    return result
 
 
 class _WebhookDetails(typing.TypedDict):
@@ -81,6 +73,11 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
         self.client = testclient.TestClient(self.test_app)
 
         self.webhook_record: _WebhookRecord = {
@@ -125,13 +122,13 @@ class WebhookEndpointsTestCase(unittest.TestCase):
     # -- Create --
 
     def test_create_success(self) -> None:
-        result = _mock_neo4j_result([self.webhook_record])
+        self.mock_db.execute.return_value = [self.webhook_record]
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=result,
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.post(
                 '/organizations/engineering/webhooks/',
@@ -142,7 +139,10 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         data = response.json()
         self.assertEqual(data['slug'], 'github-events')
         self.assertEqual(data['name'], 'GitHub Events')
-        self.assertEqual(data['notification_path'], '/webhooks/github')
+        self.assertEqual(
+            data['notification_path'],
+            '/webhooks/github',
+        )
 
     def test_create_with_rules(self) -> None:
         record = copy.deepcopy(self.webhook_record)
@@ -154,13 +154,13 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             },
         ]
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=result,
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             payload = dict(self.webhook_create_json)
             payload['rules'] = [
@@ -178,7 +178,10 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(len(data['rules']), 1)
-        self.assertEqual(data['rules'][0]['handler'], 'my.handler')
+        self.assertEqual(
+            data['rules'][0]['handler'],
+            'my.handler',
+        )
 
     def test_create_with_third_party_service(self) -> None:
         record = copy.deepcopy(self.webhook_record)
@@ -188,13 +191,13 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         }
         record['identifier_selector'] = '$.repository.full_name'
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=result,
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             payload = dict(self.webhook_create_json)
             payload['third_party_service_slug'] = 'github'
@@ -207,16 +210,14 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertIsNotNone(data['third_party_service'])
-        self.assertEqual(data['third_party_service']['slug'], 'github')
+        self.assertEqual(
+            data['third_party_service']['slug'],
+            'github',
+        )
 
     def test_create_duplicate_slug(self) -> None:
-        with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=exceptions.ConstraintError(),
-            ),
-            self._patch_encryption(),
-        ):
+        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
+        with self._patch_encryption():
             response = self.client.post(
                 '/organizations/engineering/webhooks/',
                 json=self.webhook_create_json,
@@ -226,13 +227,13 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertIn('already exists', response.json()['detail'])
 
     def test_create_org_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=result,
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.post(
                 '/organizations/nonexistent/webhooks/',
@@ -287,10 +288,10 @@ class WebhookEndpointsTestCase(unittest.TestCase):
     # -- List --
 
     def test_list_webhooks(self) -> None:
-        result = _mock_neo4j_result([self.webhook_record])
+        self.mock_db.execute.return_value = [self.webhook_record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/webhooks/',
@@ -303,10 +304,10 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(data[0]['slug'], 'github-events')
 
     def test_list_webhooks_empty(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/webhooks/',
@@ -318,10 +319,10 @@ class WebhookEndpointsTestCase(unittest.TestCase):
     # -- Get --
 
     def test_get_webhook(self) -> None:
-        result = _mock_neo4j_result([self.webhook_record])
+        self.mock_db.execute.return_value = [self.webhook_record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/webhooks/github-events',
@@ -330,13 +331,16 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['slug'], 'github-events')
-        self.assertEqual(data['notification_path'], '/webhooks/github')
+        self.assertEqual(
+            data['notification_path'],
+            '/webhooks/github',
+        )
 
     def test_get_webhook_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/webhooks/nonexistent',
@@ -351,20 +355,25 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         updated = copy.deepcopy(self.webhook_record)
         updated['webhook']['description'] = 'Updated'
 
-        fetch_result = _mock_neo4j_result(
-            [{'webhook': self.webhook_record['webhook']}],
-        )
-        update_result = _mock_neo4j_result([updated])
+        fetch_result = [
+            {'webhook': self.webhook_record['webhook']},
+        ]
+        update_result = [updated]
+
+        self.mock_db.execute.side_effect = [
+            fetch_result,
+            update_result,
+        ]
 
         payload = dict(self.webhook_update_json)
         payload['description'] = 'Updated'
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[fetch_result, update_result],
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.put(
                 '/organizations/engineering/webhooks/github-events',
@@ -372,13 +381,16 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['description'], 'Updated')
+        self.assertEqual(
+            response.json()['description'],
+            'Updated',
+        )
 
     def test_update_webhook_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/webhooks/nonexistent',
@@ -389,22 +401,24 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertIn('not found', response.json()['detail'])
 
     def test_update_slug_conflict(self) -> None:
-        fetch_result = _mock_neo4j_result(
-            [{'webhook': self.webhook_record['webhook']}],
-        )
+        fetch_result = [
+            {'webhook': self.webhook_record['webhook']},
+        ]
+
+        self.mock_db.execute.side_effect = [
+            fetch_result,
+            psycopg.errors.UniqueViolation(),
+        ]
 
         payload = dict(self.webhook_update_json)
         payload['slug'] = 'existing-slug'
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[
-                    fetch_result,
-                    exceptions.ConstraintError(),
-                ],
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.put(
                 '/organizations/engineering/webhooks/github-events',
@@ -412,20 +426,28 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 409)
-        self.assertIn('already exists', response.json()['detail'])
+        self.assertIn(
+            'already exists',
+            response.json()['detail'],
+        )
 
     def test_update_concurrent_delete(self) -> None:
-        fetch_result = _mock_neo4j_result(
-            [{'webhook': self.webhook_record['webhook']}],
-        )
-        empty_result = _mock_neo4j_result([])
+        fetch_result = [
+            {'webhook': self.webhook_record['webhook']},
+        ]
+        empty_result: list[dict] = []
+
+        self.mock_db.execute.side_effect = [
+            fetch_result,
+            empty_result,
+        ]
 
         with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[fetch_result, empty_result],
-            ),
             self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
         ):
             response = self.client.put(
                 '/organizations/engineering/webhooks/github-events',
@@ -447,26 +469,18 @@ class WebhookEndpointsTestCase(unittest.TestCase):
     # -- Delete --
 
     def test_delete_webhook(self) -> None:
-        result = _mock_neo4j_result([{'deleted': 1}])
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
-        ):
-            response = self.client.delete(
-                '/organizations/engineering/webhooks/github-events',
-            )
+        self.mock_db.execute.return_value = [{'deleted': 1}]
+        response = self.client.delete(
+            '/organizations/engineering/webhooks/github-events',
+        )
 
         self.assertEqual(response.status_code, 204)
 
     def test_delete_webhook_not_found(self) -> None:
-        result = _mock_neo4j_result([{'deleted': 0}])
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
-        ):
-            response = self.client.delete(
-                '/organizations/engineering/webhooks/nonexistent',
-            )
+        self.mock_db.execute.return_value = [{'deleted': 0}]
+        response = self.client.delete(
+            '/organizations/engineering/webhooks/nonexistent',
+        )
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
@@ -483,10 +497,10 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             },
         ]
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/webhooks/github-events',
@@ -495,16 +509,19 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(len(data['rules']), 1)
-        self.assertEqual(data['rules'][0]['handler_config'], {})
+        self.assertEqual(
+            data['rules'][0]['handler_config'],
+            {},
+        )
 
     def test_rules_with_null_entries_filtered(self) -> None:
         record = copy.deepcopy(self.webhook_record)
         record['rules'] = [None]
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/webhooks/github-events',
@@ -523,10 +540,10 @@ class WebhookEndpointsTestCase(unittest.TestCase):
             },
         ]
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/webhooks/github-events',
@@ -574,6 +591,11 @@ class ProjectServicesEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
         self.client = testclient.TestClient(self.test_app)
 
         self.service_record: dict[str, str | None] = {
@@ -586,10 +608,12 @@ class ProjectServicesEndpointsTestCase(unittest.TestCase):
     # -- List --
 
     def test_list_project_services(self) -> None:
-        result = _mock_neo4j_result([self.service_record])
+        self.mock_db.execute.return_value = [
+            self.service_record,
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/projects/my-project/services/',
@@ -599,14 +623,17 @@ class ProjectServicesEndpointsTestCase(unittest.TestCase):
         data = response.json()
         self.assertIsInstance(data, list)
         self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['third_party_service_slug'], 'github')
+        self.assertEqual(
+            data[0]['third_party_service_slug'],
+            'github',
+        )
         self.assertEqual(data[0]['identifier'], 'org/repo')
 
     def test_list_project_services_empty(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/projects/my-project/services/',
@@ -619,10 +646,10 @@ class ProjectServicesEndpointsTestCase(unittest.TestCase):
         record = copy.deepcopy(self.service_record)
         record['canonical_link'] = None
 
-        result = _mock_neo4j_result([record])
+        self.mock_db.execute.return_value = [record]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/projects/my-project/services/',
@@ -635,10 +662,12 @@ class ProjectServicesEndpointsTestCase(unittest.TestCase):
     # -- Create --
 
     def test_create_project_service(self) -> None:
-        result = _mock_neo4j_result([self.service_record])
+        self.mock_db.execute.return_value = [
+            self.service_record,
+        ]
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/my-project/services/',
@@ -651,14 +680,17 @@ class ProjectServicesEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 201)
         data = response.json()
-        self.assertEqual(data['third_party_service_slug'], 'github')
+        self.assertEqual(
+            data['third_party_service_slug'],
+            'github',
+        )
         self.assertEqual(data['identifier'], 'org/repo')
 
     def test_create_project_service_not_found(self) -> None:
-        result = _mock_neo4j_result([])
+        self.mock_db.execute.return_value = []
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/organizations/engineering/projects/my-project/services/',
@@ -693,28 +725,19 @@ class ProjectServicesEndpointsTestCase(unittest.TestCase):
     # -- Delete --
 
     def test_delete_project_service(self) -> None:
-        result = _mock_neo4j_result([{'deleted': 1}])
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
-        ):
-            response = self.client.delete(
-                '/organizations/engineering'
-                '/projects/my-project/services/github',
-            )
+        self.mock_db.execute.return_value = [{'deleted': 1}]
+        response = self.client.delete(
+            '/organizations/engineering/projects/my-project/services/github',
+        )
 
         self.assertEqual(response.status_code, 204)
 
     def test_delete_project_service_not_found(self) -> None:
-        result = _mock_neo4j_result([{'deleted': 0}])
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=result,
-        ):
-            response = self.client.delete(
-                '/organizations/engineering'
-                '/projects/my-project/services/nonexistent',
-            )
+        self.mock_db.execute.return_value = [{'deleted': 0}]
+        response = self.client.delete(
+            '/organizations/engineering'
+            '/projects/my-project/services/nonexistent',
+        )
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])

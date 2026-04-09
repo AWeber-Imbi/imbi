@@ -4,8 +4,9 @@ import datetime
 import unittest
 from unittest import mock
 
+import psycopg.errors
 from fastapi import testclient
-from neo4j import exceptions
+from imbi_common import graph
 
 from imbi_api import app, models
 
@@ -48,61 +49,36 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
         self.client = testclient.TestClient(self.test_app)
-
-    def _mock_neo4j_run(self, data=None):
-        """Create a mock for neo4j.run returning data."""
-        mock_result = mock.AsyncMock()
-        if data is not None:
-            mock_result.data.return_value = [
-                {'environment': data},
-            ]
-        else:
-            mock_result.data.return_value = []
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
-        return mock_result
-
-    def _mock_neo4j_run_with_count(
-        self,
-        data=None,
-        project_count=0,
-    ):
-        """Create a mock for neo4j.run with count."""
-        mock_result = mock.AsyncMock()
-        if data is not None:
-            mock_result.data.return_value = [
-                {
-                    'environment': data,
-                    'project_count': project_count,
-                },
-            ]
-        else:
-            mock_result.data.return_value = []
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
-        return mock_result
 
     def test_create_environment_success(self) -> None:
         """Test successful environment creation."""
-        env_data = {
-            'name': 'Production',
-            'slug': 'production',
-            'description': 'Production environment',
-            'organization': {
-                'name': 'Engineering',
-                'slug': 'engineering',
-            },
-        }
-        mock_result = self._mock_neo4j_run(env_data)
+        self.mock_db.execute.return_value = [
+            {
+                'e': {
+                    'name': 'Production',
+                    'slug': 'production',
+                    'description': 'Production environment',
+                },
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+            }
+        ]
 
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=mock_result,
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_get_model.return_value = models.Environment
@@ -129,15 +105,15 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_create_environment_org_not_found_in_url(self) -> None:
         """Test creating environment with nonexistent org in URL."""
-        mock_result = self._mock_neo4j_run(None)
+        self.mock_db.execute.return_value = []
 
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=mock_result,
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_get_model.return_value = models.Environment
@@ -155,15 +131,15 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_create_environment_org_not_found(self) -> None:
         """Test creating environment with nonexistent org."""
-        mock_result = self._mock_neo4j_run(None)
+        self.mock_db.execute.return_value = []
 
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=mock_result,
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_get_model.return_value = models.Environment
@@ -199,13 +175,15 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_create_environment_slug_conflict(self) -> None:
         """Test creating environment with duplicate slug."""
+        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
+
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=exceptions.ConstraintError(),
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_get_model.return_value = models.Environment
@@ -226,37 +204,34 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_list_environments(self) -> None:
         """Test listing all environments with relationships."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [
+        self.mock_db.execute.return_value = [
             {
-                'environment': {
+                'e': {
                     'name': 'Production',
                     'slug': 'production',
-                    'organization': {
-                        'name': 'Engineering',
-                        'slug': 'engineering',
-                    },
+                },
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
                 },
                 'project_count': 20,
             },
             {
-                'environment': {
+                'e': {
                     'name': 'Staging',
                     'slug': 'staging',
-                    'organization': {
-                        'name': 'Engineering',
-                        'slug': 'engineering',
-                    },
+                },
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
                 },
                 'project_count': 15,
             },
         ]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/environments/'
@@ -275,23 +250,24 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_get_environment(self) -> None:
         """Test retrieving a single environment."""
-        env_data = {
-            'name': 'Production',
-            'slug': 'production',
-            'description': 'Production environment',
-            'organization': {
-                'name': 'Engineering',
-                'slug': 'engineering',
-            },
-        }
-        mock_result = self._mock_neo4j_run_with_count(
-            env_data,
-            project_count=30,
-        )
+        self.mock_db.execute.return_value = [
+            {
+                'e': {
+                    'name': 'Production',
+                    'slug': 'production',
+                    'description': 'Production environment',
+                },
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+                'project_count': 30,
+            }
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/environments/production',
@@ -309,11 +285,11 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_get_environment_not_found(self) -> None:
         """Test retrieving nonexistent environment."""
-        mock_result = self._mock_neo4j_run_with_count(None)
+        self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/environments/nonexistent',
@@ -324,37 +300,45 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_update_environment(self) -> None:
         """Test updating an environment."""
-        existing_data = {
-            'name': 'Production',
-            'slug': 'production',
-            'description': 'Production environment',
-            'organization': {
-                'name': 'Engineering',
-                'slug': 'engineering',
-            },
-        }
-        updated_data = {
-            'name': 'Production US',
-            'slug': 'production',
-            'description': 'Updated description',
-            'organization': {
-                'name': 'Engineering',
-                'slug': 'engineering',
-            },
-        }
-        fetch_result = self._mock_neo4j_run(existing_data)
-        update_result = self._mock_neo4j_run_with_count(
-            updated_data,
-            project_count=10,
-        )
+        fetch_records = [
+            {
+                'e': {
+                    'name': 'Production',
+                    'slug': 'production',
+                    'description': 'Production environment',
+                },
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+            }
+        ]
+        update_records = [
+            {
+                'e': {
+                    'name': 'Production US',
+                    'slug': 'production',
+                    'description': 'Updated description',
+                },
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+                'project_count': 10,
+            }
+        ]
+        self.mock_db.execute.side_effect = [
+            fetch_records,
+            update_records,
+        ]
 
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[fetch_result, update_result],
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_get_model.return_value = models.Environment
@@ -375,15 +359,15 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_update_environment_not_found(self) -> None:
         """Test updating nonexistent environment."""
-        mock_run = self._mock_neo4j_run(None)
+        self.mock_db.execute.return_value = []
 
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=mock_run,
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_get_model.return_value = models.Environment
@@ -400,24 +384,28 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_update_environment_validation_error(self) -> None:
         """Test updating environment with invalid data."""
-        existing_data = {
-            'name': 'Production',
-            'slug': 'production',
-            'description': 'Production environment',
-            'organization': {
-                'name': 'Engineering',
-                'slug': 'engineering',
-            },
-        }
-        mock_run = self._mock_neo4j_run(existing_data)
+        fetch_records = [
+            {
+                'e': {
+                    'name': 'Production',
+                    'slug': 'production',
+                    'description': 'Production environment',
+                },
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+            }
+        ]
+        self.mock_db.execute.return_value = fetch_records
 
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.run',
-                return_value=mock_run,
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_get_model.return_value = models.Environment
@@ -431,27 +419,31 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_update_environment_slug_conflict(self) -> None:
         """Test updating environment with conflicting slug."""
-        existing_data = {
-            'name': 'Production',
-            'slug': 'production',
-            'description': 'Production environment',
-            'organization': {
-                'name': 'Engineering',
-                'slug': 'engineering',
-            },
-        }
-        fetch_result = self._mock_neo4j_run(existing_data)
+        fetch_records = [
+            {
+                'e': {
+                    'name': 'Production',
+                    'slug': 'production',
+                    'description': 'Production environment',
+                },
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+            }
+        ]
+        self.mock_db.execute.side_effect = [
+            fetch_records,
+            psycopg.errors.UniqueViolation(),
+        ]
 
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[
-                    fetch_result,
-                    exceptions.ConstraintError(),
-                ],
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_get_model.return_value = models.Environment
@@ -473,25 +465,31 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
     def test_update_environment_concurrent_delete(self) -> None:
         """Test updating environment deleted between fetch
         and update."""
-        existing_data = {
-            'name': 'Production',
-            'slug': 'production',
-            'description': 'Production environment',
-            'organization': {
-                'name': 'Engineering',
-                'slug': 'engineering',
-            },
-        }
-        fetch_result = self._mock_neo4j_run(existing_data)
-        empty_result = self._mock_neo4j_run_with_count(None)
+        fetch_records = [
+            {
+                'e': {
+                    'name': 'Production',
+                    'slug': 'production',
+                    'description': 'Production environment',
+                },
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+            }
+        ]
+        self.mock_db.execute.side_effect = [
+            fetch_records,
+            [],
+        ]
 
         with (
             mock.patch(
                 'imbi_common.blueprints.get_model',
             ) as mock_get_model,
             mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=[fetch_result, empty_result],
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
             ),
         ):
             mock_get_model.return_value = models.Environment
@@ -509,14 +507,11 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_delete_environment(self) -> None:
         """Test deleting an environment."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'deleted': 1}]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
+        self.mock_db.execute.return_value = [{'e': True}]
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.delete(
                 '/organizations/engineering/environments/production',
@@ -526,14 +521,11 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
 
     def test_delete_environment_not_found(self) -> None:
         """Test deleting nonexistent environment."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'deleted': 0}]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
+        self.mock_db.execute.return_value = []
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.delete(
                 '/organizations/engineering/environments/nonexistent',

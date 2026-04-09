@@ -6,147 +6,47 @@ import pydantic
 from imbi_api import settings
 
 
-class Neo4jSettingsTestCase(unittest.TestCase):
-    """Test cases for Neo4j settings."""
+class PostgresSettingsTestCase(unittest.TestCase):
+    """Test cases for Postgres settings."""
 
     def test_default_settings(self) -> None:
-        """Test Neo4j settings with explicit defaults."""
-        # Provide explicit URL to avoid environment interference
-        neo4j = settings.Neo4j(url=pydantic.AnyUrl('neo4j://localhost:7687'))
-        self.assertEqual(str(neo4j.url), 'neo4j://localhost:7687')
-        self.assertIsNone(neo4j.user)
-        self.assertIsNone(neo4j.password)
-        self.assertEqual(neo4j.database, 'neo4j')
-        self.assertTrue(neo4j.keep_alive)
-        self.assertEqual(neo4j.liveness_check_timeout, 60)
-        self.assertEqual(neo4j.max_connection_lifetime, 300)
+        """Test Postgres settings with explicit defaults."""
+        postgres = settings.Postgres(
+            url=pydantic.PostgresDsn(
+                'postgresql://postgres:secret@localhost:5432/imbi'
+            )
+        )
+        self.assertEqual(
+            str(postgres.url),
+            'postgresql://postgres:secret@localhost:5432/imbi',
+        )
+        self.assertEqual(postgres.graph_name, 'imbi')
+        self.assertEqual(postgres.min_pool_size, 2)
+        self.assertEqual(postgres.max_pool_size, 10)
 
-    def test_url_with_username_and_password(self) -> None:
-        """Test extracting username and password from URL."""
-        neo4j = settings.Neo4j(
-            url=pydantic.AnyUrl('neo4j://testuser:testpass@localhost:7687')
+    def test_custom_url(self) -> None:
+        """Test Postgres settings with a custom URL."""
+        postgres = settings.Postgres(
+            url=pydantic.PostgresDsn('postgresql://user:pass@dbhost:5433/mydb')
+        )
+        self.assertEqual(
+            str(postgres.url),
+            'postgresql://user:pass@dbhost:5433/mydb',
         )
 
-        # Credentials should be extracted
-        self.assertEqual(neo4j.user, 'testuser')
-        self.assertEqual(neo4j.password, 'testpass')
+    def test_custom_graph_name(self) -> None:
+        """Test Postgres settings with custom graph name."""
+        postgres = settings.Postgres(graph_name='custom_graph')
+        self.assertEqual(postgres.graph_name, 'custom_graph')
 
-        # URL should be cleaned (no credentials)
-        self.assertEqual(str(neo4j.url), 'neo4j://localhost:7687')
-        self.assertIsNone(neo4j.url.username)
-        self.assertIsNone(neo4j.url.password)
-
-    def test_url_with_only_username(self) -> None:
-        """Test extracting only username from URL."""
-        neo4j = settings.Neo4j(
-            url=pydantic.AnyUrl('neo4j://testuser@localhost:7687')
+    def test_custom_pool_sizes(self) -> None:
+        """Test Postgres settings with custom pool sizes."""
+        postgres = settings.Postgres(
+            min_pool_size=5,
+            max_pool_size=20,
         )
-
-        # Username should be extracted
-        self.assertEqual(neo4j.user, 'testuser')
-        self.assertIsNone(neo4j.password)
-
-        # URL should be cleaned
-        self.assertEqual(str(neo4j.url), 'neo4j://localhost:7687')
-
-    def test_url_with_credentials_and_path(self) -> None:
-        """Test URL with credentials and path component."""
-        neo4j = settings.Neo4j(
-            url=pydantic.AnyUrl('neo4j://user:pass@localhost:7687/database')
-        )
-
-        # Credentials should be extracted
-        self.assertEqual(neo4j.user, 'user')
-        self.assertEqual(neo4j.password, 'pass')
-
-        # URL should preserve path but remove credentials
-        self.assertEqual(str(neo4j.url), 'neo4j://localhost:7687/database')
-
-    def test_explicit_user_password_not_overridden(self) -> None:
-        """Test that explicit user/password are not overridden by URL."""
-        neo4j = settings.Neo4j(
-            url=pydantic.AnyUrl('neo4j://urluser:urlpass@localhost:7687'),
-            user='explicituser',
-            password='explicitpass',
-        )
-
-        # Explicit credentials should take precedence
-        self.assertEqual(neo4j.user, 'explicituser')
-        self.assertEqual(neo4j.password, 'explicitpass')
-
-        # URL should still be cleaned
-        self.assertEqual(str(neo4j.url), 'neo4j://localhost:7687')
-
-    def test_url_without_credentials(self) -> None:
-        """Test URL without embedded credentials."""
-        neo4j = settings.Neo4j(url=pydantic.AnyUrl('neo4j://remotehost:7687'))
-
-        # No credentials should be set
-        self.assertIsNone(neo4j.user)
-        self.assertIsNone(neo4j.password)
-
-        # URL should remain unchanged
-        self.assertEqual(str(neo4j.url), 'neo4j://remotehost:7687')
-
-    def test_url_with_different_port(self) -> None:
-        """Test URL with non-default port."""
-        neo4j = settings.Neo4j(
-            url=pydantic.AnyUrl('neo4j://user:pass@example.com:9999')
-        )
-
-        # Credentials should be extracted
-        self.assertEqual(neo4j.user, 'user')
-        self.assertEqual(neo4j.password, 'pass')
-
-        # URL should preserve custom port
-        self.assertEqual(str(neo4j.url), 'neo4j://example.com:9999')
-
-    def test_url_with_special_characters_in_password(self) -> None:
-        """Test URL with special characters in password."""
-        # URL-encoded password with special chars
-        neo4j = settings.Neo4j(
-            url=pydantic.AnyUrl('neo4j://user:p%40ss%23word@localhost:7687')
-        )
-
-        # Password should be decoded
-        self.assertEqual(neo4j.user, 'user')
-        self.assertEqual(neo4j.password, 'p@ss#word')
-
-        # URL should be cleaned
-        self.assertEqual(str(neo4j.url), 'neo4j://localhost:7687')
-
-    def test_bolt_scheme(self) -> None:
-        """Test with bolt:// scheme."""
-        neo4j = settings.Neo4j(
-            url=pydantic.AnyUrl('bolt://user:pass@localhost:7687')
-        )
-
-        # Credentials should be extracted
-        self.assertEqual(neo4j.user, 'user')
-        self.assertEqual(neo4j.password, 'pass')
-
-        # URL should preserve bolt scheme
-        self.assertEqual(str(neo4j.url), 'bolt://localhost:7687')
-
-    def test_url_with_credentials_no_port(self) -> None:
-        """Test URL with credentials but no explicit port."""
-        neo4j = settings.Neo4j(
-            url=pydantic.AnyUrl('neo4j://user:pass@localhost')
-        )
-
-        # Credentials should be extracted
-        self.assertEqual(neo4j.user, 'user')
-        self.assertEqual(neo4j.password, 'pass')
-
-        # URL should be cleaned (may or may not include implicit port)
-        self.assertIn(
-            str(neo4j.url),
-            (
-                'neo4j://localhost',
-                'neo4j://localhost:7687',
-                'neo4j://localhost/',
-            ),
-        )
+        self.assertEqual(postgres.min_pool_size, 5)
+        self.assertEqual(postgres.max_pool_size, 20)
 
 
 class EmailSettingsTestCase(unittest.TestCase):
@@ -220,7 +120,9 @@ class EmailSettingsTestCase(unittest.TestCase):
 
         try:
             email = settings.Email(
-                smtp_host='smtp.example.com', smtp_port=587, smtp_use_tls=True
+                smtp_host='smtp.example.com',
+                smtp_port=587,
+                smtp_use_tls=True,
             )
 
             # Should not detect Mailpit for non-localhost
@@ -231,7 +133,7 @@ class EmailSettingsTestCase(unittest.TestCase):
             os.environ.pop('MAILPIT_SMTP_PORT', None)
 
     def test_no_mailpit_detection_different_port(self) -> None:
-        """Test that Mailpit detection only applies to default port 587."""
+        """Test that Mailpit detection only applies to default port."""
         import os
 
         os.environ['IMBI_API_ENVIRONMENT'] = 'development'
@@ -275,7 +177,7 @@ class ConfigurationTestCase(unittest.TestCase):
         config = settings.APIConfiguration()
 
         self.assertIsInstance(config.clickhouse, settings.Clickhouse)
-        self.assertIsInstance(config.neo4j, settings.Neo4j)
+        self.assertIsInstance(config.postgres, settings.Postgres)
         self.assertIsInstance(config.server, settings.ServerConfig)
         self.assertIsInstance(config.auth, settings.Auth)
         self.assertIsInstance(config.email, settings.Email)
@@ -283,18 +185,22 @@ class ConfigurationTestCase(unittest.TestCase):
     def test_configuration_from_dict(self) -> None:
         """Test Configuration from dictionary data."""
         data = {
-            'server': {'environment': 'production', 'host': '0.0.0.0'},
-            'neo4j': {'url': 'neo4j://neo4j-prod:7687'},
+            'server': {
+                'environment': 'production',
+                'host': '0.0.0.0',
+            },
+            'postgres': {
+                'url': 'postgresql://user:pass@pg-prod:5432/imbi',
+            },
         }
 
         config = settings.Configuration.model_validate(data)
 
         self.assertEqual(config.server.environment, 'production')
         self.assertEqual(config.server.host, '0.0.0.0')
-        # URL may or may not have trailing slash depending on pydantic version
         self.assertIn(
-            str(config.neo4j.url),
-            ('neo4j://neo4j-prod:7687', 'neo4j://neo4j-prod:7687/'),
+            'pg-prod',
+            str(config.postgres.url),
         )
 
     def test_load_config_no_file(self) -> None:
@@ -331,8 +237,8 @@ environment = "testing"
 host = "127.0.0.1"
 port = 9000
 
-[neo4j]
-database = "test-db"
+[postgres]
+graph_name = "test-graph"
 
 [auth]
 access_token_expire_seconds = 7200
@@ -346,7 +252,7 @@ access_token_expire_seconds = 7200
                 self.assertEqual(config.server.environment, 'testing')
                 self.assertEqual(config.server.host, '127.0.0.1')
                 self.assertEqual(config.server.port, 9000)
-                self.assertEqual(config.neo4j.database, 'test-db')
+                self.assertEqual(config.postgres.graph_name, 'test-graph')
                 self.assertEqual(config.auth.access_token_expire_seconds, 7200)
         finally:
             os.chdir(original_cwd)
@@ -355,13 +261,13 @@ access_token_expire_seconds = 7200
         """Test that config.toml values are loaded correctly.
 
         Note: Environment variables DO override TOML values in
-        pydantic-settings, but only if they're set BEFORE the BaseSettings
-        class is instantiated. When we pass TOML data as constructor kwargs
-        (as done in the model_validator), those kwargs take precedence per
-        pydantic-settings design.
+        pydantic-settings, but only if they're set BEFORE the
+        BaseSettings class is instantiated. When we pass TOML data
+        as constructor kwargs (as done in the model_validator),
+        those kwargs take precedence per pydantic-settings design.
 
-        For production use, set environment variables before starting the app
-        and they will properly override config.toml values.
+        For production use, set environment variables before starting
+        the app and they will properly override config.toml values.
         """
         import os
         import pathlib

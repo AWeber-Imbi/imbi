@@ -5,7 +5,7 @@ import typing
 
 import fastapi
 import pydantic
-from imbi_common import neo4j
+from imbi_common import graph
 
 from imbi_api import models
 from imbi_api.auth import permissions
@@ -26,6 +26,7 @@ class AdminSettings(pydantic.BaseModel):
 
 @admin_router.get('/settings', response_model=AdminSettings)
 async def get_admin_settings(
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.get_current_user),
@@ -37,9 +38,7 @@ async def get_admin_settings(
     authentication method metadata. Requires authentication but no
     specific permission since this is read-only metadata.
     """
-    all_permissions: list[models.Permission] = []
-    async for perm in neo4j.fetch_nodes(models.Permission, order_by='name'):
-        all_permissions.append(perm)
+    all_permissions = await db.match(models.Permission, order_by='name')
 
     return AdminSettings(
         permissions=all_permissions,

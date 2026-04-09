@@ -1,13 +1,12 @@
 """User management endpoints."""
 
-import datetime
 import logging
 import typing
 from urllib import parse as urlparse
 
 import fastapi
-from imbi_common import neo4j
-from neo4j import exceptions
+import psycopg.errors
+from imbi_common import graph
 
 from imbi_api import models
 from imbi_api.auth import password, permissions
@@ -20,13 +19,13 @@ users_router = fastapi.APIRouter(prefix='/users', tags=['Users'])
 @users_router.post('/', response_model=models.UserResponse, status_code=201)
 async def create_user(
     user_create: models.UserCreate,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:create')),
     ],
 ) -> models.UserResponse:
-    """
-    Create a new user account.
+    """Create a new user account.
 
     Parameters:
         user_create (models.UserCreate): User creation data including
@@ -38,6 +37,7 @@ async def create_user(
 
     Raises:
         fastapi.HTTPException: HTTP 409 if email already exists.
+
     """
     # Hash password if provided
     password_hash = None
@@ -73,52 +73,70 @@ async def create_user(
         is_active=user_create.is_active,
         is_admin=user_create.is_admin,
         is_service_account=user_create.is_service_account,
-        created_at=datetime.datetime.now(datetime.UTC),
     )
 
-    try:
-        await neo4j.create_node(user)
-    except exceptions.ConstraintError as e:
+    # Check if user already exists before creating to avoid
+    # silent upsert (merge would overwrite a pre-existing user)
+    existing = await db.match(
+        models.User,
+        {'email': user.email},
+    )
+    if existing:
         raise fastapi.HTTPException(
             status_code=409,
-            detail=f'User with email {user.email!r} already exists',
+            detail=(f'User with email {user.email!r} already exists'),
+        )
+
+    try:
+        await db.create(user)
+    except psycopg.errors.UniqueViolation as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(f'User with email {user.email!r} already exists'),
         ) from e
 
     # Create MEMBER_OF relationship to organization with role
     membership_query = """
-    MATCH (u:User {email: $email})
-    MATCH (o:Organization {slug: $org_slug})
-    MATCH (r:Role {slug: $role_slug})
+    MATCH (u:User {{email: {email}}}),
+          (o:Organization {{slug: {org_slug}}}),
+          (r:Role {{slug: {role_slug}}})
     MERGE (u)-[m:MEMBER_OF]->(o)
-    SET m.role = $role_slug
-    RETURN o.name AS org_name, o.slug AS org_slug, r.slug AS role
+    SET m.role = {role_slug}
+    RETURN o.name, o.slug, r.slug
     """
-    organizations: list[models.OrgMembership] = []
-    async with neo4j.run(
+    records = await db.execute(
         membership_query,
-        email=user.email,
-        org_slug=user_create.organization_slug,
-        role_slug=user_create.role_slug,
-    ) as result:
-        records = await result.data()
-        if not records:
-            # Rollback: delete the user node
-            await neo4j.delete_node(models.User, {'email': user.email})
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=(
-                    f'Organization {user_create.organization_slug!r}'
-                    f' or role {user_create.role_slug!r} not found'
+        {
+            'email': user.email,
+            'org_slug': user_create.organization_slug,
+            'role_slug': user_create.role_slug,
+        },
+        columns=['org_name', 'org_slug', 'role'],
+    )
+
+    organizations: list[models.OrgMembership] = []
+    if not records:
+        # Rollback: delete the user node
+        await db.delete(user)
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Organization {user_create.organization_slug!r}'
+                f' or role {user_create.role_slug!r} not found'
+            ),
+        )
+    for record in records:
+        organizations.append(
+            models.OrgMembership(
+                organization_name=graph.parse_agtype(
+                    record['org_name'],
                 ),
+                organization_slug=graph.parse_agtype(
+                    record['org_slug'],
+                ),
+                role=graph.parse_agtype(record['role']),
             )
-        for record in records:
-            organizations.append(
-                models.OrgMembership(
-                    organization_name=record['org_name'],
-                    organization_slug=record['org_slug'],
-                    role=record['role'],
-                )
-            )
+        )
 
     # Return response model without password hash
     return models.UserResponse(
@@ -136,6 +154,7 @@ async def create_user(
 
 @users_router.get('/', response_model=list[models.UserResponse])
 async def list_users(
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
@@ -143,8 +162,7 @@ async def list_users(
     is_active: bool | None = None,
     is_admin: bool | None = None,
 ) -> list[models.UserResponse]:
-    """
-    Retrieve all users with optional filtering.
+    """Retrieve all users with optional filtering.
 
     Parameters:
         is_active (bool | None): If provided, filter by active status.
@@ -153,6 +171,7 @@ async def list_users(
     Returns:
         list[models.UserResponse]: Users ordered by email, without
             password hashes.
+
     """
     parameters: dict[str, typing.Any] = {}
     if is_active is not None:
@@ -160,12 +179,14 @@ async def list_users(
     if is_admin is not None:
         parameters['is_admin'] = is_admin
 
-    users: list[models.UserResponse] = []
-    async for user in neo4j.fetch_nodes(
+    nodes = await db.match(
         models.User,
         parameters if parameters else None,
         order_by='email',
-    ):
+    )
+
+    users: list[models.UserResponse] = []
+    for user in nodes:
         users.append(
             models.UserResponse(
                 email=user.email,
@@ -184,13 +205,13 @@ async def list_users(
 @users_router.get('/{email}', response_model=models.UserResponse)
 async def get_user(
     email: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:read')),
     ],
 ) -> models.UserResponse:
-    """
-    Retrieve a user by email with loaded organization memberships.
+    """Retrieve a user by email with loaded organization memberships.
 
     Parameters:
         email (str): Email address of the user to retrieve.
@@ -201,34 +222,44 @@ async def get_user(
 
     Raises:
         fastapi.HTTPException: HTTP 404 if user not found.
+
     """
     # URL decode email in case it's percent-encoded
     email = urlparse.unquote(email)
 
-    user = await neo4j.fetch_node(models.User, {'email': email})
-    if user is None:
+    results = await db.match(models.User, {'email': email})
+    if not results:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'User with email {email!r} not found',
         )
+    user = results[0]
 
     # Load organization memberships via Cypher
     org_query = """
-    MATCH (u:User {email: $email})-[m:MEMBER_OF]->(o:Organization)
-    RETURN o.name AS org_name, o.slug AS org_slug, m.role AS role
+    MATCH (u:User {{email: {email}}})-[m:MEMBER_OF]->(o:Organization)
+    RETURN o.name, o.slug, m.role
     ORDER BY o.name
     """
+    org_records = await db.execute(
+        org_query,
+        {'email': email},
+        columns=['org_name', 'org_slug', 'role'],
+    )
+
     organizations: list[models.OrgMembership] = []
-    async with neo4j.run(org_query, email=email) as result:
-        records = await result.data()
-        for record in records:
-            organizations.append(
-                models.OrgMembership(
-                    organization_name=record['org_name'],
-                    organization_slug=record['org_slug'],
-                    role=record['role'],
-                )
+    for record in org_records:
+        organizations.append(
+            models.OrgMembership(
+                organization_name=graph.parse_agtype(
+                    record['org_name'],
+                ),
+                organization_slug=graph.parse_agtype(
+                    record['org_slug'],
+                ),
+                role=graph.parse_agtype(record['role']),
             )
+        )
 
     return models.UserResponse(
         email=user.email,
@@ -247,13 +278,13 @@ async def get_user(
 async def update_user(
     email: str,
     user_update: models.UserUpdate,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:update')),
     ],
 ) -> models.UserResponse:
-    """
-    Update an existing user account.
+    """Update an existing user account.
 
     Parameters:
         email (str): Email from URL path.
@@ -265,6 +296,7 @@ async def update_user(
     Raises:
         fastapi.HTTPException: HTTP 400 if URL email doesn't match
             body email, or HTTP 404 if user not found.
+
     """
     # URL decode email in case it's percent-encoded
     email = urlparse.unquote(email)
@@ -278,12 +310,13 @@ async def update_user(
         )
 
     # Verify user exists
-    existing_user = await neo4j.fetch_node(models.User, {'email': email})
-    if existing_user is None:
+    results = await db.match(models.User, {'email': email})
+    if not results:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'User with email {email!r} not found',
         )
+    existing_user = results[0]
 
     # Prevent non-admins from modifying admin users
     if existing_user.is_admin and not auth.require_user.is_admin:
@@ -341,7 +374,7 @@ async def update_user(
         avatar_url=existing_user.avatar_url,
     )
 
-    await neo4j.upsert(updated_user, {'email': email})
+    await db.merge(updated_user, match_on=['email'])
 
     return models.UserResponse(
         email=updated_user.email,
@@ -358,13 +391,13 @@ async def update_user(
 @users_router.delete('/{email}', status_code=204)
 async def delete_user(
     email: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:delete')),
     ],
 ) -> None:
-    """
-    Delete a user account.
+    """Delete a user account.
 
     Parameters:
         email (str): Email of user to delete.
@@ -372,6 +405,7 @@ async def delete_user(
     Raises:
         fastapi.HTTPException: HTTP 400 if trying to delete yourself,
             or HTTP 404 if user not found.
+
     """
     # URL decode email in case it's percent-encoded
     email = urlparse.unquote(email)
@@ -383,8 +417,11 @@ async def delete_user(
             detail='Cannot delete your own account',
         )
 
-    deleted = await neo4j.delete_node(models.User, {'email': email})
-    if not deleted:
+    records = await db.execute(
+        'MATCH (n:User {{email: {email}}}) DETACH DELETE n RETURN n',
+        {'email': email},
+    )
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'User with email {email!r} not found',
@@ -395,12 +432,13 @@ async def delete_user(
 async def change_password(
     email: str,
     password_change: models.PasswordChangeRequest,
+    db: graph.Pool,
     auth: typing.Annotated[
-        permissions.AuthContext, fastapi.Depends(permissions.get_current_user)
+        permissions.AuthContext,
+        fastapi.Depends(permissions.get_current_user),
     ],
 ) -> None:
-    """
-    Change a user's password.
+    """Change a user's password.
 
     Parameters:
         email (str): Email of user whose password to change.
@@ -411,6 +449,7 @@ async def change_password(
         fastapi.HTTPException: HTTP 401 if current password is wrong
             (non-admin), HTTP 403 if not self or admin, or HTTP 404
             if user not found.
+
     """
     # URL decode email in case it's percent-encoded
     email = urlparse.unquote(email)
@@ -428,12 +467,13 @@ async def change_password(
         )
 
     # Fetch user
-    user = await neo4j.fetch_node(models.User, {'email': email})
-    if user is None:
+    results = await db.match(models.User, {'email': email})
+    if not results:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'User with email {email!r} not found',
         )
+    user = results[0]
 
     # Prevent password changes for service accounts
     if user.is_service_account:
@@ -458,21 +498,23 @@ async def change_password(
             )
 
     # Update password
-    user.password_hash = password.hash_password(password_change.new_password)
-    await neo4j.upsert(user, {'email': email})
+    user.password_hash = password.hash_password(
+        password_change.new_password,
+    )
+    await db.merge(user, match_on=['email'])
 
 
 @users_router.post('/{email}/organizations', status_code=204)
 async def add_to_organization(
     email: str,
     membership: dict[str, str],
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:update')),
     ],
 ) -> None:
-    """
-    Add a user to an organization with a role.
+    """Add a user to an organization with a role.
 
     Parameters:
         email (str): Email of user to add.
@@ -482,6 +524,7 @@ async def add_to_organization(
     Raises:
         fastapi.HTTPException: HTTP 400 if required fields missing,
             HTTP 404 if user, organization, or role not found.
+
     """
     email = urlparse.unquote(email)
 
@@ -494,26 +537,28 @@ async def add_to_organization(
         )
 
     query = """
-    MATCH (u:User {email: $email})
-    MATCH (o:Organization {slug: $org_slug})
-    MATCH (r:Role {slug: $role_slug})
+    MATCH (u:User {{email: {email}}}),
+          (o:Organization {{slug: {org_slug}}}),
+          (r:Role {{slug: {role_slug}}})
     MERGE (u)-[m:MEMBER_OF]->(o)
-    SET m.role = $role_slug
+    SET m.role = {role_slug}
     RETURN u, o, r
     """
-    async with neo4j.run(
+    records = await db.execute(
         query,
-        email=email,
-        org_slug=org_slug,
-        role_slug=role_slug,
-    ) as result:
-        records = await result.data()
-        if not records:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'User {email!r}, organization {org_slug!r},'
-                f' or role {role_slug!r} not found',
-            )
+        {
+            'email': email,
+            'org_slug': org_slug,
+            'role_slug': role_slug,
+        },
+        columns=['u', 'o', 'r'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'User {email!r}, organization {org_slug!r},'
+            f' or role {role_slug!r} not found',
+        )
 
 
 @users_router.put(
@@ -524,13 +569,13 @@ async def update_organization_role(
     email: str,
     org_slug: str,
     role_data: dict[str, str],
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:update')),
     ],
 ) -> None:
-    """
-    Change a user's role in an organization.
+    """Change a user's role in an organization.
 
     Parameters:
         email (str): Email of user.
@@ -540,6 +585,7 @@ async def update_organization_role(
     Raises:
         fastapi.HTTPException: HTTP 400 if role_slug missing,
             HTTP 404 if membership or role not found.
+
     """
     email = urlparse.unquote(email)
 
@@ -551,25 +597,27 @@ async def update_organization_role(
         )
 
     query = """
-    MATCH (u:User {email: $email})-[m:MEMBER_OF]->
-          (o:Organization {slug: $org_slug})
-    MATCH (r:Role {slug: $role_slug})
-    SET m.role = $role_slug
+    MATCH (u:User {{email: {email}}})-[m:MEMBER_OF]->
+          (o:Organization {{slug: {org_slug}}}),
+          (r:Role {{slug: {role_slug}}})
+    SET m.role = {role_slug}
     RETURN u, o, r
     """
-    async with neo4j.run(
+    records = await db.execute(
         query,
-        email=email,
-        org_slug=org_slug,
-        role_slug=role_slug,
-    ) as result:
-        records = await result.data()
-        if not records:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'Membership for {email!r} in {org_slug!r}'
-                f' or role {role_slug!r} not found',
-            )
+        {
+            'email': email,
+            'org_slug': org_slug,
+            'role_slug': role_slug,
+        },
+        columns=['u', 'o', 'r'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Membership for {email!r} in {org_slug!r}'
+            f' or role {role_slug!r} not found',
+        )
 
 
 @users_router.delete(
@@ -579,13 +627,13 @@ async def update_organization_role(
 async def remove_from_organization(
     email: str,
     org_slug: str,
+    db: graph.Pool,
     auth: typing.Annotated[
         permissions.AuthContext,
         fastapi.Depends(permissions.require_permission('user:update')),
     ],
 ) -> None:
-    """
-    Remove a user from an organization.
+    """Remove a user from an organization.
 
     Parameters:
         email (str): Email of user.
@@ -593,24 +641,27 @@ async def remove_from_organization(
 
     Raises:
         fastapi.HTTPException: HTTP 404 if membership not found.
+
     """
     email = urlparse.unquote(email)
 
     query = """
-    MATCH (u:User {email: $email})-[m:MEMBER_OF]->
-          (o:Organization {slug: $org_slug})
+    MATCH (u:User {{email: {email}}})-[m:MEMBER_OF]->
+          (o:Organization {{slug: {org_slug}}})
     DELETE m
-    RETURN count(m) AS deleted
+    RETURN m
     """
-    async with neo4j.run(
+    records = await db.execute(
         query,
-        email=email,
-        org_slug=org_slug,
-    ) as result:
-        records = await result.data()
-        if not records or records[0].get('deleted', 0) == 0:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f'User {email!r} is not a member of '
-                f'organization {org_slug!r}',
-            )
+        {
+            'email': email,
+            'org_slug': org_slug,
+        },
+        columns=['m'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'User {email!r} is not a member of '
+            f'organization {org_slug!r}',
+        )

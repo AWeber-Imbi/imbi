@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 import httpx
+from imbi_common import graph
 
 from imbi_api.email import client, templates
 
@@ -28,6 +29,10 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Check if Mailpit is available
         self.mailpit_available = self._is_mailpit_available()
+
+        # Create a mock graph.Graph for tests that need it
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.mock_db.merge = mock.AsyncMock(return_value=None)
 
     def _is_mailpit_available(self) -> bool:
         """Check if Mailpit is running and accessible."""
@@ -225,29 +230,25 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             template_manager = templates.TemplateManager()
 
             with mock.patch('imbi_common.clickhouse.insert'):
-                with mock.patch(
-                    'imbi_common.neo4j.create_node'
-                ) as mock_create:
-                    mock_create.return_value = None
+                token, audit = await email.send_password_reset(
+                    email_client,
+                    template_manager,
+                    self.mock_db,
+                    username='testuser',
+                    email='test@example.com',
+                    display_name='Test User',
+                    reset_url_base=('https://imbi.example.com/reset'),
+                )
 
-                    token, audit = await email.send_password_reset(
-                        email_client,
-                        template_manager,
-                        username='testuser',
-                        email='test@example.com',
-                        display_name='Test User',
-                        reset_url_base=('https://imbi.example.com/reset'),
-                    )
+                self.assertEqual(token.email, 'test@example.com')
+                self.assertIsNotNone(token.token)
+                self.assertIsNotNone(token.expires_at)
 
-                    self.assertEqual(token.email, 'test@example.com')
-                    self.assertIsNotNone(token.token)
-                    self.assertIsNotNone(token.expires_at)
+                self.mock_db.merge.assert_called_once()
 
-                    mock_create.assert_called_once()
-
-                    self.assertEqual(audit.to_email, 'test@example.com')
-                    self.assertEqual(audit.template_name, 'password_reset')
-                    self.assertEqual(audit.status, 'dry_run')
+                self.assertEqual(audit.to_email, 'test@example.com')
+                self.assertEqual(audit.template_name, 'password_reset')
+                self.assertEqual(audit.status, 'dry_run')
 
     async def test_clickhouse_audit_error_handling(self) -> None:
         """Test that ClickHouse errors don't fail email sends."""
@@ -299,39 +300,34 @@ class MailpitIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             template_manager = templates.TemplateManager()
 
             with mock.patch('imbi_common.clickhouse.insert'):
-                with mock.patch(
-                    'imbi_common.neo4j.create_node'
-                ) as mock_create:
-                    mock_create.return_value = None
+                with mock.patch.object(
+                    template_manager,
+                    'render_email',
+                ) as mock_render:
+                    mock_message = mock.MagicMock()
+                    mock_message.to_email = 'test@example.com'
+                    mock_message.template_name = 'password_reset'
+                    mock_message.subject = 'Password Reset'
+                    mock_render.return_value = mock_message
 
-                    with mock.patch.object(
+                    base_url = (
+                        'https://imbi.example.com/reset?mode=secure&lang=en'
+                    )
+                    _token, _audit = await email.send_password_reset(
+                        email_client,
                         template_manager,
-                        'render_email',
-                    ) as mock_render:
-                        mock_message = mock.MagicMock()
-                        mock_message.to_email = 'test@example.com'
-                        mock_message.template_name = 'password_reset'
-                        mock_message.subject = 'Password Reset'
-                        mock_render.return_value = mock_message
+                        self.mock_db,
+                        username='testuser',
+                        email='test@example.com',
+                        display_name='Test User',
+                        reset_url_base=base_url,
+                    )
 
-                        base_url = (
-                            'https://imbi.example.com/reset'
-                            '?mode=secure&lang=en'
-                        )
-                        _token, _audit = await email.send_password_reset(
-                            email_client,
-                            template_manager,
-                            username='testuser',
-                            email='test@example.com',
-                            display_name='Test User',
-                            reset_url_base=base_url,
-                        )
+                    mock_render.assert_called_once()
+                    call_args = mock_render.call_args[0]
+                    context = call_args[1]
 
-                        mock_render.assert_called_once()
-                        call_args = mock_render.call_args[0]
-                        context = call_args[1]
-
-                        reset_url = context['reset_url']
-                        self.assertIn('token=', reset_url)
-                        self.assertIn('mode=secure', reset_url)
-                        self.assertIn('lang=en', reset_url)
+                    reset_url = context['reset_url']
+                    self.assertIn('token=', reset_url)
+                    self.assertIn('mode=secure', reset_url)
+                    self.assertIn('lang=en', reset_url)

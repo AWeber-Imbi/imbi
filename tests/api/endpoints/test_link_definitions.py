@@ -5,8 +5,9 @@ import typing
 import unittest
 from unittest import mock
 
+import psycopg.errors
 from fastapi.testclient import TestClient
-from neo4j import exceptions
+from imbi_common import graph
 
 from imbi_api import app, models
 
@@ -49,6 +50,11 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
             mock_get_current_user
         )
 
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+
         self.client = TestClient(self.test_app)
 
     def _link_def_data(self, **overrides: typing.Any) -> dict:
@@ -61,25 +67,31 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
             'url_template': 'https://github.com/{org}/{repo}',
             'created_at': '2026-03-17T12:00:00Z',
             'updated_at': '2026-03-17T12:00:00Z',
-            'organization': {
-                'name': 'Engineering',
-                'slug': 'engineering',
-            },
         }
         data.update(overrides)
         return data
+
+    def _org_data(self) -> dict:
+        """Return a default organization record."""
+        return {
+            'name': 'Engineering',
+            'slug': 'engineering',
+        }
 
     # -- Create --------------------------------------------------------
 
     def test_create_success(self) -> None:
         """Test successful link definition creation."""
-        record = self._link_def_data()
+        self.mock_db.execute.return_value = [
+            {
+                'ld': self._link_def_data(),
+                'o': self._org_data(),
+            },
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.query',
-            return_value=[
-                {'link_definition': record, 'project_count': 0},
-            ],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/organizations/engineering/link-definitions/',
@@ -112,9 +124,11 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_create_org_not_found(self) -> None:
         """Test creating link definition when org does not exist."""
+        self.mock_db.execute.return_value = []
+
         with mock.patch(
-            'imbi_common.neo4j.query',
-            return_value=[],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/organizations/nonexistent/link-definitions/',
@@ -129,9 +143,11 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_create_slug_conflict(self) -> None:
         """Test creating link definition with duplicate slug."""
+        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation()
+
         with mock.patch(
-            'imbi_common.neo4j.query',
-            side_effect=exceptions.ConstraintError(),
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.post(
                 '/organizations/engineering/link-definitions/',
@@ -151,23 +167,25 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_list_success(self) -> None:
         """Test listing link definitions."""
-        records = [
+        self.mock_db.execute.return_value = [
             {
-                'link_definition': self._link_def_data(),
+                'ld': self._link_def_data(),
+                'o': self._org_data(),
                 'project_count': 5,
             },
             {
-                'link_definition': self._link_def_data(
+                'ld': self._link_def_data(
                     name='Grafana Dashboard',
                     slug='grafana',
                 ),
+                'o': self._org_data(),
                 'project_count': 0,
             },
         ]
 
         with mock.patch(
-            'imbi_common.neo4j.query',
-            return_value=records,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/link-definitions/',
@@ -183,13 +201,17 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_get_success(self) -> None:
         """Test retrieving a single link definition."""
-        record = self._link_def_data()
+        self.mock_db.execute.return_value = [
+            {
+                'ld': self._link_def_data(),
+                'o': self._org_data(),
+                'project_count': 3,
+            },
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.query',
-            return_value=[
-                {'link_definition': record, 'project_count': 3},
-            ],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/link-definitions/github-repo',
@@ -203,9 +225,11 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_get_not_found(self) -> None:
         """Test retrieving nonexistent link definition."""
+        self.mock_db.execute.return_value = []
+
         with mock.patch(
-            'imbi_common.neo4j.query',
-            return_value=[],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.get(
                 '/organizations/engineering/link-definitions/nonexistent',
@@ -218,17 +242,29 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_update_success(self) -> None:
         """Test updating a link definition."""
-        existing = self._link_def_data()
-        updated = self._link_def_data(
-            name='Updated GitHub Repo',
-        )
+        fetch_records = [
+            {
+                'ld': self._link_def_data(),
+                'o': self._org_data(),
+            },
+        ]
+        update_records = [
+            {
+                'ld': self._link_def_data(
+                    name='Updated GitHub Repo',
+                ),
+                'o': self._org_data(),
+                'project_count': 2,
+            },
+        ]
+        self.mock_db.execute.side_effect = [
+            fetch_records,
+            update_records,
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.query',
-            side_effect=[
-                [{'link_definition': existing}],
-                [{'link_definition': updated, 'project_count': 2}],
-            ],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/link-definitions/github-repo',
@@ -241,9 +277,11 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_update_not_found(self) -> None:
         """Test updating nonexistent link definition."""
+        self.mock_db.execute.return_value = []
+
         with mock.patch(
-            'imbi_common.neo4j.query',
-            return_value=[],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/link-definitions/nonexistent',
@@ -255,14 +293,20 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_update_slug_conflict(self) -> None:
         """Test updating link definition with conflicting slug."""
-        existing = self._link_def_data()
+        fetch_records = [
+            {
+                'ld': self._link_def_data(),
+                'o': self._org_data(),
+            },
+        ]
+        self.mock_db.execute.side_effect = [
+            fetch_records,
+            psycopg.errors.UniqueViolation(),
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.query',
-            side_effect=[
-                [{'link_definition': existing}],
-                exceptions.ConstraintError(),
-            ],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/link-definitions/github-repo',
@@ -281,14 +325,20 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
     def test_update_concurrent_delete(self) -> None:
         """Test updating link definition deleted between
         fetch and update."""
-        existing = self._link_def_data()
+        fetch_records = [
+            {
+                'ld': self._link_def_data(),
+                'o': self._org_data(),
+            },
+        ]
+        self.mock_db.execute.side_effect = [
+            fetch_records,
+            [],
+        ]
 
         with mock.patch(
-            'imbi_common.neo4j.query',
-            side_effect=[
-                [{'link_definition': existing}],
-                [],
-            ],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.put(
                 '/organizations/engineering/link-definitions/github-repo',
@@ -302,9 +352,11 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_delete_success(self) -> None:
         """Test deleting a link definition."""
+        self.mock_db.execute.return_value = [{'ld': True}]
+
         with mock.patch(
-            'imbi_common.neo4j.query',
-            return_value=[{'deleted': 1}],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.delete(
                 '/organizations/engineering/link-definitions/github-repo',
@@ -314,9 +366,11 @@ class LinkDefinitionEndpointsTestCase(unittest.TestCase):
 
     def test_delete_not_found(self) -> None:
         """Test deleting nonexistent link definition."""
+        self.mock_db.execute.return_value = []
+
         with mock.patch(
-            'imbi_common.neo4j.query',
-            return_value=[{'deleted': 0}],
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             response = self.client.delete(
                 '/organizations/engineering/link-definitions/nonexistent',

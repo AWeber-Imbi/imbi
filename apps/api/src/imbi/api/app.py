@@ -1,6 +1,6 @@
 import fastapi
 from fastapi.middleware import cors
-from imbi_common.lifespan import Lifespan
+from imbi_common import graph, lifespan
 
 from imbi_api import endpoints, lifespans, openapi, settings, version
 from imbi_api.middleware import rate_limit
@@ -9,10 +9,9 @@ from imbi_api.middleware import rate_limit
 def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(
         title='Imbi',
-        lifespan=Lifespan(
+        lifespan=lifespan.Lifespan(
             lifespans.clickhouse_hook,
-            lifespans.neo4j_hook,
-            lifespans.neo4j_setup_hook,
+            graph.graph_lifespan,
             lifespans.email_hook,
             lifespans.storage_hook,
         ),

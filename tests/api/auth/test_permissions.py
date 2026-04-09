@@ -1,8 +1,10 @@
 """Tests for permission system with org-scoped role assignments."""
 
+import datetime
 import unittest
 from unittest import mock
 
+from imbi_api import models
 from imbi_api.auth import permissions
 
 
@@ -11,8 +13,8 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_load_permissions_from_org_membership(self) -> None:
         """Test loading permissions from org membership role."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
             {
                 'permissions': [
                     'blueprint:read',
@@ -21,15 +23,13 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
                 ]
             }
         ]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             perms = await permissions.load_user_permissions(
-                'testuser@example.com'
+                mock_db, 'testuser@example.com'
             )
 
         self.assertEqual(
@@ -39,8 +39,8 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_load_permissions_with_role_inheritance(self) -> None:
         """Test loading permissions with role inheritance."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
             {
                 'permissions': [
                     'blueprint:read',
@@ -49,15 +49,13 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
                 ]
             }
         ]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             perms = await permissions.load_user_permissions(
-                'testuser@example.com'
+                mock_db, 'testuser@example.com'
             )
 
         self.assertEqual(
@@ -65,10 +63,12 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
             {'blueprint:read', 'blueprint:write', 'project:read'},
         )
 
-    async def test_load_permissions_multiple_org_memberships(self) -> None:
+    async def test_load_permissions_multiple_org_memberships(
+        self,
+    ) -> None:
         """Test permissions from multiple org memberships are merged."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
             {
                 'permissions': [
                     'blueprint:read',
@@ -78,15 +78,13 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
                 ]
             }
         ]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             perms = await permissions.load_user_permissions(
-                'testuser@example.com'
+                mock_db, 'testuser@example.com'
             )
 
         self.assertIn('blueprint:read', perms)
@@ -95,44 +93,46 @@ class OrgMembershipPermissionTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_load_permissions_no_memberships(self) -> None:
         """Test empty permissions for user with no org memberships."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = []
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
 
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
-        ):
-            perms = await permissions.load_user_permissions(
-                'nobody@example.com'
-            )
+        perms = await permissions.load_user_permissions(
+            mock_db, 'nobody@example.com'
+        )
 
         self.assertEqual(perms, set())
 
 
-class ResourceLevelPermissionTestCase(unittest.IsolatedAsyncioTestCase):
+class ResourceLevelPermissionTestCase(
+    unittest.IsolatedAsyncioTestCase,
+):
     """Test resource-level CAN_ACCESS permissions (user direct only)."""
 
     async def test_check_resource_permission_user_access(self) -> None:
         """Test checking permission with direct user CAN_ACCESS."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [{'actions': ['read', 'write']}]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [{'actions': ['read', 'write']}]
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             has_read = await permissions.check_resource_permission(
-                'testuser', 'Blueprint', 'test-blueprint', 'read'
+                mock_db, 'testuser', 'Blueprint', 'test-blueprint', 'read'
             )
             has_write = await permissions.check_resource_permission(
-                'testuser', 'Blueprint', 'test-blueprint', 'write'
+                mock_db,
+                'testuser',
+                'Blueprint',
+                'test-blueprint',
+                'write',
             )
             has_delete = await permissions.check_resource_permission(
-                'testuser', 'Blueprint', 'test-blueprint', 'delete'
+                mock_db,
+                'testuser',
+                'Blueprint',
+                'test-blueprint',
+                'delete',
             )
 
         self.assertTrue(has_read)
@@ -141,29 +141,25 @@ class ResourceLevelPermissionTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_check_resource_permission_no_access(self) -> None:
         """Test no access when no CAN_ACCESS relationship exists."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = []
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = []
 
-        with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
-        ):
-            has_access = await permissions.check_resource_permission(
-                'testuser', 'Project', 'test-project', 'read'
-            )
+        has_access = await permissions.check_resource_permission(
+            mock_db, 'testuser', 'Project', 'test-project', 'read'
+        )
 
         self.assertFalse(has_access)
 
 
-class PermissionDeduplicationTestCase(unittest.IsolatedAsyncioTestCase):
+class PermissionDeduplicationTestCase(
+    unittest.IsolatedAsyncioTestCase,
+):
     """Test duplicate permissions from multiple sources are deduped."""
 
     async def test_deduplicate_permissions(self) -> None:
         """Test that duplicate permissions are deduplicated."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
             {
                 'permissions': [
                     'blueprint:read',
@@ -174,15 +170,13 @@ class PermissionDeduplicationTestCase(unittest.IsolatedAsyncioTestCase):
                 ]
             }
         ]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             perms = await permissions.load_user_permissions(
-                'testuser@example.com'
+                mock_db, 'testuser@example.com'
             )
 
         # Should be deduplicated to a set
@@ -198,10 +192,6 @@ class AuthContextTestCase(unittest.TestCase):
 
     def test_auth_context_principal_name_user(self) -> None:
         """User principal returns email."""
-        import datetime
-
-        from imbi_api import models
-
         user = models.User(
             email='user@example.com',
             display_name='Test User',
@@ -222,10 +212,6 @@ class AuthContextTestCase(unittest.TestCase):
         self,
     ) -> None:
         """Service account principal returns slug."""
-        import datetime
-
-        from imbi_api import models
-
         sa = models.ServiceAccount(
             slug='deploy-bot',
             display_name='Deploy Bot',
@@ -242,10 +228,6 @@ class AuthContextTestCase(unittest.TestCase):
 
     def test_auth_context_is_admin_user(self) -> None:
         """Admin user returns True for is_admin."""
-        import datetime
-
-        from imbi_api import models
-
         user = models.User(
             email='admin@example.com',
             display_name='Admin',
@@ -263,10 +245,6 @@ class AuthContextTestCase(unittest.TestCase):
 
     def test_auth_context_is_admin_service_account(self) -> None:
         """Service account always returns False for is_admin."""
-        import datetime
-
-        from imbi_api import models
-
         sa = models.ServiceAccount(
             slug='deploy-bot',
             display_name='Deploy Bot',
@@ -287,9 +265,9 @@ class ServiceAccountPermissionTestCase(
     """Test service account permission loading."""
 
     async def test_load_service_account_permissions(self) -> None:
-        """Test loading permissions from Neo4j for a SA."""
-        mock_result = mock.AsyncMock()
-        mock_result.data.return_value = [
+        """Test loading permissions for a SA via graph."""
+        mock_db = mock.AsyncMock()
+        mock_db.execute.return_value = [
             {
                 'permissions': [
                     'project:read',
@@ -298,15 +276,13 @@ class ServiceAccountPermissionTestCase(
                 ]
             }
         ]
-        mock_result.__aenter__.return_value = mock_result
-        mock_result.__aexit__.return_value = None
 
         with mock.patch(
-            'imbi_common.neo4j.run',
-            return_value=mock_result,
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
             perms = await permissions.load_service_account_permissions(
-                'deploy-bot'
+                mock_db, 'deploy-bot'
             )
 
         self.assertEqual(
@@ -318,8 +294,6 @@ class ServiceAccountPermissionTestCase(
         self,
     ) -> None:
         """JWT with auth_method=client_credentials loads SA."""
-        import datetime
-
         from imbi_common.auth import core
 
         from imbi_api import settings
@@ -333,56 +307,35 @@ class ServiceAccountPermissionTestCase(
             auth_settings=auth_settings,
         )
 
-        sa_data = {
-            'slug': 'deploy-bot',
-            'display_name': 'Deploy Bot',
-            'is_active': True,
-            'created_at': datetime.datetime.now(datetime.UTC).isoformat(),
-        }
+        test_sa = models.ServiceAccount(
+            slug='deploy-bot',
+            display_name='Deploy Bot',
+            is_active=True,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
 
-        call_count = 0
+        mock_db = mock.AsyncMock()
 
-        def mock_run_side_effect(query, **params):
-            nonlocal call_count
-            call_count += 1
-            mock_result = mock.AsyncMock()
-            mock_result.__aenter__ = mock.AsyncMock(return_value=mock_result)
-            mock_result.__aexit__ = mock.AsyncMock(return_value=None)
-
+        def execute_side_effect(query, params=None, columns=None):
             if 'TokenMetadata' in query:
-                # Token not revoked
-                mock_result.data = mock.AsyncMock(return_value=[])
+                return [{'revoked': False}]
             elif 'MEMBER_OF' in query:
-                # SA permissions (check before ServiceAccount)
-                mock_result.data = mock.AsyncMock(
-                    return_value=[
-                        {
-                            'permissions': [
-                                'project:read',
-                            ]
-                        }
-                    ]
-                )
-            elif 'ServiceAccount' in query:
-                mock_result.data = mock.AsyncMock(
-                    return_value=[{'s': sa_data}]
-                )
-            else:
-                mock_result.data = mock.AsyncMock(return_value=[])
+                # Permissions query (contains both ServiceAccount
+                # and MEMBER_OF)
+                return [{'permissions': ['project:read']}]
+            return []
 
-            return mock_result
+        mock_db.execute = mock.AsyncMock(side_effect=execute_side_effect)
+        # authenticate_jwt uses db.match() for SA lookup
+        mock_db.match.return_value = [test_sa]
 
-        with (
-            mock.patch(
-                'imbi_common.neo4j.run',
-                side_effect=mock_run_side_effect,
-            ),
-            mock.patch(
-                'imbi_common.neo4j.convert_neo4j_types',
-                side_effect=lambda x: x,
-            ),
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
         ):
-            ctx = await permissions.authenticate_jwt(token, auth_settings)
+            ctx = await permissions.authenticate_jwt(
+                mock_db, token, auth_settings
+            )
 
         self.assertIsNotNone(ctx.service_account)
         self.assertIsNone(ctx.user)
