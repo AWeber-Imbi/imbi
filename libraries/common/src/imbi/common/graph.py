@@ -27,26 +27,28 @@ _AGTYPE_SUFFIX = re.compile(
 )
 
 ModelT = typing.TypeVar('ModelT', bound=pydantic.BaseModel)
+GraphModelT = typing.TypeVar(
+    'GraphModelT',
+    bound=models.GraphModel,
+)
 
 
-def _fill_edge_defaults(
+def _strip_edge_fields(
     node_type: type[pydantic.BaseModel],
     props: dict[str, typing.Any],
 ) -> dict[str, typing.Any]:
-    """Supply ``None`` for missing relationship fields.
+    """Remove edge field keys from *props*.
 
-    AGE nodes only store scalar properties; edge fields are
-    separate graph relationships never included in the vertex
-    data.  Without defaults, ``model_validate`` would raise
-    ``ValidationError`` for any required edge field.
+    AGE vertices only contain scalar properties; edge fields
+    are separate graph relationships.  Removing them lets
+    ``model_construct`` supply the field default (e.g. ``[]``
+    or ``None``) without type-validation conflicts.
 
     """
     for name, info in node_type.model_fields.items():
-        if name in props:
-            continue
         for md in info.metadata:
             if isinstance(md, models.Edge):
-                props[name] = None
+                props.pop(name, None)
                 break
     return props
 
@@ -162,13 +164,17 @@ class Graph:
     # Graph CRUD
     # ----------------------------------------------------------
 
-    async def create(self, node: models.Node) -> models.Node:
+    async def create(
+        self,
+        node: GraphModelT,
+    ) -> GraphModelT:
         """Create a node and its relationships in the graph."""
         await self._execute_batch(cypher.create(node))
-        await self._auto_embed(node)
+        if isinstance(node, models.Node):
+            await self._auto_embed(node)
         return node
 
-    async def delete(self, node: models.Node) -> None:
+    async def delete(self, node: models.GraphModel) -> None:
         """Delete a node, its relationships, and embeddings.
 
         The Cypher delete runs via AGE (requires autocommit),
@@ -184,11 +190,12 @@ class Graph:
                 stmt.cypher,
                 stmt.params,
             )
-            await self._delete_embeddings(
-                conn,
-                type(node).__name__,
-                node.id,
-            )
+            if isinstance(node, models.Node):
+                await self._delete_embeddings(
+                    conn,
+                    type(node).__name__,
+                    node.id,
+                )
 
     async def match(
         self,
@@ -196,7 +203,13 @@ class Graph:
         params: dict[str, typing.Any] | None = None,
         order_by: str | None = None,
     ) -> list[ModelT]:
-        """Match nodes and return validated model instances."""
+        """Match nodes and return model instances.
+
+        Uses ``model_construct`` so that missing edge fields
+        (stored as separate graph relationships, never included
+        in vertex data) do not trigger validation errors.
+
+        """
         stmt = cypher.match(node_type, params, order_by)
         raw_rows = await self.execute(
             stmt.cypher,
@@ -207,17 +220,24 @@ class Graph:
             for value in row.values():
                 props = parse_agtype(value)
                 if isinstance(props, dict):
-                    _fill_edge_defaults(node_type, props)
-                    results.append(
-                        node_type.model_validate(props),
-                    )
+                    _strip_edge_fields(node_type, props)
+                    try:
+                        results.append(
+                            node_type.model_validate(props),
+                        )
+                    except pydantic.ValidationError:
+                        results.append(
+                            node_type.model_construct(
+                                **props,
+                            ),
+                        )
         return results
 
     async def merge(
         self,
-        node: pydantic.BaseModel,
+        node: GraphModelT,
         match_on: list[str] | None = None,
-    ) -> pydantic.BaseModel:
+    ) -> GraphModelT:
         """Upsert a node and its relationships in the graph."""
         await self._execute_batch(
             cypher.merge(node, match_on),
@@ -356,7 +376,7 @@ class Graph:
             for value in row.values():
                 props = parse_agtype(value)
                 if isinstance(props, dict):
-                    _fill_edge_defaults(node_type, props)
+                    _strip_edge_fields(node_type, props)
                     node = node_type.model_construct(
                         **props,
                     )

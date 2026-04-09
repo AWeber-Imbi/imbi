@@ -24,7 +24,7 @@ schema extension.
 ## Basic Usage
 
 ```python
-from imbi_common import models, neo4j
+from imbi_common import graph, models
 
 # Create an organization
 org = models.Organization(
@@ -32,7 +32,7 @@ org = models.Organization(
     slug="my-company",
     description="Our organization"
 )
-await neo4j.create_node(org)
+await db.create(org)
 
 # Create a team linked to an organization
 team = models.Team(
@@ -41,12 +41,14 @@ team = models.Team(
     description="Infrastructure and platform",
     organization=org
 )
-await neo4j.create_node(team)
+await db.create(team)
 ```
 
 ## API Reference
 
 ### Base Classes
+
+::: imbi_common.models.GraphModel
 
 ::: imbi_common.models.Node
 

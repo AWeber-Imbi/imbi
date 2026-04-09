@@ -287,6 +287,41 @@ class NodeModelTestCase(unittest.TestCase):
             models.Environment(name='Test', organization=org)  # Missing slug
 
 
+class GraphModelTestCase(unittest.TestCase):
+    """Test cases for GraphModel base class."""
+
+    def test_graph_model_id_auto_generated(self) -> None:
+        gm = models.GraphModel()
+        self.assertIsInstance(gm.id, str)
+        self.assertTrue(len(gm.id) > 0)
+
+    def test_graph_model_id_explicit(self) -> None:
+        gm = models.GraphModel(id='custom-id')
+        self.assertEqual(gm.id, 'custom-id')
+
+    def test_graph_model_timestamps(self) -> None:
+        gm = models.GraphModel()
+        self.assertIsNotNone(gm.created_at)
+        self.assertEqual(gm.created_at.tzinfo, datetime.UTC)
+        self.assertIsNone(gm.updated_at)
+
+    def test_graph_model_extra_ignored(self) -> None:
+        gm = models.GraphModel(
+            id='x',
+            extra_field='should be ignored',
+        )
+        self.assertFalse(hasattr(gm, 'extra_field'))
+
+    def test_node_is_graph_model(self) -> None:
+        org = models.Organization(name='Org', slug='org')
+        self.assertIsInstance(org, models.GraphModel)
+
+    def test_graph_model_ids_unique(self) -> None:
+        a = models.GraphModel()
+        b = models.GraphModel()
+        self.assertNotEqual(a.id, b.id)
+
+
 class EmbeddableTestCase(unittest.TestCase):
     """Test cases for the Embeddable dataclass."""
 

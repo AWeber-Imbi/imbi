@@ -109,10 +109,10 @@ def _props_template(props: dict[str, typing.Any]) -> str:
 
 
 def _edge_targets(
-    node: models.Node,
-) -> list[tuple[str, models.Edge, models.Node]]:
+    node: models.GraphModel,
+) -> list[tuple[str, models.Edge, models.GraphModel]]:
     """Yield ``(tgt_label, edge, target)`` for every edge target."""
-    result: list[tuple[str, models.Edge, models.Node]] = []
+    result: list[tuple[str, models.Edge, models.GraphModel]] = []
     for field_name, field_info, edge in _edge_fields(type(node)):
         targets = getattr(node, field_name)
         if _is_list_edge(field_info):
@@ -127,8 +127,22 @@ def _edge_targets(
     return result
 
 
+def _identity(
+    node: models.GraphModel,
+) -> tuple[str, str]:
+    """Return ``(key_name, key_value)`` for a graph vertex.
+
+    ``Node`` subclasses use ``slug`` (the stable business key);
+    plain ``GraphModel`` subclasses use ``id``.
+
+    """
+    if isinstance(node, models.Node):
+        return ('slug', node.slug)
+    return ('id', node.id)
+
+
 def _edge_statements(
-    node: models.Node,
+    node: models.GraphModel,
     verb: str = 'CREATE',
 ) -> list[Statement]:
     """Generate edge statements for every relationship on *node*.
@@ -136,25 +150,30 @@ def _edge_statements(
     *verb* controls whether ``CREATE`` or ``MERGE`` is used for the
     relationship itself (``MATCH`` is always used for the endpoints).
 
+    Each endpoint is matched by its canonical identity key — ``slug``
+    for ``Node`` subclasses, ``id`` for plain ``GraphModel``.
+
     """
     statements: list[Statement] = []
     src_label = _label(node)
+    src_key, src_val = _identity(node)
     for tgt_label, edge, target in _edge_targets(node):
+        tgt_key, tgt_val = _identity(target)
         if edge.direction == 'OUTGOING':
             arrow = f'(a)-[r:{edge.rel_type}]->(b)'
         else:
             arrow = f'(a)<-[r:{edge.rel_type}]-(b)'
         cypher = (
-            f'MATCH (a:{src_label} {{{{slug: {{src_slug}}}}}}), '
-            f'(b:{tgt_label} {{{{slug: {{tgt_slug}}}}}}) '
-            f'{verb} {arrow} RETURN r'
+            f'MATCH (a:{src_label} {{{{{src_key}: {{src}}}}}}), '
+            f'(b:{tgt_label} {{{{{tgt_key}: {{tgt}}}}}})'
+            f' {verb} {arrow} RETURN r'
         )
         statements.append(
             Statement(
                 cypher=cypher,
                 params={
-                    'src_slug': node.slug,
-                    'tgt_slug': target.slug,
+                    'src': src_val,
+                    'tgt': tgt_val,
                 },
             )
         )
@@ -166,7 +185,7 @@ def _edge_statements(
 # ------------------------------------------------------------------
 
 
-def create(node: models.Node) -> list[Statement]:
+def create(node: models.GraphModel) -> list[Statement]:
     """Generate ``CREATE`` statements for *node* and its edges.
 
     Returns a list where the first entry creates the node and
@@ -180,14 +199,15 @@ def create(node: models.Node) -> list[Statement]:
     return statements
 
 
-def delete(node: models.Node) -> Statement:
+def delete(node: models.GraphModel) -> Statement:
     """Generate a ``DETACH DELETE`` statement for *node*."""
+    key, val = _identity(node)
     return Statement(
         cypher=(
-            f'MATCH (n:{_label(node)} {{{{slug: {{slug}}}}}}) '
+            f'MATCH (n:{_label(node)} {{{{{key}: {{key}}}}}}) '
             f'DETACH DELETE n RETURN n'
         ),
-        params={'slug': node.slug},
+        params={'key': val},
     )
 
 
@@ -223,21 +243,32 @@ def match(
 
 
 def merge(
-    node: pydantic.BaseModel,
+    node: models.GraphModel,
     match_on: list[str] | None = None,
 ) -> list[Statement]:
     """Generate ``MERGE`` statements for *node* and its edges.
 
     *match_on* lists the property names used to identify the node
-    for the ``MERGE`` clause (defaults to ``['slug']``).  All other
-    non-None scalar properties appear in the ``SET`` clause
-    (Apache AGE does not support ``ON CREATE SET`` / ``ON MATCH SET``).
+    for the ``MERGE`` clause.  Defaults to ``['slug']`` for
+    ``Node`` subclasses (stable business key) and ``['id']`` for
+    plain ``GraphModel`` subclasses.  All other non-None scalar
+    properties appear in the ``SET`` clause.
+
+    ``id`` and ``created_at`` use ``COALESCE`` so they are written
+    on first creation but preserved on subsequent merges (Apache
+    AGE does not support ``ON CREATE SET`` / ``ON MATCH SET``).
 
     Properties whose value is ``None`` are omitted so that existing
     graph values are preserved rather than being deleted.
 
     """
-    match_on = match_on or ['slug']
+    if match_on is None:
+        if isinstance(node, models.Node):
+            match_on = ['slug']
+        else:
+            match_on = ['id']
+    if not match_on:
+        raise ValueError('match_on must contain at least one key')
     props = _node_properties(node)
 
     bad = [k for k in match_on if k not in props]
@@ -251,20 +282,24 @@ def merge(
     }
 
     cypher = f'MERGE (n:{_label(node)} {_props_template(match_props)})'
-    if set_props:
-        # Exclude immutable fields from SET — ``id`` and
-        # ``created_at`` are set when the node is first created
-        # and must not be overwritten on subsequent merges.
-        # Apache AGE does not support ON CREATE SET / ON MATCH
-        # SET, so we simply omit them.
-        immutable = {'created_at', 'id'}
-        update_keys = [k for k in set_props if k not in immutable]
-        if update_keys:
-            assignments = ', '.join(f'n.{k} = {{{k}}}' for k in update_keys)
-            cypher += f' SET {assignments}'
+
+    # Build SET assignments.  ``id`` and ``created_at`` use
+    # COALESCE so the first MERGE persists them but subsequent
+    # merges preserve the original values (Apache AGE lacks
+    # ``ON CREATE SET`` / ``ON MATCH SET``).
+    once_only = {'id', 'created_at'}
+    assignments: list[str] = []
+    for k in set_props:
+        if k in once_only:
+            assignments.append(
+                f'n.{k} = coalesce(n.{k}, {{{k}}})',
+            )
+        else:
+            assignments.append(f'n.{k} = {{{k}}}')
+    if assignments:
+        cypher += ' SET ' + ', '.join(assignments)
     cypher += ' RETURN n'
 
     statements = [Statement(cypher=cypher, params=props)]
-    if isinstance(node, models.Node):
-        statements.extend(_edge_statements(node, verb='MERGE'))
+    statements.extend(_edge_statements(node, verb='MERGE'))
     return statements

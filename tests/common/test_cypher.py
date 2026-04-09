@@ -1,12 +1,37 @@
 """Tests for the cypher query generation module."""
 
+import typing
 import unittest
 
 from imbi_common import cypher, models
 
 
+class Credential(models.GraphModel):
+    """Non-Node vertex for testing GraphModel paths."""
+
+    email: str
+    display_name: str | None = None
+    org: typing.Annotated[
+        models.Organization | None,
+        models.Edge(
+            rel_type='BELONGS_TO',
+            direction='OUTGOING',
+        ),
+    ] = None
+
+
+def _credential(
+    email: str = 'alice@example.com',
+) -> Credential:
+    return Credential(id='cred-id', email=email)
+
+
 def _org(slug: str = 'acme') -> models.Organization:
-    return models.Organization(name='Acme', slug=slug)
+    return models.Organization(
+        id='org-id',
+        name='Acme',
+        slug=slug,
+    )
 
 
 def _team(slug: str = 'backend') -> models.Team:
@@ -160,8 +185,11 @@ class CreateTests(unittest.TestCase):
         # Second creates the BELONGS_TO edge
         self.assertIn('BELONGS_TO', stmts[1].cypher)
         self.assertIn('Organization', stmts[1].cypher)
-        self.assertEqual('backend', stmts[1].params['src_slug'])
-        self.assertEqual('acme', stmts[1].params['tgt_slug'])
+        # Node subclasses match by slug (stable business key)
+        self.assertIn('slug: {src}', stmts[1].cypher)
+        self.assertIn('slug: {tgt}', stmts[1].cypher)
+        self.assertEqual('backend', stmts[1].params['src'])
+        self.assertEqual('acme', stmts[1].params['tgt'])
 
     def test_project_creates_node_and_all_edges(self) -> None:
         project = _project()
@@ -204,7 +232,18 @@ class DeleteTests(unittest.TestCase):
         self.assertIn('MATCH (n:Organization', stmt.cypher)
         self.assertIn('DETACH DELETE n', stmt.cypher)
         self.assertIn('RETURN n', stmt.cypher)
-        self.assertEqual('acme', stmt.params['slug'])
+        # Node subclasses delete by slug (stable business key)
+        self.assertIn('slug: {key}', stmt.cypher)
+        self.assertEqual('acme', stmt.params['key'])
+
+    def test_graph_model_delete(self) -> None:
+        cred = _credential()
+        stmt = cypher.delete(cred)
+        self.assertIn('MATCH (n:Credential', stmt.cypher)
+        self.assertIn('DETACH DELETE n', stmt.cypher)
+        # GraphModel subclasses delete by id
+        self.assertIn('id: {key}', stmt.cypher)
+        self.assertEqual('cred-id', stmt.params['key'])
 
 
 class MatchTests(unittest.TestCase):
@@ -248,7 +287,7 @@ class MatchTests(unittest.TestCase):
 
 
 class MergeTests(unittest.TestCase):
-    def test_default_match_on_slug(self) -> None:
+    def test_node_defaults_to_slug(self) -> None:
         org = _org()
         stmts = cypher.merge(org)
         self.assertIn(
@@ -261,16 +300,22 @@ class MergeTests(unittest.TestCase):
         stmts = cypher.merge(org)
         self.assertIn(' SET ', stmts[0].cypher)
         self.assertIn('n.name = {name}', stmts[0].cypher)
-        # slug should NOT appear in SET (it's the match key)
+        # slug should NOT appear in SET (it is the match key)
         self.assertNotIn('n.slug =', stmts[0].cypher)
 
-    def test_set_excludes_immutable_fields(self) -> None:
+    def test_set_uses_coalesce_for_immutable_fields(self) -> None:
         org = _org()
         stmts = cypher.merge(org)
-        # id and created_at are immutable — they must not
-        # appear in SET to preserve original values
-        self.assertNotIn('n.id =', stmts[0].cypher)
-        self.assertNotIn('created_at', stmts[0].cypher)
+        # id and created_at use COALESCE so first merge writes
+        # them but subsequent merges preserve originals
+        self.assertIn(
+            'n.id = coalesce(n.id, {id})',
+            stmts[0].cypher,
+        )
+        self.assertIn(
+            'n.created_at = coalesce(n.created_at, {created_at})',
+            stmts[0].cypher,
+        )
 
     def test_custom_match_on(self) -> None:
         project = _project()
@@ -330,6 +375,11 @@ class MergeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             cypher.merge(org, match_on=['nonexistent'])
 
+    def test_empty_match_on_raises(self) -> None:
+        org = _org()
+        with self.assertRaises(ValueError):
+            cypher.merge(org, match_on=[])
+
 
 class MatchValidationTests(unittest.TestCase):
     def test_invalid_param_raises(self) -> None:
@@ -352,6 +402,73 @@ class MatchValidationTests(unittest.TestCase):
                 models.Team,
                 {'organization': 'acme'},
             )
+
+
+class GraphModelCreateTests(unittest.TestCase):
+    def test_creates_vertex(self) -> None:
+        cred = _credential()
+        stmts = cypher.create(cred)
+        self.assertIn('CREATE (n:Credential', stmts[0].cypher)
+        self.assertIn('RETURN n', stmts[0].cypher)
+        self.assertEqual(
+            'alice@example.com',
+            stmts[0].params['email'],
+        )
+
+    def test_with_edge(self) -> None:
+        cred = Credential(
+            id='cred-id',
+            email='alice@example.com',
+            org=_org(),
+        )
+        stmts = cypher.create(cred)
+        self.assertEqual(2, len(stmts))
+        self.assertIn('BELONGS_TO', stmts[1].cypher)
+        # src is GraphModel (id), target is Node (slug)
+        self.assertIn('id: {src}', stmts[1].cypher)
+        self.assertIn('slug: {tgt}', stmts[1].cypher)
+        self.assertEqual('cred-id', stmts[1].params['src'])
+        self.assertEqual('acme', stmts[1].params['tgt'])
+
+    def test_no_edge_when_none(self) -> None:
+        cred = _credential()
+        stmts = cypher.create(cred)
+        self.assertEqual(1, len(stmts))
+
+
+class GraphModelMergeTests(unittest.TestCase):
+    def test_default_match_on_id(self) -> None:
+        cred = _credential()
+        stmts = cypher.merge(cred)
+        self.assertIn(
+            'MERGE (n:Credential {{id: {id}}})',
+            stmts[0].cypher,
+        )
+
+    def test_set_includes_email(self) -> None:
+        cred = _credential()
+        stmts = cypher.merge(cred)
+        self.assertIn('n.email = {email}', stmts[0].cypher)
+
+    def test_edge_statements_generated(self) -> None:
+        cred = Credential(
+            id='cred-id',
+            email='alice@example.com',
+            org=_org(),
+        )
+        stmts = cypher.merge(cred)
+        self.assertEqual(2, len(stmts))
+        self.assertIn('MERGE', stmts[1].cypher)
+        self.assertIn('BELONGS_TO', stmts[1].cypher)
+
+    def test_custom_match_on(self) -> None:
+        cred = _credential()
+        stmts = cypher.merge(cred, match_on=['email'])
+        self.assertIn(
+            'MERGE (n:Credential {{email: {email}}})',
+            stmts[0].cypher,
+        )
+        self.assertNotIn('n.email =', stmts[0].cypher)
 
 
 class NoneEdgeTests(unittest.TestCase):

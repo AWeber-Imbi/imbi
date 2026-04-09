@@ -16,6 +16,7 @@ __all__ = [
     'Embeddable',
     'Embedding',
     'Environment',
+    'GraphModel',
     'LinkDefinition',
     'Node',
     'Organization',
@@ -53,11 +54,12 @@ class Embeddable:
     mimetype: str = 'text/plain'
 
 
-class Node(pydantic.BaseModel):
-    """Base model for graph nodes.
+class GraphModel(pydantic.BaseModel):
+    """Minimal base for any model stored as a graph vertex.
 
-    The ``icon`` attribute can either be a URL or a CSS
-    class name.
+    Provides identity (``id``), timestamps, and
+    ``extra='ignore'`` so AGE metadata is silently dropped.
+    Subclass ``Node`` when you also need ``name``/``slug``.
 
     """
 
@@ -66,6 +68,20 @@ class Node(pydantic.BaseModel):
     id: str = pydantic.Field(
         default_factory=nanoid.generate,
     )
+    created_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: datetime.datetime | None = None
+
+
+class Node(GraphModel):
+    """Graph node with business identity fields.
+
+    The ``icon`` attribute can either be a URL or a CSS
+    class name.
+
+    """
+
     name: typing.Annotated[str, Embeddable()]
     slug: str
     description: typing.Annotated[
@@ -73,10 +89,6 @@ class Node(pydantic.BaseModel):
         Embeddable(chunk=True, mimetype='text/markdown'),
     ] = None
     icon: pydantic.HttpUrl | str | None = None
-    created_at: datetime.datetime = pydantic.Field(
-        default_factory=lambda: datetime.datetime.now(datetime.UTC),
-    )
-    updated_at: datetime.datetime | None = None
 
 
 class BlueprintFilter(pydantic.BaseModel):

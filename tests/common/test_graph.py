@@ -140,6 +140,48 @@ class GraphDependencyInjectionTests(unittest.TestCase):
             self.assertTrue(response.json()['opened'])
 
 
+class GraphModelCreateDeleteTests(
+    unittest.IsolatedAsyncioTestCase,
+):
+    """Verify create/delete accept GraphModel (non-Node)."""
+
+    @mock.patch.object(graph.Graph, '_execute_batch')
+    async def test_create_graph_model(
+        self,
+        mock_batch: mock.AsyncMock,
+    ) -> None:
+        g = graph.Graph()
+        g.opened = True
+        gm = models.GraphModel(id='gm-1')
+        result = await g.create(gm)
+        self.assertIs(result, gm)
+        mock_batch.assert_awaited_once()
+
+    @mock.patch.object(graph.Graph, '_execute_on')
+    async def test_delete_graph_model(
+        self,
+        mock_exec: mock.AsyncMock,
+    ) -> None:
+        g = graph.Graph()
+        g.opened = True
+        mock_conn = mock.AsyncMock()
+        ctx = mock.AsyncMock()
+        ctx.__aenter__ = mock.AsyncMock(
+            return_value=mock_conn,
+        )
+        ctx.__aexit__ = mock.AsyncMock(
+            return_value=False,
+        )
+        mock_pool = mock.MagicMock()
+        mock_pool.connection.return_value = ctx
+        g.pool = mock_pool
+        gm = models.GraphModel(id='gm-1')
+        await g.delete(gm)
+        mock_exec.assert_awaited_once()
+        # _delete_embeddings should NOT be called for non-Node
+        mock_conn.execute.assert_not_awaited()
+
+
 class EmbeddableFieldsTests(unittest.TestCase):
     """Test the _embeddable_fields helper."""
 
