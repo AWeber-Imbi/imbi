@@ -87,6 +87,32 @@ class Clickhouse(pydantic_settings.BaseSettings):
     max_connect_attempts: int = 10
 
 
+class EmbeddingModelConfig(pydantic.BaseModel):
+    """Configuration for a single embedding model."""
+
+    fastembed_id: str
+    dimensions: int
+
+
+class Embeddings(pydantic_settings.BaseSettings):
+    """Embedding generation settings."""
+
+    model_config = base_settings_config(
+        env_prefix='EMBEDDINGS_',
+    )
+
+    enabled: bool = True
+    default_model: str = 'text'
+    models: dict[str, EmbeddingModelConfig] = pydantic.Field(
+        default_factory=lambda: {
+            'text': EmbeddingModelConfig(
+                fastembed_id='BAAI/bge-small-en-v1.5',
+                dimensions=384,
+            ),
+        },
+    )
+
+
 class Postgres(pydantic_settings.BaseSettings):
     """Apache AGE (PostgreSQL extension) connection settings."""
 
@@ -142,6 +168,7 @@ class Configuration(pydantic.BaseModel):
         settings_fields: dict[str, type[pydantic_settings.BaseSettings]] = {
             'auth': Auth,
             'clickhouse': Clickhouse,
+            'embeddings': Embeddings,
             'postgres': Postgres,
         }
         for field, settings_cls in settings_fields.items():
@@ -153,8 +180,15 @@ class Configuration(pydantic.BaseModel):
         return data
 
     auth: Auth = pydantic.Field(default_factory=Auth)
-    clickhouse: Clickhouse = pydantic.Field(default_factory=Clickhouse)
-    postgres: Postgres = pydantic.Field(default_factory=Postgres)
+    clickhouse: Clickhouse = pydantic.Field(
+        default_factory=Clickhouse,
+    )
+    embeddings: Embeddings = pydantic.Field(
+        default_factory=Embeddings,
+    )
+    postgres: Postgres = pydantic.Field(
+        default_factory=Postgres,
+    )
 
 
 def load_config_data() -> dict[str, typing.Any]:

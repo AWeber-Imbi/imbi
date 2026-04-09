@@ -252,11 +252,13 @@ def merge(
 
     cypher = f'MERGE (n:{_label(node)} {_props_template(match_props)})'
     if set_props:
-        # Exclude created_at from SET — it is set when the
-        # node is first created and should not be overwritten
-        # on subsequent merges.  Apache AGE does not support
-        # ON CREATE SET / ON MATCH SET, so we simply omit it.
-        update_keys = [k for k in set_props if k != 'created_at']
+        # Exclude immutable fields from SET — ``id`` and
+        # ``created_at`` are set when the node is first created
+        # and must not be overwritten on subsequent merges.
+        # Apache AGE does not support ON CREATE SET / ON MATCH
+        # SET, so we simply omit them.
+        immutable = {'created_at', 'id'}
+        update_keys = [k for k in set_props if k not in immutable]
         if update_keys:
             assignments = ', '.join(f'n.{k} = {{{k}}}' for k in update_keys)
             cypher += f' SET {assignments}'

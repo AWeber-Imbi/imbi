@@ -13,6 +13,7 @@ def _team(slug: str = 'backend') -> models.Team:
     # model_construct bypasses validation — Edge fields accept
     # Node instances only when built from raw graph data (dicts).
     return models.Team.model_construct(
+        id='team-id',
         name='Backend',
         slug=slug,
         organization=_org(),
@@ -21,6 +22,7 @@ def _team(slug: str = 'backend') -> models.Team:
 
 def _env(slug: str = 'production') -> models.Environment:
     return models.Environment.model_construct(
+        id='env-id',
         name='Production',
         slug=slug,
         sort_order=1,
@@ -28,8 +30,11 @@ def _env(slug: str = 'production') -> models.Environment:
     )
 
 
-def _project_type(slug: str = 'web-app') -> models.ProjectType:
+def _project_type(
+    slug: str = 'web-app',
+) -> models.ProjectType:
     return models.ProjectType.model_construct(
+        id='pt-id',
         name='Web App',
         slug=slug,
         organization=_org(),
@@ -63,6 +68,7 @@ class NodePropertiesTests(unittest.TestCase):
     def test_organization_all_scalar(self) -> None:
         org = _org()
         props = cypher._node_properties(org)
+        self.assertIn('id', props)
         self.assertIn('name', props)
         self.assertIn('slug', props)
         self.assertNotIn('organization', props)
@@ -70,6 +76,7 @@ class NodePropertiesTests(unittest.TestCase):
     def test_team_excludes_edge(self) -> None:
         team = _team()
         props = cypher._node_properties(team)
+        self.assertIn('id', props)
         self.assertIn('name', props)
         self.assertIn('slug', props)
         self.assertNotIn('organization', props)
@@ -257,11 +264,12 @@ class MergeTests(unittest.TestCase):
         # slug should NOT appear in SET (it's the match key)
         self.assertNotIn('n.slug =', stmts[0].cypher)
 
-    def test_set_excludes_created_at(self) -> None:
+    def test_set_excludes_immutable_fields(self) -> None:
         org = _org()
         stmts = cypher.merge(org)
-        # created_at should not appear in SET to preserve
-        # original creation timestamp on existing nodes
+        # id and created_at are immutable — they must not
+        # appear in SET to preserve original values
+        self.assertNotIn('n.id =', stmts[0].cypher)
         self.assertNotIn('created_at', stmts[0].cypher)
 
     def test_custom_match_on(self) -> None:

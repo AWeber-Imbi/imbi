@@ -2,12 +2,13 @@
 
 import json
 import unittest
+from unittest import mock
 
 import dotenv
 import fastapi
 import fastapi.testclient
 
-from imbi_common import graph, lifespan
+from imbi_common import graph, lifespan, models
 
 dotenv.load_dotenv()
 
@@ -137,3 +138,96 @@ class GraphDependencyInjectionTests(unittest.TestCase):
             response = client.get('/test')
             self.assertEqual(200, response.status_code)
             self.assertTrue(response.json()['opened'])
+
+
+class EmbeddableFieldsTests(unittest.TestCase):
+    """Test the _embeddable_fields helper."""
+
+    def test_embeddable_fields_returned(self) -> None:
+        """Organization inherits Embeddable from Node."""
+        org = models.Organization(
+            name='Org',
+            slug='org',
+            description='Desc',
+        )
+        fields = graph._embeddable_fields(org)
+        names = [f[0] for f in fields]
+        self.assertIn('name', names)
+        self.assertIn('description', names)
+
+    def test_none_values_included_as_none(self) -> None:
+        """Fields with None values are returned for cleanup."""
+        org = models.Organization(
+            name='Org',
+            slug='org',
+            description=None,
+        )
+        fields = graph._embeddable_fields(org)
+        by_name = {f[0]: f[1] for f in fields}
+        self.assertIn('description', by_name)
+        self.assertIsNone(by_name['description'])
+
+
+class AutoEmbedTests(unittest.IsolatedAsyncioTestCase):
+    """Test _auto_embed with mocked embeddings module."""
+
+    @mock.patch('imbi_common.embeddings.aembed')
+    @mock.patch('imbi_common.settings.Embeddings')
+    async def test_disabled_skips_embedding(
+        self,
+        mock_settings: mock.MagicMock,
+        mock_aembed: mock.MagicMock,
+    ) -> None:
+        mock_settings.return_value.enabled = False
+        g = graph.Graph()
+        org = models.Organization(name='Org', slug='org')
+        await g._auto_embed(org)
+        mock_aembed.assert_not_called()
+
+    async def test_auto_embed_logs_on_failure(
+        self,
+    ) -> None:
+        g = graph.Graph()
+        g.opened = True
+
+        mock_pool = mock.AsyncMock()
+        mock_pool.connection.side_effect = RuntimeError(
+            'pool fail',
+        )
+        g.pool = mock_pool
+
+        org = models.Organization(
+            name='Org',
+            slug='org',
+            description='A description',
+        )
+        with self.assertLogs(
+            'imbi_common.graph',
+            level='WARNING',
+        ):
+            await g._auto_embed(org)
+
+
+class SearchResultTests(unittest.TestCase):
+    def test_search_result_creation(self) -> None:
+        r = graph.SearchResult(
+            node_label='Project',
+            node_id='abc123',
+            attribute='name',
+            chunk_text='My Project',
+            distance=0.15,
+        )
+        self.assertEqual(r.node_label, 'Project')
+        self.assertEqual(r.node_id, 'abc123')
+        self.assertAlmostEqual(r.distance, 0.15)
+
+    def test_search_result_frozen(self) -> None:
+        r = graph.SearchResult(
+            node_label='X',
+            node_id='Y',
+            attribute='a',
+            chunk_text='t',
+            distance=0.0,
+        )
+        with self.assertRaises(AttributeError):
+            r.distance = 1.0  # type: ignore[misc]

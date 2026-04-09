@@ -195,6 +195,30 @@ class BlueprintFilterValidatorTestCase(unittest.TestCase):
 class NodeModelTestCase(unittest.TestCase):
     """Test cases for Node-based models."""
 
+    def test_node_id_auto_generated(self) -> None:
+        """Test that id is auto-generated via nanoid."""
+        org = models.Organization(
+            name='ACME Corp',
+            slug='acme',
+        )
+        self.assertIsInstance(org.id, str)
+        self.assertTrue(len(org.id) > 0)
+
+    def test_node_id_explicit(self) -> None:
+        """Test that id can be set explicitly."""
+        org = models.Organization(
+            name='ACME Corp',
+            slug='acme',
+            id='custom-id',
+        )
+        self.assertEqual(org.id, 'custom-id')
+
+    def test_node_ids_are_unique(self) -> None:
+        """Test that auto-generated ids differ."""
+        a = models.Organization(name='A', slug='a')
+        b = models.Organization(name='B', slug='b')
+        self.assertNotEqual(a.id, b.id)
+
     def test_organization_creation(self) -> None:
         """Test creating an Organization model."""
         org = models.Organization(
@@ -263,6 +287,58 @@ class NodeModelTestCase(unittest.TestCase):
             models.Environment(name='Test', organization=org)  # Missing slug
 
 
+class EmbeddableTestCase(unittest.TestCase):
+    """Test cases for the Embeddable dataclass."""
+
+    def test_embeddable_defaults(self) -> None:
+        e = models.Embeddable()
+        self.assertEqual(e.model_name, 'text')
+        self.assertFalse(e.chunk)
+
+    def test_embeddable_custom(self) -> None:
+        e = models.Embeddable(model_name='code', chunk=True)
+        self.assertEqual(e.model_name, 'code')
+        self.assertTrue(e.chunk)
+
+    def test_embeddable_frozen(self) -> None:
+        e = models.Embeddable()
+        with self.assertRaises(AttributeError):
+            e.model_name = 'other'  # type: ignore[misc]
+
+
+class BlueprintAsNodeTestCase(unittest.TestCase):
+    """Test Blueprint inherits from Node."""
+
+    def test_blueprint_is_node(self) -> None:
+        schema = {'type': 'object', 'properties': {}}
+        bp = models.Blueprint(
+            name='Test',
+            type='Project',
+            json_schema=models.Schema.model_validate(schema),
+        )
+        self.assertIsInstance(bp, models.Node)
+
+    def test_blueprint_has_id(self) -> None:
+        schema = {'type': 'object', 'properties': {}}
+        bp = models.Blueprint(
+            name='Test',
+            type='Project',
+            json_schema=models.Schema.model_validate(schema),
+        )
+        self.assertIsInstance(bp.id, str)
+        self.assertTrue(len(bp.id) > 0)
+
+    def test_blueprint_has_timestamps(self) -> None:
+        schema = {'type': 'object', 'properties': {}}
+        bp = models.Blueprint(
+            name='Test',
+            type='Project',
+            json_schema=models.Schema.model_validate(schema),
+        )
+        self.assertIsNotNone(bp.created_at)
+        self.assertIsNone(bp.updated_at)
+
+
 class ProjectModelTestCase(unittest.TestCase):
     """Test cases for Project model."""
 
@@ -270,9 +346,15 @@ class ProjectModelTestCase(unittest.TestCase):
         """Test Project URL validation."""
         # Create minimal valid related objects
         org = models.Organization(name='Org', slug='org')
-        team = models.Team(name='Team', slug='team', organization=org)
+        team = models.Team(
+            name='Team',
+            slug='team',
+            organization=org,
+        )
         project_type = models.ProjectType(
-            name='Type', slug='type', organization=org
+            name='Type',
+            slug='type',
+            organization=org,
         )
 
         with self.assertRaises(pydantic.ValidationError):

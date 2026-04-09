@@ -2,7 +2,7 @@ import dataclasses
 import datetime
 import typing
 
-import nanoid  # type: ignore[import-untyped]
+import nanoid
 import pydantic
 import slugify
 from jsonschema_models import models as schema_models
@@ -13,6 +13,7 @@ __all__ = [
     'BlueprintEdge',
     'BlueprintFilter',
     'Edge',
+    'Embeddable',
     'Embedding',
     'Environment',
     'LinkDefinition',
@@ -29,31 +30,53 @@ __all__ = [
 Schema = schema_models.Schema
 
 
-class Node(pydantic.BaseModel):
-    """Base model for Cypherantic nodes.
-
-    The `icon` attribute can either be a URL or a CSS class name
-
-    """
-
-    model_config = pydantic.ConfigDict(extra='ignore')
-
-    name: str
-    slug: str
-    description: str | None = None
-    icon: pydantic.HttpUrl | str | None = None
-    created_at: datetime.datetime = pydantic.Field(
-        default_factory=lambda: datetime.datetime.now(datetime.UTC),
-    )
-    updated_at: datetime.datetime | None = None
-
-
 @dataclasses.dataclass(frozen=True, slots=True)
 class Edge:
     """An edge between two nodes in the graph."""
 
     rel_type: str
     direction: typing.Literal['INCOMING', 'OUTGOING']
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Embeddable:
+    """Marks a field for automatic embedding generation.
+
+    Attach via ``typing.Annotated`` metadata, similar to
+    ``Edge``.  Fields annotated with ``Embeddable`` are
+    automatically embedded when nodes are created or merged.
+
+    """
+
+    model_name: str = 'text'
+    chunk: bool = False
+    mimetype: str = 'text/plain'
+
+
+class Node(pydantic.BaseModel):
+    """Base model for graph nodes.
+
+    The ``icon`` attribute can either be a URL or a CSS
+    class name.
+
+    """
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+    id: str = pydantic.Field(
+        default_factory=nanoid.generate,
+    )
+    name: typing.Annotated[str, Embeddable()]
+    slug: str
+    description: typing.Annotated[
+        str | None,
+        Embeddable(chunk=True, mimetype='text/markdown'),
+    ] = None
+    icon: pydantic.HttpUrl | str | None = None
+    created_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: datetime.datetime | None = None
 
 
 class BlueprintFilter(pydantic.BaseModel):
@@ -71,11 +94,10 @@ class BlueprintFilter(pydantic.BaseModel):
     environment: list[str] = []
 
 
-class Blueprint(pydantic.BaseModel):
-    model_config = pydantic.ConfigDict(extra='ignore')
-
-    name: str
-    slug: str | None = None
+class Blueprint(Node):
+    # Overrides Node.slug to optional; model validator
+    # below auto-generates slug from name at runtime.
+    slug: str | None = None  # type: ignore[assignment]
     type: typing.Literal[
         'Team',
         'Environment',
@@ -84,7 +106,6 @@ class Blueprint(pydantic.BaseModel):
         'Organization',
         'ThirdPartyService',
     ]
-    description: str | None = None
     enabled: bool = True
     priority: int = 0
     filter: BlueprintFilter | None = None
@@ -232,7 +253,6 @@ class LinkDefinition(Node):
 
 
 class Project(Node):
-    id: str = pydantic.Field(default_factory=nanoid.generate)
     team: typing.Annotated[
         Team,
         Edge(
@@ -258,5 +278,12 @@ class Project(Node):
 
 
 class Embedding(pydantic.BaseModel):
+    """An embedding record from the relational table."""
+
+    node_label: str
+    node_id: str
     attribute: str
-    value: list[float]
+    chunk_index: int = 0
+    model_name: str = 'text'
+    chunk_text: str
+    embedding: list[float]

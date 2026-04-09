@@ -19,9 +19,12 @@ classifiers = [
 dependencies = [
   "clickhouse-connect",
   "cryptography>=42.0.4",
+  "fastembed>=0.6",
   "jsonschema-models",
+  "markdown-it-py>=3.0",
   "nanoid>=2.0.0",
   "orjson",
+  "pgvector>=0.3",
   "psycopg[binary,pool]>=3.3",
   "pydantic-settings",
   "pydantic[email]>=2.0",
@@ -88,6 +91,10 @@ config-file = "mkdocs.yml"
 python_executable = ".venv/bin/python"
 strict = true
 show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["nanoid", "pgvector.*"]
+ignore_missing_imports = true
 
 [tool.pyright]
 deprecateTypingAliases = true
