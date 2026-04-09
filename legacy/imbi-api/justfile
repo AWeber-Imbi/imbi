@@ -55,12 +55,8 @@ docker:
     IMBI_EMAIL_SMTP_USE_TLS="false"
     IMBI_EMAIL_FROM_EMAIL="noreply@imbi.example"
     IMBI_EMAIL_FROM_NAME="Imbi Development"
-    NEO4J_URL="bolt://neo4j:neo4j@$test_host:$(get_port neo4j 7687)"
-    S3_ENDPOINT_URL="http://$test_host:$(get_port localstack 4566)"
-    S3_ACCESS_KEY="test"
-    S3_SECRET_KEY="test"
-    S3_BUCKET="imbi-uploads"
-    S3_REGION="us-east-1"
+    MAILPIT_SMTP_PORT="$(get_port mailpit 1025)"
+    MAILPIT_WEB_PORT="$(get_port mailpit 8025)"
     OTEL_LOGS_EXPORTER="none"
     OTEL_METRICS_EXPORTER="none"
     OTEL_TRACES_EXPORTER="otlp"
@@ -68,14 +64,18 @@ docker:
     OTEL_EXPORTER_OTLP_TRACES_INSECURE="true"
     OTEL_RESOURCE_ATTRIBUTES="service.name=imbi-api,service.environment=development"
     OTEL_SERVICE_NAME="imbi-api"
-    MAILPIT_SMTP_PORT="$(get_port mailpit 1025)"
-    MAILPIT_WEB_PORT="$(get_port mailpit 8025)"
+    POSTGRES_URL="postgresql://postgres:secret@$test_host:$(port postgres 5432)/imbi"
+    S3_ENDPOINT_URL="http://$test_host:$(get_port localstack 4566)"
+    S3_ACCESS_KEY="test"
+    S3_SECRET_KEY="test"
+    S3_BUCKET="imbi-uploads"
+    S3_REGION="us-east-1"
     EOF
 
 [doc("Run tests")]
 [group("Testing")]
 test *TESTS: setup docker
-    uv run pytest {{TESTS}}
+    uv run pytest {{ TESTS }}
 
 [doc("Run linters")]
 [group("Testing")]
@@ -89,10 +89,10 @@ lint: setup
 format *FILES: setup
     #!/usr/bin/env sh
     set -x
-    if [ "{{FILES}}" = '' ]; then
+    if [ "{{ FILES }}" = '' ]; then
         args='--all-files'
     else
-        args='--files {{FILES}}'
+        args='--files {{ FILES }}'
     fi
     uv run pre-commit run ruff-format $args
 

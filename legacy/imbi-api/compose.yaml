@@ -1,8 +1,6 @@
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
-    #volumes:
-    #  - ./schema/clickhouse:/docker-entrypoint-initdb.d
     ports:
       - "8123"
       - "9000"
@@ -11,24 +9,24 @@ services:
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASSWORD=password
     healthcheck:
-      test: [ "CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'" ]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'"]
 
   jaeger:
     image: cr.jaegertracing.io/jaegertracing/jaeger:2.13.0
     ports:
-      - "4317"  # OTLP/HTTP
+      - "4317" # OTLP/HTTP
       - "16686" # UI port
 
   mailpit:
     image: axllent/mailpit:v1.21.5
     ports:
-      - "8025"  # Web UI
-      - "1025"  # SMTP
+      - "8025" # Web UI
+      - "1025" # SMTP
     environment:
       - MP_SMTP_AUTH_ACCEPT_ANY=1
       - MP_SMTP_AUTH_ALLOW_INSECURE=1
     healthcheck:
-      test: [ "CMD", "wget", "-qO-", "http://localhost:8025/api/v1/info" ]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8025/api/v1/info"]
 
   localstack:
     image: localstack/localstack:community-archive
@@ -38,21 +36,17 @@ services:
       - SERVICES=s3
       - DEBUG=0
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:4566/_localstack/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  neo4j:
-    image: neo4j:latest
-    environment:
-      NEO4J_AUTH: none
-      NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_apoc_trigger_enabled: 'true'
-      NEO4J_dbms_security_procedures_unrestricted: 'apoc.*'
-      NEO4J_dbms_security_procedures_allowlist: 'apoc.*'
+  postgres:
+    image: ghcr.io/aweber-imbi/postgres:latest
     ports:
-      - "7474"
-      - "7687"
+      - "5432"
+    environment:
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: imbi
     healthcheck:
-      test: [ "CMD-SHELL", "wget -qO-  http://localhost:7474" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
