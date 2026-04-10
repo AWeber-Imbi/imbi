@@ -717,7 +717,9 @@ export function BlueprintForm({
                       )
                       .join('; ')
                   }
-                  return detail || error?.message || 'An error occurred'
+                  return typeof detail === 'string'
+                    ? detail
+                    : error?.message || 'An error occurred'
                 })()}
               </div>
             </div>

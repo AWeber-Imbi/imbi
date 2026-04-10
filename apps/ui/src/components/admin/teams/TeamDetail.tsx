@@ -21,6 +21,7 @@ import {
   getTeamSchema,
 } from '@/api/endpoints'
 import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
+import { getIcon } from '@/lib/icons'
 import { extractDynamicFields } from '@/lib/utils'
 import type { Team } from '@/types'
 
@@ -119,13 +120,19 @@ export function TeamDetail({
         >
           <div>
             <div className="flex items-center gap-3">
-              {team.icon && (
-                <img
-                  src={team.icon}
-                  alt=""
-                  className="h-8 w-8 rounded object-cover"
-                />
-              )}
+              {team.icon &&
+                (team.icon.startsWith('/uploads/') ? (
+                  <img
+                    src={team.icon}
+                    alt=""
+                    className="h-8 w-8 rounded object-cover"
+                  />
+                ) : (
+                  (() => {
+                    const Icon = getIcon(team.icon, null)
+                    return Icon ? <Icon className="h-8 w-8" /> : null
+                  })()
+                ))}
               <h2
                 className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
               >

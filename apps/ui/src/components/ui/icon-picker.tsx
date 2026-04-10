@@ -45,8 +45,14 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
   const filtered = useMemo(() => {
     if (!query.trim()) return SI_ICONS.slice(0, MAX_RESULTS)
     const q = query.toLowerCase()
+    const qNoSpace = q.replace(/\s+/g, '')
+    const qHyphen = q.replace(/\s+/g, '-')
     return SI_ICONS.filter(
-      (i) => i.label.toLowerCase().includes(q) || i.value.includes(q),
+      (i) =>
+        i.label.toLowerCase().includes(q) ||
+        i.label.toLowerCase().includes(qNoSpace) ||
+        i.value.includes(q) ||
+        i.value.includes(qHyphen),
     ).slice(0, MAX_RESULTS)
   }, [query])
 

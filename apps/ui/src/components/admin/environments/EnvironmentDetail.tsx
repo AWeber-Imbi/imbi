@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { getEnvironmentSchema } from '@/api/endpoints'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
+import { getIcon } from '@/lib/icons'
 import { extractDynamicFields } from '@/lib/utils'
 import type { Environment } from '@/types'
 
@@ -50,13 +51,19 @@ export function EnvironmentDetail({
         >
           <div>
             <div className="flex items-center gap-3">
-              {environment.icon && (
-                <img
-                  src={environment.icon}
-                  alt=""
-                  className="h-8 w-8 rounded object-cover"
-                />
-              )}
+              {environment.icon &&
+                (environment.icon.startsWith('/uploads/') ? (
+                  <img
+                    src={environment.icon}
+                    alt=""
+                    className="h-8 w-8 rounded object-cover"
+                  />
+                ) : (
+                  (() => {
+                    const Icon = getIcon(environment.icon, null)
+                    return Icon ? <Icon className="h-8 w-8" /> : null
+                  })()
+                ))}
               <h2
                 className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
               >

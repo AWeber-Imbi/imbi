@@ -175,9 +175,9 @@ export function BlueprintDetail({
       kind: blueprint.kind || 'node',
       ...(blueprint.kind === 'relationship'
         ? {
-            source: blueprint.source,
-            target: blueprint.target,
-            edge: blueprint.edge,
+            source: blueprint.source ?? '',
+            target: blueprint.target ?? '',
+            edge: blueprint.edge ?? '',
           }
         : { type: blueprint.type }),
       ...(blueprint.description ? { description: blueprint.description } : {}),
