@@ -911,44 +911,54 @@ export function BlueprintForm({
                 >
                   Relationship Type <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={edge}
-                  onChange={(e) => {
-                    setEdge(e.target.value)
-                    handleFieldChange('edge')
-                  }}
-                  disabled={isLoading || isEditing || !source || !target}
-                  className={`w-full rounded-md border px-3 py-2 text-sm ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white'
-                      : 'border-gray-300 bg-white text-gray-900'
-                  } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
-                >
-                  <option value="">
-                    {source && target
-                      ? 'Select type...'
-                      : 'Pick source & target first'}
-                  </option>
-                  {getRelationshipTypes(source, target).map((rt) => (
-                    <option key={rt} value={rt}>
-                      {toTitleCase(rt)}
+                {source &&
+                target &&
+                (getRelationshipTypes(source, target).length === 0 ||
+                  (edge &&
+                    !getRelationshipTypes(source, target).includes(edge))) ? (
+                  <Input
+                    value={edge}
+                    onChange={(e) => {
+                      setEdge(e.target.value)
+                      handleFieldChange('edge')
+                    }}
+                    disabled={isLoading || isEditing}
+                    placeholder="Enter relationship type..."
+                    className={`w-full ${
+                      isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+                    }`}
+                  />
+                ) : (
+                  <select
+                    value={edge}
+                    onChange={(e) => {
+                      setEdge(e.target.value)
+                      handleFieldChange('edge')
+                    }}
+                    disabled={isLoading || isEditing || !source || !target}
+                    className={`w-full rounded-md border px-3 py-2 text-sm ${
+                      isDarkMode
+                        ? 'border-gray-600 bg-gray-700 text-white'
+                        : 'border-gray-300 bg-white text-gray-900'
+                    } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    <option value="">
+                      {source && target
+                        ? 'Select type...'
+                        : 'Pick source & target first'}
                     </option>
-                  ))}
-                </select>
+                    {getRelationshipTypes(source, target).map((rt) => (
+                      <option key={rt} value={rt}>
+                        {toTitleCase(rt)}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 {touched.edge && validationErrors.edge && (
                   <p className="mt-1 text-sm text-red-600">
                     {validationErrors.edge}
                   </p>
                 )}
-                {source &&
-                  target &&
-                  getRelationshipTypes(source, target).length === 0 && (
-                    <p
-                      className={`mt-1 text-xs ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
-                    >
-                      No relationship types defined for {source} &rarr; {target}
-                    </p>
-                  )}
               </div>
               <div
                 className={`pb-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
