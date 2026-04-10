@@ -7,7 +7,7 @@ import fastapi
 import jwt
 import pydantic
 from fastapi import security
-from imbi_common import age, settings
+from imbi_common import graph, settings
 from imbi_common.auth import core
 
 LOGGER = logging.getLogger(__name__)
@@ -32,7 +32,9 @@ class AuthContext(pydantic.BaseModel):
     user: User | None = None
     session_id: str | None = None
     auth_method: typing.Literal['jwt'] = 'jwt'
-    permissions: set[str] = pydantic.Field(default_factory=set)
+    permissions: set[str] = pydantic.Field(
+        default_factory=set,
+    )
 
     @property
     def is_admin(self) -> bool:
@@ -41,60 +43,50 @@ class AuthContext(pydantic.BaseModel):
 
     @property
     def require_user(self) -> User:
-        """Return the authenticated user, raising 403 if absent."""
+        """Return the authenticated user or raise 403."""
         if self.user is None:
             raise fastapi.HTTPException(
-                403, 'This endpoint requires user authentication'
+                403,
+                'This endpoint requires user authentication',
             )
         return self.user
 
 
-async def load_user_permissions(email: str) -> set[str]:
-    """Get permission names granted to a user.
-
-    Collects permissions from the user's organization memberships,
-    following role inheritance.
-
-    Args:
-        email: Email of the user.
-
-    Returns:
-        Set of permission name strings.
-
-    """
+async def load_user_permissions(
+    db: graph.Graph,
+    email: str,
+) -> set[str]:
+    """Get permission names granted to a user."""
     query = """
-    MATCH (u:User {email: $email})-[m:MEMBER_OF]->(o:Organization)
-    MATCH (r:Role {slug: m.role})
+    MATCH (u:User {{email: {email}}})
+          -[m:MEMBER_OF]->(o:Organization)
+    MATCH (r:Role {{slug: m.role}})
     OPTIONAL MATCH (r)-[:INHERITS_FROM*0..]->(parent:Role)
     WITH DISTINCT parent
     OPTIONAL MATCH (parent)-[:GRANTS]->(perm:Permission)
     RETURN collect(DISTINCT perm.name) AS permissions
     """
-    async with age.run(query, email=email) as result:
-        records = await result.data()
-        if not records:
-            return set()
-        permission_list: list[str] = records[0].get('permissions', [])
-        return set(permission_list)
+    records = await db.execute(
+        query,
+        {'email': email},
+        ['permissions'],
+    )
+    if not records:
+        return set()
+    perms = graph.parse_agtype(records[0].get('permissions'))
+    if isinstance(perms, list):
+        return set(perms)
+    return set()
 
 
 async def get_current_user(
-    credentials: security.HTTPAuthorizationCredentials
-    | None = fastapi.Depends(oauth2_scheme),  # noqa: B008
+    db: graph.Pool,
+    credentials: (
+        security.HTTPAuthorizationCredentials | None
+    ) = fastapi.Depends(oauth2_scheme),  # noqa: B008
 ) -> AuthContext:
-    """FastAPI dependency to get the current authenticated user.
-
-    Args:
-        credentials: HTTP Bearer credentials from Authorization
-            header.
-
-    Returns:
-        AuthContext with user and permissions.
-
-    Raises:
-        fastapi.HTTPException: If authentication fails.
-
-    """
+    """FastAPI dependency to get the current authenticated
+    user."""
     if not credentials:
         raise fastapi.HTTPException(
             status_code=401,
@@ -128,24 +120,26 @@ async def get_current_user(
         )
 
     user_query = """
-    MATCH (u:User {email: $email})
+    MATCH (u:User {{email: {email}}})
     RETURN u
     """
-    async with age.run(user_query, email=subject) as result:
-        records = await result.data()
-        if not records:
-            raise fastapi.HTTPException(
-                status_code=401, detail='User not found'
-            )
-        user_data = age.convert_neo4j_types(records[0]['u'])
-        user = User(**user_data)
+    records = await db.execute(
+        user_query,
+        {'email': subject},
+        ['u'],
+    )
+    if not records:
+        raise fastapi.HTTPException(status_code=401, detail='User not found')
+    user_data = graph.parse_agtype(records[0]['u'])
+    user = User(**user_data)
 
     if not user.is_active:
         raise fastapi.HTTPException(
-            status_code=401, detail='User account is inactive'
+            status_code=401,
+            detail='User account is inactive',
         )
 
-    perms = await load_user_permissions(subject)
+    perms = await load_user_permissions(db, subject)
 
     return AuthContext(
         user=user,

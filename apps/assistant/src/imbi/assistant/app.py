@@ -4,19 +4,10 @@ from collections import abc
 
 import fastapi
 import typer
-from imbi_common import age, lifespan, server
+from imbi_common import graph, lifespan, server
 
 import imbi_assistant
 from imbi_assistant import app_status, client, endpoints, mcp
-
-
-@contextlib.asynccontextmanager
-async def _age_lifespan() -> abc.AsyncIterator[None]:
-    await age.initialize()
-    try:
-        yield
-    finally:
-        await age.aclose()
 
 
 @contextlib.asynccontextmanager
@@ -43,7 +34,7 @@ def create_app() -> fastapi.FastAPI:
         version=imbi_assistant.version,
         started_at=datetime.datetime.now(datetime.UTC),
         lifespan=lifespan.Lifespan(
-            _age_lifespan,
+            graph.graph_lifespan,
             _anthropic_lifespan,
             _mcp_lifespan,
         ),
@@ -55,7 +46,10 @@ def create_app() -> fastapi.FastAPI:
 
 cli = typer.Typer(no_args_is_help=True)
 cli.command('serve')(
-    server.bind_entrypoint('imbi_assistant.app:create_app', default_port=8002)
+    server.bind_entrypoint(
+        'imbi_assistant.app:create_app',
+        default_port=8002,
+    )
 )
 
 

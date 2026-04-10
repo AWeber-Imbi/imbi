@@ -9,6 +9,7 @@ import anthropic
 import fastapi
 import fastapi.security
 from fastapi import responses
+from imbi_common import graph
 
 from imbi_assistant import (
     age_ops,
@@ -51,6 +52,7 @@ def _require_assistant() -> None:
     status_code=201,
 )
 async def create_conversation(
+    db: graph.Pool,
     auth_ctx: AuthDep,
     body: models.CreateConversationRequest | None = None,
 ) -> models.ConversationResponse:
@@ -59,7 +61,9 @@ async def create_conversation(
     assistant_settings = settings.get_assistant_settings()
     model = body.model if body and body.model else assistant_settings.model
     conv = await age_ops.create_conversation(
-        user_email=auth_ctx.require_user.email, model=model
+        db,
+        user_email=auth_ctx.require_user.email,
+        model=model,
     )
     return models.conversation_to_response(conv)
 
@@ -69,6 +73,7 @@ async def create_conversation(
     response_model=list[models.ConversationResponse],
 )
 async def list_conversations(
+    db: graph.Pool,
     auth_ctx: AuthDep,
     limit: int = 20,
     offset: int = 0,
@@ -78,6 +83,7 @@ async def list_conversations(
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
     convs = await age_ops.list_conversations(
+        db,
         user_email=auth_ctx.require_user.email,
         limit=limit,
         offset=offset,
@@ -92,17 +98,19 @@ async def list_conversations(
 )
 async def get_conversation(
     conversation_id: str,
+    db: graph.Pool,
     auth_ctx: AuthDep,
 ) -> models.ConversationWithMessagesResponse:
     """Get a conversation with its messages."""
     conv = await age_ops.get_conversation(
-        conversation_id, auth_ctx.require_user.email
+        db, conversation_id, auth_ctx.require_user.email
     )
     if not conv:
         raise fastapi.HTTPException(
-            status_code=404, detail='Conversation not found'
+            status_code=404,
+            detail='Conversation not found',
         )
-    msgs = await age_ops.get_messages(conversation_id)
+    msgs = await age_ops.get_messages(db, conversation_id)
     resp = models.conversation_to_response(conv)
     return models.ConversationWithMessagesResponse(
         **resp.model_dump(),
@@ -116,15 +124,17 @@ async def get_conversation(
 )
 async def delete_conversation(
     conversation_id: str,
+    db: graph.Pool,
     auth_ctx: AuthDep,
 ) -> None:
     """Delete a conversation and its messages."""
     deleted = await age_ops.delete_conversation(
-        conversation_id, auth_ctx.require_user.email
+        db, conversation_id, auth_ctx.require_user.email
     )
     if not deleted:
         raise fastapi.HTTPException(
-            status_code=404, detail='Conversation not found'
+            status_code=404,
+            detail='Conversation not found',
         )
 
 
@@ -135,26 +145,31 @@ async def delete_conversation(
 async def update_conversation(
     conversation_id: str,
     body: models.UpdateConversationRequest,
+    db: graph.Pool,
     auth_ctx: AuthDep,
 ) -> models.ConversationResponse:
     """Update a conversation's title or archive status."""
     if body.title is not None:
         await age_ops.update_conversation_title(
+            db,
             conversation_id,
             auth_ctx.require_user.email,
             body.title,
         )
     if body.is_archived is True:
         await age_ops.archive_conversation(
-            conversation_id, auth_ctx.require_user.email
+            db,
+            conversation_id,
+            auth_ctx.require_user.email,
         )
 
     conv = await age_ops.get_conversation(
-        conversation_id, auth_ctx.require_user.email
+        db, conversation_id, auth_ctx.require_user.email
     )
     if not conv:
         raise fastapi.HTTPException(
-            status_code=404, detail='Conversation not found'
+            status_code=404,
+            detail='Conversation not found',
         )
     return models.conversation_to_response(conv)
 
@@ -165,7 +180,7 @@ async def update_conversation(
 def _build_api_message(
     msg: models.Message,
 ) -> dict[str, typing.Any]:
-    """Reconstruct Anthropic API message format with tool blocks."""
+    """Reconstruct Anthropic API message format."""
     if msg.role == 'assistant' and msg.tool_use:
         content: list[dict[str, typing.Any]] = []
         if msg.content:
@@ -181,7 +196,10 @@ def _build_api_message(
         )
         return {'role': 'assistant', 'content': content}
     if msg.role == 'user' and msg.tool_results:
-        return {'role': 'user', 'content': msg.tool_results}
+        return {
+            'role': 'user',
+            'content': msg.tool_results,
+        }
     return {'role': msg.role, 'content': msg.content}
 
 
@@ -196,18 +214,7 @@ async def _generate_title(
     assistant_response: str,
     model: str,
 ) -> str:
-    """Generate a short conversation title.
-
-    Args:
-        api_client: The Anthropic client.
-        user_message: The first user message.
-        assistant_response: The assistant's response.
-        model: The Claude model to use.
-
-    Returns:
-        A short title string.
-
-    """
+    """Generate a short conversation title."""
     try:
         response = await api_client.messages.create(
             model=model,
@@ -216,11 +223,13 @@ async def _generate_title(
                 {
                     'role': 'user',
                     'content': (
-                        'Generate a short title (max 6 words) '
-                        'for this conversation. Reply with ONLY '
-                        'the title, no quotes or punctuation.'
-                        f'\n\nUser: {user_message[:200]}\n'
-                        f'Assistant: {assistant_response[:200]}'
+                        'Generate a short title (max 6 '
+                        'words) for this conversation. '
+                        'Reply with ONLY the title, no '
+                        'quotes or punctuation.'
+                        f'\n\nUser: {user_message[:200]}'
+                        f'\nAssistant:'
+                        f' {assistant_response[:200]}'
                     ),
                 },
             ],
@@ -238,11 +247,7 @@ async def _process_stream_events(
     tool_use_blocks: list[dict[str, typing.Any]],
     state: dict[str, typing.Any],
 ) -> collections.abc.AsyncIterator[str]:
-    """Process streaming events from the Anthropic API.
-
-    Yields SSE-formatted strings for each event.
-
-    """
+    """Process streaming events from the Anthropic API."""
     current_tool_id: str | None = None
     current_tool_name: str | None = None
     current_tool_input = ''
@@ -271,7 +276,7 @@ async def _process_stream_events(
                 yield _sse_event(
                     'tool_input',
                     {
-                        'partial_json': delta.partial_json,
+                        'partial_json': (delta.partial_json),
                     },
                 )
         elif event.type == 'content_block_stop':
@@ -301,6 +306,7 @@ async def _process_stream_events(
 
 
 async def _stream_response(
+    db: graph.Graph,
     conversation_id: str,
     auth_ctx: auth.AuthContext,
     api_messages: list[dict[str, typing.Any]],
@@ -312,16 +318,7 @@ async def _stream_response(
     tools: list[dict[str, typing.Any]] | None = None,
     auth_token: str | None = None,
 ) -> collections.abc.AsyncIterator[str]:
-    """Stream an SSE response from the Anthropic API.
-
-    Implements an agentic loop: when Claude responds with
-    tool_use, the tools are executed against the Imbi API
-    and the results are fed back for another round.
-
-    Yields:
-        SSE-formatted strings.
-
-    """
+    """Stream an SSE response from the Anthropic API."""
     api_client = client.get_client()
     assistant_settings = settings.get_assistant_settings()
     max_rounds = assistant_settings.max_tool_rounds
@@ -370,12 +367,11 @@ async def _stream_response(
 
         accumulated_text += state['text']
 
-        # If Claude did not request tool use, we are done.
         if state['stop_reason'] != 'tool_use' or not tool_use_blocks:
             break
 
-        # Save the assistant message with tool_use blocks.
         await age_ops.add_message(
+            db,
             conversation_id=conversation_id,
             role='assistant',
             content=state['text'],
@@ -383,7 +379,6 @@ async def _stream_response(
             token_usage=(state['usage'] or None),
         )
 
-        # Build the assistant content for the API messages.
         assistant_content: list[dict[str, typing.Any]] = []
         if state['text']:
             assistant_content.append(
@@ -399,10 +394,12 @@ async def _stream_response(
             for tb in tool_use_blocks
         )
         api_messages.append(
-            {'role': 'assistant', 'content': assistant_content},
+            {
+                'role': 'assistant',
+                'content': assistant_content,
+            },
         )
 
-        # Execute each tool and collect results.
         tool_results: list[dict[str, typing.Any]] = []
         for tb in tool_use_blocks:
             if client_tools.is_client_tool(tb['name']):
@@ -454,8 +451,8 @@ async def _stream_response(
                     },
                 )
 
-        # Save tool results as a user message.
         await age_ops.add_message(
+            db,
             conversation_id=conversation_id,
             role='user',
             content='',
@@ -465,8 +462,8 @@ async def _stream_response(
             {'role': 'user', 'content': tool_results},
         )
 
-    # Save the final assistant message.
     msg = await age_ops.add_message(
+        db,
         conversation_id=conversation_id,
         role='assistant',
         content=state['text'],
@@ -490,6 +487,7 @@ async def _stream_response(
             model,
         )
         await age_ops.update_conversation_title(
+            db,
             conversation_id,
             auth_ctx.require_user.email,
             title,
@@ -503,47 +501,52 @@ async def _stream_response(
 async def send_message(
     conversation_id: str,
     body: models.SendMessageRequest,
+    db: graph.Pool,
     auth_ctx: AuthDep,
-    credentials: fastapi.security.HTTPAuthorizationCredentials
-    | None = fastapi.Depends(auth.oauth2_scheme),  # noqa: B008
+    credentials: (
+        fastapi.security.HTTPAuthorizationCredentials | None
+    ) = fastapi.Depends(auth.oauth2_scheme),  # noqa: B008
 ) -> responses.StreamingResponse:
     """Send a message and stream the response via SSE."""
     _require_assistant()
 
     conv = await age_ops.get_conversation(
-        conversation_id, auth_ctx.require_user.email
+        db, conversation_id, auth_ctx.require_user.email
     )
     if not conv:
         raise fastapi.HTTPException(
-            status_code=404, detail='Conversation not found'
+            status_code=404,
+            detail='Conversation not found',
         )
 
     assistant_settings = settings.get_assistant_settings()
-    msg_count = await age_ops.count_messages(conversation_id)
+    msg_count = await age_ops.count_messages(db, conversation_id)
     max_turns = assistant_settings.max_conversation_turns
     if msg_count >= max_turns:
         raise fastapi.HTTPException(
             status_code=400,
             detail=(
                 'Conversation has reached the maximum '
-                'number of turns. Start a new conversation.'
+                'number of turns. Start a new'
+                ' conversation.'
             ),
         )
 
     await age_ops.add_message(
+        db,
         conversation_id=conversation_id,
         role='user',
         content=body.content,
     )
 
-    all_msgs = await age_ops.get_messages(conversation_id)
+    all_msgs = await age_ops.get_messages(db, conversation_id)
     api_messages: list[dict[str, typing.Any]] = [
         _build_api_message(m) for m in all_msgs
     ]
 
     mcp_manager = mcp.get_manager()
     mcp_tool_list = mcp_manager.get_tools()
-    all_tools = (mcp_tool_list or []) + client_tools.get_tools()
+    all_tools = (mcp_tool_list or []) + (client_tools.get_tools())
     tools = all_tools or None
     tool_names = mcp_manager.get_tool_names() + client_tools.get_tool_names()
     system = system_prompt.build_system_prompt(
@@ -556,6 +559,7 @@ async def send_message(
 
     return responses.StreamingResponse(
         _stream_response(
+            db=db,
             conversation_id=conversation_id,
             auth_ctx=auth_ctx,
             api_messages=api_messages,
