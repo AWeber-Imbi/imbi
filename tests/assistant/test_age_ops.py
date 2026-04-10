@@ -121,7 +121,7 @@ class ListConversationsTestCase(
         query = call_args[0][0]
         self.assertIsNone(
             re.search(
-                r'is_archived\s*=\s*false',
+                r'is_archived\s*:\s*false',
                 query,
                 re.IGNORECASE,
             ),
