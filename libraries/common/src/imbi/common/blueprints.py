@@ -86,7 +86,7 @@ def _map_schema_type_to_python(prop_schema: typing.Any) -> type[typing.Any]:
         return typing.Any
 
 
-def _apply_blueprints[ModelType: pydantic.BaseModel](
+def apply_blueprints[ModelType: pydantic.BaseModel](
     model: type[ModelType], blueprints: list[models.Blueprint]
 ) -> type[ModelType]:
     kwargs: dict[str, typing.Any] = {}
@@ -215,11 +215,60 @@ async def get_model[ModelType: pydantic.BaseModel](
     """
     all_blueprints = await database.match(
         models.Blueprint,
-        {'type': model.__name__, 'enabled': True},
+        {
+            'type': model.__name__,
+            'enabled': True,
+        },
+        order_by='priority',
+    )
+    matched = [
+        bp
+        for bp in all_blueprints
+        if bp.kind == 'node' and _matches_filter(bp, context)
+    ]
+    return apply_blueprints(model, matched)
+
+
+async def get_edge_model(
+    database: graph.Graph,
+    source: str,
+    target: str,
+    edge: str,
+    context: dict[str, str | list[str]] | None = None,
+) -> type[models.RelationshipEdge]:
+    """Return an edge property model from relationship blueprints.
+
+    Queries blueprints where ``kind='relationship'`` and
+    ``source``/``target``/``edge`` match, filters by context,
+    then dynamically builds a Pydantic model extending
+    :class:`~imbi_common.models.RelationshipEdge`.
+
+    Parameters:
+        source: Source node label (e.g. ``'Project'``).
+        target: Target node label (e.g. ``'Environment'``).
+        edge: Relationship type (e.g. ``'DEPLOYED_IN'``).
+        context: Optional filter context (same semantics
+            as :func:`get_model`).
+
+    """
+    all_blueprints = await database.match(
+        models.Blueprint,
+        {
+            'kind': 'relationship',
+            'source': source,
+            'target': target,
+            'edge': edge,
+            'enabled': True,
+        },
         order_by='priority',
     )
     matched = [bp for bp in all_blueprints if _matches_filter(bp, context)]
-    return _apply_blueprints(model, matched)
+    edge_base: type[models.RelationshipEdge] = type(
+        f'{source}{edge.title().replace("_", "")}{target}Edge',
+        (models.RelationshipEdge,),
+        {},
+    )
+    return apply_blueprints(edge_base, matched)
 
 
 def make_response_model[ModelType: pydantic.BaseModel](

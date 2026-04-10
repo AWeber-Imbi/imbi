@@ -22,6 +22,7 @@ __all__ = [
     'Organization',
     'Project',
     'ProjectType',
+    'RelationshipEdge',
     'RelationshipLink',
     'Schema',
     'Team',
@@ -106,23 +107,70 @@ class BlueprintFilter(pydantic.BaseModel):
     environment: list[str] = []
 
 
+class RelationshipEdge(pydantic.BaseModel):
+    """Base model for dynamic edge property models.
+
+    Relationship blueprints extend this via
+    ``pydantic.create_model`` to add data-driven fields.
+    """
+
+    model_config = pydantic.ConfigDict(extra='ignore')
+
+
 class Blueprint(Node):
     # Overrides Node.slug to optional; model validator
     # below auto-generates slug from name at runtime.
     slug: str | None = None  # type: ignore[assignment]
-    type: typing.Literal[
-        'Team',
-        'Environment',
-        'ProjectType',
-        'Project',
-        'Organization',
-        'ThirdPartyService',
-    ]
+    kind: typing.Literal['node', 'relationship'] = 'node'
+    type: (
+        typing.Literal[
+            'Team',
+            'Environment',
+            'ProjectType',
+            'Project',
+            'Organization',
+            'ThirdPartyService',
+        ]
+        | None
+    ) = None
+    source: str | None = None
+    target: str | None = None
+    edge: str | None = None
     enabled: bool = True
     priority: int = 0
     filter: BlueprintFilter | None = None
     json_schema: Schema
     version: int = 0
+
+    @pydantic.model_validator(mode='after')
+    def validate_kind_fields(self) -> typing.Self:
+        """Validate kind-specific required fields."""
+        if self.kind == 'node':
+            if not self.type:
+                raise ValueError('type is required for node blueprints')
+            invalid = [
+                f
+                for f in ('source', 'target', 'edge')
+                if getattr(self, f) is not None
+            ]
+            if invalid:
+                raise ValueError(
+                    f'{", ".join(invalid)} must be None for node blueprints'
+                )
+        else:
+            if self.type is not None:
+                raise ValueError(
+                    'type must be None for relationship blueprints'
+                )
+            missing = [
+                f for f in ('source', 'target', 'edge') if not getattr(self, f)
+            ]
+            if missing:
+                raise ValueError(
+                    f'{", ".join(missing)} required for '
+                    f'relationship blueprints'
+                )
+        return self
 
     @pydantic.model_validator(mode='after')
     def generate_and_validate_slug(self) -> typing.Self:

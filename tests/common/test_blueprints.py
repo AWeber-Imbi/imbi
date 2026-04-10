@@ -43,12 +43,12 @@ def _blueprint(
 ORG = models.Organization(name='Org', slug='org')
 
 
-# -- _apply_blueprints tests ----------------------------------------------
+# -- apply_blueprints tests ----------------------------------------------
 
 
 class ApplyBlueprintsTests(unittest.TestCase):
     def test_no_blueprints_returns_subclass(self) -> None:
-        result = blueprints._apply_blueprints(models.Environment, [])
+        result = blueprints.apply_blueprints(models.Environment, [])
         self.assertTrue(issubclass(result, models.Environment))
         self.assertEqual('Environment', result.__name__)
 
@@ -62,7 +62,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
             },
             required=['domain'],
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -80,7 +80,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
             properties={'domain': {'type': 'string'}},
             required=['domain'],
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -91,7 +91,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
         bp = _blueprint(
             properties={'region': {'type': 'string'}},
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -106,7 +106,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
             },
             required=['max_instances'],
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -124,7 +124,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
         bp = _blueprint(
             properties={'is_production': {'type': 'boolean'}},
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -150,7 +150,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
                 'generic_list': {'type': 'array'},
             },
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -169,7 +169,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
         bp = _blueprint(
             properties={'metadata': {'type': 'object'}},
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -187,7 +187,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
                 'contact': {'type': 'string', 'format': 'email'},
             },
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -213,7 +213,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
                 'homepage': {'type': 'string', 'format': 'uri'},
             },
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -236,7 +236,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
                 'window': {'type': 'string', 'format': 'time'},
             },
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -264,7 +264,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
                 },
             },
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -293,7 +293,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
                 },
             },
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -332,7 +332,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
                 },
             },
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -359,7 +359,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
                 },
             },
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -377,7 +377,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
             name='extended',
             priority=1,
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp1, bp2],
         )
@@ -398,7 +398,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
             },
             required=['domain', 'region'],
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -416,7 +416,7 @@ class ApplyBlueprintsTests(unittest.TestCase):
             },
             required=['domain'],
         )
-        result = blueprints._apply_blueprints(
+        result = blueprints.apply_blueprints(
             models.Environment,
             [bp],
         )
@@ -653,6 +653,159 @@ class MatchesFilterTests(unittest.TestCase):
         )
 
 
+# -- RelationshipEdge unit tests ------------------------------------------
+
+
+class RelationshipEdgeTests(unittest.TestCase):
+    def test_extra_ignored(self) -> None:
+        edge = models.RelationshipEdge(unknown='value')
+        self.assertFalse(hasattr(edge, 'unknown'))
+
+    def test_empty_model(self) -> None:
+        edge = models.RelationshipEdge()
+        self.assertEqual({}, edge.model_dump())
+
+
+# -- Relationship blueprint model validation ------------------------------
+
+
+class RelationshipBlueprintModelTests(unittest.TestCase):
+    def test_relationship_blueprint_creation(self) -> None:
+        bp = models.Blueprint(
+            name='Deploy Props',
+            kind='relationship',
+            source='Project',
+            target='Environment',
+            edge='DEPLOYED_IN',
+            json_schema=_schema(
+                properties={
+                    'url': {'type': 'string', 'format': 'uri'},
+                },
+            ),
+        )
+        self.assertEqual('relationship', bp.kind)
+        self.assertEqual('Project', bp.source)
+        self.assertEqual('Environment', bp.target)
+        self.assertEqual('DEPLOYED_IN', bp.edge)
+        self.assertIsNone(bp.type)
+
+    def test_relationship_blueprint_missing_source(self) -> None:
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            models.Blueprint(
+                name='Bad',
+                kind='relationship',
+                target='Environment',
+                edge='DEPLOYED_IN',
+                json_schema=_schema(properties={}),
+            )
+        self.assertIn(
+            'source required for relationship blueprints',
+            str(ctx.exception),
+        )
+
+    def test_node_blueprint_missing_type(self) -> None:
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            models.Blueprint(
+                name='Bad',
+                kind='node',
+                json_schema=_schema(properties={}),
+            )
+        self.assertIn(
+            'type is required for node blueprints',
+            str(ctx.exception),
+        )
+
+    def test_node_blueprint_rejects_relationship_fields(self) -> None:
+        with self.assertRaises(pydantic.ValidationError) as ctx:
+            models.Blueprint(
+                name='Bad',
+                type='Project',
+                source='Project',
+                target='Environment',
+                edge='DEPLOYED_IN',
+                json_schema=_schema(properties={}),
+            )
+        self.assertIn(
+            'source, target, edge must be None for node blueprints',
+            str(ctx.exception),
+        )
+
+    def test_node_blueprint_defaults_kind(self) -> None:
+        bp = models.Blueprint(
+            name='Test',
+            type='Project',
+            json_schema=_schema(properties={}),
+        )
+        self.assertEqual('node', bp.kind)
+
+
+# -- apply_blueprints with RelationshipEdge ------------------------------
+
+
+class ApplyBlueprintsEdgeTests(unittest.TestCase):
+    def test_edge_model_with_blueprint(self) -> None:
+        bp = models.Blueprint(
+            name='deploy-props',
+            kind='relationship',
+            source='Project',
+            target='Environment',
+            edge='DEPLOYED_IN',
+            json_schema=_schema(
+                properties={
+                    'url': {
+                        'type': 'string',
+                        'format': 'uri',
+                        'description': 'Deployment URL',
+                    },
+                },
+            ),
+        )
+        result = blueprints.apply_blueprints(
+            models.RelationshipEdge,
+            [bp],
+        )
+        self.assertIn('url', result.model_fields)
+        instance = result(url='https://example.com')
+        self.assertEqual(
+            'https://example.com/',
+            str(instance.url),
+        )
+
+    def test_multiple_edge_blueprints(self) -> None:
+        bp1 = models.Blueprint(
+            name='deploy-url',
+            kind='relationship',
+            source='Project',
+            target='Environment',
+            edge='DEPLOYED_IN',
+            priority=0,
+            json_schema=_schema(
+                properties={
+                    'url': {'type': 'string', 'format': 'uri'},
+                },
+            ),
+        )
+        bp2 = models.Blueprint(
+            name='deploy-tag',
+            kind='relationship',
+            source='Project',
+            target='Environment',
+            edge='DEPLOYED_IN',
+            priority=1,
+            json_schema=_schema(
+                properties={
+                    'deploy_tag': {'type': 'string'},
+                },
+            ),
+        )
+        result = blueprints.apply_blueprints(
+            models.RelationshipEdge,
+            [bp1, bp2],
+        )
+        self.assertIn('url', result.model_fields)
+        self.assertIn('deploy_tag', result.model_fields)
+
+
 # -- get_model integration test -------------------------------------------
 
 
@@ -727,3 +880,129 @@ class GetModelIntegrationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual('example.com', instance.domain)
         self.assertEqual(10, instance.max_instances)
+
+
+# -- get_edge_model integration test --------------------------------------
+
+
+class GetEdgeModelIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    """Integration test for get_edge_model with a real graph."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.graph = graph.Graph()
+        await self.graph.open()
+        await self.graph.execute(
+            'MATCH (b:Blueprint) DETACH DELETE b RETURN count(b) AS deleted',
+        )
+
+    async def asyncTearDown(self) -> None:
+        await self.graph.execute(
+            'MATCH (n) DETACH DELETE n RETURN count(n) AS deleted',
+        )
+        await self.graph.close()
+
+    async def test_round_trip(self) -> None:
+        bp = models.Blueprint(
+            name='test-edge-rtt',
+            kind='relationship',
+            source='Project',
+            target='Environment',
+            edge='DEPLOYED_IN',
+            json_schema=_schema(
+                properties={
+                    'url': {
+                        'type': 'string',
+                        'format': 'uri',
+                        'description': 'Deployment URL',
+                    },
+                },
+            ),
+        )
+        await self.graph.merge(bp, match_on=['name'])
+
+        result = await blueprints.get_edge_model(
+            self.graph,
+            'Project',
+            'Environment',
+            'DEPLOYED_IN',
+        )
+        self.assertIn('url', result.model_fields)
+        self.assertTrue(
+            issubclass(result, models.RelationshipEdge),
+        )
+
+    async def test_does_not_mix_with_node_blueprints(self) -> None:
+        node_bp = models.Blueprint(
+            name='test-edge-node',
+            type='Project',
+            json_schema=_schema(
+                properties={
+                    'domain': {'type': 'string'},
+                },
+            ),
+        )
+        edge_bp = models.Blueprint(
+            name='test-edge-rel',
+            kind='relationship',
+            source='Project',
+            target='Environment',
+            edge='DEPLOYED_IN',
+            json_schema=_schema(
+                properties={
+                    'url': {'type': 'string', 'format': 'uri'},
+                },
+            ),
+        )
+        await self.graph.merge(node_bp, match_on=['name'])
+        await self.graph.merge(edge_bp, match_on=['name'])
+
+        edge_model = await blueprints.get_edge_model(
+            self.graph,
+            'Project',
+            'Environment',
+            'DEPLOYED_IN',
+        )
+        self.assertIn('url', edge_model.model_fields)
+        self.assertNotIn('domain', edge_model.model_fields)
+
+        node_model = await blueprints.get_model(
+            self.graph,
+            models.Project,
+        )
+        self.assertIn('domain', node_model.model_fields)
+        self.assertNotIn('url', node_model.model_fields)
+
+    async def test_filter_matching(self) -> None:
+        bp = models.Blueprint(
+            name='test-edge-filtered',
+            kind='relationship',
+            source='Project',
+            target='Environment',
+            edge='DEPLOYED_IN',
+            filter={'environment': ['production']},
+            json_schema=_schema(
+                properties={
+                    'deploy_tag': {'type': 'string'},
+                },
+            ),
+        )
+        await self.graph.merge(bp, match_on=['name'])
+
+        result = await blueprints.get_edge_model(
+            self.graph,
+            'Project',
+            'Environment',
+            'DEPLOYED_IN',
+            context={'environment': 'production'},
+        )
+        self.assertIn('deploy_tag', result.model_fields)
+
+        result_staging = await blueprints.get_edge_model(
+            self.graph,
+            'Project',
+            'Environment',
+            'DEPLOYED_IN',
+            context={'environment': 'staging'},
+        )
+        self.assertNotIn('deploy_tag', result_staging.model_fields)
