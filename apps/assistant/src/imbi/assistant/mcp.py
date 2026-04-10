@@ -42,7 +42,9 @@ def _mcp_tool_to_anthropic(
         ``input_schema`` keys.
 
     """
-    schema = tool.inputSchema if hasattr(tool, 'inputSchema') else {}
+    schema: dict[str, typing.Any] = (
+        tool.inputSchema if hasattr(tool, 'inputSchema') else {}
+    )
     return {
         'name': tool.name,
         'description': tool.description or '',
@@ -59,7 +61,7 @@ class MCPManager:
 
     def __init__(self) -> None:
         self._server: fastmcp.FastMCP | None = None
-        self._client: fastmcp.Client | None = None
+        self._client: fastmcp.Client[typing.Any] | None = None
         self._tools: list[dict[str, typing.Any]] = []
         self._http_client: httpx.AsyncClient | None = None
         self._initialized = False
@@ -93,7 +95,7 @@ class MCPManager:
         )
 
         self._client = fastmcp.Client(self._server)
-        await self._client.__aenter__()
+        await self._client.__aenter__()  # type: ignore[no-untyped-call]
 
         mcp_tools = await self._client.list_tools()
         self._tools = [_mcp_tool_to_anthropic(t) for t in mcp_tools]
@@ -106,7 +108,7 @@ class MCPManager:
     async def aclose(self) -> None:
         """Close the MCP client and HTTP client."""
         if self._client is not None:
-            await self._client.__aexit__(None, None, None)
+            await self._client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]  # pyright: ignore[reportUnknownMemberType]
             self._client = None
         if self._http_client is not None:
             await self._http_client.aclose()

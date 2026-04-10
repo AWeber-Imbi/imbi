@@ -6,7 +6,14 @@ from unittest import mock
 
 import fastapi
 
-from imbi_assistant import auth, client, endpoints, mcp, models, settings
+from imbi_assistant import (
+    auth,
+    client,
+    endpoints,
+    mcp,
+    models,
+    settings,
+)
 
 
 def _make_user() -> auth.User:
@@ -58,7 +65,9 @@ class RequireAssistantTestCase(unittest.TestCase):
 
     def test_raises_503_when_unavailable(self) -> None:
         client._client = None
-        with self.assertRaises(fastapi.HTTPException) as ctx:
+        with self.assertRaises(
+            fastapi.HTTPException,
+        ) as ctx:
             endpoints._require_assistant()
         self.assertEqual(ctx.exception.status_code, 503)
 
@@ -104,7 +113,9 @@ class GenerateTitleTestCase(
         )
         self.assertEqual(title, 'Short Title')
 
-    async def test_generate_title_truncates(self) -> None:
+    async def test_generate_title_truncates(
+        self,
+    ) -> None:
         mock_client = mock.AsyncMock()
         mock_response = mock.MagicMock()
         mock_block = mock.MagicMock()
@@ -394,7 +405,7 @@ class CreateConversationEndpointTestCase(
         settings._assistant_settings = None
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.create_conversation',
+        'imbi_assistant.age_ops.create_conversation',
     )
     async def test_create_conversation(
         self,
@@ -404,14 +415,15 @@ class CreateConversationEndpointTestCase(
         auth_ctx = _make_auth_context()
         conv = _make_conversation()
         mock_create.return_value = conv
+        db = mock.AsyncMock()
         with mock.patch.dict('os.environ', {}, clear=True):
             result = await endpoints.create_conversation(
-                auth_ctx=auth_ctx, body=None
+                db=db, auth_ctx=auth_ctx, body=None
             )
         self.assertEqual(result.id, 'conv-123')
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.create_conversation',
+        'imbi_assistant.age_ops.create_conversation',
     )
     async def test_create_conversation_custom_model(
         self,
@@ -424,9 +436,13 @@ class CreateConversationEndpointTestCase(
         body = models.CreateConversationRequest(
             model='claude-opus-4-20250514',
         )
+        db = mock.AsyncMock()
         with mock.patch.dict('os.environ', {}, clear=True):
-            await endpoints.create_conversation(auth_ctx=auth_ctx, body=body)
+            await endpoints.create_conversation(
+                db=db, auth_ctx=auth_ctx, body=body
+            )
         mock_create.assert_called_once_with(
+            mock.ANY,
             user_email='test@example.com',
             model='claude-opus-4-20250514',
         )
@@ -436,7 +452,7 @@ class ListConversationsEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.neo4j_ops.list_conversations',
+        'imbi_assistant.age_ops.list_conversations',
     )
     async def test_list_conversations(
         self,
@@ -444,11 +460,12 @@ class ListConversationsEndpointTestCase(
     ) -> None:
         auth_ctx = _make_auth_context()
         mock_list.return_value = [_make_conversation()]
-        result = await endpoints.list_conversations(auth_ctx=auth_ctx)
+        db = mock.AsyncMock()
+        result = await endpoints.list_conversations(db=db, auth_ctx=auth_ctx)
         self.assertEqual(len(result), 1)
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.list_conversations',
+        'imbi_assistant.age_ops.list_conversations',
     )
     async def test_list_conversations_limit_capped(
         self,
@@ -456,8 +473,10 @@ class ListConversationsEndpointTestCase(
     ) -> None:
         auth_ctx = _make_auth_context()
         mock_list.return_value = []
-        await endpoints.list_conversations(auth_ctx=auth_ctx, limit=500)
+        db = mock.AsyncMock()
+        await endpoints.list_conversations(db=db, auth_ctx=auth_ctx, limit=500)
         mock_list.assert_called_once_with(
+            mock.ANY,
             user_email='test@example.com',
             limit=100,
             offset=0,
@@ -465,7 +484,7 @@ class ListConversationsEndpointTestCase(
         )
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.list_conversations',
+        'imbi_assistant.age_ops.list_conversations',
     )
     async def test_list_conversations_negative_values(
         self,
@@ -473,10 +492,15 @@ class ListConversationsEndpointTestCase(
     ) -> None:
         auth_ctx = _make_auth_context()
         mock_list.return_value = []
+        db = mock.AsyncMock()
         await endpoints.list_conversations(
-            auth_ctx=auth_ctx, limit=-5, offset=-10
+            db=db,
+            auth_ctx=auth_ctx,
+            limit=-5,
+            offset=-10,
         )
         mock_list.assert_called_once_with(
+            mock.ANY,
             user_email='test@example.com',
             limit=1,
             offset=0,
@@ -488,10 +512,10 @@ class GetConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_messages',
+        'imbi_assistant.age_ops.get_messages',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_get_conversation(
         self,
@@ -501,14 +525,17 @@ class GetConversationEndpointTestCase(
         auth_ctx = _make_auth_context()
         mock_get.return_value = _make_conversation()
         mock_msgs.return_value = []
+        db = mock.AsyncMock()
         result = await endpoints.get_conversation(
-            conversation_id='conv-123', auth_ctx=auth_ctx
+            conversation_id='conv-123',
+            db=db,
+            auth_ctx=auth_ctx,
         )
         self.assertEqual(result.id, 'conv-123')
         self.assertEqual(result.messages, [])
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_get_conversation_not_found(
         self,
@@ -516,9 +543,13 @@ class GetConversationEndpointTestCase(
     ) -> None:
         auth_ctx = _make_auth_context()
         mock_get.return_value = None
-        with self.assertRaises(fastapi.HTTPException) as ctx:
+        db = mock.AsyncMock()
+        with self.assertRaises(
+            fastapi.HTTPException,
+        ) as ctx:
             await endpoints.get_conversation(
                 conversation_id='missing',
+                db=db,
                 auth_ctx=auth_ctx,
             )
         self.assertEqual(ctx.exception.status_code, 404)
@@ -528,7 +559,7 @@ class DeleteConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.neo4j_ops.delete_conversation',
+        'imbi_assistant.age_ops.delete_conversation',
     )
     async def test_delete_conversation(
         self,
@@ -536,13 +567,18 @@ class DeleteConversationEndpointTestCase(
     ) -> None:
         auth_ctx = _make_auth_context()
         mock_delete.return_value = True
+        db = mock.AsyncMock()
         await endpoints.delete_conversation(
-            conversation_id='conv-123', auth_ctx=auth_ctx
+            conversation_id='conv-123',
+            db=db,
+            auth_ctx=auth_ctx,
         )
-        mock_delete.assert_called_once_with('conv-123', 'test@example.com')
+        mock_delete.assert_called_once_with(
+            mock.ANY, 'conv-123', 'test@example.com'
+        )
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.delete_conversation',
+        'imbi_assistant.age_ops.delete_conversation',
     )
     async def test_delete_conversation_not_found(
         self,
@@ -550,9 +586,13 @@ class DeleteConversationEndpointTestCase(
     ) -> None:
         auth_ctx = _make_auth_context()
         mock_delete.return_value = False
-        with self.assertRaises(fastapi.HTTPException) as ctx:
+        db = mock.AsyncMock()
+        with self.assertRaises(
+            fastapi.HTTPException,
+        ) as ctx:
             await endpoints.delete_conversation(
                 conversation_id='missing',
+                db=db,
                 auth_ctx=auth_ctx,
             )
         self.assertEqual(ctx.exception.status_code, 404)
@@ -562,10 +602,10 @@ class UpdateConversationEndpointTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.update_conversation_title',
+        'imbi_assistant.age_ops.update_conversation_title',
     )
     async def test_update_title(
         self,
@@ -578,19 +618,21 @@ class UpdateConversationEndpointTestCase(
         conv.title = 'Updated Title'
         mock_get.return_value = conv
         body = models.UpdateConversationRequest(title='Updated Title')
+        db = mock.AsyncMock()
         result = await endpoints.update_conversation(
             conversation_id='conv-123',
             body=body,
+            db=db,
             auth_ctx=auth_ctx,
         )
         self.assertEqual(result.title, 'Updated Title')
         mock_update.assert_called_once()
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.archive_conversation',
+        'imbi_assistant.age_ops.archive_conversation',
     )
     async def test_archive(
         self,
@@ -603,18 +645,20 @@ class UpdateConversationEndpointTestCase(
         body = models.UpdateConversationRequest(
             is_archived=True,
         )
+        db = mock.AsyncMock()
         await endpoints.update_conversation(
             conversation_id='conv-123',
             body=body,
+            db=db,
             auth_ctx=auth_ctx,
         )
         mock_archive.assert_called_once()
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.update_conversation_title',
+        'imbi_assistant.age_ops.update_conversation_title',
     )
     async def test_update_not_found(
         self,
@@ -627,10 +671,14 @@ class UpdateConversationEndpointTestCase(
         body = models.UpdateConversationRequest(
             title='New Title',
         )
-        with self.assertRaises(fastapi.HTTPException) as ctx:
+        db = mock.AsyncMock()
+        with self.assertRaises(
+            fastapi.HTTPException,
+        ) as ctx:
             await endpoints.update_conversation(
                 conversation_id='missing',
                 body=body,
+                db=db,
                 auth_ctx=auth_ctx,
             )
         self.assertEqual(ctx.exception.status_code, 404)
@@ -666,16 +714,20 @@ class SendMessageEndpointTestCase(
         client._client = None
         auth_ctx = _make_auth_context()
         body = models.SendMessageRequest(content='Hello')
-        with self.assertRaises(fastapi.HTTPException) as ctx:
+        db = mock.AsyncMock()
+        with self.assertRaises(
+            fastapi.HTTPException,
+        ) as ctx:
             await endpoints.send_message(
                 conversation_id='conv-123',
                 body=body,
+                db=db,
                 auth_ctx=auth_ctx,
             )
         self.assertEqual(ctx.exception.status_code, 503)
 
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_send_message_conversation_not_found(
         self,
@@ -685,20 +737,24 @@ class SendMessageEndpointTestCase(
         auth_ctx = _make_auth_context()
         mock_get.return_value = None
         body = models.SendMessageRequest(content='Hello')
-        with self.assertRaises(fastapi.HTTPException) as ctx:
+        db = mock.AsyncMock()
+        with self.assertRaises(
+            fastapi.HTTPException,
+        ) as ctx:
             await endpoints.send_message(
                 conversation_id='missing',
                 body=body,
+                db=db,
                 auth_ctx=auth_ctx,
             )
         self.assertEqual(ctx.exception.status_code, 404)
 
     @mock.patch.dict('os.environ', {}, clear=True)
     @mock.patch(
-        'imbi_assistant.neo4j_ops.count_messages',
+        'imbi_assistant.age_ops.count_messages',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_send_message_turn_limit_reached(
         self,
@@ -710,10 +766,14 @@ class SendMessageEndpointTestCase(
         mock_get.return_value = _make_conversation()
         mock_count.return_value = 100
         body = models.SendMessageRequest(content='Hello')
-        with self.assertRaises(fastapi.HTTPException) as ctx:
+        db = mock.AsyncMock()
+        with self.assertRaises(
+            fastapi.HTTPException,
+        ) as ctx:
             await endpoints.send_message(
                 conversation_id='conv-123',
                 body=body,
+                db=db,
                 auth_ctx=auth_ctx,
             )
         self.assertEqual(ctx.exception.status_code, 400)
@@ -721,16 +781,16 @@ class SendMessageEndpointTestCase(
 
     @mock.patch.dict('os.environ', {}, clear=True)
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_messages',
+        'imbi_assistant.age_ops.get_messages',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.add_message',
+        'imbi_assistant.age_ops.add_message',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.count_messages',
+        'imbi_assistant.age_ops.count_messages',
     )
     @mock.patch(
-        'imbi_assistant.neo4j_ops.get_conversation',
+        'imbi_assistant.age_ops.get_conversation',
     )
     async def test_send_message_returns_streaming_response(
         self,
@@ -765,9 +825,11 @@ class SendMessageEndpointTestCase(
         body = models.SendMessageRequest(content='Hello')
         from fastapi import responses
 
+        db = mock.AsyncMock()
         result = await endpoints.send_message(
             conversation_id='conv-123',
             body=body,
+            db=db,
             auth_ctx=auth_ctx,
             credentials=None,
         )
@@ -790,7 +852,9 @@ class StreamResponseTestCase(
         settings._assistant_settings = None
 
     @staticmethod
-    def _make_stream_ctx(events: list) -> mock.MagicMock:
+    def _make_stream_ctx(
+        events: list,
+    ) -> mock.MagicMock:
         mock_stream = mock.MagicMock()
 
         async def aiter_events():
@@ -835,12 +899,14 @@ class StreamResponseTestCase(
             created_at=now,
             sequence=1,
         )
+        db = mock.AsyncMock()
         with mock.patch(
-            'imbi_assistant.neo4j_ops.add_message',
+            'imbi_assistant.age_ops.add_message',
             return_value=msg,
         ):
             chunks = []
             async for chunk in endpoints._stream_response(
+                db=db,
                 conversation_id='conv-123',
                 auth_ctx=auth_ctx,
                 api_messages=[
@@ -886,9 +952,10 @@ class StreamResponseTestCase(
             created_at=now,
             sequence=1,
         )
+        db = mock.AsyncMock()
         with (
             mock.patch(
-                'imbi_assistant.neo4j_ops.add_message',
+                'imbi_assistant.age_ops.add_message',
                 return_value=msg,
             ),
             mock.patch(
@@ -896,15 +963,19 @@ class StreamResponseTestCase(
                 return_value='Generated Title',
             ) as mock_gen,
             mock.patch(
-                'imbi_assistant.neo4j_ops.update_conversation_title',
+                'imbi_assistant.age_ops.update_conversation_title',
             ) as mock_update,
         ):
             chunks = []
             async for chunk in endpoints._stream_response(
+                db=db,
                 conversation_id='conv-123',
                 auth_ctx=auth_ctx,
                 api_messages=[
-                    {'role': 'user', 'content': 'Hello'},
+                    {
+                        'role': 'user',
+                        'content': 'Hello',
+                    },
                 ],
                 system='System prompt',
                 model='claude-sonnet-4-20250514',
@@ -937,8 +1008,10 @@ class StreamResponseTestCase(
         client._client = mock_api_client
 
         auth_ctx = _make_auth_context()
+        db = mock.AsyncMock()
         chunks = []
         async for chunk in endpoints._stream_response(
+            db=db,
             conversation_id='conv-123',
             auth_ctx=auth_ctx,
             api_messages=[

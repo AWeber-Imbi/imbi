@@ -6,7 +6,7 @@ import uuid
 
 import pydantic
 
-# --- Domain models (stored in Neo4j) ---
+# --- Domain models (stored in AGE graph) ---
 
 
 class Conversation(pydantic.BaseModel):
