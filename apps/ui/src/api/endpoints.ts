@@ -272,7 +272,7 @@ export const deleteEnvironment = (orgSlug: string, slug: string) =>
   )
 
 export const getEnvironmentSchema = () =>
-  getDynamicSchema('EnvironmentWithBlueprints', ENVIRONMENT_BASE_FIELDS)
+  getDynamicSchema('EnvironmentRequest', ENVIRONMENT_BASE_FIELDS)
 
 // Admin - Project Types
 export const listProjectTypes = async (
@@ -311,7 +311,7 @@ export const deleteProjectType = (orgSlug: string, slug: string) =>
   )
 
 export const getProjectTypeSchema = () =>
-  getDynamicSchema('ProjectTypeWithBlueprints', PROJECT_TYPE_BASE_FIELDS)
+  getDynamicSchema('ProjectTypeRequest', PROJECT_TYPE_BASE_FIELDS)
 
 // Admin - User Management
 export const listAdminUsers = async (params?: {
@@ -561,7 +561,7 @@ export const getDynamicSchema = async (
 }
 
 export const getTeamSchema = () =>
-  getDynamicSchema('TeamWithBlueprints', TEAM_BASE_FIELDS)
+  getDynamicSchema('TeamRequest', TEAM_BASE_FIELDS)
 
 // Admin - Teams
 export const listTeams = async (orgSlug: string): Promise<Team[]> => {
