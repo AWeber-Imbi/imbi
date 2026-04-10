@@ -81,7 +81,7 @@ export function Admin({ isDarkMode }: AdminProps) {
   const { section } = useParams<{ section?: string }>()
   const currentSection: AdminSection = isValidSection(section)
     ? section
-    : 'teams'
+    : 'blueprints'
   const [isCollapsed, setIsCollapsed] = useState(false)
   const { selectedOrganization } = useOrganization()
 

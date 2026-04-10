@@ -703,10 +703,17 @@ export function BlueprintForm({
                   const detail = error?.response?.data?.detail
                   if (Array.isArray(detail)) {
                     return detail
-                      .map((e: { msg?: string; loc?: string[] }) =>
-                        e.msg
-                          ? `${e.loc?.slice(-1)[0] || 'field'}: ${e.msg}`
-                          : JSON.stringify(e),
+                      .map(
+                        (e: { msg?: string; loc?: Array<string | number> }) => {
+                          const field =
+                            e.loc
+                              ?.filter((segment) => segment !== 'body')
+                              .map(String)
+                              .join('.') || 'field'
+                          return e.msg
+                            ? `${field}: ${e.msg}`
+                            : JSON.stringify(e)
+                        },
                       )
                       .join('; ')
                   }

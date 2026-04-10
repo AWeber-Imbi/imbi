@@ -85,6 +85,7 @@ const TYPE_COLOR_CLASSES: Record<string, { light: string; dark: string }> = {
 }
 
 export function getTypeColor(type: string, allTypes: string[]): string {
+  if (type === 'relationship') return 'amber'
   const idx = allTypes.indexOf(type)
   return TYPE_COLORS[(idx >= 0 ? idx : 0) % TYPE_COLORS.length]
 }
