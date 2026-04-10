@@ -81,7 +81,7 @@ src/imbi_api/
 
 **Lifespan-based DI** (`lifespans.py`): Services are initialized/torn down via `imbi_common.lifespan.Lifespan`:
 1. `clickhouse_hook` — init/close ClickHouse (module-level singleton)
-2. `graph.graph_lifespan` — Graph pool (monkey-patched in `lifespans.py` to also refresh blueprint models)
+2. `graph.graph_lifespan` — Graph pool (blueprint refresh registered via `graph.set_on_startup()` in `lifespans.py`)
 3. `email_hook` — yields `(EmailClient, TemplateManager)` tuple
 4. `storage_hook` — yields `StorageClient`
 

@@ -187,7 +187,9 @@ async def token(
         )
 
     # Resolve scopes
-    cred_scopes: set[str] = set(cred_data.get('scopes', []))
+    cred_scopes: set[str] = set(
+        models.parse_scopes(cred_data.get('scopes', []))
+    )
     requested_scopes: set[str] = set(scope.split()) if scope else set()
     if requested_scopes and cred_scopes:
         granted_scopes: set[str] = requested_scopes & cred_scopes

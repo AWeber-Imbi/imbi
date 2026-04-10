@@ -127,6 +127,7 @@ async def create_project_type(
     project_type.created_at = now
     project_type.updated_at = now
     props = project_type.model_dump(
+        mode='json',
         exclude={'organization'},
     )
 
@@ -336,9 +337,15 @@ async def update_project_type(
             detail=f'Validation error: {e.errors()}',
         ) from e
 
-    project_type.created_at = existing.get('created_at')
+    raw_created = existing.get('created_at')
+    project_type.created_at = (
+        datetime.datetime.fromisoformat(raw_created)
+        if raw_created
+        else datetime.datetime.now(datetime.UTC)
+    )
     project_type.updated_at = datetime.datetime.now(datetime.UTC)
     props = project_type.model_dump(
+        mode='json',
         exclude={'organization'},
     )
 

@@ -92,6 +92,9 @@ class APIKeyCreateResponse(pydantic.BaseModel):
     )
 
 
+_parse_scopes = models.parse_scopes
+
+
 @api_keys_router.post('', response_model=APIKeyCreateResponse, status_code=201)
 async def create_api_key(
     key_request: APIKeyCreate,
@@ -121,7 +124,7 @@ async def create_api_key(
     auth_settings = settings.get_auth_settings()
 
     # Generate key: format ik_<16chars>_<32chars>
-    key_id = f'ik_{secrets.token_urlsafe(16)}'
+    key_id = f'ik_{secrets.token_hex(16)}'
     key_secret = secrets.token_urlsafe(32)
     key_hash = password.hash_password(key_secret)
 
@@ -228,7 +231,7 @@ async def list_api_keys(
             key_id=k['key_id'],
             name=k['name'],
             description=k.get('description'),
-            scopes=k.get('scopes', []),
+            scopes=_parse_scopes(k.get('scopes', [])),
             created_at=k['created_at'],
             expires_at=k.get('expires_at'),
             last_used=k.get('last_used'),
@@ -398,6 +401,6 @@ async def rotate_api_key(
         key_secret=f'{key_id}_{new_secret}',  # Full key format
         name=api_key_data['name'],
         description=api_key_data.get('description'),
-        scopes=api_key_data.get('scopes', []),
+        scopes=_parse_scopes(api_key_data.get('scopes', [])),
         expires_at=api_key_data.get('expires_at'),
     )

@@ -276,46 +276,37 @@ def _add_relationships(
 # -- Return fragment used by all read queries ---------------------------
 
 _RETURN_FRAGMENT: typing.LiteralString = """
-    CALL {{
-        WITH p, o
-        MATCH (p)-[:OWNED_BY]->(t:Team)
-        RETURN t{{.*, organization: o{{.*}}}} AS team
-        LIMIT 1
-    }}
-    CALL {{
-        WITH p, o
-        MATCH (p)-[:TYPE]->(pt:ProjectType)
-        RETURN collect(pt{{.*, organization: o{{.*}}}}) AS pts
-    }}
-    CALL {{
-        WITH p, o
-        OPTIONAL MATCH (p)-[d:DEPLOYED_IN]->(env:Environment)
-        RETURN collect(env{{.*,
-                           sort_order: coalesce(env.sort_order, 0),
-                           url: d.url,
-                           organization: o{{.*}}}}) AS envs
-    }}
-    CALL {{
-        WITH p
-        OPTIONAL MATCH (p)-[:DEPENDS_ON]->(dep:Project)
-              -[:OWNED_BY]->(:Team)
-              -[:BELONGS_TO]->(depOrg:Organization)
-        RETURN count(dep) AS dependency_count,
-               [x IN collect(DISTINCT
-                   CASE WHEN dep IS NOT NULL
-                             AND depOrg IS NOT NULL
-                             AND dep.id IS NOT NULL
-                        THEN '/organizations/' + depOrg.slug
-                             + '/projects/'
-                             + dep.id
-                   END
-               ) WHERE x IS NOT NULL] AS dependency_uris
-    }}
+    MATCH (p)-[:OWNED_BY]->(t:Team)-[:BELONGS_TO]->(o)
+    WITH p, o, t
+    OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
+          -[:BELONGS_TO]->(o)
+    WITH p, o, t, collect(pt{{.*, organization: o{{.*}}}}) AS pts
+    OPTIONAL MATCH (p)-[d:DEPLOYED_IN]->(env:Environment)
+          -[:BELONGS_TO]->(o)
+    WITH p, o, t, pts,
+         collect(env{{.*,
+                     sort_order: coalesce(env.sort_order, 0),
+                     url: d.url,
+                     organization: o{{.*}}}}) AS envs
+    OPTIONAL MATCH (p)-[:DEPENDS_ON]->(dep:Project)
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(depOrg:Organization)
+    WITH p, o, t, pts, envs,
+         count(dep) AS dependency_count,
+         collect(DISTINCT
+             CASE WHEN dep IS NOT NULL
+                       AND depOrg IS NOT NULL
+                       AND dep.id IS NOT NULL
+                  THEN '/organizations/' + depOrg.slug
+                       + '/projects/'
+                       + dep.id
+             END
+         ) AS dep_uris_raw
     RETURN p{{.*,
-        team: team,
+        team: t{{.*, organization: o{{.*}}}},
         project_types: pts,
         environments: envs,
-        dependency_uris: dependency_uris
+        dependency_uris: [x IN dep_uris_raw WHERE x IS NOT NULL]
     }} AS project,
     dependency_count
 """
@@ -389,6 +380,7 @@ async def create_project(
     project.created_at = now
     project.updated_at = now
     props = project.model_dump(
+        mode='json',
         exclude={
             'team',
             'project_types',
@@ -620,16 +612,12 @@ async def get_project_schema(
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    CALL {{
-        WITH p
-        MATCH (p)-[:TYPE]->(pt:ProjectType)
-        RETURN collect(pt.slug) AS type_slugs
-    }}
-    CALL {{
-        WITH p
-        OPTIONAL MATCH (p)-[:DEPLOYED_IN]->(env:Environment)
-        RETURN collect(env.slug) AS env_slugs
-    }}
+    OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
+          -[:BELONGS_TO]->(o)
+    WITH p, o, collect(pt.slug) AS type_slugs
+    OPTIONAL MATCH (p)-[:DEPLOYED_IN]->(env:Environment)
+          -[:BELONGS_TO]->(o)
+    WITH type_slugs, collect(env.slug) AS env_slugs
     RETURN type_slugs, env_slugs
     """
     records = await db.execute(
@@ -771,18 +759,12 @@ async def update_project(
     MATCH (p:Project {{id: {project_id}}})
           -[:OWNED_BY]->(:Team)
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    WITH DISTINCT p
-    CALL {{
-        WITH p
-        MATCH (p)-[:OWNED_BY]->(t:Team)
-        RETURN t.slug AS team_slug
-        LIMIT 1
-    }}
-    CALL {{
-        WITH p
-        MATCH (p)-[:TYPE]->(pt:ProjectType)
-        RETURN collect(pt.slug) AS type_slugs
-    }}
+    WITH DISTINCT p, o
+    MATCH (p)-[:OWNED_BY]->(t:Team)-[:BELONGS_TO]->(o)
+    WITH p, o, t.slug AS team_slug
+    OPTIONAL MATCH (p)-[:TYPE]->(pt:ProjectType)
+          -[:BELONGS_TO]->(o)
+    WITH p, team_slug, collect(pt.slug) AS type_slugs
     RETURN p{{.*}} AS project,
            team_slug AS current_team_slug,
            type_slugs AS current_type_slugs
@@ -884,9 +866,15 @@ async def update_project(
             detail=f'Validation error: {e.errors()}',
         ) from e
 
-    project.created_at = existing.get('created_at')
+    raw_created = existing.get('created_at')
+    project.created_at = (
+        datetime.datetime.fromisoformat(raw_created)
+        if raw_created
+        else datetime.datetime.now(datetime.UTC)
+    )
     project.updated_at = datetime.datetime.now(datetime.UTC)
     props = project.model_dump(
+        mode='json',
         exclude={
             'team',
             'project_types',

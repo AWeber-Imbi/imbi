@@ -6,7 +6,6 @@ credentials grant flow.
 """
 
 import datetime
-import json
 import logging
 import secrets
 import typing
@@ -140,7 +139,8 @@ async def create_client_credential(
     # Store in graph with relationship to ServiceAccount
     props = credential.model_dump(mode='json')
     props.pop('service_account', None)
-    props['scopes'] = json.dumps(props.get('scopes', []))
+    # scopes stays as a list — _cypher_param handles
+    # list serialization for Cypher
     keys = list(props.keys())
     prop_map = ', '.join(f'{k}: {{{k}}}' for k in keys)
     records = await db.execute(
@@ -210,10 +210,11 @@ async def list_client_credentials(
         ['c'],
     )
 
-    credentials = [
-        models.ClientCredentialResponse(**graph.parse_agtype(record['c']))
-        for record in records
-    ]
+    credentials: list[models.ClientCredentialResponse] = []
+    for record in records:
+        data = graph.parse_agtype(record['c'])
+        data['scopes'] = models.parse_scopes(data.get('scopes', []))
+        credentials.append(models.ClientCredentialResponse(**data))
 
     LOGGER.debug(
         'Listed %d client credentials for service account %s',
@@ -390,6 +391,6 @@ async def rotate_client_credential(
         client_secret=new_secret,
         name=credential_data['name'],
         description=credential_data.get('description'),
-        scopes=credential_data.get('scopes', []),
+        scopes=models.parse_scopes(credential_data.get('scopes', [])),
         expires_at=credential_data.get('expires_at'),
     )

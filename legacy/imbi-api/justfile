@@ -64,7 +64,7 @@ docker:
     OTEL_EXPORTER_OTLP_TRACES_INSECURE="true"
     OTEL_RESOURCE_ATTRIBUTES="service.name=imbi-api,service.environment=development"
     OTEL_SERVICE_NAME="imbi-api"
-    POSTGRES_URL="postgresql://postgres:secret@$test_host:$(port postgres 5432)/imbi"
+    POSTGRES_URL="postgresql://postgres:secret@$test_host:$(get_port postgres 5432)/imbi"
     S3_ENDPOINT_URL="http://$test_host:$(get_port localstack 4566)"
     S3_ACCESS_KEY="test"
     S3_SECRET_KEY="test"

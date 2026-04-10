@@ -629,7 +629,7 @@ async def create_service_application(
 
     # Encrypt secrets
     encryptor = encryption.TokenEncryption.get_instance()
-    props = data.model_dump()
+    props = data.model_dump(mode='json')
     props['client_secret'] = encryptor.encrypt(data.client_secret)
     if props.get('webhook_secret') is not None:
         props['webhook_secret'] = encryptor.encrypt(
@@ -760,7 +760,7 @@ async def update_service_application(
     ``PUT /secrets`` instead.
     """
     existing = await _fetch_application(db, org_slug, slug, app_slug)
-    props = data.model_dump()
+    props = data.model_dump(mode='json')
 
     # Preserve existing secret values unchanged
     for field in models.SECRET_FIELDS:

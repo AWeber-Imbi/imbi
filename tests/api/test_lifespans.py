@@ -26,29 +26,31 @@ class ApplicationLifespanTestCase(unittest.TestCase):
                     pass  # nothing to do here
         initialize.assert_called_once()
         self.assertEqual(
-            str(error.exception), 'ClickHouse initialization failed'
+            str(error.exception),
+            'ClickHouse initialization failed',
         )
 
     def test_openapi_refresh_blueprint_failure(self) -> None:
         failure = RuntimeError()
-        mock_graph = unittest.mock.AsyncMock()
         with (
             unittest.mock.patch(
-                'imbi_api.lifespans.graph.Graph',
-                return_value=mock_graph,
-            ),
-            unittest.mock.patch(
                 'imbi_api.lifespans.openapi.refresh_blueprint_models',
-                new=unittest.mock.AsyncMock(side_effect=failure),
+                new=unittest.mock.AsyncMock(
+                    side_effect=failure,
+                ),
             ) as refresh_blueprint_models,
-            self.assertLogs(lifespans.LOGGER, level='WARNING') as cm,
+            self.assertLogs(
+                lifespans.LOGGER,
+                level='WARNING',
+            ) as cm,
         ):
             with testclient.TestClient(app.create_app()):
                 pass
 
         refresh_blueprint_models.assert_awaited_once()
         self.assertIn(
-            f'WARNING:imbi_api.lifespans:Failed to refresh blueprint'
+            f'WARNING:imbi_api.lifespans:'
+            f'Failed to refresh blueprint'
             f' models: {failure}',
             cm.output,
         )

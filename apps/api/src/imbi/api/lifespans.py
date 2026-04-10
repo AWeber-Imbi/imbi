@@ -9,7 +9,6 @@ import contextlib
 import logging
 from collections import abc
 
-import imbi_common.graph
 from imbi_common import clickhouse, graph
 
 from imbi_api import openapi
@@ -20,6 +19,20 @@ from imbi_api.storage.client import StorageClient
 LOGGER = logging.getLogger(__name__)
 
 
+async def _on_graph_startup(db: graph.Graph) -> None:
+    """Refresh blueprint models after the graph pool opens."""
+    try:
+        await openapi.refresh_blueprint_models(db)
+    except Exception as err:  # noqa: BLE001
+        LOGGER.warning(
+            'Failed to refresh blueprint models: %s',
+            err,
+        )
+
+
+graph.set_on_startup(_on_graph_startup)
+
+
 @contextlib.asynccontextmanager
 async def clickhouse_hook() -> abc.AsyncIterator[None]:
     """Initialize and manage the ClickHouse connection."""
@@ -28,36 +41,6 @@ async def clickhouse_hook() -> abc.AsyncIterator[None]:
         raise RuntimeError('ClickHouse initialization failed')
     async with contextlib.aclosing(clickhouse):
         yield
-
-
-@contextlib.asynccontextmanager
-async def _graph_lifespan_with_setup() -> abc.AsyncIterator[graph.Graph]:
-    """Open a Graph pool, refresh blueprints, and yield the pool.
-
-    Replaces the plain ``graph.graph_lifespan`` so that blueprint
-    refresh reuses the same connection pool that serves requests,
-    instead of opening a second temporary pool.
-
-    Assigned to ``imbi_common.graph.graph_lifespan`` at module load
-    so that ``graph.Pool`` dependency injection continues to work
-    (``graph._inject_graph`` resolves ``graph_lifespan`` at call
-    time from the module namespace).
-    """
-    db = graph.Graph()
-    await db.open()
-    try:
-        await openapi.refresh_blueprint_models(db)
-    except Exception as err:  # noqa: BLE001
-        LOGGER.warning('Failed to refresh blueprint models: %s', err)
-    yield db
-    await db.close()
-
-
-# Replace graph.graph_lifespan so that graph._inject_graph (which
-# looks up graph_lifespan at call time) resolves to the combined
-# version.  This keeps graph.Pool working across all endpoints
-# without changing any import sites.
-imbi_common.graph.graph_lifespan = _graph_lifespan_with_setup
 
 
 @contextlib.asynccontextmanager
