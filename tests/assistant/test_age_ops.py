@@ -9,33 +9,31 @@ from unittest import mock
 from imbi_assistant import age_ops, models
 
 
-def _make_age_ctx(
+def mock_db(
     data: list | None = None,
 ) -> mock.AsyncMock:
-    """Create a mock async context manager for age.run()."""
-    ctx = mock.AsyncMock()
-    ctx.__aenter__.return_value = ctx
-    ctx.__aexit__.return_value = None
-    ctx.data.return_value = data if data is not None else []
-    return ctx
+    """Create a mock graph.Graph with db.execute."""
+    db = mock.AsyncMock()
+    db.execute.return_value = data if data is not None else []
+    return db
 
 
 class CreateConversationTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_create_conversation(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            conv = await age_ops.create_conversation(
-                user_email='test@example.com',
-                model='claude-sonnet-4-20250514',
-            )
-            self.assertIsInstance(conv, models.Conversation)
-            self.assertEqual(conv.user_email, 'test@example.com')
-            self.assertEqual(conv.model, 'claude-sonnet-4-20250514')
-            self.assertIsNotNone(conv.id)
-            self.assertFalse(conv.is_archived)
-            mock_run.assert_called_once()
+        db = mock_db()
+        conv = await age_ops.create_conversation(
+            db,
+            user_email='test@example.com',
+            model='claude-sonnet-4-20250514',
+        )
+        self.assertIsInstance(conv, models.Conversation)
+        self.assertEqual(conv.user_email, 'test@example.com')
+        self.assertEqual(conv.model, 'claude-sonnet-4-20250514')
+        self.assertIsNotNone(conv.id)
+        self.assertFalse(conv.is_archived)
+        db.execute.assert_called_once()
 
 
 class GetConversationTestCase(
@@ -43,11 +41,10 @@ class GetConversationTestCase(
 ):
     async def test_conversation_found(self) -> None:
         now = datetime.datetime.now(datetime.UTC)
-        with (
-            mock.patch('imbi_common.age.run') as mock_run,
-            mock.patch('imbi_common.age.convert_neo4j_types') as mc,
-        ):
-            mock_run.return_value = _make_age_ctx([{'c': {'raw': 'data'}}])
+        db = mock_db([{'c': {'raw': 'data'}}])
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+        ) as mc:
             mc.return_value = {
                 'id': 'conv-123',
                 'user_email': 'test@example.com',
@@ -58,41 +55,38 @@ class GetConversationTestCase(
                 'is_archived': False,
             }
             conv = await age_ops.get_conversation(
-                'conv-123', 'test@example.com'
+                db, 'conv-123', 'test@example.com'
             )
             self.assertIsNotNone(conv)
             self.assertEqual(conv.id, 'conv-123')
 
     async def test_conversation_not_found(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            conv = await age_ops.get_conversation(
-                'missing', 'test@example.com'
-            )
-            self.assertIsNone(conv)
+        db = mock_db()
+        conv = await age_ops.get_conversation(
+            db, 'missing', 'test@example.com'
+        )
+        self.assertIsNone(conv)
 
 
 class ListConversationsTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_list_empty(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            convs = await age_ops.list_conversations('test@example.com')
-            self.assertEqual(convs, [])
+        db = mock_db()
+        convs = await age_ops.list_conversations(db, 'test@example.com')
+        self.assertEqual(convs, [])
 
     async def test_list_with_conversations(self) -> None:
         now = datetime.datetime.now(datetime.UTC)
-        with (
-            mock.patch('imbi_common.age.run') as mock_run,
-            mock.patch('imbi_common.age.convert_neo4j_types') as mc,
-        ):
-            mock_run.return_value = _make_age_ctx(
-                [
-                    {'c': {'raw': 'data1'}},
-                    {'c': {'raw': 'data2'}},
-                ]
-            )
+        db = mock_db(
+            [
+                {'c': {'raw': 'data1'}},
+                {'c': {'raw': 'data2'}},
+            ]
+        )
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+        ) as mc:
             mc.side_effect = [
                 {
                     'id': 'conv-1',
@@ -113,41 +107,46 @@ class ListConversationsTestCase(
                     'is_archived': False,
                 },
             ]
-            convs = await age_ops.list_conversations('test@example.com')
+            convs = await age_ops.list_conversations(db, 'test@example.com')
             self.assertEqual(len(convs), 2)
 
     async def test_include_archived(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            await age_ops.list_conversations(
-                'test@example.com', include_archived=True
-            )
-            call_args = mock_run.call_args
-            query = call_args[0][0]
-            self.assertIsNone(
-                re.search(
-                    r'is_archived\s*=\s*false',
-                    query,
-                    re.IGNORECASE,
-                ),
-            )
+        db = mock_db()
+        await age_ops.list_conversations(
+            db,
+            'test@example.com',
+            include_archived=True,
+        )
+        call_args = db.execute.call_args
+        query = call_args[0][0]
+        self.assertIsNone(
+            re.search(
+                r'is_archived\s*=\s*false',
+                query,
+                re.IGNORECASE,
+            ),
+        )
 
 
 class AddMessageTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_add_user_message(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx([{'sequence': 0}])
+        db = mock_db([{'sequence': 0}])
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            return_value=0,
+        ):
             msg = await age_ops.add_message(
+                db,
                 conversation_id='conv-123',
                 role='user',
                 content='Hello',
             )
-            self.assertIsInstance(msg, models.Message)
-            self.assertEqual(msg.role, 'user')
-            self.assertEqual(msg.content, 'Hello')
-            self.assertEqual(msg.sequence, 0)
+        self.assertIsInstance(msg, models.Message)
+        self.assertEqual(msg.role, 'user')
+        self.assertEqual(msg.content, 'Hello')
+        self.assertEqual(msg.sequence, 0)
 
     async def test_add_assistant_message_with_tools(
         self,
@@ -158,9 +157,13 @@ class AddMessageTestCase(
             'input_tokens': 100,
             'output_tokens': 50,
         }
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx([{'sequence': 1}])
+        db = mock_db([{'sequence': 1}])
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            return_value=1,
+        ):
             msg = await age_ops.add_message(
+                db,
                 conversation_id='conv-123',
                 role='assistant',
                 content='Here are the projects.',
@@ -168,55 +171,53 @@ class AddMessageTestCase(
                 tool_results=tool_results,
                 token_usage=token_usage,
             )
-            self.assertEqual(msg.role, 'assistant')
-            self.assertEqual(msg.tool_use, tool_use)
-            self.assertEqual(msg.token_usage, token_usage)
-            call_kwargs = mock_run.call_args[1]
-            self.assertEqual(
-                call_kwargs['tool_use'],
-                json.dumps(tool_use),
-            )
-            self.assertEqual(
-                call_kwargs['tool_results'],
-                json.dumps(tool_results),
-            )
-            self.assertEqual(
-                call_kwargs['token_usage'],
-                json.dumps(token_usage),
-            )
+        self.assertEqual(msg.role, 'assistant')
+        self.assertEqual(msg.tool_use, tool_use)
+        self.assertEqual(msg.token_usage, token_usage)
+        call_kwargs = db.execute.call_args[0][1]
+        self.assertEqual(
+            call_kwargs['tool_use'],
+            json.dumps(tool_use),
+        )
+        self.assertEqual(
+            call_kwargs['tool_results'],
+            json.dumps(tool_results),
+        )
+        self.assertEqual(
+            call_kwargs['token_usage'],
+            json.dumps(token_usage),
+        )
 
     async def test_add_message_missing_conversation(
         self,
     ) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            with self.assertRaises(ValueError) as ctx:
-                await age_ops.add_message(
-                    conversation_id='conv-123',
-                    role='user',
-                    content='Hello',
-                )
-            self.assertIn('not found', str(ctx.exception))
+        db = mock_db()
+        with self.assertRaises(ValueError) as ctx:
+            await age_ops.add_message(
+                db,
+                conversation_id='conv-123',
+                role='user',
+                content='Hello',
+            )
+        self.assertIn('not found', str(ctx.exception))
 
 
 class GetMessagesTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_get_empty_messages(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            msgs = await age_ops.get_messages('conv-123')
-            self.assertEqual(msgs, [])
+        db = mock_db()
+        msgs = await age_ops.get_messages(db, 'conv-123')
+        self.assertEqual(msgs, [])
 
     async def test_get_messages_with_json_fields(
         self,
     ) -> None:
         now = datetime.datetime.now(datetime.UTC)
-        with (
-            mock.patch('imbi_common.age.run') as mock_run,
-            mock.patch('imbi_common.age.convert_neo4j_types') as mc,
-        ):
-            mock_run.return_value = _make_age_ctx([{'m': {'raw': 'data'}}])
+        db = mock_db([{'m': {'raw': 'data'}}])
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+        ) as mc:
             mc.return_value = {
                 'id': 'msg-1',
                 'conversation_id': 'conv-123',
@@ -233,7 +234,7 @@ class GetMessagesTestCase(
                 'created_at': now,
                 'sequence': 0,
             }
-            msgs = await age_ops.get_messages('conv-123')
+            msgs = await age_ops.get_messages(db, 'conv-123')
             self.assertEqual(len(msgs), 1)
             msg = msgs[0]
             self.assertIsInstance(msg.tool_use, list)
@@ -244,85 +245,90 @@ class CountMessagesTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_count_messages(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx([{'count': 5}])
-            count = await age_ops.count_messages('conv-123')
-            self.assertEqual(count, 5)
+        db = mock_db([{'count': 5}])
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            return_value=5,
+        ):
+            count = await age_ops.count_messages(db, 'conv-123')
+        self.assertEqual(count, 5)
 
     async def test_count_messages_empty(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            count = await age_ops.count_messages('conv-123')
-            self.assertEqual(count, 0)
+        db = mock_db()
+        count = await age_ops.count_messages(db, 'conv-123')
+        self.assertEqual(count, 0)
 
 
 class UpdateConversationTitleTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_update_title_success(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx([{'id': 'conv-123'}])
-            result = await age_ops.update_conversation_title(
-                'conv-123',
-                'test@example.com',
-                'New Title',
-            )
-            self.assertTrue(result)
+        db = mock_db([{'id': 'conv-123'}])
+        result = await age_ops.update_conversation_title(
+            db,
+            'conv-123',
+            'test@example.com',
+            'New Title',
+        )
+        self.assertTrue(result)
 
     async def test_update_title_not_found(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            result = await age_ops.update_conversation_title(
-                'missing',
-                'test@example.com',
-                'New Title',
-            )
-            self.assertFalse(result)
+        db = mock_db()
+        result = await age_ops.update_conversation_title(
+            db,
+            'missing',
+            'test@example.com',
+            'New Title',
+        )
+        self.assertFalse(result)
 
 
 class ArchiveConversationTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_archive_success(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx([{'id': 'conv-123'}])
-            result = await age_ops.archive_conversation(
-                'conv-123', 'test@example.com'
-            )
-            self.assertTrue(result)
+        db = mock_db([{'id': 'conv-123'}])
+        result = await age_ops.archive_conversation(
+            db, 'conv-123', 'test@example.com'
+        )
+        self.assertTrue(result)
 
     async def test_archive_not_found(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            result = await age_ops.archive_conversation(
-                'missing', 'test@example.com'
-            )
-            self.assertFalse(result)
+        db = mock_db()
+        result = await age_ops.archive_conversation(
+            db, 'missing', 'test@example.com'
+        )
+        self.assertFalse(result)
 
 
 class DeleteConversationTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_delete_success(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx([{'deleted': 1}])
+        db = mock_db([{'deleted': 1}])
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            return_value=1,
+        ):
             result = await age_ops.delete_conversation(
-                'conv-123', 'test@example.com'
+                db, 'conv-123', 'test@example.com'
             )
-            self.assertTrue(result)
+        self.assertTrue(result)
 
     async def test_delete_not_found(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx([{'deleted': 0}])
+        db = mock_db([{'deleted': 0}])
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            return_value=0,
+        ):
             result = await age_ops.delete_conversation(
-                'missing', 'test@example.com'
+                db, 'missing', 'test@example.com'
             )
-            self.assertFalse(result)
+        self.assertFalse(result)
 
     async def test_delete_empty_records(self) -> None:
-        with mock.patch('imbi_common.age.run') as mock_run:
-            mock_run.return_value = _make_age_ctx()
-            result = await age_ops.delete_conversation(
-                'missing', 'test@example.com'
-            )
-            self.assertFalse(result)
+        db = mock_db()
+        result = await age_ops.delete_conversation(
+            db, 'missing', 'test@example.com'
+        )
+        self.assertFalse(result)

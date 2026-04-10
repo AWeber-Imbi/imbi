@@ -15,12 +15,10 @@ class AppTests(helpers.TestCase):
 
     @mock.patch('imbi_assistant.client.aclose')
     @mock.patch('imbi_assistant.client.initialize')
-    @mock.patch('imbi_common.age.aclose')
-    @mock.patch('imbi_common.age.initialize')
+    @mock.patch('imbi_common.graph.graph_lifespan')
     def test_status_endpoint(
         self,
-        _age_init: mock.AsyncMock,
-        _age_close: mock.AsyncMock,
+        _graph_lifespan: mock.MagicMock,
         _client_init: mock.AsyncMock,
         _client_close: mock.AsyncMock,
     ) -> None:
@@ -43,12 +41,10 @@ class AppTests(helpers.TestCase):
 
     @mock.patch('imbi_assistant.client.aclose')
     @mock.patch('imbi_assistant.client.initialize')
-    @mock.patch('imbi_common.age.aclose')
-    @mock.patch('imbi_common.age.initialize')
+    @mock.patch('imbi_common.graph.graph_lifespan')
     def test_status_endpoint_in_specific_environment(
         self,
-        _age_init: mock.AsyncMock,
-        _age_close: mock.AsyncMock,
+        _graph_lifespan: mock.MagicMock,
         _client_init: mock.AsyncMock,
         _client_close: mock.AsyncMock,
     ) -> None:
