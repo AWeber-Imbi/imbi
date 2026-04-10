@@ -33,7 +33,7 @@ class CreateConversationTestCase(
         self.assertEqual(conv.model, 'claude-sonnet-4-20250514')
         self.assertIsNotNone(conv.id)
         self.assertFalse(conv.is_archived)
-        db.execute.assert_called_once()
+        self.assertEqual(db.execute.await_count, 2)
 
 
 class GetConversationTestCase(
@@ -305,30 +305,23 @@ class DeleteConversationTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_delete_success(self) -> None:
-        db = mock_db([{'deleted': 1}])
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            return_value=1,
-        ):
-            result = await age_ops.delete_conversation(
-                db, 'conv-123', 'test@example.com'
-            )
+        db = mock.AsyncMock()
+        # First call (check): found
+        # Second call (delete): ok
+        db.execute.side_effect = [
+            [{'id': 'conv-123'}],
+            [{'ok': 1}],
+        ]
+        result = await age_ops.delete_conversation(
+            db, 'conv-123', 'test@example.com'
+        )
         self.assertTrue(result)
+        self.assertEqual(db.execute.await_count, 2)
 
     async def test_delete_not_found(self) -> None:
-        db = mock_db([{'deleted': 0}])
-        with mock.patch(
-            'imbi_common.graph.parse_agtype',
-            return_value=0,
-        ):
-            result = await age_ops.delete_conversation(
-                db, 'missing', 'test@example.com'
-            )
-        self.assertFalse(result)
-
-    async def test_delete_empty_records(self) -> None:
-        db = mock_db()
+        db = mock_db()  # check returns empty
         result = await age_ops.delete_conversation(
             db, 'missing', 'test@example.com'
         )
         self.assertFalse(result)
+        db.execute.assert_awaited_once()

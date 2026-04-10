@@ -75,7 +75,7 @@ async def load_user_permissions(
         return set()
     perms = graph.parse_agtype(records[0].get('permissions'))
     if isinstance(perms, list):
-        return {str(p) for p in perms}
+        return {str(p) for p in typing.cast('list[object]', perms)}
     return set()
 
 

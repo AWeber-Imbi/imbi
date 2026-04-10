@@ -27,7 +27,7 @@ async def create_conversation(
         updated_at=now,
         model=model,
     )
-    query = """
+    create_query = """
     CREATE (c:Conversation {{
         id: {id},
         user_email: {user_email},
@@ -37,26 +37,31 @@ async def create_conversation(
         model: {model},
         is_archived: {is_archived}
     }})
-    WITH c
-    OPTIONAL MATCH (u:User {{email: {user_email}}})
-    FOREACH (_ IN CASE WHEN u IS NOT NULL THEN [1]
-                       ELSE [] END |
-        CREATE (u)-[:HAS_CONVERSATION]->(c)
-    )
     RETURN c
     """
+    params = {
+        'id': conversation.id,
+        'user_email': user_email,
+        'title': conversation.title,
+        'created_at': now.isoformat(),
+        'updated_at': now.isoformat(),
+        'model': model,
+        'is_archived': False,
+    }
+    await db.execute(create_query, params, ['c'])
+
+    # Link to user if they exist (separate query to
+    # avoid FOREACH which AGE does not support).
+    link_query = """
+    MATCH (u:User {{email: {user_email}}})
+    MATCH (c:Conversation {{id: {id}}})
+    CREATE (u)-[:HAS_CONVERSATION]->(c)
+    RETURN u.email AS email
+    """
     await db.execute(
-        query,
-        {
-            'id': conversation.id,
-            'user_email': user_email,
-            'title': conversation.title,
-            'created_at': now.isoformat(),
-            'updated_at': now.isoformat(),
-            'model': model,
-            'is_archived': False,
-        },
-        ['c'],
+        link_query,
+        {'user_email': user_email, 'id': conversation.id},
+        ['email'],
     )
 
     LOGGER.info(
@@ -305,26 +310,32 @@ async def delete_conversation(
     user_email: str,
 ) -> bool:
     """Delete a conversation and all its messages."""
-    query = """
+    # Check existence first — count after DETACH DELETE
+    # is undefined in openCypher / AGE.
+    check = """
+    MATCH (c:Conversation {{id: {id},
+                            user_email: {user_email}}})
+    RETURN c.id AS id
+    """
+    params = {
+        'id': conversation_id,
+        'user_email': user_email,
+    }
+    found = await db.execute(check, params, ['id'])
+    if not found:
+        return False
+
+    delete_query = """
     MATCH (c:Conversation {{id: {id},
                             user_email: {user_email}}})
     OPTIONAL MATCH (c)-[:CONTAINS]->(m:Message)
     DETACH DELETE c, m
-    RETURN count(c) AS deleted
+    RETURN 1 AS ok
     """
-    records = await db.execute(
-        query,
-        {
-            'id': conversation_id,
-            'user_email': user_email,
-        },
-        ['deleted'],
+    await db.execute(delete_query, params, ['ok'])
+    LOGGER.info(
+        'Deleted conversation %s for user %s',
+        conversation_id,
+        user_email,
     )
-    deleted = graph.parse_agtype(records[0]['deleted']) if records else 0
-    if deleted:
-        LOGGER.info(
-            'Deleted conversation %s for user %s',
-            conversation_id,
-            user_email,
-        )
-    return bool(deleted)
+    return True
