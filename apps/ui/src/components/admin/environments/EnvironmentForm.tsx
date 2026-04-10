@@ -4,6 +4,7 @@ import { Save, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IconUpload } from '@/components/ui/icon-upload'
+import { IconPicker } from '@/components/ui/icon-picker'
 import { ColorPicker } from '@/components/ui/color-picker'
 import {
   DynamicFormFields,
@@ -12,6 +13,7 @@ import {
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { getEnvironmentSchema } from '@/api/endpoints'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
+import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { extractDynamicFields, slugify } from '@/lib/utils'
 import type { Environment, EnvironmentCreate } from '@/types'
 
@@ -42,6 +44,7 @@ export function EnvironmentForm({
   )
   const [description, setDescription] = useState(environment?.description || '')
   const [icon, setIcon] = useState(environment?.icon || '')
+  const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [labelColor, setLabelColor] = useState(environment?.label_color ?? '')
   const [orgSlug, setOrgSlug] = useState(
     environment?.organization.slug || selectedOrganization?.slug || '',
@@ -146,7 +149,7 @@ export function EnvironmentForm({
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-amber-border text-white hover:bg-amber-border-strong"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -345,11 +348,32 @@ export function EnvironmentForm({
               >
                 Icon
               </label>
-              <IconUpload
-                value={icon}
-                onChange={setIcon}
-                isDarkMode={isDarkMode}
-              />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <p
+                    className={`mb-1.5 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    Pick from Simple Icons
+                  </p>
+                  <IconPicker
+                    value={icon.startsWith('si-') ? icon : ''}
+                    onChange={handleIconChange}
+                    isDarkMode={isDarkMode}
+                  />
+                </div>
+                <div>
+                  <p
+                    className={`mb-1.5 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    Or upload a custom image
+                  </p>
+                  <IconUpload
+                    value={icon.startsWith('si-') ? '' : icon}
+                    onChange={handleIconChange}
+                    isDarkMode={isDarkMode}
+                  />
+                </div>
+              </div>
             </div>
 
             <ColorPicker

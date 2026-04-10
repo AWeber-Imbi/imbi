@@ -50,18 +50,18 @@ type AdminSection =
   | 'oauth'
 
 const VALID_SECTIONS: AdminSection[] = [
-  'teams',
-  'environments',
-  'project-types',
-  'third-party-services',
-  'webhooks',
-  'link-definitions',
   'blueprints',
-  'organizations',
-  'users',
-  'service-accounts',
-  'roles',
+  'environments',
+  'link-definitions',
   'oauth',
+  'organizations',
+  'project-types',
+  'roles',
+  'service-accounts',
+  'teams',
+  'third-party-services',
+  'users',
+  'webhooks',
 ]
 
 function isValidSection(value: string | undefined): value is AdminSection {
@@ -81,7 +81,7 @@ export function Admin({ isDarkMode }: AdminProps) {
   const { section } = useParams<{ section?: string }>()
   const currentSection: AdminSection = isValidSection(section)
     ? section
-    : 'teams'
+    : 'blueprints'
   const [isCollapsed, setIsCollapsed] = useState(false)
   const { selectedOrganization } = useOrganization()
 
@@ -89,10 +89,10 @@ export function Admin({ isDarkMode }: AdminProps) {
 
   const orgAdminSections: SectionDef[] = [
     {
-      id: 'teams',
-      label: 'Teams',
-      icon: UsersRound,
-      description: 'Manage teams',
+      id: 'blueprints',
+      label: 'Blueprints',
+      icon: FileJson,
+      description: 'Configure metadata templates',
       scope: 'org',
     },
     {
@@ -103,10 +103,24 @@ export function Admin({ isDarkMode }: AdminProps) {
       scope: 'org',
     },
     {
+      id: 'link-definitions',
+      label: 'Link Definitions',
+      icon: Link2,
+      description: 'Manage link definitions for projects',
+      scope: 'org',
+    },
+    {
       id: 'project-types',
       label: 'Project Types',
       icon: FolderTree,
       description: 'Manage project types',
+      scope: 'org',
+    },
+    {
+      id: 'teams',
+      label: 'Teams',
+      icon: UsersRound,
+      description: 'Manage teams',
       scope: 'org',
     },
     {
@@ -123,42 +137,21 @@ export function Admin({ isDarkMode }: AdminProps) {
       description: 'Configure inbound webhook processing',
       scope: 'org',
     },
-    {
-      id: 'link-definitions',
-      label: 'Link Definitions',
-      icon: Link2,
-      description: 'Manage link definitions for projects',
-      scope: 'org',
-    },
-    {
-      id: 'blueprints',
-      label: 'Blueprints',
-      icon: FileJson,
-      description: 'Configure metadata templates',
-      scope: 'org',
-    },
   ]
 
   const systemAdminSections: SectionDef[] = [
+    {
+      id: 'oauth',
+      label: 'OAuth Providers',
+      icon: ExternalLink,
+      description: 'Configure SSO authentication providers',
+      scope: 'system',
+    },
     {
       id: 'organizations',
       label: 'Organizations',
       icon: Building2,
       description: 'Manage organizational units and access',
-      scope: 'system',
-    },
-    {
-      id: 'users',
-      label: 'User Management',
-      icon: Users,
-      description: 'Manage user accounts and administrators',
-      scope: 'system',
-    },
-    {
-      id: 'service-accounts',
-      label: 'Service Accounts',
-      icon: Bot,
-      description: 'Manage service accounts and API keys',
       scope: 'system',
     },
     {
@@ -169,10 +162,17 @@ export function Admin({ isDarkMode }: AdminProps) {
       scope: 'system',
     },
     {
-      id: 'oauth',
-      label: 'OAuth Providers',
-      icon: ExternalLink,
-      description: 'Configure SSO authentication providers',
+      id: 'service-accounts',
+      label: 'Service Accounts',
+      icon: Bot,
+      description: 'Manage service accounts and API keys',
+      scope: 'system',
+    },
+    {
+      id: 'users',
+      label: 'User Management',
+      icon: Users,
+      description: 'Manage user accounts and administrators',
       scope: 'system',
     },
   ]

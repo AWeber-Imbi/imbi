@@ -106,6 +106,7 @@ export function useAuth(): UseAuthReturn {
     mutationFn: loginWithPassword,
     onSuccess: async (data) => {
       setTokens(data.access_token, data.refresh_token)
+      queryClient.invalidateQueries({ queryKey: ['organizations'] })
 
       try {
         await refetch()

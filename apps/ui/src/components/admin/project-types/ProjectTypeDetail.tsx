@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { getProjectTypeSchema } from '@/api/endpoints'
 import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
+import { getIcon } from '@/lib/icons'
 import { extractDynamicFields } from '@/lib/utils'
 import type { ProjectType } from '@/types'
 
@@ -50,13 +51,19 @@ export function ProjectTypeDetail({
         >
           <div>
             <div className="flex items-center gap-3">
-              {projectType.icon && (
-                <img
-                  src={projectType.icon}
-                  alt=""
-                  className="h-8 w-8 rounded object-cover"
-                />
-              )}
+              {projectType.icon &&
+                (projectType.icon.startsWith('/uploads/') ? (
+                  <img
+                    src={projectType.icon}
+                    alt=""
+                    className="h-8 w-8 rounded object-cover"
+                  />
+                ) : (
+                  (() => {
+                    const Icon = getIcon(projectType.icon, null)
+                    return Icon ? <Icon className="h-8 w-8" /> : null
+                  })()
+                ))}
               <h2
                 className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
               >
@@ -73,7 +80,7 @@ export function ProjectTypeDetail({
           </div>
           <Button
             onClick={onEdit}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-amber-border text-white hover:bg-amber-border-strong"
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Project Type

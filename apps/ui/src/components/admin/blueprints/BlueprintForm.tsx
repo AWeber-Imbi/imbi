@@ -40,6 +40,37 @@ interface BlueprintFormProps {
 
 type SchemaEditorMode = 'visual' | 'code'
 
+// Known relationships keyed by "Source:Target"
+const RELATIONSHIP_MAP: Record<string, string[]> = {
+  'Project:Environment': ['DEPLOYED_IN'],
+  'Project:ProjectType': ['TYPE'],
+  'Project:Team': ['OWNED_BY'],
+  'Project:Project': ['DEPENDS_ON'],
+  'Team:Organization': ['BELONGS_TO'],
+  'Environment:Organization': ['BELONGS_TO'],
+  'ProjectType:Organization': ['BELONGS_TO'],
+  'ThirdPartyService:Organization': ['BELONGS_TO'],
+}
+
+function getRelationshipTypes(source: string, target: string): string[] {
+  if (!source || !target) {
+    // Show all unique types when pair not yet selected
+    const all = new Set<string>()
+    for (const types of Object.values(RELATIONSHIP_MAP)) {
+      for (const t of types) all.add(t)
+    }
+    return Array.from(all).sort()
+  }
+  return RELATIONSHIP_MAP[`${source}:${target}`] || []
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 const PROPERTY_TYPES: SchemaProperty['type'][] = [
   'string',
   'integer',
@@ -214,7 +245,11 @@ export function BlueprintForm({
   // Form state
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
+  const [kind, setKind] = useState<'node' | 'relationship'>('node')
   const [type, setType] = useState('')
+  const [source, setSource] = useState('')
+  const [target, setTarget] = useState('')
+  const [edge, setEdge] = useState('')
   const [description, setDescription] = useState('')
   const [enabled, setEnabled] = useState(true)
   const [priority, setPriority] = useState(0)
@@ -255,7 +290,11 @@ export function BlueprintForm({
     if (existingBlueprint) {
       setName(existingBlueprint.name)
       setSlug(existingBlueprint.slug)
-      setType(existingBlueprint.type)
+      setKind(existingBlueprint.kind || 'node')
+      setType(existingBlueprint.type || '')
+      setSource(existingBlueprint.source || '')
+      setTarget(existingBlueprint.target || '')
+      setEdge(existingBlueprint.edge || '')
       setDescription(existingBlueprint.description || '')
       setEnabled(existingBlueprint.enabled)
       setPriority(existingBlueprint.priority)
@@ -470,7 +509,13 @@ export function BlueprintForm({
       errors.slug =
         'Slug must contain only lowercase letters, numbers, and hyphens'
     }
-    if (!type) errors.type = 'Type is required'
+    if (kind === 'node') {
+      if (!type) errors.type = 'Type is required'
+    } else {
+      if (!source.trim()) errors.source = 'Source is required'
+      if (!target.trim()) errors.target = 'Target is required'
+      if (!edge.trim()) errors.edge = 'Edge is required'
+    }
 
     // Validate schema
     try {
@@ -500,7 +545,15 @@ export function BlueprintForm({
     }
 
     setValidationErrors(errors)
-    setTouched({ name: true, slug: true, type: true, schema: true })
+    setTouched({
+      name: true,
+      slug: true,
+      type: true,
+      schema: true,
+      source: true,
+      target: true,
+      edge: true,
+    })
     return Object.keys(errors).length === 0
   }
 
@@ -528,7 +581,15 @@ export function BlueprintForm({
     const data: BlueprintCreate = {
       name: name.trim(),
       slug: slug.trim() || undefined,
-      type,
+      kind,
+      ...(kind === 'node'
+        ? { type }
+        : {
+            type: null,
+            source: source.trim(),
+            target: target.trim(),
+            edge: edge.trim(),
+          }),
       description: description.trim() || null,
       enabled,
       priority,
@@ -604,7 +665,7 @@ export function BlueprintForm({
           <Button
             onClick={handleSave}
             disabled={isLoading}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-amber-border text-white hover:bg-amber-border-strong"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -638,9 +699,28 @@ export function BlueprintForm({
               <div
                 className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
               >
-                {error?.response?.data?.detail ||
-                  error?.message ||
-                  'An error occurred'}
+                {(() => {
+                  const detail = error?.response?.data?.detail
+                  if (Array.isArray(detail)) {
+                    return detail
+                      .map(
+                        (e: { msg?: string; loc?: Array<string | number> }) => {
+                          const field =
+                            e.loc
+                              ?.filter((segment) => segment !== 'body')
+                              .map(String)
+                              .join('.') || 'field'
+                          return e.msg
+                            ? `${field}: ${e.msg}`
+                            : JSON.stringify(e)
+                        },
+                      )
+                      .join('; ')
+                  }
+                  return typeof detail === 'string'
+                    ? detail
+                    : error?.message || 'An error occurred'
+                })()}
               </div>
             </div>
           </div>
@@ -721,19 +801,18 @@ export function BlueprintForm({
             )}
           </div>
 
-          {/* Type */}
+          {/* Kind */}
           <div>
             <label
               className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
             >
-              Type <span className="text-red-500">*</span>
+              Kind <span className="text-red-500">*</span>
             </label>
             <select
-              value={type}
-              onChange={(e) => {
-                setType(e.target.value)
-                handleFieldChange('type')
-              }}
+              value={kind}
+              onChange={(e) =>
+                setKind(e.target.value as 'node' | 'relationship')
+              }
               disabled={isLoading || isEditing}
               className={`w-full rounded-md border px-3 py-2 text-sm ${
                 isDarkMode
@@ -741,26 +820,189 @@ export function BlueprintForm({
                   : 'border-gray-300 bg-white text-gray-900'
               } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
             >
-              <option value="">Select a type...</option>
-              {blueprintTypes.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
+              <option value="node">Object</option>
+              <option value="relationship">Relationship</option>
             </select>
             {isEditing && (
               <p
                 className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
               >
-                Type cannot be changed after creation
-              </p>
-            )}
-            {touched.type && validationErrors.type && (
-              <p className="mt-1 text-sm text-red-600">
-                {validationErrors.type}
+                Kind cannot be changed after creation
               </p>
             )}
           </div>
+
+          {/* Type (node) or Source/Target/Edge (relationship) */}
+          {kind === 'node' ? (
+            <div>
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
+                Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={type}
+                onChange={(e) => {
+                  setType(e.target.value)
+                  handleFieldChange('type')
+                }}
+                disabled={isLoading || isEditing}
+                className={`w-full rounded-md border px-3 py-2 text-sm ${
+                  isDarkMode
+                    ? 'border-gray-600 bg-gray-700 text-white'
+                    : 'border-gray-300 bg-white text-gray-900'
+                } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+              >
+                <option value="">Select a type...</option>
+                {blueprintTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              {touched.type && validationErrors.type && (
+                <p className="mt-1 text-sm text-red-600">
+                  {validationErrors.type}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="col-span-2 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-end gap-2">
+              <div>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Source <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={source}
+                  onChange={(e) => {
+                    setSource(e.target.value)
+                    handleFieldChange('source')
+                    const valid = getRelationshipTypes(e.target.value, target)
+                    if (edge && !valid.includes(edge)) setEdge('')
+                  }}
+                  disabled={isLoading || isEditing}
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${
+                    isDarkMode
+                      ? 'border-gray-600 bg-gray-700 text-white'
+                      : 'border-gray-300 bg-white text-gray-900'
+                  } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  <option value="">Select source...</option>
+                  {blueprintTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                {touched.source && validationErrors.source && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.source}
+                  </p>
+                )}
+              </div>
+              <div
+                className={`pb-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              >
+                →
+              </div>
+              <div>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Relationship Type <span className="text-red-500">*</span>
+                </label>
+                {source &&
+                target &&
+                (getRelationshipTypes(source, target).length === 0 ||
+                  (edge &&
+                    !getRelationshipTypes(source, target).includes(edge))) ? (
+                  <Input
+                    value={edge}
+                    onChange={(e) => {
+                      setEdge(e.target.value)
+                      handleFieldChange('edge')
+                    }}
+                    disabled={isLoading || isEditing}
+                    placeholder="Enter relationship type..."
+                    className={`w-full ${
+                      isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+                    }`}
+                  />
+                ) : (
+                  <select
+                    value={edge}
+                    onChange={(e) => {
+                      setEdge(e.target.value)
+                      handleFieldChange('edge')
+                    }}
+                    disabled={isLoading || isEditing || !source || !target}
+                    className={`w-full rounded-md border px-3 py-2 text-sm ${
+                      isDarkMode
+                        ? 'border-gray-600 bg-gray-700 text-white'
+                        : 'border-gray-300 bg-white text-gray-900'
+                    } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    <option value="">
+                      {source && target
+                        ? 'Select type...'
+                        : 'Pick source & target first'}
+                    </option>
+                    {getRelationshipTypes(source, target).map((rt) => (
+                      <option key={rt} value={rt}>
+                        {toTitleCase(rt)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {touched.edge && validationErrors.edge && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.edge}
+                  </p>
+                )}
+              </div>
+              <div
+                className={`pb-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              >
+                →
+              </div>
+              <div>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Target <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={target}
+                  onChange={(e) => {
+                    setTarget(e.target.value)
+                    handleFieldChange('target')
+                    const valid = getRelationshipTypes(source, e.target.value)
+                    if (edge && !valid.includes(edge)) setEdge('')
+                  }}
+                  disabled={isLoading || isEditing}
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${
+                    isDarkMode
+                      ? 'border-gray-600 bg-gray-700 text-white'
+                      : 'border-gray-300 bg-white text-gray-900'
+                  } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  <option value="">Select target...</option>
+                  {blueprintTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                {touched.target && validationErrors.target && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.target}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Priority */}
           <div>

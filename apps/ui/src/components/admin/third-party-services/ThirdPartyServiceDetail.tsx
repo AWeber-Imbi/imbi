@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { OAuth2ApplicationList } from './OAuth2ApplicationList'
 import { ServiceWebhookList } from './ServiceWebhookList'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { getIcon } from '@/lib/icons'
 import type { ThirdPartyService } from '@/types'
 
 interface ThirdPartyServiceDetailProps {
@@ -89,13 +90,19 @@ export function ThirdPartyServiceDetail({
               </Button>
               <div>
                 <div className="flex items-center gap-3">
-                  {service.icon && (
-                    <img
-                      src={service.icon}
-                      alt=""
-                      className="h-8 w-8 rounded object-cover"
-                    />
-                  )}
+                  {service.icon &&
+                    (service.icon.startsWith('/uploads/') ? (
+                      <img
+                        src={service.icon}
+                        alt=""
+                        className="h-8 w-8 rounded object-cover"
+                      />
+                    ) : (
+                      (() => {
+                        const Icon = getIcon(service.icon, null)
+                        return Icon ? <Icon className="h-8 w-8" /> : null
+                      })()
+                    ))}
                   <h2
                     className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
                   >
@@ -122,7 +129,7 @@ export function ThirdPartyServiceDetail({
             </div>
             <Button
               onClick={onEdit}
-              className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+              className="bg-amber-border text-white hover:bg-amber-border-strong"
             >
               <Edit2 className="mr-2 h-4 w-4" />
               Edit Service

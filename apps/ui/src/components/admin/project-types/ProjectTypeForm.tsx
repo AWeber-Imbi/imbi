@@ -4,6 +4,7 @@ import { Save, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IconUpload } from '@/components/ui/icon-upload'
+import { IconPicker } from '@/components/ui/icon-picker'
 import {
   DynamicFormFields,
   validateDynamicFields,
@@ -11,6 +12,7 @@ import {
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { getProjectTypeSchema } from '@/api/endpoints'
 import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
+import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { extractDynamicFields, slugify } from '@/lib/utils'
 import type { ProjectType, ProjectTypeCreate } from '@/types'
 
@@ -38,6 +40,7 @@ export function ProjectTypeForm({
   const [slug, setSlug] = useState(projectType?.slug || '')
   const [description, setDescription] = useState(projectType?.description || '')
   const [icon, setIcon] = useState(projectType?.icon || '')
+  const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [orgSlug, setOrgSlug] = useState(
     projectType?.organization.slug || selectedOrganization?.slug || '',
   )
@@ -137,7 +140,7 @@ export function ProjectTypeForm({
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-amber-border text-white hover:bg-amber-border-strong"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -315,11 +318,32 @@ export function ProjectTypeForm({
               >
                 Icon
               </label>
-              <IconUpload
-                value={icon}
-                onChange={setIcon}
-                isDarkMode={isDarkMode}
-              />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <p
+                    className={`mb-1.5 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    Pick from Simple Icons
+                  </p>
+                  <IconPicker
+                    value={icon.startsWith('si-') ? icon : ''}
+                    onChange={handleIconChange}
+                    isDarkMode={isDarkMode}
+                  />
+                </div>
+                <div>
+                  <p
+                    className={`mb-1.5 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    Or upload a custom image
+                  </p>
+                  <IconUpload
+                    value={icon.startsWith('si-') ? '' : icon}
+                    onChange={handleIconChange}
+                    isDarkMode={isDarkMode}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Dynamic Blueprint Fields */}
