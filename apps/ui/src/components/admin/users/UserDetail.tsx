@@ -159,7 +159,7 @@ export function UserDetail({
           </div>
           <Button
             onClick={onEdit}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-amber-border text-white hover:bg-amber-border-strong"
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit User
@@ -369,7 +369,7 @@ export function UserDetail({
                 disabled={
                   !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
                 }
-                className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+                className="bg-amber-border text-white hover:bg-amber-border-strong"
                 size="sm"
               >
                 {addOrgMutation.isPending ? 'Adding...' : 'Add'}

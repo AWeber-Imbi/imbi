@@ -427,7 +427,7 @@ export function ServiceAccountDetail({
           </div>
           <Button
             onClick={onEdit}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-amber-border text-white hover:bg-amber-border-strong"
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Account
@@ -568,7 +568,7 @@ export function ServiceAccountDetail({
                 disabled={
                   !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
                 }
-                className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+                className="bg-amber-border text-white hover:bg-amber-border-strong"
                 size="sm"
               >
                 {addOrgMutation.isPending ? 'Adding...' : 'Add'}
@@ -797,7 +797,7 @@ export function ServiceAccountDetail({
                   disabled={
                     !credentialName.trim() || createCredentialMutation.isPending
                   }
-                  className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+                  className="bg-amber-border text-white hover:bg-amber-border-strong"
                 >
                   {createCredentialMutation.isPending
                     ? 'Creating...'
@@ -1105,7 +1105,7 @@ export function ServiceAccountDetail({
               <Button
                 onClick={handleCreateKey}
                 disabled={createKeyMutation.isPending}
-                className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+                className="bg-amber-border text-white hover:bg-amber-border-strong"
               >
                 {createKeyMutation.isPending ? 'Creating...' : 'Create'}
               </Button>

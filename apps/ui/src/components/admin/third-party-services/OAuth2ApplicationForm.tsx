@@ -165,7 +165,7 @@ export function OAuth2ApplicationForm({
         <Button
           onClick={handleSubmit}
           disabled={isLoading}
-          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+          className="bg-amber-border text-white hover:bg-amber-border-strong"
         >
           {isLoading ? 'Saving...' : isEdit ? 'Update' : 'Create'}
         </Button>

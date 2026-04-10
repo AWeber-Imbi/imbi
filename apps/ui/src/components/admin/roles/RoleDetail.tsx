@@ -251,7 +251,7 @@ export function RoleDetail({
           {!role.is_system && (
             <Button
               onClick={onEdit}
-              className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+              className="bg-amber-border text-white hover:bg-amber-border-strong"
             >
               <Edit2 className="mr-2 h-4 w-4" />
               Edit Role
@@ -404,7 +404,7 @@ export function RoleDetail({
                   <Button
                     onClick={handleGrantPermission}
                     disabled={!selectedPermission || grantMutation.isPending}
-                    className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+                    className="bg-amber-border text-white hover:bg-amber-border-strong"
                     size="sm"
                   >
                     <Plus className="mr-2 h-4 w-4" />

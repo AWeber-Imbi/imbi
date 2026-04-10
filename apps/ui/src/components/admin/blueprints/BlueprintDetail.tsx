@@ -172,7 +172,14 @@ export function BlueprintDetail({
     const exportObj: Record<string, unknown> = {
       name: blueprint.name,
       slug: blueprint.slug,
-      type: blueprint.type,
+      kind: blueprint.kind || 'node',
+      ...(blueprint.kind === 'relationship'
+        ? {
+            source: blueprint.source,
+            target: blueprint.target,
+            edge: blueprint.edge,
+          }
+        : { type: blueprint.type }),
       ...(blueprint.description ? { description: blueprint.description } : {}),
       enabled: blueprint.enabled,
       priority: blueprint.priority,
@@ -236,9 +243,11 @@ export function BlueprintDetail({
                   {blueprint.name}
                 </h2>
                 <span
-                  className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.type, blueprintTypes, isDarkMode)}`}
+                  className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.kind === 'relationship' ? 'relationship' : blueprint.type || '', blueprintTypes, isDarkMode)}`}
                 >
-                  {blueprint.type}
+                  {blueprint.kind === 'relationship'
+                    ? `${blueprint.source} → ${blueprint.target} (${blueprint.edge})`
+                    : blueprint.type}
                 </span>
               </div>
               <p
@@ -263,7 +272,7 @@ export function BlueprintDetail({
             </Button>
             <Button
               onClick={onEdit}
-              className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+              className="bg-amber-border text-white hover:bg-amber-border-strong"
             >
               <Edit2 className="mr-2 h-4 w-4" />
               Edit Blueprint

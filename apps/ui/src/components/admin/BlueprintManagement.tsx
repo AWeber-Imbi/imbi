@@ -20,7 +20,6 @@ import { BlueprintForm } from './blueprints/BlueprintForm'
 import { BlueprintDetail } from './blueprints/BlueprintDetail'
 import { ImportBlueprintDialog } from './blueprints/ImportBlueprintDialog'
 import { useAdminNav } from '@/hooks/useAdminNav'
-import { useOpenApiSpec, getSchemaEnum } from '@/api/openapi'
 import {
   listBlueprints,
   deleteBlueprint,
@@ -90,6 +89,19 @@ export function getTypeColor(type: string, allTypes: string[]): string {
   return TYPE_COLORS[(idx >= 0 ? idx : 0) % TYPE_COLORS.length]
 }
 
+/** Return the path type used in API URLs and compound keys. */
+export function blueprintPathType(bp: Blueprint): string {
+  return bp.kind === 'relationship' ? 'relationship' : bp.type || 'unknown'
+}
+
+/** Label shown in the type badge. */
+export function blueprintTypeLabel(bp: Blueprint): string {
+  if (bp.kind === 'relationship') {
+    return `${bp.source} → ${bp.target}`
+  }
+  return bp.type || 'unknown'
+}
+
 export function getTypeBadgeClasses(
   type: string,
   allTypes: string[],
@@ -157,11 +169,15 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     queryFn: () => listBlueprints(),
   })
 
-  // Fetch blueprint types from OpenAPI spec
-  const { data: openApiSpec } = useOpenApiSpec()
-  const blueprintTypes = openApiSpec
-    ? getSchemaEnum(openApiSpec, 'Blueprint', 'type')
-    : []
+  // Known node types for blueprint targets
+  const blueprintTypes = [
+    'Environment',
+    'Organization',
+    'Project',
+    'ProjectType',
+    'Team',
+    'ThirdPartyService',
+  ]
 
   // Refresh frontend queries after mutations
   // The backend auto-refreshes its OpenAPI schema cache on blueprint CRUD
@@ -230,7 +246,9 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
       const matchesDesc = bp.description?.toLowerCase().includes(query) ?? false
       if (!matchesName && !matchesDesc) return false
     }
-    if (typeFilter && bp.type !== typeFilter) return false
+    if (typeFilter === 'relationship') {
+      if (bp.kind !== 'relationship') return false
+    } else if (typeFilter && bp.type !== typeFilter) return false
     if (enabledFilter === 'enabled' && !bp.enabled) return false
     if (enabledFilter === 'disabled' && bp.enabled) return false
     return true
@@ -376,6 +394,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
                 {t}
               </option>
             ))}
+            <option value="relationship">Relationship</option>
           </select>
           <select
             value={enabledFilter}
@@ -452,9 +471,12 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
               ) : (
                 filteredBlueprints.map((bp: Blueprint) => (
                   <tr
-                    key={`${bp.type}/${bp.slug}`}
+                    key={`${blueprintPathType(bp)}/${bp.slug}`}
                     onClick={() =>
-                      handleViewClick({ type: bp.type, slug: bp.slug })
+                      handleViewClick({
+                        type: blueprintPathType(bp),
+                        slug: bp.slug,
+                      })
                     }
                     className="cursor-pointer transition-colors hover:bg-secondary"
                   >
@@ -478,9 +500,9 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
                     </td>
                     <td className="whitespace-nowrap px-5 py-3.5">
                       <span
-                        className={`inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(bp.type, blueprintTypes, isDarkMode)}`}
+                        className={`inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprintPathType(bp), blueprintTypes, isDarkMode)}`}
                       >
-                        {bp.type}
+                        {blueprintTypeLabel(bp)}
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-5 py-3.5 text-center">
@@ -507,7 +529,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
                           onClick={(e) => {
                             e.stopPropagation()
                             handleEditClick({
-                              type: bp.type,
+                              type: blueprintPathType(bp),
                               slug: bp.slug,
                             })
                           }}
@@ -519,7 +541,10 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleDelete({ type: bp.type, slug: bp.slug })
+                            handleDelete({
+                              type: blueprintPathType(bp),
+                              slug: bp.slug,
+                            })
                           }}
                           disabled={deleteMutation.isPending}
                           className="rounded-sm p-1.5 text-tertiary transition-colors hover:bg-danger hover:text-danger"

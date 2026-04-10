@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useAuth } from '@/hooks/useAuth'
 
 export function OAuthCallbackPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { accessToken, setAccessToken } = useAuthStore()
   const { user, error } = useAuth()
 
@@ -26,9 +28,10 @@ export function OAuthCallbackPage() {
     }
 
     setAccessToken(token)
+    queryClient.invalidateQueries({ queryKey: ['organizations'] })
 
     window.history.replaceState({}, '', '/auth/callback')
-  }, [navigate, setAccessToken])
+  }, [navigate, setAccessToken, queryClient])
 
   useEffect(() => {
     if (user) {

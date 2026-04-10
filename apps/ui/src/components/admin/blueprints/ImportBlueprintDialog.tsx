@@ -30,7 +30,7 @@ type DetectedFormat = 'json' | 'yaml' | 'unknown'
 
 const VALID_TYPES = new Set(['Team', 'Environment', 'ProjectType', 'Project'])
 
-const REQUIRED_FIELDS = ['name', 'type', 'json_schema'] as const
+const REQUIRED_FIELDS = ['name', 'json_schema'] as const
 
 function detectFormat(input: string): DetectedFormat {
   const trimmed = input.trim()
@@ -71,13 +71,25 @@ function validateBlueprintShape(
     return { valid: false, error: '"name" must be a non-empty string.' }
   }
 
-  // Validate type
-  const typesToCheck =
-    blueprintTypes.length > 0 ? blueprintTypes : Array.from(VALID_TYPES)
-  if (typeof obj.type !== 'string' || !typesToCheck.includes(obj.type)) {
-    return {
-      valid: false,
-      error: `"type" must be one of: ${typesToCheck.join(', ')}. Got "${String(obj.type)}".`,
+  // Validate kind + type/relationship fields
+  const bpKind = (obj.kind as string) || 'node'
+  if (bpKind === 'relationship') {
+    for (const f of ['source', 'target', 'edge'] as const) {
+      if (typeof obj[f] !== 'string' || !(obj[f] as string).trim()) {
+        return {
+          valid: false,
+          error: `"${f}" is required for relationship blueprints.`,
+        }
+      }
+    }
+  } else {
+    const typesToCheck =
+      blueprintTypes.length > 0 ? blueprintTypes : Array.from(VALID_TYPES)
+    if (typeof obj.type !== 'string' || !typesToCheck.includes(obj.type)) {
+      return {
+        valid: false,
+        error: `"type" must be one of: ${typesToCheck.join(', ')}. Got "${String(obj.type)}".`,
+      }
     }
   }
 
@@ -178,7 +190,15 @@ function validateBlueprintShape(
 
   const blueprint: BlueprintCreate = {
     name: (obj.name as string).trim(),
-    type: obj.type as string,
+    kind: bpKind as 'node' | 'relationship',
+    ...(bpKind === 'relationship'
+      ? {
+          type: null,
+          source: (obj.source as string).trim(),
+          target: (obj.target as string).trim(),
+          edge: (obj.edge as string).trim(),
+        }
+      : { type: obj.type as string }),
     json_schema: jsonSchema,
     ...(obj.slug ? { slug: obj.slug as string } : {}),
     ...(obj.description !== undefined
@@ -473,10 +493,14 @@ export function ImportBlueprintDialog({
                   <span
                     className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}
                   >
-                    Type:{' '}
+                    {parsedPreview.kind === 'relationship'
+                      ? 'Edge:'
+                      : 'Type:'}{' '}
                   </span>
                   <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                    {parsedPreview.type}
+                    {parsedPreview.kind === 'relationship'
+                      ? `${parsedPreview.source} → ${parsedPreview.target} (${parsedPreview.edge})`
+                      : parsedPreview.type}
                   </span>
                 </div>
                 {parsedPreview.slug && (
@@ -566,7 +590,7 @@ export function ImportBlueprintDialog({
           <Button
             onClick={handleValidateAndImport}
             disabled={isLoading || !rawInput.trim()}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-amber-border text-white hover:bg-amber-border-strong"
           >
             <Upload className="mr-2 h-4 w-4" />
             {isLoading ? 'Importing...' : 'Import'}

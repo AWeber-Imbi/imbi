@@ -225,7 +225,7 @@ export function OrganizationManagement({
         </div>
         <Button
           onClick={goToCreate}
-          className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+          className="bg-amber-border text-white hover:bg-amber-border-strong"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Organization

@@ -142,7 +142,7 @@ export function TeamDetail({
           </div>
           <Button
             onClick={onEdit}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-amber-border text-white hover:bg-amber-border-strong"
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Team
@@ -265,7 +265,7 @@ export function TeamDetail({
                   disabled={
                     !newMemberEmail.trim() || addMemberMutation.isPending
                   }
-                  className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+                  className="bg-amber-border text-white hover:bg-amber-border-strong"
                 >
                   {addMemberMutation.isPending ? 'Adding...' : 'Add'}
                 </Button>

@@ -157,7 +157,7 @@ export function ServiceAccountForm({
           <Button
             onClick={handleSave}
             disabled={isLoading}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-amber-border text-white hover:bg-amber-border-strong"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading

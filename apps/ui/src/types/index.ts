@@ -539,7 +539,11 @@ export interface BlueprintFilter {
 export interface Blueprint {
   name: string
   slug: string
-  type: string
+  kind: 'node' | 'relationship'
+  type?: string | null
+  source?: string | null
+  target?: string | null
+  edge?: string | null
   description?: string | null
   enabled: boolean
   priority: number
@@ -551,7 +555,11 @@ export interface Blueprint {
 export interface BlueprintCreate {
   name: string
   slug?: string
-  type: string
+  kind?: 'node' | 'relationship'
+  type?: string | null
+  source?: string | null
+  target?: string | null
+  edge?: string | null
   description?: string | null
   enabled?: boolean
   priority?: number
