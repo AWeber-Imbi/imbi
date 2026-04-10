@@ -245,7 +245,7 @@ class CountMessagesTestCase(
     unittest.IsolatedAsyncioTestCase,
 ):
     async def test_count_messages(self) -> None:
-        db = mock_db([{'count': 5}])
+        db = mock_db([{'cnt': 5}])
         with mock.patch(
             'imbi_common.graph.parse_agtype',
             return_value=5,

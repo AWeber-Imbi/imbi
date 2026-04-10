@@ -238,16 +238,16 @@ async def count_messages(
     query = """
     MATCH (m:Message {{conversation_id:
                        {conversation_id}}})
-    RETURN count(m) AS count
+    RETURN count(m) AS cnt
     """
     records = await db.execute(
         query,
         {'conversation_id': conversation_id},
-        ['count'],
+        ['cnt'],
     )
     if not records:
         return 0
-    return graph.parse_agtype(records[0]['count']) or 0
+    return graph.parse_agtype(records[0]['cnt']) or 0
 
 
 async def update_conversation_title(
