@@ -202,7 +202,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                     'slug': 'my-api',
                     'team_slug': 'platform',
                     'project_type_slugs': ['api-service'],
-                    'environments': {'production': None},
+                    'environments': {'production': {}},
                 },
             )
 
@@ -644,7 +644,7 @@ class ProjectEndpointsTestCase(unittest.TestCase):
 
             response = self.client.put(
                 f'/organizations/engineering/projects/{PROJECT_ID}',
-                json={'environments': {'staging': None}},
+                json={'environments': {'staging': {}}},
             )
 
         self.assertEqual(response.status_code, 200)

@@ -21,8 +21,10 @@ class GenerateBlueprintModelsTestCase(
         """Reset module state before each test."""
         openapi._blueprint_models = {}
         openapi._response_models = {}
+        openapi._edge_models = {}
         openapi._schema_cache = None
         self.mock_db = unittest.mock.AsyncMock(spec=graph.Graph)
+        self.mock_db.match.return_value = []
 
     async def test_generate_blueprint_models_no_blueprints(
         self,
@@ -37,6 +39,7 @@ class GenerateBlueprintModelsTestCase(
             (
                 write_models,
                 response_models,
+                _edge_models,
             ) = await openapi.generate_blueprint_models(self.mock_db)
 
             self.assertEqual(
@@ -80,6 +83,7 @@ class GenerateBlueprintModelsTestCase(
             (
                 write_models,
                 response_models,
+                _edge_models,
             ) = await openapi.generate_blueprint_models(self.mock_db)
 
             # Write model has custom_field
@@ -120,6 +124,7 @@ class GenerateBlueprintModelsTestCase(
             (
                 write_models,
                 response_models,
+                _edge_models,
             ) = await openapi.generate_blueprint_models(self.mock_db)
 
             # Falls back to base model
@@ -143,8 +148,10 @@ class RefreshBlueprintModelsTestCase(
         """Reset module state before each test."""
         openapi._blueprint_models = {}
         openapi._response_models = {}
+        openapi._edge_models = {}
         openapi._schema_cache = None
         self.mock_db = unittest.mock.AsyncMock(spec=graph.Graph)
+        self.mock_db.match.return_value = []
 
     async def test_refresh_updates_cache(self) -> None:
         """Test that refresh updates the cached models."""
@@ -197,6 +204,7 @@ class CreateCustomOpenapiTestCase(unittest.TestCase):
         """Reset module state before each test."""
         openapi._blueprint_models = {}
         openapi._response_models = {}
+        openapi._edge_models = {}
         openapi._schema_cache = None
 
     def test_custom_openapi_includes_schemas(self) -> None:

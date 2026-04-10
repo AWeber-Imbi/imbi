@@ -1084,7 +1084,7 @@ requires-dist = [
     { name = "fastapi" },
     { name = "filetype" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "imbi-common", git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main" },
+    { name = "imbi-common", git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=feature%2Frelationship-blueprints" },
     { name = "jinja2" },
     { name = "nanoid", specifier = ">=2.0.0" },
     { name = "opentelemetry-distro", marker = "extra == 'otel'" },
@@ -1130,7 +1130,7 @@ docs = [
 [[package]]
 name = "imbi-common"
 version = "0.1.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#b0d98d932d40eb61fc9986088cf9ecb669803e7b" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=feature%2Frelationship-blueprints#a28accd5c01350666875a60bdf885d8453e78710" }
 dependencies = [
     { name = "clickhouse-connect" },
     { name = "cryptography" },

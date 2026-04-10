@@ -34,6 +34,9 @@ _blueprint_models: dict[str, type[pydantic.BaseModel]] = {}
 # Cache for blueprint-enhanced response models
 _response_models: dict[str, type[pydantic.BaseModel]] = {}
 
+# Cache for relationship edge models (keyed by "Source_Target_EDGE")
+_edge_models: dict[str, type[pydantic.BaseModel]] = {}
+
 # Cache for the generated OpenAPI schema
 _schema_cache: dict[str, typing.Any] | None = None
 
@@ -56,11 +59,12 @@ async def generate_blueprint_models(
 ) -> tuple[
     dict[str, type[pydantic.BaseModel]],
     dict[str, type[pydantic.BaseModel]],
+    dict[str, type[pydantic.BaseModel]],
 ]:
-    """Generate write and response models for all MODEL_TYPES.
+    """Generate write, response, and edge models.
 
     Returns:
-        Tuple of (write_models, response_models) dictionaries.
+        Tuple of (write_models, response_models, edge_models).
 
     """
     write_models: dict[str, type[pydantic.BaseModel]] = {}
@@ -89,7 +93,58 @@ async def generate_blueprint_models(
                 imbi_common.blueprints.make_response_model(model_class)
             )
 
-    return write_models, response_models
+    edge_models = await _generate_edge_models(db)
+    return write_models, response_models, edge_models
+
+
+async def _generate_edge_models(
+    db: graph.Graph,
+) -> dict[str, type[pydantic.BaseModel]]:
+    """Generate edge property models from relationship blueprints.
+
+    Queries all enabled relationship blueprints, groups them by
+    (source, target, edge), and builds a dynamic Pydantic model
+    for each combination.
+
+    """
+    from imbi_common import models as common_models
+
+    all_rel_bps = await db.match(
+        common_models.Blueprint,
+        {'kind': 'relationship', 'enabled': True},
+        order_by='priority',
+    )
+
+    groups: dict[
+        tuple[str, str, str],
+        list[common_models.Blueprint],
+    ] = {}
+    for bp in all_rel_bps:
+        key = (bp.source or '', bp.target or '', bp.edge or '')
+        groups.setdefault(key, []).append(bp)
+
+    edge_models: dict[str, type[pydantic.BaseModel]] = {}
+    for (source, target, edge), bps in groups.items():
+        name = f'{source}_{target}_{edge}'
+        try:
+            edge_base: type[common_models.RelationshipEdge] = type(
+                f'{source}{edge.title().replace("_", "")}{target}Edge',
+                (common_models.RelationshipEdge,),
+                {},
+            )
+            model = imbi_common.blueprints.apply_blueprints(edge_base, bps)
+            edge_models[name] = model
+            LOGGER.debug(
+                'Generated edge model %s (%d blueprints)',
+                name,
+                len(bps),
+            )
+        except Exception:
+            LOGGER.exception(
+                'Failed to generate edge model for %s',
+                name,
+            )
+    return edge_models
 
 
 async def refresh_blueprint_models(
@@ -104,16 +159,22 @@ async def refresh_blueprint_models(
         models.
 
     """
-    global _blueprint_models, _response_models, _schema_cache
+    global _blueprint_models, _response_models
+    global _edge_models, _schema_cache
 
     LOGGER.info('Refreshing blueprint models for OpenAPI schema')
-    _blueprint_models, _response_models = await generate_blueprint_models(db)
+    (
+        _blueprint_models,
+        _response_models,
+        _edge_models,
+    ) = await generate_blueprint_models(db)
 
     _schema_cache = None
 
     LOGGER.info(
-        'Refreshed %d blueprint models',
+        'Refreshed %d blueprint models, %d edge models',
         len(_blueprint_models),
+        len(_edge_models),
     )
     return _blueprint_models
 
@@ -195,6 +256,21 @@ def create_custom_openapi(
 
             _hoist_defs_to_components(schemas)
             _rewrite_path_schemas(openapi_schema)
+
+        for edge_name, edge_model in _edge_models.items():
+            schema_name = f'{edge_name}EdgeProperties'
+            try:
+                schemas[schema_name] = edge_model.model_json_schema(
+                    ref_template=('#/components/schemas/{model}')
+                )
+            except Exception:
+                LOGGER.exception(
+                    'Failed to generate edge schema for %s',
+                    edge_name,
+                )
+
+        if _edge_models:
+            _hoist_defs_to_components(schemas)
 
         _schema_cache = openapi_schema
         return openapi_schema
