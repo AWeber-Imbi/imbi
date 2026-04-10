@@ -12,6 +12,7 @@ import {
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { getTeamSchema } from '@/api/endpoints'
 import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
+import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { extractDynamicFields, slugify } from '@/lib/utils'
 import type { Team, TeamCreate } from '@/types'
 
@@ -39,6 +40,7 @@ export function TeamForm({
   const [slug, setSlug] = useState(team?.slug || '')
   const [description, setDescription] = useState(team?.description || '')
   const [icon, setIcon] = useState(team?.icon || '')
+  const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [orgSlug, setOrgSlug] = useState(
     team?.organization.slug || selectedOrganization?.slug || '',
   )
@@ -319,7 +321,7 @@ export function TeamForm({
                   </p>
                   <IconPicker
                     value={icon.startsWith('si-') ? icon : ''}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>
@@ -331,7 +333,7 @@ export function TeamForm({
                   </p>
                   <IconUpload
                     value={icon.startsWith('si-') ? '' : icon}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>

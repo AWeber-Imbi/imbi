@@ -545,7 +545,15 @@ export function BlueprintForm({
     }
 
     setValidationErrors(errors)
-    setTouched({ name: true, slug: true, type: true, schema: true })
+    setTouched({
+      name: true,
+      slug: true,
+      type: true,
+      schema: true,
+      source: true,
+      target: true,
+      edge: true,
+    })
     return Object.keys(errors).length === 0
   }
 
@@ -861,6 +869,7 @@ export function BlueprintForm({
                   value={source}
                   onChange={(e) => {
                     setSource(e.target.value)
+                    handleFieldChange('source')
                     const valid = getRelationshipTypes(e.target.value, target)
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}
@@ -897,8 +906,11 @@ export function BlueprintForm({
                 </label>
                 <select
                   value={edge}
-                  onChange={(e) => setEdge(e.target.value)}
-                  disabled={isLoading || isEditing || (!source && !target)}
+                  onChange={(e) => {
+                    setEdge(e.target.value)
+                    handleFieldChange('edge')
+                  }}
+                  disabled={isLoading || isEditing || !source || !target}
                   className={`w-full rounded-md border px-3 py-2 text-sm ${
                     isDarkMode
                       ? 'border-gray-600 bg-gray-700 text-white'
@@ -921,6 +933,15 @@ export function BlueprintForm({
                     {validationErrors.edge}
                   </p>
                 )}
+                {source &&
+                  target &&
+                  getRelationshipTypes(source, target).length === 0 && (
+                    <p
+                      className={`mt-1 text-xs ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
+                    >
+                      No relationship types defined for {source} &rarr; {target}
+                    </p>
+                  )}
               </div>
               <div
                 className={`pb-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
@@ -937,6 +958,7 @@ export function BlueprintForm({
                   value={target}
                   onChange={(e) => {
                     setTarget(e.target.value)
+                    handleFieldChange('target')
                     const valid = getRelationshipTypes(source, e.target.value)
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}

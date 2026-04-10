@@ -12,6 +12,7 @@ import {
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { getProjectTypeSchema } from '@/api/endpoints'
 import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
+import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { extractDynamicFields, slugify } from '@/lib/utils'
 import type { ProjectType, ProjectTypeCreate } from '@/types'
 
@@ -39,6 +40,7 @@ export function ProjectTypeForm({
   const [slug, setSlug] = useState(projectType?.slug || '')
   const [description, setDescription] = useState(projectType?.description || '')
   const [icon, setIcon] = useState(projectType?.icon || '')
+  const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [orgSlug, setOrgSlug] = useState(
     projectType?.organization.slug || selectedOrganization?.slug || '',
   )
@@ -325,7 +327,7 @@ export function ProjectTypeForm({
                   </p>
                   <IconPicker
                     value={icon.startsWith('si-') ? icon : ''}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>
@@ -337,7 +339,7 @@ export function ProjectTypeForm({
                   </p>
                   <IconUpload
                     value={icon.startsWith('si-') ? '' : icon}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>

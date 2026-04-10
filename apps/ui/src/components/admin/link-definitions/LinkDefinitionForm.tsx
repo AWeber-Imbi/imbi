@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
 import type { LinkDefinition, LinkDefinitionCreate } from '@/types'
 
@@ -34,6 +35,7 @@ export function LinkDefinitionForm({
     linkDefinition?.description || '',
   )
   const [icon, setIcon] = useState(linkDefinition?.icon || '')
+  const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [urlTemplate, setUrlTemplate] = useState(
     linkDefinition?.url_template || '',
   )
@@ -301,7 +303,7 @@ export function LinkDefinitionForm({
                   </p>
                   <IconPicker
                     value={icon.startsWith('si-') ? icon : ''}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>
@@ -313,7 +315,7 @@ export function LinkDefinitionForm({
                   </p>
                   <IconUpload
                     value={icon.startsWith('si-') ? '' : icon}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>

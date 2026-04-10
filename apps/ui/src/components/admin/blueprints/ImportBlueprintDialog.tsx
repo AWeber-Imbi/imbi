@@ -73,6 +73,12 @@ function validateBlueprintShape(
 
   // Validate kind + type/relationship fields
   const bpKind = (obj.kind as string) || 'node'
+  if (bpKind !== 'node' && bpKind !== 'relationship') {
+    return {
+      valid: false,
+      error: `"kind" must be one of: node, relationship. Got "${bpKind}".`,
+    }
+  }
   if (bpKind === 'relationship') {
     for (const f of ['source', 'target', 'edge'] as const) {
       if (typeof obj[f] !== 'string' || !(obj[f] as string).trim()) {
@@ -370,14 +376,33 @@ export function ImportBlueprintDialog({
             <code
               className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
             >
-              type
+              json_schema
             </code>
-            ,{' '}
+            , and either{' '}
             <code
               className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
             >
-              json_schema
+              type
+            </code>{' '}
+            (node) or{' '}
+            <code
+              className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
+            >
+              source
             </code>
+            /
+            <code
+              className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
+            >
+              target
+            </code>
+            /
+            <code
+              className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
+            >
+              edge
+            </code>{' '}
+            (relationship)
           </DialogDescription>
         </DialogHeader>
 

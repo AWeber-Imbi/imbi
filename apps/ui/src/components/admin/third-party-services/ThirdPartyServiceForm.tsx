@@ -8,6 +8,7 @@ import { IconPicker } from '@/components/ui/icon-picker'
 import { KeyValueEditor } from '@/components/ui/key-value-editor'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { listTeams } from '@/api/endpoints'
+import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
 import type { Team, ThirdPartyService, ThirdPartyServiceCreate } from '@/types'
 
@@ -42,6 +43,7 @@ export function ThirdPartyServiceForm({
   const [slug, setSlug] = useState(service?.slug || '')
   const [description, setDescription] = useState(service?.description || '')
   const [icon, setIcon] = useState(service?.icon || '')
+  const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [vendor, setVendor] = useState(service?.vendor || '')
   const [serviceUrl, setServiceUrl] = useState(service?.service_url || '')
   const [category, setCategory] = useState(service?.category || '')
@@ -403,7 +405,7 @@ export function ThirdPartyServiceForm({
                   </p>
                   <IconPicker
                     value={icon.startsWith('si-') ? icon : ''}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>
@@ -415,7 +417,7 @@ export function ThirdPartyServiceForm({
                   </p>
                   <IconUpload
                     value={icon.startsWith('si-') ? '' : icon}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>

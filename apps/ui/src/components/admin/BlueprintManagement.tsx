@@ -97,7 +97,7 @@ export function blueprintPathType(bp: Blueprint): string {
 /** Label shown in the type badge. */
 export function blueprintTypeLabel(bp: Blueprint): string {
   if (bp.kind === 'relationship') {
-    return `${bp.source} → ${bp.target}`
+    return `${bp.source ?? '?'} → ${bp.target ?? '?'}`
   }
   return bp.type || 'unknown'
 }

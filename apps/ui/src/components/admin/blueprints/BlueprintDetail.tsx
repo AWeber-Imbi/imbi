@@ -246,7 +246,7 @@ export function BlueprintDetail({
                   className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.kind === 'relationship' ? 'relationship' : blueprint.type || '', blueprintTypes, isDarkMode)}`}
                 >
                   {blueprint.kind === 'relationship'
-                    ? `${blueprint.source} → ${blueprint.target} (${blueprint.edge})`
+                    ? `${blueprint.source ?? '?'} → ${blueprint.target ?? '?'} (${blueprint.edge ?? '?'})`
                     : blueprint.type}
                 </span>
               </div>

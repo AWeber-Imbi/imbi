@@ -13,6 +13,7 @@ import {
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { getEnvironmentSchema } from '@/api/endpoints'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
+import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { extractDynamicFields, slugify } from '@/lib/utils'
 import type { Environment, EnvironmentCreate } from '@/types'
 
@@ -43,6 +44,7 @@ export function EnvironmentForm({
   )
   const [description, setDescription] = useState(environment?.description || '')
   const [icon, setIcon] = useState(environment?.icon || '')
+  const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [labelColor, setLabelColor] = useState(environment?.label_color ?? '')
   const [orgSlug, setOrgSlug] = useState(
     environment?.organization.slug || selectedOrganization?.slug || '',
@@ -355,7 +357,7 @@ export function EnvironmentForm({
                   </p>
                   <IconPicker
                     value={icon.startsWith('si-') ? icon : ''}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>
@@ -367,7 +369,7 @@ export function EnvironmentForm({
                   </p>
                   <IconUpload
                     value={icon.startsWith('si-') ? '' : icon}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>

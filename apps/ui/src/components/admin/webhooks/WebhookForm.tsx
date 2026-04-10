@@ -15,6 +15,7 @@ import { IconUpload } from '@/components/ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { listThirdPartyServices } from '@/api/endpoints'
+import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
 import { ApiError } from '@/api/client'
 import type { Webhook, WebhookCreate, WebhookRule } from '@/types'
@@ -46,6 +47,7 @@ export function WebhookForm({
   const [slug, setSlug] = useState(webhook?.slug || '')
   const [description, setDescription] = useState(webhook?.description || '')
   const [icon, setIcon] = useState(webhook?.icon || '')
+  const handleIconChange = useIconWithCleanup(icon, setIcon)
   const [notificationPath, setNotificationPath] = useState(
     webhook?.notification_path || '/',
   )
@@ -413,7 +415,7 @@ export function WebhookForm({
                   </p>
                   <IconPicker
                     value={icon.startsWith('si-') ? icon : ''}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>
@@ -425,7 +427,7 @@ export function WebhookForm({
                   </p>
                   <IconUpload
                     value={icon.startsWith('si-') ? '' : icon}
-                    onChange={(v) => setIcon(v)}
+                    onChange={handleIconChange}
                     isDarkMode={isDarkMode}
                   />
                 </div>
