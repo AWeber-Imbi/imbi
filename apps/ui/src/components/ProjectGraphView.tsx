@@ -215,6 +215,11 @@ export function ProjectGraphView({
     }),
   })
 
+  // Extract the underlying data array. React Query keeps .data referentially
+  // stable across renders when the payload is unchanged, so depending on
+  // relationshipsData keeps the useMemo from re-running on every render.
+  const relationshipsData = relationshipQueries.map((q) => q.data)
+
   const edges = useMemo(() => {
     const seen = new Set<string>()
     const result: {
@@ -225,7 +230,7 @@ export function ProjectGraphView({
     }[] = []
 
     projects.forEach((p, index) => {
-      const response = relationshipQueries[index]?.data as
+      const response = relationshipsData[index] as
         | ProjectRelationshipsResponse
         | undefined
       if (!response) return
@@ -249,7 +254,7 @@ export function ProjectGraphView({
       }
     })
     return result
-  }, [projects, idToNodeId, relationshipQueries])
+  }, [projects, idToNodeId, relationshipsData])
 
   const {
     selections,
