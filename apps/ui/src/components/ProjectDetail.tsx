@@ -4,7 +4,6 @@ import {
   TrendingDown,
   Settings as SettingsIcon,
   ArrowRight,
-  Plus,
   Rocket,
 } from 'lucide-react'
 import { getIcon } from '@/lib/icons'
@@ -21,7 +20,7 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { useQuery } from '@tanstack/react-query'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -31,9 +30,8 @@ import {
   getProjectRelationships,
 } from '@/api/endpoints'
 import type { ProjectSchemaSection } from '@/api/endpoints'
-import { getTypeColor } from '@/lib/project-colors'
-import type { Project, ProjectRelationship } from '@/types'
-import { Link } from 'react-router-dom'
+import { ProjectsGraphCanvas } from '@/components/ProjectsGraphCanvas'
+import type { Project } from '@/types'
 
 interface ProjectDetailProps {
   project: Project
@@ -752,7 +750,7 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
           <RelationshipsTab
             orgSlug={project.team.organization.slug}
             projectId={project.id}
-            projectName={project.name}
+            project={project}
             isDarkMode={isDarkMode}
           />
         </TabsContent>
@@ -776,23 +774,17 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
   )
 }
 
-type RelationshipFilter = 'all' | 'uses' | 'used-by'
-
-interface RelationshipsTabProps {
-  orgSlug: string
-  projectId: string
-  projectName: string
-  isDarkMode: boolean
-}
-
 function RelationshipsTab({
   orgSlug,
   projectId,
-  projectName,
+  project,
   isDarkMode,
-}: RelationshipsTabProps) {
-  const [filter, setFilter] = useState<RelationshipFilter>('all')
-
+}: {
+  orgSlug: string
+  projectId: string
+  project: Project
+  isDarkMode: boolean
+}) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['project-relationships', orgSlug, projectId],
     queryFn: () => getProjectRelationships(orgSlug, projectId),
@@ -804,7 +796,7 @@ function RelationshipsTab({
   if (isLoading) {
     return (
       <Card className={cardClass}>
-        <p className={sub}>Loading relationships...</p>
+        <p className={sub}>Loading relationships…</p>
       </Card>
     )
   }
@@ -816,7 +808,7 @@ function RelationshipsTab({
     )
   }
 
-  const rels: ProjectRelationship[] = data?.relationships ?? []
+  const rels = data?.relationships ?? []
   if (rels.length === 0) {
     return (
       <Card className={cardClass}>
@@ -824,366 +816,61 @@ function RelationshipsTab({
       </Card>
     )
   }
+  // Assemble the projects and edges for the shared graph canvas.
+  // Center node is the current project; neighbors come from the
+  // relationships response. Edges always point from the dependent
+  // to the depended-on project (center→out for outbound; in→center
+  // for inbound).
+  const projects: Project[] = [
+    project,
+    ...rels.map(
+      (r) =>
+        ({
+          id: r.project.id,
+          name: r.project.name,
+          slug: r.project.slug,
+          team: {
+            name: '',
+            slug: '',
+            organization: {
+              name: '',
+              slug: r.project.namespace ?? '',
+            },
+          },
+          project_types: r.project.project_type
+            ? [
+                {
+                  name: r.project.project_type,
+                  slug: r.project.project_type,
+                  icon: r.project.project_type_icon ?? null,
+                  organization: {
+                    name: '',
+                    slug: r.project.namespace ?? '',
+                  },
+                },
+              ]
+            : [],
+        }) as Project,
+    ),
+  ]
 
-  const outbound =
-    filter === 'used-by' ? [] : rels.filter((r) => r.direction === 'outbound')
-  const inbound =
-    filter === 'uses' ? [] : rels.filter((r) => r.direction === 'inbound')
-
-  return (
-    <div className="flex gap-6">
-      <RelationshipsSidebar
-        outbound={outbound}
-        inbound={inbound}
-        filter={filter}
-        onFilterChange={setFilter}
-        isDarkMode={isDarkMode}
-      />
-      <div className="min-w-0 flex-1">
-        <Card
-          className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-        >
-          <RelationshipsGraph
-            outbound={outbound}
-            inbound={inbound}
-            projectName={projectName}
-            isDarkMode={isDarkMode}
-          />
-        </Card>
-      </div>
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Sidebar                                                           */
-/* ------------------------------------------------------------------ */
-
-interface RelationshipsSidebarProps {
-  outbound: ProjectRelationship[]
-  inbound: ProjectRelationship[]
-  filter: RelationshipFilter
-  onFilterChange: (f: RelationshipFilter) => void
-  isDarkMode: boolean
-}
-
-function RelationshipsSidebar({
-  outbound,
-  inbound,
-  filter,
-  onFilterChange,
-  isDarkMode,
-}: RelationshipsSidebarProps) {
-  const sectionLabel = isDarkMode ? 'text-gray-500' : 'text-slate-400'
-  const sub = isDarkMode ? 'text-gray-400' : 'text-slate-500'
-
-  const chipBase =
-    'rounded-full px-3 py-1 text-xs font-medium transition-colors'
-  const chipSelected = 'bg-amber-500 text-white'
-  const chipUnselected = isDarkMode
-    ? 'border border-gray-600 text-gray-300 hover:border-gray-400'
-    : 'border border-slate-300 text-slate-600 hover:border-slate-400'
+  const edges = rels.map((r) => {
+    const id =
+      r.direction === 'outbound'
+        ? `${projectId}->${r.project.id}`
+        : `${r.project.id}->${projectId}`
+    const source = r.direction === 'outbound' ? projectId : r.project.id
+    const target = r.direction === 'outbound' ? r.project.id : projectId
+    return { id, source, target, label: 'depends on' }
+  })
 
   return (
-    <div
-      className={`w-[240px] flex-shrink-0 rounded-lg border p-4 ${
-        isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-slate-200 bg-white'
-      }`}
-    >
-      {/* Filter chips */}
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {(['all', 'uses', 'used-by'] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => onFilterChange(f)}
-            className={`${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
-          >
-            {f === 'all' ? 'All' : f === 'uses' ? 'Uses' : 'Used by'}
-          </button>
-        ))}
-        <button
-          disabled
-          className={`${chipBase} flex items-center gap-1 opacity-50 ${chipUnselected}`}
-        >
-          <Plus className="h-3 w-3" />
-          Add
-        </button>
-      </div>
-
-      {/* Outbound (USES) section */}
-      {filter !== 'used-by' && (
-        <div className="mb-4">
-          <h4
-            className={`mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] ${sectionLabel}`}
-          >
-            Uses
-          </h4>
-          {outbound.length === 0 ? (
-            <p className={`text-xs ${sub}`}>No outbound relationships</p>
-          ) : (
-            <ul className="space-y-1">
-              {outbound.map((r) => (
-                <SidebarProjectRow
-                  key={`out:${r.project.id}`}
-                  rel={r}
-                  isDarkMode={isDarkMode}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Inbound (USED BY) section */}
-      {filter !== 'uses' && (
-        <div>
-          <h4
-            className={`mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] ${sectionLabel}`}
-          >
-            Used by
-          </h4>
-          {inbound.length === 0 ? (
-            <p className={`text-xs ${sub}`}>No inbound relationships</p>
-          ) : (
-            <ul className="space-y-1">
-              {inbound.map((r) => (
-                <SidebarProjectRow
-                  key={`in:${r.project.id}`}
-                  rel={r}
-                  isDarkMode={isDarkMode}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SidebarProjectRow({
-  rel,
-  isDarkMode,
-}: {
-  rel: ProjectRelationship
-  isDarkMode: boolean
-}) {
-  const typeSlug = rel.project.project_type ?? ''
-  const dotColor = typeSlug ? getTypeColor(typeSlug) : '#94a3b8'
-  const muted = isDarkMode ? 'text-gray-500' : 'text-slate-400'
-
-  return (
-    <li className="flex items-center gap-2 py-1">
-      <span
-        className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-full"
-        style={{ backgroundColor: dotColor }}
-      />
-      <Link
-        to={`/projects/${rel.project.id}`}
-        className={`truncate text-sm hover:underline ${
-          isDarkMode ? 'text-amber-400' : 'text-amber-text'
-        }`}
-      >
-        {rel.project.name}
-      </Link>
-      {typeSlug && (
-        <span className={`flex-shrink-0 text-[10px] ${muted}`}>{typeSlug}</span>
-      )}
-    </li>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Graph visualization                                               */
-/* ------------------------------------------------------------------ */
-
-interface RelationshipsGraphProps {
-  outbound: ProjectRelationship[]
-  inbound: ProjectRelationship[]
-  projectName: string
-  isDarkMode: boolean
-}
-
-/** Compute evenly-spaced Y positions centered around a midpoint. */
-function computeYPositions(count: number, centerY: number): number[] {
-  if (count === 0) return []
-  const maxStep = 90
-  const maxHeight = 320
-  const step = Math.min(maxStep, maxHeight / Math.max(count, 1))
-  const totalHeight = (count - 1) * step
-  const startY = centerY - totalHeight / 2
-  return Array.from({ length: count }, (_, i) => startY + i * step)
-}
-
-function truncateName(name: string, maxLen: number): string {
-  return name.length > maxLen ? name.slice(0, maxLen) + '...' : name
-}
-
-function RelationshipsGraph({
-  outbound,
-  inbound,
-  projectName,
-  isDarkMode,
-}: RelationshipsGraphProps) {
-  const centerX = 360
-  const centerY = 210
-  const centerR = 40
-  const neighborR = outbound.length > 5 || inbound.length > 5 ? 24 : 28
-  const outX = 140
-  const inX = 580
-
-  const labelColor = isDarkMode ? '#64748b' : '#94a3b8'
-  const lineColor = isDarkMode ? '#475569' : '#cbd5e1'
-  const centerFill = '#f59e0b'
-  const centerStroke = '#d97706'
-  const centerTextColor = isDarkMode ? '#1c1917' : '#1c1917'
-  const bgColor = isDarkMode ? '#1f2937' : '#ffffff'
-  const belowTextColor = isDarkMode ? '#d1d5db' : '#334155'
-
-  const outYs = computeYPositions(outbound.length, centerY)
-  const inYs = computeYPositions(inbound.length, centerY)
-
-  return (
-    <svg
-      viewBox="0 0 720 400"
-      preserveAspectRatio="xMidYMid meet"
-      className="w-full"
-      style={{ backgroundColor: bgColor }}
-    >
-      {/* Section labels */}
-      <text
-        x={outX}
-        y={36}
-        textAnchor="middle"
-        fill={labelColor}
-        fontSize="10"
-        letterSpacing="0.12em"
-        fontWeight="600"
-      >
-        DEPENDS ON
-      </text>
-      <text
-        x={inX}
-        y={36}
-        textAnchor="middle"
-        fill={labelColor}
-        fontSize="10"
-        letterSpacing="0.12em"
-        fontWeight="600"
-      >
-        DEPENDED ON BY
-      </text>
-
-      {/* Dashed connectors — outbound */}
-      {outbound.map((r, i) => (
-        <line
-          key={`line-out-${r.project.id}`}
-          x1={centerX}
-          y1={centerY}
-          x2={outX}
-          y2={outYs[i]}
-          stroke={lineColor}
-          strokeDasharray="4 4"
-          strokeWidth="1.5"
-        />
-      ))}
-
-      {/* Dashed connectors — inbound */}
-      {inbound.map((r, i) => (
-        <line
-          key={`line-in-${r.project.id}`}
-          x1={centerX}
-          y1={centerY}
-          x2={inX}
-          y2={inYs[i]}
-          stroke={lineColor}
-          strokeDasharray="4 4"
-          strokeWidth="1.5"
-        />
-      ))}
-
-      {/* Center node */}
-      <circle
-        cx={centerX}
-        cy={centerY}
-        r={centerR}
-        fill={centerFill}
-        stroke={centerStroke}
-        strokeWidth="2"
-      />
-      <text
-        x={centerX}
-        y={centerY}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fill={centerTextColor}
-        fontSize="10"
-        fontWeight="600"
-      >
-        {truncateName(projectName, 10)}
-      </text>
-
-      {/* Outbound neighbor nodes */}
-      {outbound.map((r, i) => (
-        <NeighborNode
-          key={`out-${r.project.id}`}
-          rel={r}
-          cx={outX}
-          cy={outYs[i]}
-          radius={neighborR}
-          belowTextColor={belowTextColor}
-          isDarkMode={isDarkMode}
-        />
-      ))}
-
-      {/* Inbound neighbor nodes */}
-      {inbound.map((r, i) => (
-        <NeighborNode
-          key={`in-${r.project.id}`}
-          rel={r}
-          cx={inX}
-          cy={inYs[i]}
-          radius={neighborR}
-          belowTextColor={belowTextColor}
-          isDarkMode={isDarkMode}
-        />
-      ))}
-    </svg>
-  )
-}
-
-function NeighborNode({
-  rel,
-  cx,
-  cy,
-  radius,
-  belowTextColor,
-}: {
-  rel: ProjectRelationship
-  cx: number
-  cy: number
-  radius: number
-  belowTextColor: string
-  isDarkMode: boolean
-}) {
-  const typeSlug = rel.project.project_type ?? ''
-  const fill = typeSlug ? getTypeColor(typeSlug) : '#94a3b8'
-
-  return (
-    <Link to={`/projects/${rel.project.id}`} className="cursor-pointer">
-      <g className="opacity-100 transition-opacity hover:opacity-80">
-        <circle cx={cx} cy={cy} r={radius} fill={fill} />
-        <text
-          x={cx}
-          y={cy + radius + 14}
-          textAnchor="middle"
-          fill={belowTextColor}
-          fontSize="10"
-        >
-          {truncateName(rel.project.name, 16)}
-        </text>
-      </g>
-    </Link>
+    <ProjectsGraphCanvas
+      projects={projects}
+      edges={edges}
+      isDarkMode={isDarkMode}
+      centerId={projectId}
+    />
   )
 }
 

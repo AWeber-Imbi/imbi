@@ -58,6 +58,7 @@ export interface Project {
   project_types?: {
     name: string
     slug: string
+    icon?: string | null
     organization: {
       name: string
       slug: string
@@ -737,6 +738,7 @@ export interface ProjectRelationshipSummary {
   slug: string
   namespace?: string | null
   project_type?: string | null
+  project_type_icon?: string | null
 }
 
 export interface ProjectRelationship {
