@@ -4,6 +4,7 @@ import {
   TrendingDown,
   Settings as SettingsIcon,
   ArrowRight,
+  Plus,
   Rocket,
 } from 'lucide-react'
 import { getIcon } from '@/lib/icons'
@@ -20,8 +21,9 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import {
@@ -31,7 +33,7 @@ import {
 } from '@/api/endpoints'
 import type { ProjectSchemaSection } from '@/api/endpoints'
 import { ProjectsGraphCanvas } from '@/components/ProjectsGraphCanvas'
-import type { Project } from '@/types'
+import type { Project, ProjectRelationship } from '@/types'
 
 interface ProjectDetailProps {
   project: Project
@@ -774,6 +776,8 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
   )
 }
 
+type RelFilter = 'all' | 'uses' | 'used-by'
+
 function RelationshipsTab({
   orgSlug,
   projectId,
@@ -789,6 +793,7 @@ function RelationshipsTab({
     queryKey: ['project-relationships', orgSlug, projectId],
     queryFn: () => getProjectRelationships(orgSlug, projectId),
   })
+  const [filter, setFilter] = useState<RelFilter>('all')
 
   const cardClass = `p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`
   const sub = isDarkMode ? 'text-gray-400' : 'text-slate-500'
@@ -816,14 +821,19 @@ function RelationshipsTab({
       </Card>
     )
   }
-  // Assemble the projects and edges for the shared graph canvas.
-  // Center node is the current project; neighbors come from the
-  // relationships response. Edges always point from the dependent
-  // to the depended-on project (center→out for outbound; in→center
-  // for inbound).
+
+  const outbound = rels.filter((r) => r.direction === 'outbound')
+  const inbound = rels.filter((r) => r.direction === 'inbound')
+  const outboundVisible = filter !== 'used-by'
+  const inboundVisible = filter !== 'uses'
+  const visibleOutbound = outboundVisible ? outbound : []
+  const visibleInbound = inboundVisible ? inbound : []
+
+  // Build projects and edges for the shared canvas, filtered by visibility.
+  const visibleRels = [...visibleOutbound, ...visibleInbound]
   const projects: Project[] = [
     project,
-    ...rels.map(
+    ...visibleRels.map(
       (r) =>
         ({
           id: r.project.id,
@@ -854,23 +864,177 @@ function RelationshipsTab({
     ),
   ]
 
-  const edges = rels.map((r) => {
-    const id =
-      r.direction === 'outbound'
-        ? `${projectId}->${r.project.id}`
-        : `${r.project.id}->${projectId}`
+  const edges = visibleRels.map((r) => {
     const source = r.direction === 'outbound' ? projectId : r.project.id
     const target = r.direction === 'outbound' ? r.project.id : projectId
-    return { id, source, target, label: 'depends on' }
+    return {
+      id: `${source}->${target}`,
+      source,
+      target,
+      label: 'depends on',
+    }
   })
 
   return (
-    <ProjectsGraphCanvas
-      projects={projects}
-      edges={edges}
-      isDarkMode={isDarkMode}
-      centerId={projectId}
-    />
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
+      <RelationshipsSidebar
+        outbound={outbound}
+        inbound={inbound}
+        outboundVisible={outboundVisible}
+        inboundVisible={inboundVisible}
+        filter={filter}
+        onFilterChange={setFilter}
+        isDarkMode={isDarkMode}
+      />
+      <ProjectsGraphCanvas
+        projects={projects}
+        edges={edges}
+        isDarkMode={isDarkMode}
+        centerId={projectId}
+      />
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sidebar                                                           */
+/* ------------------------------------------------------------------ */
+
+interface RelationshipsSidebarProps {
+  outbound: ProjectRelationship[]
+  inbound: ProjectRelationship[]
+  outboundVisible: boolean
+  inboundVisible: boolean
+  filter: RelFilter
+  onFilterChange: (f: RelFilter) => void
+  isDarkMode: boolean
+}
+
+function RelationshipsSidebar({
+  outbound,
+  inbound,
+  outboundVisible,
+  inboundVisible,
+  filter,
+  onFilterChange,
+  isDarkMode,
+}: RelationshipsSidebarProps) {
+  const sectionLabel = isDarkMode ? 'text-gray-500' : 'text-slate-400'
+  const sub = isDarkMode ? 'text-gray-400' : 'text-slate-500'
+
+  const chipBase =
+    'rounded-full px-3 py-1 text-xs font-medium transition-colors'
+  const chipSelected = 'bg-amber-500 text-white'
+  const chipUnselected = isDarkMode
+    ? 'border border-gray-600 text-gray-300 hover:border-gray-400'
+    : 'border border-slate-300 text-slate-600 hover:border-slate-400'
+
+  return (
+    <div
+      className={`w-full flex-shrink-0 rounded-lg border p-4 ${
+        isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-slate-200 bg-white'
+      }`}
+    >
+      {/* Filter chips */}
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {(['all', 'uses', 'used-by'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => onFilterChange(f)}
+            className={`${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
+          >
+            {f === 'all' ? 'All' : f === 'uses' ? 'Uses' : 'Used by'}
+          </button>
+        ))}
+        <button
+          disabled
+          className={`${chipBase} flex cursor-not-allowed items-center gap-1 opacity-50 ${chipUnselected}`}
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          Add
+        </button>
+      </div>
+
+      {/* Outbound (USES) section */}
+      {outboundVisible && (
+        <div className="mb-4">
+          <h4
+            className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
+          >
+            Uses
+          </h4>
+          {outbound.length === 0 ? (
+            <p className={`text-xs ${sub}`}>None</p>
+          ) : (
+            <ul className="space-y-1">
+              {outbound.map((r) => (
+                <SidebarProjectRow
+                  key={`out:${r.project.id}`}
+                  rel={r}
+                  isDarkMode={isDarkMode}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Inbound (USED BY) section */}
+      {inboundVisible && (
+        <div>
+          <h4
+            className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
+          >
+            Used by
+          </h4>
+          {inbound.length === 0 ? (
+            <p className={`text-xs ${sub}`}>None</p>
+          ) : (
+            <ul className="space-y-1">
+              {inbound.map((r) => (
+                <SidebarProjectRow
+                  key={`in:${r.project.id}`}
+                  rel={r}
+                  isDarkMode={isDarkMode}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SidebarProjectRow({
+  rel,
+  isDarkMode,
+}: {
+  rel: ProjectRelationship
+  isDarkMode: boolean
+}) {
+  const typeSlug = rel.project.project_type ?? ''
+  const muted = isDarkMode ? 'text-gray-500' : 'text-slate-400'
+
+  return (
+    <li className="flex items-center gap-2 py-1">
+      <span
+        className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${
+          isDarkMode ? 'bg-slate-500' : 'bg-slate-400'
+        }`}
+      />
+      <Link
+        to={`/projects/${rel.project.id}`}
+        className={`truncate text-sm hover:underline ${
+          isDarkMode ? 'text-amber-400' : 'text-amber-text'
+        }`}
+      >
+        {rel.project.name}
+      </Link>
+      {typeSlug && (
+        <span className={`flex-shrink-0 text-[10px] ${muted}`}>{typeSlug}</span>
+      )}
+    </li>
   )
 }
 
