@@ -31,8 +31,12 @@ import {
   getProjectSchema,
   getProjectRelationships,
 } from '@/api/endpoints'
+import { buildRelationshipEdges } from '@/lib/relationship-edges'
 import type { ProjectSchemaSection } from '@/api/endpoints'
-import { ProjectsGraphCanvas } from '@/components/ProjectsGraphCanvas'
+import {
+  ProjectsGraphCanvas,
+  type GraphProject,
+} from '@/components/ProjectsGraphCanvas'
 import type { Project, ProjectRelationship } from '@/types'
 
 interface ProjectDetailProps {
@@ -831,49 +835,30 @@ function RelationshipsTab({
 
   // Build projects and edges for the shared canvas, filtered by visibility.
   const visibleRels = [...visibleOutbound, ...visibleInbound]
-  const projects: Project[] = [
-    project,
-    ...visibleRels.map(
-      (r) =>
-        ({
-          id: r.project.id,
-          name: r.project.name,
-          slug: r.project.slug,
-          team: {
-            name: '',
-            slug: '',
-            organization: {
-              name: '',
-              slug: r.project.namespace ?? '',
+  const projects: GraphProject[] = [
+    {
+      id: project.id,
+      name: project.name,
+      project_types: project.project_types?.map((pt) => ({
+        slug: pt.slug,
+        icon: pt.icon ?? null,
+      })),
+    },
+    ...visibleRels.map((r) => ({
+      id: r.project.id,
+      name: r.project.name,
+      project_types: r.project.project_type
+        ? [
+            {
+              slug: r.project.project_type,
+              icon: r.project.project_type_icon ?? null,
             },
-          },
-          project_types: r.project.project_type
-            ? [
-                {
-                  name: r.project.project_type,
-                  slug: r.project.project_type,
-                  icon: r.project.project_type_icon ?? null,
-                  organization: {
-                    name: '',
-                    slug: r.project.namespace ?? '',
-                  },
-                },
-              ]
-            : [],
-        }) as Project,
-    ),
+          ]
+        : [],
+    })),
   ]
 
-  const edges = visibleRels.map((r) => {
-    const source = r.direction === 'outbound' ? projectId : r.project.id
-    const target = r.direction === 'outbound' ? r.project.id : projectId
-    return {
-      id: `${source}->${target}`,
-      source,
-      target,
-      label: 'depends on',
-    }
-  })
+  const edges = buildRelationshipEdges(projectId, visibleRels)
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">

@@ -2,8 +2,11 @@ import { useMemo } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { getProjectRelationships } from '@/api/endpoints'
 import { ProjectsGraphCanvas } from '@/components/ProjectsGraphCanvas'
-import type { Project, ProjectRelationshipsResponse } from '@/types'
-import type { GraphEdge } from 'reagraph'
+import {
+  buildRelationshipEdges,
+  type GraphEdge,
+} from '@/lib/relationship-edges'
+import type { Project } from '@/types'
 
 interface ProjectGraphViewProps {
   projects: Project[]
@@ -23,9 +26,6 @@ export function ProjectGraphView({
     return map
   }, [projects])
 
-  // Fetch relationships for every visible project in parallel. Each query is
-  // cached by ['project-relationships', orgSlug, projectId] and reuses data
-  // from the ProjectDetail tab when the user crosses between views.
   const relationshipQueries = useQueries({
     queries: projects.map((p) => {
       const orgSlug = p.team?.organization?.slug ?? ''
@@ -37,37 +37,26 @@ export function ProjectGraphView({
     }),
   })
 
-  // Extract the underlying data array. React Query keeps .data referentially
-  // stable across renders when the payload is unchanged, so depending on
-  // relationshipsData keeps the useMemo from re-running on every render.
-  const relationshipsData = relationshipQueries.map((q) => q.data)
+  const relationshipsData = useMemo(
+    () => relationshipQueries.map((q) => q.data),
+    // Depend on each individual .data — React Query keeps these
+    // references stable across renders when the payload is unchanged.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    relationshipQueries.map((q) => q.data),
+  )
 
-  const edges: GraphEdge[] = useMemo(() => {
+  const edges = useMemo(() => {
     const seen = new Set<string>()
     const result: GraphEdge[] = []
-
     projects.forEach((p, index) => {
-      const response = relationshipsData[index] as
-        | ProjectRelationshipsResponse
-        | undefined
+      const response = relationshipsData[index]
       if (!response) return
-      const sourceId = p.id
-      for (const rel of response.relationships) {
-        // Only render OUTBOUND edges from each node's perspective — inbound
-        // edges from other projects will show up when we iterate those
-        // projects' outbound lists, so rendering both would double-count.
-        if (rel.direction !== 'outbound') continue
-        const targetId = idToNodeId.get(rel.project.id)
-        if (!targetId) continue
-        const edgeId = `${sourceId}->${targetId}`
-        if (seen.has(edgeId)) continue
-        seen.add(edgeId)
-        result.push({
-          id: edgeId,
-          source: sourceId,
-          target: targetId,
-          label: 'depends on',
-        })
+      for (const edge of buildRelationshipEdges(p.id, response.relationships)) {
+        if (edge.source !== p.id) continue
+        if (!idToNodeId.get(edge.target)) continue
+        if (seen.has(edge.id)) continue
+        seen.add(edge.id)
+        result.push(edge)
       }
     })
     return result

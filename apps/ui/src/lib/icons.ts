@@ -61,6 +61,18 @@ function buildAwsIndex(): Record<string, string> {
 
 const awsIndex = buildAwsIndex()
 
+function resolveAwsUrl(iconName: string): string | null {
+  const key = iconName.toLowerCase()
+  const direct = awsIndex[key]
+  if (direct) return direct
+  for (const [k, u] of Object.entries(awsIndex)) {
+    if (k.endsWith(key)) return u
+  }
+  return null
+}
+
+const iconUrlCache = new Map<string, string | null>()
+
 /** Create a React component that renders an <img> for an AWS SVG icon URL. */
 function createAwsImgComponent(url: string): IconComponent {
   const AwsIcon: IconComponent = (props) => {
@@ -118,13 +130,8 @@ export function getIcon(
 
   // AWS Icons: aws-lambda, aws-systems-manager-parameter-store
   if (iconName.startsWith('aws-')) {
-    const key = iconName.toLowerCase()
-    const url = awsIndex[key]
+    const url = resolveAwsUrl(iconName)
     if (url) return createAwsImgComponent(url)
-    // Try partial match (suffix)
-    for (const [k, u] of Object.entries(awsIndex)) {
-      if (k.endsWith(key)) return createAwsImgComponent(u)
-    }
     return fallback
   }
 
@@ -147,16 +154,18 @@ export function getIcon(
  */
 export function getIconUrl(iconName: string | null | undefined): string | null {
   if (!iconName) return null
+  const cached = iconUrlCache.get(iconName)
+  if (cached !== undefined) return cached
 
+  const result = computeIconUrl(iconName)
+  iconUrlCache.set(iconName, result)
+  return result
+}
+
+function computeIconUrl(iconName: string): string | null {
   // AWS icons: direct URL from pre-built index
   if (iconName.startsWith('aws-')) {
-    const key = iconName.toLowerCase()
-    const direct = awsIndex[key]
-    if (direct) return direct
-    for (const [k, u] of Object.entries(awsIndex)) {
-      if (k.endsWith(key)) return u
-    }
-    return null
+    return resolveAwsUrl(iconName)
   }
 
   // Lucide / Simple Icons: render component → SVG markup → data URL
@@ -164,12 +173,8 @@ export function getIconUrl(iconName: string | null | undefined): string | null {
   if (!Component) return null
   try {
     const markup = renderToStaticMarkup(
-      createElement(Component, {
-        width: 32,
-        height: 32,
-      }),
+      createElement(Component, { width: 32, height: 32 }),
     )
-    // base64-encode. Use globalThis.btoa; unescape UTF-8 path for safety.
     const encoded =
       typeof btoa === 'function'
         ? btoa(unescape(encodeURIComponent(markup)))

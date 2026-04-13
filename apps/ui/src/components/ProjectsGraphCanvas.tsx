@@ -26,7 +26,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { getIconUrl } from '@/lib/icons'
-import type { Project } from '@/types'
+
+export interface GraphProject {
+  id: string
+  name: string
+  project_types?: {
+    slug: string
+    icon?: string | null
+  }[]
+}
 
 const LAYOUT_OPTIONS: { label: string; value: LayoutTypes }[] = [
   { label: 'Force Directed', value: 'forceDirected2d' },
@@ -72,7 +80,7 @@ function largestComponent(
 }
 
 interface ProjectsGraphCanvasProps {
-  projects: Project[]
+  projects: GraphProject[]
   edges: GraphEdge[]
   isDarkMode: boolean
   centerId?: string
@@ -135,9 +143,8 @@ export function ProjectsGraphCanvas({
       if (!controls) return
       setCurrentZoom(Math.round((ZOOM_100_DISTANCE / controls.distance) * 100))
       const onUpdate = () => {
-        setCurrentZoom(
-          Math.round((ZOOM_100_DISTANCE / controls.distance) * 100),
-        )
+        const next = Math.round((ZOOM_100_DISTANCE / controls.distance) * 100)
+        setCurrentZoom((prev) => (prev === next ? prev : next))
       }
       controls.addEventListener('update', onUpdate)
       removeListener = () => controls.removeEventListener('update', onUpdate)
@@ -202,7 +209,7 @@ export function ProjectsGraphCanvas({
 
   const handleNodeDoubleClick = useCallback(
     (node: InternalGraphNode) => {
-      const p = node.data as Project
+      const p = node.data as GraphProject
       navigate(`/projects/${p.id}`)
     },
     [navigate],
