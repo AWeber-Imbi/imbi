@@ -16,6 +16,7 @@ import {
   Shrink,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useQueries } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import {
@@ -24,7 +25,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { Project } from '@/types'
+import { getProjectRelationships } from '@/api/endpoints'
+import type { Project, ProjectRelationshipsResponse } from '@/types'
 import type { InternalGraphNode } from 'reagraph'
 
 const LAYOUT_OPTIONS: { label: string; value: LayoutTypes }[] = [
@@ -199,29 +201,55 @@ export function ProjectGraphView({
     return map
   }, [projects])
 
+  // Fetch relationships for every visible project in parallel. Each query is
+  // cached by ['project-relationships', orgSlug, projectId] and reuses data
+  // from the ProjectDetail tab when the user crosses between views.
+  const relationshipQueries = useQueries({
+    queries: projects.map((p) => {
+      const orgSlug = p.team?.organization?.slug ?? ''
+      return {
+        queryKey: ['project-relationships', orgSlug, p.id],
+        queryFn: () => getProjectRelationships(orgSlug, p.id),
+        enabled: Boolean(orgSlug && p.id),
+      }
+    }),
+  })
+
   const edges = useMemo(() => {
     const seen = new Set<string>()
-    return projects.flatMap((p) => {
+    const result: {
+      id: string
+      source: string
+      target: string
+      label: string
+    }[] = []
+
+    projects.forEach((p, index) => {
+      const response = relationshipQueries[index]?.data as
+        | ProjectRelationshipsResponse
+        | undefined
+      if (!response) return
       const sourceId = p.id
-      return [...new Set(p.dependency_uris ?? [])].flatMap((uri) => {
-        // URI format: /organizations/<org>/projects/<id>
-        const depId = uri.split('/').pop() || ''
-        const targetId = idToNodeId.get(depId)
-        if (!targetId) return []
+      for (const rel of response.relationships) {
+        // Only render OUTBOUND edges from each node's perspective — inbound
+        // edges from other projects will show up when we iterate those
+        // projects' outbound lists, so rendering both would double-count.
+        if (rel.direction !== 'outbound') continue
+        const targetId = idToNodeId.get(rel.project.id)
+        if (!targetId) continue
         const edgeId = `${sourceId}->${targetId}`
-        if (seen.has(edgeId)) return []
+        if (seen.has(edgeId)) continue
         seen.add(edgeId)
-        return [
-          {
-            id: edgeId,
-            source: sourceId,
-            target: targetId,
-            label: 'depends on',
-          },
-        ]
-      })
+        result.push({
+          id: edgeId,
+          source: sourceId,
+          target: targetId,
+          label: 'depends on',
+        })
+      }
     })
-  }, [projects, idToNodeId])
+    return result
+  }, [projects, idToNodeId, relationshipQueries])
 
   const {
     selections,
@@ -360,8 +388,8 @@ export function ProjectGraphView({
           <span
             className={`ml-auto text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
           >
-            {nodes.length} projects · {edges.length} dependencies · Double-click
-            to open
+            {nodes.length} projects · {edges.length} relationships ·
+            Double-click to open
           </span>
         </div>
 

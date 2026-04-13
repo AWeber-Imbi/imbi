@@ -4,6 +4,7 @@ import {
   TrendingDown,
   Settings as SettingsIcon,
   ArrowRight,
+  ArrowLeft,
   Rocket,
 } from 'lucide-react'
 import { getIcon } from '@/lib/icons'
@@ -24,9 +25,14 @@ import { useMemo } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { useQuery } from '@tanstack/react-query'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { listLinkDefinitions, getProjectSchema } from '@/api/endpoints'
+import {
+  listLinkDefinitions,
+  getProjectSchema,
+  getProjectRelationships,
+} from '@/api/endpoints'
 import type { ProjectSchemaSection } from '@/api/endpoints'
-import type { Project } from '@/types'
+import type { Project, ProjectRelationship } from '@/types'
+import { Link } from 'react-router-dom'
 
 interface ProjectDetailProps {
   project: Project
@@ -37,7 +43,7 @@ type TabType =
   | 'overview'
   | 'configuration'
   | 'components'
-  | 'dependencies'
+  | 'relationships'
   | 'logs'
   | 'notes'
   | 'operations-log'
@@ -315,8 +321,12 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
     { id: 'components', label: 'Components' },
     { id: 'configuration', label: 'Configuration' },
     {
-      id: 'dependencies',
-      label: `Dependencies (${project.relationships?.dependencies?.count ?? 0})`,
+      id: 'relationships',
+      label: (() => {
+        const rel = project.relationships
+        const total = (rel?.inbound_count ?? 0) + (rel?.outbound_count ?? 0)
+        return `Relationships (${total})`
+      })(),
     },
     { id: 'logs', label: 'Logs' },
     { id: 'notes', label: 'Notes' },
@@ -737,8 +747,12 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
         <TabsContent value="configuration">
           <PlaceholderTab name="Configuration" isDarkMode={isDarkMode} />
         </TabsContent>
-        <TabsContent value="dependencies">
-          <PlaceholderTab name="Dependencies" isDarkMode={isDarkMode} />
+        <TabsContent value="relationships">
+          <RelationshipsTab
+            orgSlug={project.team.organization.slug}
+            projectId={project.id}
+            isDarkMode={isDarkMode}
+          />
         </TabsContent>
         <TabsContent value="components">
           <PlaceholderTab name="Components" isDarkMode={isDarkMode} />
@@ -756,6 +770,101 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
           <PlaceholderTab name="Settings" isDarkMode={isDarkMode} />
         </TabsContent>
       </Tabs>
+    </div>
+  )
+}
+
+function RelationshipsTab({
+  orgSlug,
+  projectId,
+  isDarkMode,
+}: {
+  orgSlug: string
+  projectId: string
+  isDarkMode: boolean
+}) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['project-relationships', orgSlug, projectId],
+    queryFn: () => getProjectRelationships(orgSlug, projectId),
+  })
+
+  const cardClass = `p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`
+  const heading = isDarkMode ? 'text-white' : 'text-slate-900'
+  const sub = isDarkMode ? 'text-gray-400' : 'text-slate-500'
+
+  if (isLoading) {
+    return (
+      <Card className={cardClass}>
+        <p className={sub}>Loading relationships…</p>
+      </Card>
+    )
+  }
+  if (error) {
+    return (
+      <Card className={cardClass}>
+        <p className={sub}>Failed to load relationships.</p>
+      </Card>
+    )
+  }
+
+  const rels: ProjectRelationship[] = data?.relationships ?? []
+  if (rels.length === 0) {
+    return (
+      <Card className={cardClass}>
+        <p className={sub}>This project has no relationships.</p>
+      </Card>
+    )
+  }
+
+  const outbound = rels.filter((r) => r.direction === 'outbound')
+  const inbound = rels.filter((r) => r.direction === 'inbound')
+
+  const renderRow = (r: ProjectRelationship, icon: 'out' | 'in') => (
+    <li
+      key={`${r.direction}:${r.project.id}`}
+      className={`flex items-center gap-2 border-b py-2 last:border-b-0 ${
+        isDarkMode ? 'border-gray-700' : 'border-slate-100'
+      }`}
+    >
+      {icon === 'out' ? (
+        <ArrowRight className="h-4 w-4 text-slate-400" />
+      ) : (
+        <ArrowLeft className="h-4 w-4 text-slate-400" />
+      )}
+      <Link
+        to={`/projects/${r.project.id}`}
+        className={`text-sm hover:underline ${
+          isDarkMode ? 'text-amber-400' : 'text-amber-text'
+        }`}
+      >
+        {r.project.name}
+      </Link>
+      {r.project.project_type && (
+        <Badge variant="outline" className="ml-2">
+          {r.project.project_type}
+        </Badge>
+      )}
+    </li>
+  )
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <Card className={cardClass}>
+        <h3 className={`mb-3 ${heading}`}>Depends on ({outbound.length})</h3>
+        {outbound.length === 0 ? (
+          <p className={sub}>This project depends on nothing.</p>
+        ) : (
+          <ul>{outbound.map((r) => renderRow(r, 'out'))}</ul>
+        )}
+      </Card>
+      <Card className={cardClass}>
+        <h3 className={`mb-3 ${heading}`}>Depended on by ({inbound.length})</h3>
+        {inbound.length === 0 ? (
+          <p className={sub}>No projects depend on this one.</p>
+        ) : (
+          <ul>{inbound.map((r) => renderRow(r, 'in'))}</ul>
+        )}
+      </Card>
     </div>
   )
 }

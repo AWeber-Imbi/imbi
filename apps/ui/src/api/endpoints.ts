@@ -56,6 +56,7 @@ import type {
   WebhookCreate,
   ProjectService,
   ProjectServiceCreate,
+  ProjectRelationshipsResponse,
 } from '@/types'
 
 // Status/Health
@@ -130,6 +131,11 @@ export interface ProjectSchemaResponse {
 export const getProjectSchema = (orgSlug: string, projectId: string) =>
   apiClient.get<ProjectSchemaResponse>(
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/schema`,
+  )
+
+export const getProjectRelationships = (orgSlug: string, projectId: string) =>
+  apiClient.get<ProjectRelationshipsResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships`,
   )
 
 export const createProject = (
