@@ -39,7 +39,7 @@ export function ProjectGraphView({
   })
 
   const isAnyLoading = relationshipQueries.some((q) => q.isLoading)
-  const failedQueries = relationshipQueries.filter((q) => q.isError)
+  const failedQueries = relationshipQueries.filter((q) => q.isError && !q.data)
 
   const relationshipsData = useMemo(
     () => relationshipQueries.map((q) => q.data),

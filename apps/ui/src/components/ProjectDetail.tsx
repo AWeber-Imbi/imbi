@@ -793,7 +793,7 @@ function RelationshipsTab({
   project: Project
   isDarkMode: boolean
 }) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['project-relationships', orgSlug, projectId],
     queryFn: () => getProjectRelationships(orgSlug, projectId),
   })
@@ -809,7 +809,7 @@ function RelationshipsTab({
       </Card>
     )
   }
-  if (error) {
+  if (isError && !data) {
     return (
       <Card className={cardClass}>
         <p className={sub}>Failed to load relationships.</p>
@@ -971,9 +971,9 @@ function RelationshipsSidebar({
             <p className={`text-xs ${sub}`}>None</p>
           ) : (
             <ul className="space-y-1">
-              {outbound.map((r) => (
+              {outbound.map((r, i) => (
                 <SidebarProjectRow
-                  key={`out:${r.project.id}`}
+                  key={`out:${r.project.id}:${i}`}
                   rel={r}
                   isDarkMode={isDarkMode}
                 />
@@ -995,9 +995,9 @@ function RelationshipsSidebar({
             <p className={`text-xs ${sub}`}>None</p>
           ) : (
             <ul className="space-y-1">
-              {inbound.map((r) => (
+              {inbound.map((r, i) => (
                 <SidebarProjectRow
-                  key={`in:${r.project.id}`}
+                  key={`in:${r.project.id}:${i}`}
                   rel={r}
                   isDarkMode={isDarkMode}
                 />
