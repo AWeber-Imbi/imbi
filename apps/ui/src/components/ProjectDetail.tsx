@@ -834,31 +834,50 @@ function RelationshipsTab({
   const visibleInbound = inboundVisible ? inbound : []
 
   // Build projects and edges for the shared canvas, filtered by visibility.
+  // Deduplicate: a related project can appear in both inbound and outbound.
   const visibleRels = [...visibleOutbound, ...visibleInbound]
-  const projects: GraphProject[] = [
-    {
-      id: project.id,
-      name: project.name,
-      project_types: project.project_types?.map((pt) => ({
-        slug: pt.slug,
-        icon: pt.icon ?? null,
-      })),
-    },
-    ...visibleRels.map((r) => ({
-      id: r.project.id,
-      name: r.project.name,
-      project_types: r.project.project_type
-        ? [
+  const projects: GraphProject[] = Array.from(
+    new Map<string, GraphProject>([
+      [
+        project.id,
+        {
+          id: project.id,
+          name: project.name,
+          project_types: project.project_types?.map((pt) => ({
+            slug: pt.slug,
+            icon: pt.icon ?? null,
+          })),
+        },
+      ],
+      ...visibleRels.map(
+        (r) =>
+          [
+            r.project.id,
             {
-              slug: r.project.project_type,
-              icon: r.project.project_type_icon ?? null,
+              id: r.project.id,
+              name: r.project.name,
+              project_types: r.project.project_type
+                ? [
+                    {
+                      slug: r.project.project_type,
+                      icon: r.project.project_type_icon ?? null,
+                    },
+                  ]
+                : [],
             },
-          ]
-        : [],
-    })),
-  ]
+          ] as [string, GraphProject],
+      ),
+    ]).values(),
+  )
 
-  const edges = buildRelationshipEdges(projectId, visibleRels)
+  const edges = Array.from(
+    new Map(
+      buildRelationshipEdges(projectId, visibleRels).map((edge) => [
+        edge.id,
+        edge,
+      ]),
+    ).values(),
+  )
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
