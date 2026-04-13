@@ -87,7 +87,7 @@ export function ProjectsGraphCanvas({
   const navigate = useNavigate()
   const ref = useRef<GraphCanvasRef | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [layout, setLayout] = useState<LayoutTypes>('forceatlas2')
+  const [layout, setLayout] = useState<LayoutTypes>('concentric2d')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [currentZoom, setCurrentZoom] = useState(100)
   const [isRendering, setIsRendering] = useState(true)
