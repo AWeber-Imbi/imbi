@@ -18,14 +18,8 @@ export function ProjectGraphView({
   projects,
   isDarkMode,
 }: ProjectGraphViewProps) {
-  // Map project ID → node ID for edge resolution.
-  const idToNodeId = useMemo(() => {
-    const map = new Map<string, string>()
-    projects.forEach((p) => {
-      map.set(p.id, p.id)
-    })
-    return map
-  }, [projects])
+  // Set of project IDs for edge target existence checks.
+  const idSet = useMemo(() => new Set(projects.map((p) => p.id)), [projects])
 
   const relationshipQueries = useQueries({
     queries: projects.map((p) => {
@@ -57,14 +51,14 @@ export function ProjectGraphView({
       if (!response) return
       for (const edge of buildRelationshipEdges(p.id, response.relationships)) {
         if (edge.source !== p.id) continue
-        if (!idToNodeId.get(edge.target)) continue
+        if (!idSet.has(edge.target)) continue
         if (seen.has(edge.id)) continue
         seen.add(edge.id)
         result.push(edge)
       }
     })
     return result
-  }, [projects, idToNodeId, relationshipsData])
+  }, [projects, idSet, relationshipsData])
 
   const sub = isDarkMode ? 'text-gray-400' : 'text-slate-500'
   const cardClass = `flex items-center justify-center p-12 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`
