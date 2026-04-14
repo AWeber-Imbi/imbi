@@ -28,32 +28,38 @@ const awsResGlob = import.meta.glob<string>(
   { eager: true, import: 'default', query: '?url' },
 )
 
+interface AwsEntry {
+  url: string
+  label: string
+}
+
 /**
- * Build a lookup map from normalized name → SVG URL.
+ * Build a lookup map from normalized name → { url, label }.
  *
- * Architecture icons:  Arch_AWS-Lambda_64.svg → "aws-lambda"
- * Resource icons:      Res_AWS-Systems-Manager_Parameter-Store_48_Light.svg → "aws-systems-manager-parameter-store"
+ * Architecture icons:  Arch_AWS-Lambda_64.svg → key "aws-lambda", label "AWS Lambda"
+ * Resource icons:      Res_AWS-Systems-Manager_Parameter-Store_48_Light.svg → key "aws-systems-manager-parameter-store"
  */
-function buildAwsIndex(): Record<string, string> {
-  const index: Record<string, string> = {}
+function buildAwsIndex(): Record<string, AwsEntry> {
+  const index: Record<string, AwsEntry> = {}
 
   for (const [path, url] of Object.entries(awsArchGlob)) {
-    // Extract filename: Arch_AWS-Lambda_64.svg → AWS-Lambda
     const filename = path.split('/').pop()!
     const match = filename.match(/^Arch_(.+)_64\.svg$/)
     if (!match) continue
-    const name = match[1].toLowerCase()
-    index[name] = url
+    const raw = match[1] // e.g. "AWS-Lambda"
+    const name = raw.toLowerCase()
+    const label = raw.replace(/-/g, ' ')
+    index[name] = { url, label }
   }
 
   for (const [path, url] of Object.entries(awsResGlob)) {
-    // Extract filename: Res_AWS-Systems-Manager_Parameter-Store_48_Light.svg → AWS-Systems-Manager_Parameter-Store
     const filename = path.split('/').pop()!
     const match = filename.match(/^Res_(.+)_48_Light\.svg$/)
     if (!match) continue
-    // Normalize underscores to hyphens for consistent lookup
-    const name = match[1].replace(/_/g, '-').toLowerCase()
-    index[name] = url
+    const raw = match[1] // e.g. "AWS-Systems-Manager_Parameter-Store"
+    const name = raw.replace(/_/g, '-').toLowerCase()
+    const label = raw.replace(/[_-]/g, ' ')
+    index[name] = { url, label }
   }
 
   return index
@@ -61,21 +67,31 @@ function buildAwsIndex(): Record<string, string> {
 
 const awsIndex = buildAwsIndex()
 
+/** AWS icon entries for use in the icon picker. */
+export const AWS_ICONS: { label: string; value: string }[] = Object.entries(
+  awsIndex,
+)
+  .map(([key, entry]) => ({ label: entry.label, value: key }))
+  .sort((a, b) => a.label.localeCompare(b.label))
+
+/** Set of all AWS icon keys for fast membership checks. */
+const awsIconNames = new Set(Object.keys(awsIndex))
+
 function resolveAwsUrl(iconName: string): string | null {
   const key = iconName.toLowerCase()
   const direct = awsIndex[key]
-  if (direct) return direct
-  for (const [k, u] of Object.entries(awsIndex)) {
-    if (k.endsWith(key)) return u
+  if (direct) return direct.url
+  for (const [k, entry] of Object.entries(awsIndex)) {
+    if (k.endsWith(key)) return entry.url
   }
   return null
 }
 
 const iconUrlCache = new Map<string, string | null>()
 
-/** Create a React component that renders an <img> for an AWS SVG icon URL. */
-function createAwsImgComponent(url: string): IconComponent {
-  const AwsIcon: IconComponent = (props) => {
+/** Create a React component that renders an <img> for a given URL. */
+function createImgComponent(url: string): IconComponent {
+  const ImgIcon: IconComponent = (props) => {
     const { className, width, height, ...rest } = props as Record<
       string,
       unknown
@@ -89,7 +105,7 @@ function createAwsImgComponent(url: string): IconComponent {
       ...rest,
     })
   }
-  return AwsIcon
+  return ImgIcon
 }
 
 const siLookup = simpleIcons as Record<string, unknown>
@@ -128,11 +144,26 @@ export function getIcon(
     return fallback
   }
 
-  // AWS Icons: aws-lambda, aws-systems-manager-parameter-store
-  if (iconName.startsWith('aws-')) {
+  // Lucide Icons: lucide-external-link → ExternalLink
+  if (iconName.startsWith('lucide-')) {
+    const name = toPascalCase(iconName.slice(7)) as keyof typeof lucideIcons
+    return (lucideIcons[name] as IconComponent) || fallback
+  }
+
+  // AWS Icons: aws-lambda, amazon-s3, bottlerocket, etc.
+  if (awsIconNames.has(iconName)) {
     const url = resolveAwsUrl(iconName)
-    if (url) return createAwsImgComponent(url)
+    if (url) return createImgComponent(url)
     return fallback
+  }
+
+  // Uploaded files or absolute URLs → render as <img>
+  if (
+    iconName.startsWith('/uploads/') ||
+    iconName.startsWith('http://') ||
+    iconName.startsWith('https://')
+  ) {
+    return createImgComponent(iconName)
   }
 
   // Lucide: external-link → ExternalLink
@@ -152,19 +183,34 @@ export function getIcon(
  * caller can tint by setting the color on an enclosing element. Colors in
  * Simple Icons are baked in (they ship colored SVGs).
  */
-export function getIconUrl(iconName: string | null | undefined): string | null {
+export function getIconUrl(
+  iconName: string | null | undefined,
+  color?: string,
+): string | null {
   if (!iconName) return null
-  const cached = iconUrlCache.get(iconName)
+  const cacheKey = color ? `${iconName}@${color}` : iconName
+  const cached = iconUrlCache.get(cacheKey)
   if (cached !== undefined) return cached
 
-  const result = computeIconUrl(iconName)
-  iconUrlCache.set(iconName, result)
+  const result = computeIconUrl(iconName, color)
+  iconUrlCache.set(cacheKey, result)
   return result
 }
 
-function computeIconUrl(iconName: string): string | null {
+function computeIconUrl(iconName: string, color?: string): string | null {
+  // Uploaded files: /uploads/{id} → resolve via API base URL
+  if (iconName.startsWith('/uploads/')) {
+    const baseUrl = import.meta.env.VITE_API_URL || '/api'
+    return `${baseUrl}${iconName}`
+  }
+
+  // Absolute URLs: already a full image URL
+  if (iconName.startsWith('http://') || iconName.startsWith('https://')) {
+    return iconName
+  }
+
   // AWS icons: direct URL from pre-built index
-  if (iconName.startsWith('aws-')) {
+  if (awsIconNames.has(iconName)) {
     return resolveAwsUrl(iconName)
   }
 
@@ -173,7 +219,11 @@ function computeIconUrl(iconName: string): string | null {
   if (!Component) return null
   try {
     const markup = renderToStaticMarkup(
-      createElement(Component, { width: 32, height: 32 }),
+      createElement(Component, {
+        width: 128,
+        height: 128,
+        ...(color ? { color } : {}),
+      }),
     )
     const encoded =
       typeof btoa === 'function'

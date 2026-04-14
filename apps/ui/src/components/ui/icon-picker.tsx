@@ -1,9 +1,9 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { Search, X } from 'lucide-react'
+import { Search, X, icons as lucideIcons } from 'lucide-react'
 import * as simpleIcons from '@icons-pack/react-simple-icons'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { getIcon } from '@/lib/icons'
+import { getIcon, AWS_ICONS } from '@/lib/icons'
 import type { ComponentType, SVGProps } from 'react'
 
 type IconComponent = ComponentType<
@@ -17,6 +17,8 @@ interface IconEntry {
   value: string
 }
 
+type IconSet = 'simple' | 'lucide' | 'aws'
+
 // Build the index once at module level
 const siLookup = simpleIcons as Record<string, unknown>
 const SI_ICONS: IconEntry[] = Object.keys(siLookup)
@@ -26,6 +28,16 @@ const SI_ICONS: IconEntry[] = Object.keys(siLookup)
     const raw = k.slice(2)
     const kebab = raw.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
     return { label: raw, value: `si-${kebab}` }
+  })
+  .sort((a, b) => a.label.localeCompare(b.label))
+
+// Build the Lucide icon index
+const LUCIDE_ICONS: IconEntry[] = Object.keys(lucideIcons)
+  .filter((k) => k !== 'default' && k !== 'icons' && k !== 'createLucideIcon')
+  .map((k) => {
+    // ExternalLink → external-link
+    const kebab = k.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+    return { label: k, value: `lucide-${kebab}` }
   })
   .sort((a, b) => a.label.localeCompare(b.label))
 
@@ -40,21 +52,31 @@ interface IconPickerProps {
 export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [iconSet, setIconSet] = useState<IconSet>('simple')
   const containerRef = useRef<HTMLDivElement>(null)
 
+  const icons =
+    iconSet === 'simple'
+      ? SI_ICONS
+      : iconSet === 'lucide'
+        ? LUCIDE_ICONS
+        : AWS_ICONS
+
   const filtered = useMemo(() => {
-    if (!query.trim()) return SI_ICONS.slice(0, MAX_RESULTS)
+    if (!query.trim()) return icons.slice(0, MAX_RESULTS)
     const q = query.toLowerCase()
     const qNoSpace = q.replace(/\s+/g, '')
     const qHyphen = q.replace(/\s+/g, '-')
-    return SI_ICONS.filter(
-      (i) =>
-        i.label.toLowerCase().includes(q) ||
-        i.label.toLowerCase().includes(qNoSpace) ||
-        i.value.includes(q) ||
-        i.value.includes(qHyphen),
-    ).slice(0, MAX_RESULTS)
-  }, [query])
+    return icons
+      .filter(
+        (i) =>
+          i.label.toLowerCase().includes(q) ||
+          i.label.toLowerCase().includes(qNoSpace) ||
+          i.value.includes(q) ||
+          i.value.includes(qHyphen),
+      )
+      .slice(0, MAX_RESULTS)
+  }, [query, icons])
 
   const handleSelect = useCallback(
     (iconValue: string) => {
@@ -153,6 +175,35 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
           }`}
         >
           <div className="p-2">
+            <div className="mb-2 flex gap-1">
+              {(
+                [
+                  ['simple', 'Simple Icons'],
+                  ['lucide', 'Lucide'],
+                  ['aws', 'AWS'],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setIconSet(key)
+                    setQuery('')
+                  }}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    iconSet === key
+                      ? isDarkMode
+                        ? 'bg-blue-600/30 text-blue-300'
+                        : 'bg-blue-50 text-blue-700'
+                      : isDarkMode
+                        ? 'text-gray-400 hover:text-gray-200'
+                        : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="relative">
               <Search
                 className={`absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 ${

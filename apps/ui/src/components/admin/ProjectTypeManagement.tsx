@@ -5,6 +5,7 @@ import { Plus, Search, Trash2, Layers, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { ProjectTypeForm } from './project-types/ProjectTypeForm'
 import { ProjectTypeDetail } from './project-types/ProjectTypeDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -297,9 +298,8 @@ export function ProjectTypeManagement({
                         }`}
                       >
                         {pt.icon ? (
-                          <img
-                            src={pt.icon}
-                            alt=""
+                          <EntityIcon
+                            icon={pt.icon}
                             className="h-5 w-5 rounded object-cover"
                           />
                         ) : (

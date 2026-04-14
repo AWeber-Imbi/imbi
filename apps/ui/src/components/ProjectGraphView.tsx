@@ -86,10 +86,16 @@ export function ProjectGraphView({
   }
 
   return (
-    <ProjectsGraphCanvas
-      projects={projects}
-      edges={edges}
-      isDarkMode={isDarkMode}
-    />
+    <div
+      style={{
+        height: 'calc(100vh - 280px - var(--assistant-height, 64px))',
+      }}
+    >
+      <ProjectsGraphCanvas
+        projects={projects}
+        edges={edges}
+        isDarkMode={isDarkMode}
+      />
+    </div>
   )
 }

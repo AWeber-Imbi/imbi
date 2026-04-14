@@ -8,7 +8,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { getProject } from '@/api/endpoints'
 
 export function ProjectDetailPage() {
-  const { projectId } = useParams<{ projectId: string }>()
+  const { projectId, tab } = useParams<{ projectId: string; tab?: string }>()
   const { selectedOrganization } = useOrganization()
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const stored = localStorage.getItem('imbi-theme')
@@ -69,7 +69,11 @@ export function ProjectDetailPage() {
             </div>
           )}
           {project && (
-            <ProjectDetail project={project} isDarkMode={isDarkMode} />
+            <ProjectDetail
+              project={project}
+              isDarkMode={isDarkMode}
+              initialTab={tab}
+            />
           )}
         </main>
         <CommandBar isDarkMode={isDarkMode} />

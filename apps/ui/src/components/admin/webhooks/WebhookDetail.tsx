@@ -1,6 +1,6 @@
 import { ArrowLeft, Edit2, Webhook } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getIcon } from '@/lib/icons'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import type { Webhook as WebhookType } from '@/types'
 
 interface WebhookDetailProps {
@@ -32,26 +32,10 @@ export function WebhookDetail({
           <div>
             <div className="flex items-center gap-3">
               {webhook.icon ? (
-                webhook.icon.startsWith('/uploads/') ? (
-                  <img
-                    src={webhook.icon}
-                    alt=""
-                    className="h-8 w-8 rounded object-cover"
-                  />
-                ) : (
-                  (() => {
-                    const Icon = getIcon(webhook.icon, null)
-                    return Icon ? (
-                      <Icon className="h-8 w-8" />
-                    ) : (
-                      <img
-                        src={webhook.icon}
-                        alt=""
-                        className="h-8 w-8 rounded object-cover"
-                      />
-                    )
-                  })()
-                )
+                <EntityIcon
+                  icon={webhook.icon}
+                  className="h-8 w-8 rounded object-cover"
+                />
               ) : (
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-lg ${

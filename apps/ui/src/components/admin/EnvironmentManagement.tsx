@@ -5,6 +5,7 @@ import { Plus, Search, Trash2, Globe, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { EnvironmentForm } from './environments/EnvironmentForm'
 import { EnvironmentDetail } from './environments/EnvironmentDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -309,9 +310,8 @@ export function EnvironmentManagement({
                         }`}
                       >
                         {env.icon ? (
-                          <img
-                            src={env.icon}
-                            alt=""
+                          <EntityIcon
+                            icon={env.icon}
                             className="h-5 w-5 rounded object-cover"
                           />
                         ) : (

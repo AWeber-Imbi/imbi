@@ -26,6 +26,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { getIconUrl } from '@/lib/icons'
+import {
+  EDGE_COLOR_DEPENDS_ON,
+  EDGE_COLOR_DEPENDED_UPON,
+} from '@/lib/relationship-edges'
 
 export interface GraphProject {
   id: string
@@ -95,7 +99,15 @@ export function ProjectsGraphCanvas({
   const navigate = useNavigate()
   const ref = useRef<GraphCanvasRef | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [layout, setLayout] = useState<LayoutTypes>('concentric2d')
+  const [layout, setLayoutState] = useState<LayoutTypes>(() => {
+    const stored = localStorage.getItem('imbi-graph-layout')
+    const valid = LAYOUT_OPTIONS.some((o) => o.value === stored)
+    return valid ? (stored as LayoutTypes) : 'forceDirected2d'
+  })
+  const setLayout = (v: LayoutTypes) => {
+    localStorage.setItem('imbi-graph-layout', v)
+    setLayoutState(v)
+  }
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [currentZoom, setCurrentZoom] = useState(100)
   const [isRendering, setIsRendering] = useState(true)
@@ -167,16 +179,28 @@ export function ProjectsGraphCanvas({
     }
   }, [])
 
+  // Map each node to its edge color for icon tinting
+  const nodeEdgeColor = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const e of edges) {
+      if (!map.has(e.source)) map.set(e.source, e.fill ?? '')
+      if (!map.has(e.target)) map.set(e.target, e.fill ?? '')
+    }
+    return map
+  }, [edges])
+
   const nodes = useMemo(
     () =>
       projects.map((p) => {
-        const iconUrl = getIconUrl((p.project_types || [])[0]?.icon ?? null)
-        const fill =
-          centerId && p.id === centerId
-            ? '#f59e0b'
-            : isDarkMode
-              ? '#94a3b8'
-              : '#64748b'
+        const isCenter = centerId && p.id === centerId
+        const iconColor = isCenter
+          ? '#f59e0b'
+          : nodeEdgeColor.get(p.id) || undefined
+        const iconUrl = getIconUrl(
+          (p.project_types || [])[0]?.icon ?? null,
+          iconColor,
+        )
+        const fill = isCenter ? '#f59e0b' : isDarkMode ? '#94a3b8' : '#64748b'
         return {
           id: p.id,
           label: p.name,
@@ -185,7 +209,7 @@ export function ProjectsGraphCanvas({
           data: p,
         }
       }),
-    [projects, centerId, isDarkMode],
+    [projects, centerId, isDarkMode, nodeEdgeColor],
   )
 
   const {
@@ -226,11 +250,11 @@ export function ProjectsGraphCanvas({
   return (
     <div
       ref={containerRef}
-      className={isFullscreen ? 'flex h-screen flex-col' : ''}
+      className={isFullscreen ? 'flex h-screen flex-col' : 'h-full'}
     >
       <Card
         className={`flex flex-col overflow-hidden ${
-          isFullscreen ? 'h-full rounded-none border-0' : ''
+          isFullscreen ? 'h-full rounded-none border-0' : 'h-full'
         } ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
       >
         {/* Toolbar */}
@@ -322,25 +346,49 @@ export function ProjectsGraphCanvas({
             </Button>
           </div>
 
-          <span
-            className={`ml-auto text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+          <div
+            className={`ml-auto flex items-center gap-4 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
           >
-            {nodes.length} projects · {edges.length} relationships ·
-            Double-click to open
-          </span>
+            <span className="flex items-center gap-1">
+              <span
+                className="inline-block h-0.5 w-3 rounded-l"
+                style={{ backgroundColor: EDGE_COLOR_DEPENDS_ON }}
+              />
+              <span
+                className="inline-block"
+                style={{
+                  borderLeft: `5px solid ${EDGE_COLOR_DEPENDS_ON}`,
+                  borderTop: '3px solid transparent',
+                  borderBottom: '3px solid transparent',
+                }}
+              />
+              Uses
+            </span>
+            <span className="flex items-center gap-1">
+              <span
+                className="inline-block h-0.5 w-3 rounded-l"
+                style={{ backgroundColor: EDGE_COLOR_DEPENDED_UPON }}
+              />
+              <span
+                className="inline-block"
+                style={{
+                  borderLeft: `5px solid ${EDGE_COLOR_DEPENDED_UPON}`,
+                  borderTop: '3px solid transparent',
+                  borderBottom: '3px solid transparent',
+                }}
+              />
+              Used by
+            </span>
+            <span>
+              {nodes.length} projects · {edges.length} relationships ·
+              Double-click to open
+            </span>
+          </div>
         </div>
 
         {/* Canvas */}
         <div
-          className={`relative ${isFullscreen ? 'flex-1' : 'min-h-[400px]'}`}
-          style={
-            isFullscreen
-              ? undefined
-              : {
-                  height:
-                    'calc(100vh - 250px - var(--assistant-height, 64px) - 16px)',
-                }
-          }
+          className={`relative ${isFullscreen ? 'flex-1' : 'min-h-[400px] flex-1'}`}
         >
           {isRendering && nodes.length > 0 && (
             <div

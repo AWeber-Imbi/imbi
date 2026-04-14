@@ -94,7 +94,7 @@ function App() {
           }
         />
         <Route
-          path="/projects/:projectId"
+          path="/projects/:projectId/:tab?"
           element={
             <ProtectedRoute>
               <ProjectDetailPage />

@@ -5,6 +5,7 @@ import { Plus, Search, Trash2, Users, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { TeamForm } from './teams/TeamForm'
 import { TeamDetail } from './teams/TeamDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -362,9 +363,8 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
                         }`}
                       >
                         {team.icon ? (
-                          <img
-                            src={team.icon}
-                            alt=""
+                          <EntityIcon
+                            icon={team.icon}
                             className="h-5 w-5 rounded object-cover"
                           />
                         ) : (

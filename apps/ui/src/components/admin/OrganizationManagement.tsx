@@ -5,6 +5,7 @@ import { Plus, Search, Trash2, Building2, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { OrganizationForm } from './organizations/OrganizationForm'
 import { OrganizationDetail } from './organizations/OrganizationDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
@@ -314,9 +315,8 @@ export function OrganizationManagement({
                           }`}
                         >
                           {org.icon ? (
-                            <img
-                              src={org.icon}
-                              alt=""
+                            <EntityIcon
+                              icon={org.icon}
                               className="h-5 w-5 rounded object-cover"
                             />
                           ) : (

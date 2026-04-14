@@ -1,5 +1,6 @@
 import { ArrowLeft, Edit2, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { formatDate } from '@/lib/formatDate'
 import type { Organization } from '@/types'
 
@@ -40,9 +41,8 @@ export function OrganizationDetail({
         >
           <div className="flex items-center gap-3">
             {organization.icon ? (
-              <img
-                src={organization.icon}
-                alt=""
+              <EntityIcon
+                icon={organization.icon}
                 className="h-8 w-8 rounded object-cover"
               />
             ) : (

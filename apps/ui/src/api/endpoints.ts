@@ -138,6 +138,16 @@ export const getProjectRelationships = (orgSlug: string, projectId: string) =>
     `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships`,
   )
 
+export const setProjectRelationships = (
+  orgSlug: string,
+  projectId: string,
+  dependsOn: string[],
+) =>
+  apiClient.put<ProjectRelationshipsResponse>(
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}/relationships`,
+    { depends_on: dependsOn },
+  )
+
 export const createProject = (
   orgSlug: string,
   projectTypeSlug: string,

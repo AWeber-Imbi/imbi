@@ -5,25 +5,36 @@ export interface GraphEdge {
   source: string
   target: string
   label: string
+  fill?: string
+  arrowPlacement?: 'none' | 'mid' | 'end'
 }
+
+/** Orange for "depends on" (outbound), blue for "depended upon" (inbound). */
+export const EDGE_COLOR_DEPENDS_ON = '#f59e0b'
+export const EDGE_COLOR_DEPENDED_UPON = '#3b82f6'
 
 /**
  * Build graph edges from a project's relationships.
  * Direction is preserved: outbound edges point from the project to its
  * dependencies; inbound edges point from dependents to the project.
+ * Edge color indicates the relationship type from the center project's
+ * perspective: orange = "depends on", blue = "depended upon".
  */
 export function buildRelationshipEdges(
   projectId: string,
   relationships: ProjectRelationship[],
 ): GraphEdge[] {
   return relationships.map((r) => {
-    const source = r.direction === 'outbound' ? projectId : r.project.id
-    const target = r.direction === 'outbound' ? r.project.id : projectId
+    const isOutbound = r.direction === 'outbound'
+    const source = isOutbound ? projectId : r.project.id
+    const target = isOutbound ? r.project.id : projectId
     return {
       id: `${source}->${target}`,
       source,
       target,
-      label: 'depends on',
+      label: isOutbound ? 'depends on' : 'depended upon',
+      fill: isOutbound ? EDGE_COLOR_DEPENDS_ON : EDGE_COLOR_DEPENDED_UPON,
+      arrowPlacement: 'end',
     }
   })
 }

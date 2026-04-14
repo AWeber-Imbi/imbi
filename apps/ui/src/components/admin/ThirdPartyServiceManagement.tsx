@@ -4,6 +4,7 @@ import type { ApiError } from '@/api/client'
 import { Plus, Search, Trash2, Cloud, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { ThirdPartyServiceForm } from './third-party-services/ThirdPartyServiceForm'
 import { ThirdPartyServiceDetail } from './third-party-services/ThirdPartyServiceDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -427,9 +428,8 @@ export function ThirdPartyServiceManagement({
                           }`}
                         >
                           {svc.icon ? (
-                            <img
-                              src={svc.icon}
-                              alt=""
+                            <EntityIcon
+                              icon={svc.icon}
                               className="h-5 w-5 rounded object-cover"
                             />
                           ) : (
