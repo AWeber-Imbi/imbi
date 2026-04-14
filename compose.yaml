@@ -4,7 +4,6 @@ services:
     ports:
       - "8080:8080"
     environment:
-      NEO4J_URL: bolt://neo4j:7687
       CLICKHOUSE_URL: http://default:password@clickhouse:8123/imbi
       POSTGRES_URL: postgresql://postgres:secret@postgres/imbi
       IMBI_AUTH_JWT_SECRET: dev-jwt-secret-change-in-production
@@ -17,33 +16,14 @@ services:
       S3_ACCESS_KEY: test
       S3_SECRET_KEY: test
     depends_on:
-      neo4j:
-        condition: service_healthy
       clickhouse:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      mailpit:
         condition: service_healthy
       localstack:
         condition: service_healthy
-
-  neo4j:
-    image: neo4j:latest
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    environment:
-      NEO4J_AUTH: none
-      NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_apoc_trigger_enabled: 'true'
-      NEO4J_dbms_security_procedures_unrestricted: 'apoc.*'
-      NEO4J_dbms_security_procedures_allowlist: 'apoc.*'
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      mailpit:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -60,17 +40,17 @@ services:
       retries: 10
 
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:community-archive
     ports:
       - "4566:4566"
     environment:
-      SERVICES: s3
-      DEBUG: 0
+      - SERVICES=s3
+      - DEBUG=0
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 5
 
   mailpit:
     image: axllent/mailpit:v1.21.5
@@ -86,7 +66,7 @@ services:
       retries: 10
 
   postgres:
-    image: postgres:17-alpine
+    image: ghcr.io/aweber-imbi/postgres:latest
     ports:
       - "5432:5432"
     environment:
@@ -94,6 +74,3 @@ services:
       POSTGRES_DB: imbi
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
