@@ -49,6 +49,7 @@ docker:
     FILE_CACHE_ENABLED="no"
     IMBI_AUTH_ENCRYPTION_KEY="$encryption_key"
     IMBI_AUTH_JWT_SECRET="$jwt_secret"
+    IMBI_API_URL=http://localhost:8000
     IMBI_EMAIL_ENABLED="true"
     IMBI_EMAIL_SMTP_HOST="$test_host"
     IMBI_EMAIL_SMTP_PORT="$(get_port mailpit 1025)"
