@@ -58,6 +58,7 @@ export interface Project {
   project_types?: {
     name: string
     slug: string
+    icon?: string | null
     organization: {
       name: string
       slug: string
@@ -69,9 +70,10 @@ export interface Project {
   relationships?: {
     team?: RelationshipLink
     environments?: RelationshipLink
-    dependencies?: RelationshipLink
+    href?: string
+    outbound_count?: number
+    inbound_count?: number
   }
-  dependency_uris?: string[]
   [key: string]: unknown
 }
 
@@ -727,4 +729,24 @@ export interface SchemaProperty {
   iconRange?: Record<string, string>
   colorAge?: Record<string, string>
   iconAge?: Record<string, string>
+}
+
+// Project Relationships (DEPENDS_ON edges)
+export interface ProjectRelationshipSummary {
+  id: string
+  name: string
+  slug: string
+  namespace?: string | null
+  project_type?: string | null
+  project_type_icon?: string | null
+}
+
+export interface ProjectRelationship {
+  direction: 'inbound' | 'outbound'
+  type: 'depends_on'
+  project: ProjectRelationshipSummary
+}
+
+export interface ProjectRelationshipsResponse {
+  relationships: ProjectRelationship[]
 }

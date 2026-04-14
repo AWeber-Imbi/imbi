@@ -1,6 +1,7 @@
 import { ExternalLink, icons as lucideIcons } from 'lucide-react'
 import * as simpleIcons from '@icons-pack/react-simple-icons'
 import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import type { ComponentType, SVGProps } from 'react'
 
 type IconComponent = ComponentType<
@@ -60,6 +61,18 @@ function buildAwsIndex(): Record<string, string> {
 
 const awsIndex = buildAwsIndex()
 
+function resolveAwsUrl(iconName: string): string | null {
+  const key = iconName.toLowerCase()
+  const direct = awsIndex[key]
+  if (direct) return direct
+  for (const [k, u] of Object.entries(awsIndex)) {
+    if (k.endsWith(key)) return u
+  }
+  return null
+}
+
+const iconUrlCache = new Map<string, string | null>()
+
 /** Create a React component that renders an <img> for an AWS SVG icon URL. */
 function createAwsImgComponent(url: string): IconComponent {
   const AwsIcon: IconComponent = (props) => {
@@ -117,17 +130,57 @@ export function getIcon(
 
   // AWS Icons: aws-lambda, aws-systems-manager-parameter-store
   if (iconName.startsWith('aws-')) {
-    const key = iconName.toLowerCase()
-    const url = awsIndex[key]
+    const url = resolveAwsUrl(iconName)
     if (url) return createAwsImgComponent(url)
-    // Try partial match (suffix)
-    for (const [k, u] of Object.entries(awsIndex)) {
-      if (k.endsWith(key)) return createAwsImgComponent(u)
-    }
     return fallback
   }
 
   // Lucide: external-link → ExternalLink
   const name = toPascalCase(iconName) as keyof typeof lucideIcons
   return (lucideIcons[name] as IconComponent) || fallback
+}
+
+/**
+ * Resolve an icon name to a URL suitable for reagraph's GraphNode.icon.
+ *
+ * Returns:
+ *   - A direct URL for AWS icons (already stored as URL assets)
+ *   - A data:image/svg+xml;base64 URL for Lucide / Simple Icons (rendered to SVG)
+ *   - null when the icon name doesn't resolve
+ *
+ * Rendered icons use a fixed 32x32 viewBox and inherit currentColor, so the
+ * caller can tint by setting the color on an enclosing element. Colors in
+ * Simple Icons are baked in (they ship colored SVGs).
+ */
+export function getIconUrl(iconName: string | null | undefined): string | null {
+  if (!iconName) return null
+  const cached = iconUrlCache.get(iconName)
+  if (cached !== undefined) return cached
+
+  const result = computeIconUrl(iconName)
+  iconUrlCache.set(iconName, result)
+  return result
+}
+
+function computeIconUrl(iconName: string): string | null {
+  // AWS icons: direct URL from pre-built index
+  if (iconName.startsWith('aws-')) {
+    return resolveAwsUrl(iconName)
+  }
+
+  // Lucide / Simple Icons: render component → SVG markup → data URL
+  const Component = getIcon(iconName, null)
+  if (!Component) return null
+  try {
+    const markup = renderToStaticMarkup(
+      createElement(Component, { width: 32, height: 32 }),
+    )
+    const encoded =
+      typeof btoa === 'function'
+        ? btoa(unescape(encodeURIComponent(markup)))
+        : Buffer.from(markup, 'utf-8').toString('base64')
+    return `data:image/svg+xml;base64,${encoded}`
+  } catch {
+    return null
+  }
 }

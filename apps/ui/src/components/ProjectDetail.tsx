@@ -4,6 +4,7 @@ import {
   TrendingDown,
   Settings as SettingsIcon,
   ArrowRight,
+  Plus,
   Rocket,
 } from 'lucide-react'
 import { getIcon } from '@/lib/icons'
@@ -20,13 +21,23 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { listLinkDefinitions, getProjectSchema } from '@/api/endpoints'
+import {
+  listLinkDefinitions,
+  getProjectSchema,
+  getProjectRelationships,
+} from '@/api/endpoints'
+import { buildRelationshipEdges } from '@/lib/relationship-edges'
 import type { ProjectSchemaSection } from '@/api/endpoints'
-import type { Project } from '@/types'
+import {
+  ProjectsGraphCanvas,
+  type GraphProject,
+} from '@/components/ProjectsGraphCanvas'
+import type { Project, ProjectRelationship } from '@/types'
 
 interface ProjectDetailProps {
   project: Project
@@ -37,7 +48,7 @@ type TabType =
   | 'overview'
   | 'configuration'
   | 'components'
-  | 'dependencies'
+  | 'relationships'
   | 'logs'
   | 'notes'
   | 'operations-log'
@@ -315,8 +326,12 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
     { id: 'components', label: 'Components' },
     { id: 'configuration', label: 'Configuration' },
     {
-      id: 'dependencies',
-      label: `Dependencies (${project.relationships?.dependencies?.count ?? 0})`,
+      id: 'relationships',
+      label: (() => {
+        const rel = project.relationships
+        const total = (rel?.inbound_count ?? 0) + (rel?.outbound_count ?? 0)
+        return `Relationships (${total})`
+      })(),
     },
     { id: 'logs', label: 'Logs' },
     { id: 'notes', label: 'Notes' },
@@ -737,8 +752,13 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
         <TabsContent value="configuration">
           <PlaceholderTab name="Configuration" isDarkMode={isDarkMode} />
         </TabsContent>
-        <TabsContent value="dependencies">
-          <PlaceholderTab name="Dependencies" isDarkMode={isDarkMode} />
+        <TabsContent value="relationships">
+          <RelationshipsTab
+            orgSlug={project.team.organization.slug}
+            projectId={project.id}
+            project={project}
+            isDarkMode={isDarkMode}
+          />
         </TabsContent>
         <TabsContent value="components">
           <PlaceholderTab name="Components" isDarkMode={isDarkMode} />
@@ -757,6 +777,268 @@ export function ProjectDetail({ project, isDarkMode }: ProjectDetailProps) {
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+type RelFilter = 'all' | 'uses' | 'used-by'
+
+function RelationshipsTab({
+  orgSlug,
+  projectId,
+  project,
+  isDarkMode,
+}: {
+  orgSlug: string
+  projectId: string
+  project: Project
+  isDarkMode: boolean
+}) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['project-relationships', orgSlug, projectId],
+    queryFn: () => getProjectRelationships(orgSlug, projectId),
+  })
+  const [filter, setFilter] = useState<RelFilter>('all')
+
+  const cardClass = `p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`
+  const sub = isDarkMode ? 'text-gray-400' : 'text-slate-500'
+
+  if (isLoading) {
+    return (
+      <Card className={cardClass}>
+        <p className={sub}>Loading relationships…</p>
+      </Card>
+    )
+  }
+  if (isError && !data) {
+    return (
+      <Card className={cardClass}>
+        <p className={sub}>Failed to load relationships.</p>
+      </Card>
+    )
+  }
+
+  const rels = data?.relationships ?? []
+  if (rels.length === 0) {
+    return (
+      <Card className={cardClass}>
+        <p className={sub}>This project has no relationships.</p>
+      </Card>
+    )
+  }
+
+  const outbound = rels.filter((r) => r.direction === 'outbound')
+  const inbound = rels.filter((r) => r.direction === 'inbound')
+  const outboundVisible = filter !== 'used-by'
+  const inboundVisible = filter !== 'uses'
+  const visibleOutbound = outboundVisible ? outbound : []
+  const visibleInbound = inboundVisible ? inbound : []
+
+  // Build projects and edges for the shared canvas, filtered by visibility.
+  // Deduplicate: a related project can appear in both inbound and outbound.
+  const visibleRels = [...visibleOutbound, ...visibleInbound]
+  const projects: GraphProject[] = Array.from(
+    new Map<string, GraphProject>([
+      [
+        project.id,
+        {
+          id: project.id,
+          name: project.name,
+          project_types: project.project_types?.map((pt) => ({
+            slug: pt.slug,
+            icon: pt.icon ?? null,
+          })),
+        },
+      ],
+      ...visibleRels.map(
+        (r) =>
+          [
+            r.project.id,
+            {
+              id: r.project.id,
+              name: r.project.name,
+              project_types: r.project.project_type
+                ? [
+                    {
+                      slug: r.project.project_type,
+                      icon: r.project.project_type_icon ?? null,
+                    },
+                  ]
+                : [],
+            },
+          ] as [string, GraphProject],
+      ),
+    ]).values(),
+  )
+
+  const edges = Array.from(
+    new Map(
+      buildRelationshipEdges(projectId, visibleRels).map((edge) => [
+        edge.id,
+        edge,
+      ]),
+    ).values(),
+  )
+
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
+      <RelationshipsSidebar
+        outbound={outbound}
+        inbound={inbound}
+        outboundVisible={outboundVisible}
+        inboundVisible={inboundVisible}
+        filter={filter}
+        onFilterChange={setFilter}
+        isDarkMode={isDarkMode}
+      />
+      <ProjectsGraphCanvas
+        projects={projects}
+        edges={edges}
+        isDarkMode={isDarkMode}
+        centerId={projectId}
+      />
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sidebar                                                           */
+/* ------------------------------------------------------------------ */
+
+interface RelationshipsSidebarProps {
+  outbound: ProjectRelationship[]
+  inbound: ProjectRelationship[]
+  outboundVisible: boolean
+  inboundVisible: boolean
+  filter: RelFilter
+  onFilterChange: (f: RelFilter) => void
+  isDarkMode: boolean
+}
+
+function RelationshipsSidebar({
+  outbound,
+  inbound,
+  outboundVisible,
+  inboundVisible,
+  filter,
+  onFilterChange,
+  isDarkMode,
+}: RelationshipsSidebarProps) {
+  const sectionLabel = isDarkMode ? 'text-gray-500' : 'text-slate-400'
+  const sub = isDarkMode ? 'text-gray-400' : 'text-slate-500'
+
+  const chipBase =
+    'rounded-full px-3 py-1 text-xs font-medium transition-colors'
+  const chipSelected = 'bg-amber-500 text-white'
+  const chipUnselected = isDarkMode
+    ? 'border border-gray-600 text-gray-300 hover:border-gray-400'
+    : 'border border-slate-300 text-slate-600 hover:border-slate-400'
+
+  return (
+    <div
+      className={`w-full flex-shrink-0 rounded-lg border p-4 ${
+        isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-slate-200 bg-white'
+      }`}
+    >
+      {/* Filter chips */}
+      <div className="mb-4 flex flex-wrap gap-1.5">
+        {(['all', 'uses', 'used-by'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => onFilterChange(f)}
+            className={`${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
+          >
+            {f === 'all' ? 'All' : f === 'uses' ? 'Uses' : 'Used by'}
+          </button>
+        ))}
+        <button
+          disabled
+          className={`${chipBase} flex cursor-not-allowed items-center gap-1 opacity-50 ${chipUnselected}`}
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          Add
+        </button>
+      </div>
+
+      {/* Outbound (USES) section */}
+      {outboundVisible && (
+        <div className="mb-4">
+          <h4
+            className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
+          >
+            Uses
+          </h4>
+          {outbound.length === 0 ? (
+            <p className={`text-xs ${sub}`}>None</p>
+          ) : (
+            <ul className="space-y-1">
+              {outbound.map((r, i) => (
+                <SidebarProjectRow
+                  key={`out:${r.project.id}:${i}`}
+                  rel={r}
+                  isDarkMode={isDarkMode}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Inbound (USED BY) section */}
+      {inboundVisible && (
+        <div>
+          <h4
+            className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
+          >
+            Used by
+          </h4>
+          {inbound.length === 0 ? (
+            <p className={`text-xs ${sub}`}>None</p>
+          ) : (
+            <ul className="space-y-1">
+              {inbound.map((r, i) => (
+                <SidebarProjectRow
+                  key={`in:${r.project.id}:${i}`}
+                  rel={r}
+                  isDarkMode={isDarkMode}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SidebarProjectRow({
+  rel,
+  isDarkMode,
+}: {
+  rel: ProjectRelationship
+  isDarkMode: boolean
+}) {
+  const typeSlug = rel.project.project_type ?? ''
+  const muted = isDarkMode ? 'text-gray-500' : 'text-slate-400'
+
+  return (
+    <li className="flex items-center gap-2 py-1">
+      <span
+        className={`inline-block h-2 w-2 flex-shrink-0 rounded-full ${
+          isDarkMode ? 'bg-slate-500' : 'bg-slate-400'
+        }`}
+      />
+      <Link
+        to={`/projects/${rel.project.id}`}
+        className={`truncate text-sm hover:underline ${
+          isDarkMode ? 'text-amber-400' : 'text-amber-text'
+        }`}
+      >
+        {rel.project.name}
+      </Link>
+      {typeSlug && (
+        <span className={`flex-shrink-0 text-[10px] ${muted}`}>{typeSlug}</span>
+      )}
+    </li>
   )
 }
 
