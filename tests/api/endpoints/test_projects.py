@@ -91,7 +91,6 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                 },
             ],
             'environments': [],
-            'dependency_uris': [],
         }
         data.update(overrides)
         return data
@@ -109,7 +108,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             [
                 {
                     'project': record,
-                    'dependency_count': 0,
+                    'outbound_count': 0,
+                    'inbound_count': 0,
                 },
             ],
         ]
@@ -175,7 +175,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             [
                 {
                     'project': record,
-                    'dependency_count': 0,
+                    'outbound_count': 0,
+                    'inbound_count': 0,
                 },
             ],
         ]
@@ -345,7 +346,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute.return_value = [
             {
                 'project': self._project_data(),
-                'dependency_count': 3,
+                'outbound_count': 3,
+                'inbound_count': 0,
             },
             {
                 'project': self._project_data(
@@ -353,7 +355,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
                     name='My Consumer',
                     slug='my-consumer',
                 ),
-                'dependency_count': 0,
+                'outbound_count': 0,
+                'inbound_count': 0,
             },
         ]
 
@@ -371,10 +374,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]['slug'], 'my-api')
         rels = data[0]['relationships']
-        self.assertEqual(
-            rels['dependencies']['count'],
-            3,
-        )
+        self.assertEqual(rels['outbound_count'], 3)
+        self.assertEqual(rels['inbound_count'], 0)
 
     # -- Get -----------------------------------------------------------
 
@@ -383,7 +384,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute.return_value = [
             {
                 'project': self._project_data(),
-                'dependency_count': 5,
+                'outbound_count': 5,
+                'inbound_count': 2,
             },
         ]
 
@@ -398,10 +400,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['slug'], 'my-api')
-        self.assertEqual(
-            data['relationships']['dependencies']['count'],
-            5,
-        )
+        self.assertEqual(data['relationships']['outbound_count'], 5)
+        self.assertEqual(data['relationships']['inbound_count'], 2)
 
     def test_get_not_found(self) -> None:
         """Test retrieving nonexistent project."""
@@ -438,7 +438,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             [
                 {
                     'project': updated,
-                    'dependency_count': 0,
+                    'outbound_count': 0,
+                    'inbound_count': 0,
                 },
             ],
         ]
@@ -493,7 +494,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             [
                 {
                     'project': updated,
-                    'dependency_count': 0,
+                    'outbound_count': 0,
+                    'inbound_count': 0,
                 },
             ],
         ]
@@ -626,7 +628,8 @@ class ProjectEndpointsTestCase(unittest.TestCase):
             [
                 {
                     'project': updated,
-                    'dependency_count': 0,
+                    'outbound_count': 0,
+                    'inbound_count': 0,
                 },
             ],
         ]
@@ -772,3 +775,169 @@ class ProjectEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
+
+
+class ProjectRelationshipsEndpointTestCase(unittest.TestCase):
+    """Tests for GET /projects/{id}/relationships."""
+
+    def setUp(self) -> None:
+        from imbi_api.auth import permissions
+
+        self.test_app = app.create_app()
+
+        self.admin_user = models.User(
+            email='admin@example.com',
+            display_name='Admin User',
+            password_hash='$argon2id$hashed',
+            is_active=True,
+            is_admin=True,
+            is_service_account=False,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+        self.auth_context = permissions.AuthContext(
+            user=self.admin_user,
+            session_id='test-session',
+            auth_method='jwt',
+            permissions={'project:read'},
+        )
+
+        async def mock_get_current_user():
+            return self.auth_context
+
+        self.test_app.dependency_overrides[permissions.get_current_user] = (
+            mock_get_current_user
+        )
+
+        self.mock_db = mock.AsyncMock(spec=graph.Graph)
+        self.test_app.dependency_overrides[graph._inject_graph] = (
+            lambda: self.mock_db
+        )
+        self.client = TestClient(self.test_app)
+
+    def _summary(self, **overrides: typing.Any) -> dict:
+        data = {
+            'id': 'dep1',
+            'name': 'Dep One',
+            'slug': 'dep-one',
+            'namespace': 'engineering',
+            'project_type': 'api-service',
+            'project_type_icon': 'aws-lambda',
+        }
+        data.update(overrides)
+        return data
+
+    def test_empty(self) -> None:
+        """Returns an empty list when the project has no edges."""
+        self.mock_db.execute.return_value = [
+            {'project_exists': True, 'direction': None, 'other': None}
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                f'/organizations/engineering/projects/{PROJECT_ID}'
+                '/relationships'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'relationships': []})
+
+    def test_mixed_directions(self) -> None:
+        """Returns inbound and outbound rows, inbound sorted first."""
+        self.mock_db.execute.return_value = [
+            {
+                'project_exists': True,
+                'direction': 'inbound',
+                'other': self._summary(id='in1', name='Inbound A'),
+            },
+            {
+                'project_exists': True,
+                'direction': 'inbound',
+                'other': self._summary(id='in2', name='Inbound B'),
+            },
+            {
+                'project_exists': True,
+                'direction': 'outbound',
+                'other': self._summary(id='out1', name='Outbound A'),
+            },
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                f'/organizations/engineering/projects/{PROJECT_ID}'
+                '/relationships'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        rels = response.json()['relationships']
+        self.assertEqual(len(rels), 3)
+        self.assertEqual(rels[0]['direction'], 'inbound')
+        self.assertEqual(rels[0]['project']['id'], 'in1')
+        self.assertEqual(rels[1]['direction'], 'inbound')
+        self.assertEqual(rels[1]['project']['id'], 'in2')
+        self.assertEqual(rels[2]['direction'], 'outbound')
+        self.assertEqual(rels[2]['project']['id'], 'out1')
+        for entry in rels:
+            self.assertEqual(entry['type'], 'depends_on')
+            self.assertEqual(entry['project']['project_type'], 'api-service')
+            self.assertEqual(entry['project']['namespace'], 'engineering')
+
+        self.assertEqual(
+            rels[0]['project']['project_type_icon'],
+            'aws-lambda',
+        )
+
+    def test_not_found(self) -> None:
+        """Returns 404 when the project does not exist."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                '/organizations/engineering/projects/missing/relationships'
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_order_by_has_stable_tiebreaker(self) -> None:
+        """ORDER BY must include a unique tie-breaker after other.name so
+        sibling projects that share a name across namespaces sort
+        deterministically across repeated requests.
+        """
+        self.mock_db.execute.return_value = [
+            {'project_exists': True, 'direction': None, 'other': None}
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.get(
+                f'/organizations/engineering/projects/{PROJECT_ID}'
+                '/relationships'
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.mock_db.execute.assert_called_once()
+        query = self.mock_db.execute.call_args.args[0]
+        normalized = ' '.join(query.split())
+        self.assertIn(
+            'ORDER BY CASE direction',
+            normalized,
+            'expected relationships query to sort by direction first',
+        )
+        self.assertIn(
+            'other.name, other.id',
+            normalized,
+            'expected other.id tie-breaker after other.name in ORDER BY '
+            'so ordering is stable when multiple related projects share a '
+            'name across namespaces',
+        )

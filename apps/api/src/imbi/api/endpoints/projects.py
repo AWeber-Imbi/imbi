@@ -106,6 +106,16 @@ class ProjectUpdate(pydantic.BaseModel):
     identifiers: dict[str, int | str] | None = None
 
 
+class ProjectRelationships(pydantic.BaseModel):
+    """Typed relationship links and counts for a project."""
+
+    team: models.RelationshipLink
+    environments: models.RelationshipLink
+    href: str
+    outbound_count: int = 0
+    inbound_count: int = 0
+
+
 class ProjectResponse(pydantic.BaseModel):
     """Response body for a project."""
 
@@ -123,8 +133,7 @@ class ProjectResponse(pydantic.BaseModel):
     environments: list[EnvironmentRef] = []
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str] = {}
-    relationships: dict[str, models.RelationshipLink] | None = None
-    dependency_uris: list[str] = []
+    relationships: ProjectRelationships | None = None
 
     @pydantic.field_validator(
         'links',
@@ -323,7 +332,8 @@ def _flatten_edge_props(
 def _add_relationships(
     project: dict[str, typing.Any],
     org_slug: str,
-    dependency_count: int = 0,
+    outbound_count: int = 0,
+    inbound_count: int = 0,
 ) -> dict[str, typing.Any]:
     """Attach relationships sub-object to a project dict."""
     project_id = project.get('id') or ''
@@ -339,10 +349,9 @@ def _add_relationships(
             f'{base}/environments',
             len(project.get('environments') or []),
         ),
-        'dependencies': relationship_link(
-            f'{base}/dependencies',
-            dependency_count,
-        ),
+        'href': f'{base}/relationships',
+        'outbound_count': outbound_count,
+        'inbound_count': inbound_count,
     }
     return project
 
@@ -362,27 +371,18 @@ _RETURN_FRAGMENT: typing.LiteralString = """
                      sort_order: coalesce(env.sort_order, 0),
                      _edge: properties(d),
                      organization: o{{.*}}}}) AS envs
-    OPTIONAL MATCH (p)-[:DEPENDS_ON]->(dep:Project)
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(depOrg:Organization)
-    WITH p, o, t, pts, envs,
-         count(dep) AS dependency_count,
-         collect(DISTINCT
-             CASE WHEN dep IS NOT NULL
-                       AND depOrg IS NOT NULL
-                       AND dep.id IS NOT NULL
-                  THEN '/organizations/' + depOrg.slug
-                       + '/projects/'
-                       + dep.id
-             END
-         ) AS dep_uris_raw
+    OPTIONAL MATCH (p)-[:DEPENDS_ON]->(out:Project)
+    WITH p, o, t, pts, envs, count(out) AS outbound_count
+    OPTIONAL MATCH (p)<-[:DEPENDS_ON]-(in_:Project)
+    WITH p, o, t, pts, envs, outbound_count,
+         count(in_) AS inbound_count
     RETURN p{{.*,
         team: t{{.*, organization: o{{.*}}}},
         project_types: pts,
-        environments: envs,
-        dependency_uris: [x IN dep_uris_raw WHERE x IS NOT NULL]
+        environments: envs
     }} AS project,
-    dependency_count
+    outbound_count,
+    inbound_count
 """
 
 
@@ -557,7 +557,7 @@ async def create_project(
                 **props,
                 **env_params,
             },
-            ['project', 'dependency_count'],
+            ['project', 'outbound_count', 'inbound_count'],
         )
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
@@ -577,7 +577,12 @@ async def create_project(
 
     project_data = graph.parse_agtype(records[0]['project'])
     _flatten_edge_props(project_data)
-    result = _add_relationships(project_data, org_slug)
+    result = _add_relationships(
+        project_data,
+        org_slug,
+        graph.parse_agtype(records[0]['outbound_count']),
+        graph.parse_agtype(records[0]['inbound_count']),
+    )
     return ProjectResponse.model_validate(result)
 
 
@@ -618,7 +623,7 @@ async def list_projects(
             'org_slug': org_slug,
             'project_type': project_type,
         },
-        ['project', 'dependency_count'],
+        ['project', 'outbound_count', 'inbound_count'],
     )
     for record in records:
         project_data = graph.parse_agtype(record['project'])
@@ -626,7 +631,8 @@ async def list_projects(
         proj = _add_relationships(
             project_data,
             org_slug,
-            graph.parse_agtype(record['dependency_count']),
+            graph.parse_agtype(record['outbound_count']),
+            graph.parse_agtype(record['inbound_count']),
         )
         results.append(
             ProjectResponse.model_validate(proj),
@@ -809,7 +815,7 @@ async def get_project(
             'project_id': project_id,
             'org_slug': org_slug,
         },
-        ['project', 'dependency_count'],
+        ['project', 'outbound_count', 'inbound_count'],
     )
 
     if not records:
@@ -822,9 +828,115 @@ async def get_project(
     result = _add_relationships(
         project_data,
         org_slug,
-        graph.parse_agtype(records[0]['dependency_count']),
+        graph.parse_agtype(records[0]['outbound_count']),
+        graph.parse_agtype(records[0]['inbound_count']),
     )
     return ProjectResponse.model_validate(result)
+
+
+class ProjectRelationshipSummary(pydantic.BaseModel):
+    """Summary of the project on the other end of an edge."""
+
+    id: str
+    name: str
+    slug: str
+    namespace: str | None = None
+    project_type: str | None = None
+    project_type_icon: str | None = None
+
+
+class ProjectRelationship(pydantic.BaseModel):
+    """A single DEPENDS_ON edge touching the project."""
+
+    direction: typing.Literal['inbound', 'outbound']
+    type: typing.Literal['depends_on'] = 'depends_on'
+    project: ProjectRelationshipSummary
+
+
+class ProjectRelationshipsResponse(pydantic.BaseModel):
+    """Wrapped list of relationships."""
+
+    relationships: list[ProjectRelationship]
+
+
+@projects_router.get('/{project_id}/relationships')
+async def list_project_relationships(
+    org_slug: str,
+    project_id: str,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:read'),
+        ),
+    ],
+) -> ProjectRelationshipsResponse:
+    """List every DEPENDS_ON edge touching the project.
+
+    Returns both inbound and outbound edges in a flat list with a
+    ``direction`` field. Rows are sorted inbound first, then by
+    the related project's name.
+    """
+    query: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    WITH p, true AS project_exists
+    OPTIONAL MATCH (p)-[r:DEPENDS_ON]-(other:Project)
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(otherOrg:Organization)
+    OPTIONAL MATCH (other)-[:TYPE]->(pt:ProjectType)
+    WITH p, project_exists, r, other, otherOrg, pt
+    ORDER BY pt.slug
+    WITH p, project_exists, r, other, otherOrg,
+         collect(pt.slug)[0] AS pt_slug,
+         collect(pt.icon)[0] AS pt_icon,
+         CASE WHEN r IS NULL THEN null
+              WHEN startNode(r) = p THEN 'outbound'
+              ELSE 'inbound'
+         END AS direction
+    RETURN project_exists,
+           direction,
+           CASE WHEN other IS NULL THEN null
+                ELSE other{{.id, .name, .slug,
+                           namespace: otherOrg.slug,
+                           project_type: pt_slug,
+                           project_type_icon: pt_icon}}
+           END AS other
+    ORDER BY CASE direction WHEN 'inbound' THEN 0
+                            WHEN 'outbound' THEN 1
+                            ELSE 2 END,
+             other.name,
+             other.id
+    """
+    records = await db.execute(
+        query,
+        {
+            'project_id': project_id,
+            'org_slug': org_slug,
+        },
+        ['project_exists', 'direction', 'other'],
+    )
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found',
+        )
+    relationships: list[ProjectRelationship] = []
+    for record in records:
+        direction = graph.parse_agtype(record['direction'])
+        other = graph.parse_agtype(record['other'])
+        if not direction or not other:
+            continue
+        relationships.append(
+            ProjectRelationship(
+                direction=direction,
+                project=ProjectRelationshipSummary.model_validate(other),
+            ),
+        )
+    return ProjectRelationshipsResponse(
+        relationships=relationships,
+    )
 
 
 @projects_router.put('/{project_id}')
@@ -1118,7 +1230,7 @@ async def update_project(
                 ),
                 **new_env_params,
             },
-            ['project', 'dependency_count'],
+            ['project', 'outbound_count', 'inbound_count'],
         )
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
@@ -1137,7 +1249,8 @@ async def update_project(
     result = _add_relationships(
         project_data,
         org_slug,
-        graph.parse_agtype(updated[0]['dependency_count']),
+        graph.parse_agtype(updated[0]['outbound_count']),
+        graph.parse_agtype(updated[0]['inbound_count']),
     )
     return ProjectResponse.model_validate(result)
 
