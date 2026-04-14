@@ -777,28 +777,30 @@ class ProjectEndpointsTestCase(unittest.TestCase):
         self.assertIn('not found', response.json()['detail'])
 
 
-class ProjectRelationshipsEndpointTestCase(unittest.TestCase):
-    """Tests for GET /projects/{id}/relationships."""
+class _RelationshipsTestBase(unittest.TestCase):
+    """Shared setup for relationship endpoint tests."""
+
+    _permissions: typing.ClassVar[set[str]] = set()
 
     def setUp(self) -> None:
         from imbi_api.auth import permissions
 
         self.test_app = app.create_app()
 
-        self.admin_user = models.User(
-            email='admin@example.com',
-            display_name='Admin User',
+        self.test_user = models.User(
+            email='user@example.com',
+            display_name='Test User',
             password_hash='$argon2id$hashed',
             is_active=True,
-            is_admin=True,
+            is_admin=False,
             is_service_account=False,
             created_at=datetime.datetime.now(datetime.UTC),
         )
         self.auth_context = permissions.AuthContext(
-            user=self.admin_user,
+            user=self.test_user,
             session_id='test-session',
             auth_method='jwt',
-            permissions={'project:read'},
+            permissions=self._permissions,
         )
 
         async def mock_get_current_user():
@@ -814,6 +816,9 @@ class ProjectRelationshipsEndpointTestCase(unittest.TestCase):
         )
         self.client = TestClient(self.test_app)
 
+    def _url(self, pid: str = PROJECT_ID) -> str:
+        return f'/organizations/engineering/projects/{pid}/relationships'
+
     def _summary(self, **overrides: typing.Any) -> dict:
         data = {
             'id': 'dep1',
@@ -826,10 +831,17 @@ class ProjectRelationshipsEndpointTestCase(unittest.TestCase):
         data.update(overrides)
         return data
 
+
+class ProjectRelationshipsEndpointTestCase(_RelationshipsTestBase):
+    """Tests for GET /projects/{id}/relationships."""
+
+    _permissions: typing.ClassVar[set[str]] = {'project:read'}
+
     def test_empty(self) -> None:
         """Returns an empty list when the project has no edges."""
-        self.mock_db.execute.return_value = [
-            {'project_exists': True, 'direction': None, 'other': None}
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [{'direction': None, 'other': None}],
         ]
 
         with mock.patch(
@@ -846,22 +858,22 @@ class ProjectRelationshipsEndpointTestCase(unittest.TestCase):
 
     def test_mixed_directions(self) -> None:
         """Returns inbound and outbound rows, inbound sorted first."""
-        self.mock_db.execute.return_value = [
-            {
-                'project_exists': True,
-                'direction': 'inbound',
-                'other': self._summary(id='in1', name='Inbound A'),
-            },
-            {
-                'project_exists': True,
-                'direction': 'inbound',
-                'other': self._summary(id='in2', name='Inbound B'),
-            },
-            {
-                'project_exists': True,
-                'direction': 'outbound',
-                'other': self._summary(id='out1', name='Outbound A'),
-            },
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {
+                    'direction': 'inbound',
+                    'other': self._summary(id='in1', name='Inbound A'),
+                },
+                {
+                    'direction': 'inbound',
+                    'other': self._summary(id='in2', name='Inbound B'),
+                },
+                {
+                    'direction': 'outbound',
+                    'other': self._summary(id='out1', name='Outbound A'),
+                },
+            ],
         ]
 
         with mock.patch(
@@ -912,8 +924,9 @@ class ProjectRelationshipsEndpointTestCase(unittest.TestCase):
         sibling projects that share a name across namespaces sort
         deterministically across repeated requests.
         """
-        self.mock_db.execute.return_value = [
-            {'project_exists': True, 'direction': None, 'other': None}
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [{'direction': None, 'other': None}],
         ]
 
         with mock.patch(
@@ -926,8 +939,8 @@ class ProjectRelationshipsEndpointTestCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.mock_db.execute.assert_called_once()
-        query = self.mock_db.execute.call_args.args[0]
+        # Fetch query is the second call (first is exists check)
+        query = self.mock_db.execute.call_args_list[1].args[0]
         normalized = ' '.join(query.split())
         self.assertIn(
             'ORDER BY CASE direction',
@@ -941,3 +954,148 @@ class ProjectRelationshipsEndpointTestCase(unittest.TestCase):
             'so ordering is stable when multiple related projects share a '
             'name across namespaces',
         )
+
+
+class SetProjectRelationshipsTestCase(_RelationshipsTestBase):
+    """Tests for PUT /projects/{id}/relationships."""
+
+    _permissions: typing.ClassVar[set[str]] = {'project:write'}
+
+    def test_set_depends_on(self) -> None:
+        """Replaces outbound edges and returns updated list."""
+        # exists, validate, mutate (delete+create), fetch
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [{'tid': 'target1', 'found': True}],
+            [],
+            [
+                {
+                    'direction': 'outbound',
+                    'other': self._summary(id='target1', name='Target One'),
+                },
+            ],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.put(
+                self._url(),
+                json={'depends_on': ['target1']},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        rels = response.json()['relationships']
+        self.assertEqual(len(rels), 1)
+        self.assertEqual(rels[0]['direction'], 'outbound')
+        self.assertEqual(rels[0]['project']['id'], 'target1')
+        self.assertEqual(rels[0]['type'], 'depends_on')
+
+    def test_clear_depends_on(self) -> None:
+        """Empty list removes all outbound edges."""
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [],
+            [{'direction': None, 'other': None}],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.put(
+                self._url(),
+                json={'depends_on': []},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'relationships': []})
+
+    def test_project_not_found(self) -> None:
+        """Returns 404 when source project does not exist."""
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.put(
+                self._url('missing'),
+                json={'depends_on': ['target1']},
+            )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('not found', response.json()['detail'])
+
+    def test_target_not_found(self) -> None:
+        """Returns 422 when a target project ID does not exist."""
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [
+                {'tid': 'good', 'found': True},
+                {'tid': 'bad', 'found': False},
+            ],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.put(
+                self._url(),
+                json={'depends_on': ['good', 'bad']},
+            )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn('bad', response.json()['detail'])
+
+    def test_self_reference_ignored(self) -> None:
+        """Self-references are silently dropped."""
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [],
+            [{'direction': None, 'other': None}],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.put(
+                self._url(),
+                json={'depends_on': [PROJECT_ID]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'relationships': []})
+
+    def test_duplicates_deduplicated(self) -> None:
+        """Duplicate IDs in depends_on are collapsed."""
+        # exists, validate, mutate (delete+create), fetch
+        self.mock_db.execute.side_effect = [
+            [{'id': PROJECT_ID}],
+            [{'tid': 'dup', 'found': True}],
+            [],
+            [
+                {
+                    'direction': 'outbound',
+                    'other': self._summary(id='dup', name='Dup'),
+                },
+            ],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.put(
+                self._url(),
+                json={'depends_on': ['dup', 'dup', 'dup']},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        # Validate only unique targets were sent to the DB
+        validate_call = self.mock_db.execute.call_args_list[1]
+        validate_params = validate_call.args[1]
+        self.assertEqual(validate_params['target_ids'], ['dup'])

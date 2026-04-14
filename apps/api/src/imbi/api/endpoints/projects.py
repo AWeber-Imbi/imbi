@@ -859,6 +859,81 @@ class ProjectRelationshipsResponse(pydantic.BaseModel):
     relationships: list[ProjectRelationship]
 
 
+class ProjectRelationshipsUpdate(pydantic.BaseModel):
+    """Request body for replacing outbound DEPENDS_ON edges."""
+
+    depends_on: list[str] = pydantic.Field(
+        description='Project IDs that this project depends on.',
+    )
+
+
+_RELATIONSHIPS_QUERY: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    WITH p
+    OPTIONAL MATCH (p)-[r:DEPENDS_ON]-(other:Project)
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(otherOrg:Organization)
+    OPTIONAL MATCH (other)-[:TYPE]->(pt:ProjectType)
+    WITH p, r, other, otherOrg, pt
+    ORDER BY pt.slug
+    WITH p, r, other, otherOrg,
+         collect(pt.slug)[0] AS pt_slug,
+         collect(pt.icon)[0] AS pt_icon,
+         CASE WHEN r IS NULL THEN null
+              WHEN startNode(r) = p THEN 'outbound'
+              ELSE 'inbound'
+         END AS direction
+    RETURN direction,
+           CASE WHEN other IS NULL THEN null
+                ELSE other{{.id, .name, .slug,
+                           namespace: otherOrg.slug,
+                           project_type: pt_slug,
+                           project_type_icon: pt_icon}}
+           END AS other
+    ORDER BY CASE direction WHEN 'inbound' THEN 0
+                            WHEN 'outbound' THEN 1
+                            ELSE 2 END,
+             other.name,
+             other.id
+"""
+
+
+async def _fetch_relationships(
+    db: graph.Pool,
+    project_id: str,
+    org_slug: str,
+) -> list[ProjectRelationship]:
+    """Fetch all DEPENDS_ON edges for a project, sorted inbound-first."""
+    records = await db.execute(
+        _RELATIONSHIPS_QUERY,
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['direction', 'other'],
+    )
+    relationships: list[ProjectRelationship] = []
+    for record in records:
+        direction = graph.parse_agtype(record['direction'])
+        other = graph.parse_agtype(record['other'])
+        if not direction or not other:
+            continue
+        relationships.append(
+            ProjectRelationship(
+                direction=direction,
+                project=ProjectRelationshipSummary.model_validate(other),
+            ),
+        )
+    return relationships
+
+
+_PROJECT_EXISTS_QUERY: typing.LiteralString = """
+    MATCH (p:Project {{id: {project_id}}})
+          -[:OWNED_BY]->(:Team)
+          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
+    RETURN p.id AS id
+"""
+
+
 @projects_router.get('/{project_id}/relationships')
 async def list_project_relationships(
     org_slug: str,
@@ -877,65 +952,107 @@ async def list_project_relationships(
     ``direction`` field. Rows are sorted inbound first, then by
     the related project's name.
     """
-    query: typing.LiteralString = """
-    MATCH (p:Project {{id: {project_id}}})
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(:Organization {{slug: {org_slug}}})
-    WITH p, true AS project_exists
-    OPTIONAL MATCH (p)-[r:DEPENDS_ON]-(other:Project)
-          -[:OWNED_BY]->(:Team)
-          -[:BELONGS_TO]->(otherOrg:Organization)
-    OPTIONAL MATCH (other)-[:TYPE]->(pt:ProjectType)
-    WITH p, project_exists, r, other, otherOrg, pt
-    ORDER BY pt.slug
-    WITH p, project_exists, r, other, otherOrg,
-         collect(pt.slug)[0] AS pt_slug,
-         collect(pt.icon)[0] AS pt_icon,
-         CASE WHEN r IS NULL THEN null
-              WHEN startNode(r) = p THEN 'outbound'
-              ELSE 'inbound'
-         END AS direction
-    RETURN project_exists,
-           direction,
-           CASE WHEN other IS NULL THEN null
-                ELSE other{{.id, .name, .slug,
-                           namespace: otherOrg.slug,
-                           project_type: pt_slug,
-                           project_type_icon: pt_icon}}
-           END AS other
-    ORDER BY CASE direction WHEN 'inbound' THEN 0
-                            WHEN 'outbound' THEN 1
-                            ELSE 2 END,
-             other.name,
-             other.id
-    """
-    records = await db.execute(
-        query,
-        {
-            'project_id': project_id,
-            'org_slug': org_slug,
-        },
-        ['project_exists', 'direction', 'other'],
+    exists = await db.execute(
+        _PROJECT_EXISTS_QUERY,
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['id'],
     )
-    if not records:
+    if not exists:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Project {project_id!r} not found',
         )
-    relationships: list[ProjectRelationship] = []
-    for record in records:
-        direction = graph.parse_agtype(record['direction'])
-        other = graph.parse_agtype(record['other'])
-        if not direction or not other:
-            continue
-        relationships.append(
-            ProjectRelationship(
-                direction=direction,
-                project=ProjectRelationshipSummary.model_validate(other),
-            ),
-        )
     return ProjectRelationshipsResponse(
-        relationships=relationships,
+        relationships=await _fetch_relationships(db, project_id, org_slug),
+    )
+
+
+@projects_router.put('/{project_id}/relationships')
+async def set_project_relationships(
+    org_slug: str,
+    project_id: str,
+    data: ProjectRelationshipsUpdate,
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('project:write'),
+        ),
+    ],
+) -> ProjectRelationshipsResponse:
+    """Replace the outbound DEPENDS_ON edges for a project.
+
+    Deletes all existing outbound DEPENDS_ON edges and creates new
+    ones for each project ID in ``depends_on``.  Self-references
+    are silently ignored.
+    """
+    target_ids = list(
+        dict.fromkeys(tid for tid in data.depends_on if tid != project_id)
+    )
+
+    exists = await db.execute(
+        _PROJECT_EXISTS_QUERY,
+        {'project_id': project_id, 'org_slug': org_slug},
+        ['id'],
+    )
+    if not exists:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Project {project_id!r} not found',
+        )
+
+    if target_ids:
+        validate_query: typing.LiteralString = """
+        UNWIND {target_ids} AS tid
+        OPTIONAL MATCH (t:Project {{id: tid}})
+        RETURN tid, t IS NOT NULL AS found
+        """
+        records = await db.execute(
+            validate_query,
+            {'target_ids': target_ids},
+            ['tid', 'found'],
+        )
+        missing = [
+            graph.parse_agtype(r['tid'])
+            for r in records
+            if not graph.parse_agtype(r['found'])
+        ]
+        if missing:
+            raise fastapi.HTTPException(
+                status_code=422,
+                detail=(f'Project ID(s) not found: {sorted(missing)!r}'),
+            )
+
+    if target_ids:
+        mutate_query: typing.LiteralString = """
+        MATCH (p:Project {{id: {project_id}}})
+        OPTIONAL MATCH (p)-[old:DEPENDS_ON]->(:Project)
+        DELETE old
+        WITH DISTINCT p
+        UNWIND {target_ids} AS tid
+        MATCH (target:Project {{id: tid}})
+        CREATE (p)-[:DEPENDS_ON]->(target)
+        """
+        await db.execute(
+            mutate_query,
+            {
+                'project_id': project_id,
+                'target_ids': target_ids,
+            },
+        )
+    else:
+        delete_query: typing.LiteralString = """
+        MATCH (p:Project {{id: {project_id}}})
+        OPTIONAL MATCH (p)-[old:DEPENDS_ON]->(:Project)
+        DELETE old
+        """
+        await db.execute(
+            delete_query,
+            {'project_id': project_id},
+        )
+
+    return ProjectRelationshipsResponse(
+        relationships=await _fetch_relationships(db, project_id, org_slug),
     )
 
 
