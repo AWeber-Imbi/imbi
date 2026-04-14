@@ -105,6 +105,28 @@ check_errors "service '$IMBI_SERVICE'"
 start_api() {
     echo "Starting imbi-api on :8000..."
     IMBI_HOST=0.0.0.0 IMBI_PORT=8000 imbi-api serve &
+
+    echo "Waiting for imbi-api to become healthy..."
+    local attempts=0
+    local max_attempts=30
+    until python3 -c "
+import http.client
+try:
+    conn = http.client.HTTPConnection('localhost', 8000, timeout=2)
+    conn.request('GET', '/status')
+    resp = conn.getresponse()
+    exit(0 if resp.status == 200 else 1)
+except Exception:
+    exit(1)
+" 2>/dev/null; do
+        attempts=$((attempts + 1))
+        if [ "$attempts" -ge "$max_attempts" ]; then
+            echo "ERROR: imbi-api did not become healthy after ${max_attempts}s" >&2
+            exit 1
+        fi
+        sleep 1
+    done
+    echo "imbi-api is healthy"
 }
 
 start_assistant() {
