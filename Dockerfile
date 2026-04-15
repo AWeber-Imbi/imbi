@@ -78,6 +78,7 @@ COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV PATH="/app/bin:$PATH"
 
+EXPOSE 2019
 EXPOSE 8080
 
 USER imbi

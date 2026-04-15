@@ -2,6 +2,7 @@ services:
   imbi:
     build: .
     ports:
+      - "2019"
       - "8080:8080"
     env_file: ./runtime/env-file
     depends_on:
