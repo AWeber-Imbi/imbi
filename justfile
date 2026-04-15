@@ -64,9 +64,29 @@ clean:
 bootstrap:
     docker compose up --build --wait --detach
     docker compose exec imbi imbi-api setup
+    ./runtime/manage-caddy annotate http://localhost:$(docker compose port imbi 2019 | cut -d: -f2)
 
 [doc("Destroy docker environment and remove artifacts")]
 [group("Development")]
 teardown: clean
     docker compose down --remove-orphans --volumes
     rm -fr runtime/uv-cache/ runtime/wheels/*
+
+start-dev service:
+    #!/usr/bin/env sh
+    set -eu
+    if ! port_spec="$(docker compose port imbi 2019)" ; then
+        docker compose up --wait --detach imbi
+    fi
+    docker compose build '{{service}}'
+    docker compose up --scale '{{service}}=1' --detach --wait
+    ./runtime/manage-caddy up "http://localhost:${port_spec#*:}/" "{{service}}"
+
+stop-dev service:
+    #!/usr/bin/env sh
+    set -eu
+    if ! port_spec="$(docker compose port imbi 2019)" ; then
+        docker compose up --wait --detach imbi
+    fi
+    docker compose scale '{{service}}=0'
+    ./runtime/manage-caddy down "http://localhost:${port_spec#*:}/" "{{service}}"
