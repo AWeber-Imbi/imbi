@@ -28,7 +28,6 @@ services:
     ports:
       - "8080:8080"
     environment:
-      NEO4J_URL: bolt://neo4j:7687
       CLICKHOUSE_URL: http://default:password@clickhouse:8123/imbi
       POSTGRES_URL: postgresql://postgres:secret@postgres/imbi
       IMBI_AUTH_JWT_SECRET: change-me-to-a-random-secret

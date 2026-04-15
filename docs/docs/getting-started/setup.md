@@ -10,7 +10,6 @@ your first admin user.
 
 ```bash
 docker run -it \
-  -e NEO4J_URL=bolt://neo4j:7687 \
   -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-key \

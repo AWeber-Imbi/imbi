@@ -1,5 +1,11 @@
 image := "ghcr.io/aweber-imbi/imbi"
 
+[doc("Display the available commands")]
+[default]
+[group("Development")]
+@help:
+    just --list
+
 [doc("Build the Docker image")]
 [group("Build")]
 build tag="latest":
@@ -9,6 +15,11 @@ build tag="latest":
 [group("Build")]
 release tag:
     docker build -t {{ image }}:{{ tag }} -t {{ image }}:latest .
+
+[doc("Update all submodules to what is currently checked in")]
+[group("Submodules")]
+checkout-submodules:
+    git submodule update --remote --checkout
 
 [doc("Update all submodules to the latest commit on their tracking branch")]
 [group("Submodules")]
@@ -47,3 +58,14 @@ docs-serve:
 [group("Build")]
 clean:
     rm -rf docs/site
+
+[doc("Build and initialize docker environment")]
+[group("Development")]
+bootstrap:
+    docker compose up --build --wait --detach
+    docker compose exec imbi imbi-api setup
+
+[doc("Destroy docker environment and remove artifacts")]
+[group("Development")]
+teardown: clean
+    docker compose down --remove-orphans --volumes

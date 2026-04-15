@@ -21,7 +21,6 @@ require_var() {
 }
 
 require_common_vars() {
-    require_var NEO4J_URL "Neo4j connection URL (e.g. bolt://neo4j:7687)"
     require_var IMBI_AUTH_JWT_SECRET "JWT signing secret for authentication"
 }
 
