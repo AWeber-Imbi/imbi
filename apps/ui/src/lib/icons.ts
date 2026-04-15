@@ -1,125 +1,33 @@
-import { ExternalLink, icons as lucideIcons } from 'lucide-react'
-import * as simpleIcons from '@icons-pack/react-simple-icons'
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
-import type { ComponentType, SVGProps } from 'react'
+import { ExternalLink } from 'lucide-react'
+import { iconRegistry } from '@/lib/icon-registry'
+import type { IconComponent } from '@/lib/icon-registry'
+import { createImgComponent } from '@/lib/icon-sets/utils'
 
-type IconComponent = ComponentType<
-  SVGProps<SVGSVGElement> & { size?: number | string }
->
+// Side-effect imports — each file self-registers with iconRegistry
+import '@/lib/icon-sets/lucide'
+import '@/lib/icon-sets/simple-icons'
+import '@/lib/icon-sets/aws'
+import '@/lib/icon-sets/devicon'
+import '@/lib/icon-sets/phosphor'
+import '@/lib/icon-sets/tabler'
 
-function toPascalCase(str: string): string {
-  return str
-    .split('-')
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join('')
-}
+// Re-exports for consumers
+export { iconRegistry } from '@/lib/icon-registry'
+export type { IconComponent } from '@/lib/icon-registry'
+export { AWS_ICONS } from '@/lib/icon-sets/aws'
 
-// ---------------------------------------------------------------------------
-// AWS SVG icon index (built at compile time via Vite import.meta.glob)
-// We import 64px Architecture-Service icons and 48px Light Resource icons.
-// ---------------------------------------------------------------------------
-const awsArchGlob = import.meta.glob<string>(
-  '/node_modules/aws-svg-icons/lib/Architecture-Service-Icons_07302021/*/64/*.svg',
-  { eager: true, import: 'default', query: '?url' },
-)
-const awsResGlob = import.meta.glob<string>(
-  '/node_modules/aws-svg-icons/lib/Resource-Icons_07302021/*/Res_48_Light/*.svg',
-  { eager: true, import: 'default', query: '?url' },
-)
-
-interface AwsEntry {
-  url: string
-  label: string
-}
-
-/**
- * Build a lookup map from normalized name → { url, label }.
- *
- * Architecture icons:  Arch_AWS-Lambda_64.svg → key "aws-lambda", label "AWS Lambda"
- * Resource icons:      Res_AWS-Systems-Manager_Parameter-Store_48_Light.svg → key "aws-systems-manager-parameter-store"
- */
-function buildAwsIndex(): Record<string, AwsEntry> {
-  const index: Record<string, AwsEntry> = {}
-
-  for (const [path, url] of Object.entries(awsArchGlob)) {
-    const filename = path.split('/').pop()!
-    const match = filename.match(/^Arch_(.+)_64\.svg$/)
-    if (!match) continue
-    const raw = match[1] // e.g. "AWS-Lambda"
-    const name = raw.toLowerCase()
-    const label = raw.replace(/-/g, ' ')
-    index[name] = { url, label }
-  }
-
-  for (const [path, url] of Object.entries(awsResGlob)) {
-    const filename = path.split('/').pop()!
-    const match = filename.match(/^Res_(.+)_48_Light\.svg$/)
-    if (!match) continue
-    const raw = match[1] // e.g. "AWS-Systems-Manager_Parameter-Store"
-    const name = raw.replace(/_/g, '-').toLowerCase()
-    const label = raw.replace(/[_-]/g, ' ')
-    index[name] = { url, label }
-  }
-
-  return index
-}
-
-const awsIndex = buildAwsIndex()
-
-/** AWS icon entries for use in the icon picker. */
-export const AWS_ICONS: { label: string; value: string }[] = Object.entries(
-  awsIndex,
-)
-  .map(([key, entry]) => ({ label: entry.label, value: key }))
-  .sort((a, b) => a.label.localeCompare(b.label))
-
-/** Set of all AWS icon keys for fast membership checks. */
-const awsIconNames = new Set(Object.keys(awsIndex))
-
-function resolveAwsUrl(iconName: string): string | null {
-  const key = iconName.toLowerCase()
-  const direct = awsIndex[key]
-  if (direct) return direct.url
-  for (const [k, entry] of Object.entries(awsIndex)) {
-    if (k.endsWith(key)) return entry.url
-  }
-  return null
-}
-
+const MAX_ICON_CACHE_SIZE = 500
 const iconUrlCache = new Map<string, string | null>()
 
-/** Create a React component that renders an <img> for a given URL. */
-function createImgComponent(url: string): IconComponent {
-  const ImgIcon: IconComponent = (props) => {
-    const { className, width, height, ...rest } = props as Record<
-      string,
-      unknown
-    >
-    return createElement('img', {
-      src: url,
-      alt: '',
-      className,
-      width: width ?? 16,
-      height: height ?? 16,
-      ...rest,
-    })
-  }
-  return ImgIcon
-}
-
-const siLookup = simpleIcons as Record<string, unknown>
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 /**
  * Resolve an icon name to a React component.
  *
- * Naming convention:
- *   - "si-github"                            → Simple Icons (SiGithub)
- *   - "aws-lambda"                           → AWS SVG icon (Arch_AWS-Lambda_64.svg)
- *   - "aws-systems-manager-parameter-store"  → AWS SVG icon (Res_..._Parameter-Store_48_Light.svg)
- *   - "external-link"                        → Lucide (ExternalLink)
- *
- * Returns the fallback icon when the name is missing or unresolved.
+ * Dispatches through the registry. Falls back to attempting a bare Lucide
+ * name (no prefix) for backwards compatibility with legacy stored values.
  */
 export function getIcon(
   iconName: string | null | undefined,
@@ -133,29 +41,9 @@ export function getIcon(
   iconName: string | null | undefined,
   fallback?: IconComponent | null,
 ): IconComponent | null {
-  if (fallback === undefined) fallback = ExternalLink as IconComponent
-  if (!iconName) return fallback
+  const fb = fallback === undefined ? (ExternalLink as IconComponent) : fallback
 
-  // Simple Icons: si-github → SiGithub
-  if (iconName.startsWith('si-')) {
-    const name = 'Si' + toPascalCase(iconName.slice(3))
-    const icon = siLookup[name]
-    if (icon) return icon as IconComponent
-    return fallback
-  }
-
-  // Lucide Icons: lucide-external-link → ExternalLink
-  if (iconName.startsWith('lucide-')) {
-    const name = toPascalCase(iconName.slice(7)) as keyof typeof lucideIcons
-    return (lucideIcons[name] as IconComponent) || fallback
-  }
-
-  // AWS Icons: aws-lambda, amazon-s3, bottlerocket, etc.
-  if (awsIconNames.has(iconName)) {
-    const url = resolveAwsUrl(iconName)
-    if (url) return createImgComponent(url)
-    return fallback
-  }
+  if (!iconName) return fb
 
   // Uploaded files or absolute URLs → render as <img>
   if (
@@ -166,22 +54,19 @@ export function getIcon(
     return createImgComponent(iconName)
   }
 
-  // Lucide: external-link → ExternalLink
-  const name = toPascalCase(iconName) as keyof typeof lucideIcons
-  return (lucideIcons[name] as IconComponent) || fallback
+  // Try registry (handles lucide-, si-, aws, devicon-, phosphor-, tabler-)
+  const resolved = iconRegistry.resolve(iconName)
+  if (resolved) return resolved
+
+  // Backward compat: bare Lucide name stored without prefix (e.g. "external-link")
+  const withPrefix = iconRegistry.resolve(`lucide-${iconName}`)
+  if (withPrefix) return withPrefix
+
+  return fb
 }
 
 /**
- * Resolve an icon name to a URL suitable for reagraph's GraphNode.icon.
- *
- * Returns:
- *   - A direct URL for AWS icons (already stored as URL assets)
- *   - A data:image/svg+xml;base64 URL for Lucide / Simple Icons (rendered to SVG)
- *   - null when the icon name doesn't resolve
- *
- * Rendered icons use a fixed 32x32 viewBox and inherit currentColor, so the
- * caller can tint by setting the color on an enclosing element. Colors in
- * Simple Icons are baked in (they ship colored SVGs).
+ * Resolve an icon name to a URL for use in reagraph GraphNode.icon.
  */
 export function getIconUrl(
   iconName: string | null | undefined,
@@ -191,46 +76,21 @@ export function getIconUrl(
   const cacheKey = color ? `${iconName}@${color}` : iconName
   const cached = iconUrlCache.get(cacheKey)
   if (cached !== undefined) return cached
-
   const result = computeIconUrl(iconName, color)
+  if (iconUrlCache.size >= MAX_ICON_CACHE_SIZE) {
+    iconUrlCache.delete(iconUrlCache.keys().next().value!)
+  }
   iconUrlCache.set(cacheKey, result)
   return result
 }
 
 function computeIconUrl(iconName: string, color?: string): string | null {
-  // Uploaded files: /uploads/{id} → resolve via API base URL
   if (iconName.startsWith('/uploads/')) {
     const baseUrl = import.meta.env.VITE_API_URL || '/api'
     return `${baseUrl}${iconName}`
   }
-
-  // Absolute URLs: already a full image URL
   if (iconName.startsWith('http://') || iconName.startsWith('https://')) {
     return iconName
   }
-
-  // AWS icons: direct URL from pre-built index
-  if (awsIconNames.has(iconName)) {
-    return resolveAwsUrl(iconName)
-  }
-
-  // Lucide / Simple Icons: render component → SVG markup → data URL
-  const Component = getIcon(iconName, null)
-  if (!Component) return null
-  try {
-    const markup = renderToStaticMarkup(
-      createElement(Component, {
-        width: 128,
-        height: 128,
-        ...(color ? { color } : {}),
-      }),
-    )
-    const encoded =
-      typeof btoa === 'function'
-        ? btoa(unescape(encodeURIComponent(markup)))
-        : Buffer.from(markup, 'utf-8').toString('base64')
-    return `data:image/svg+xml;base64,${encoded}`
-  } catch {
-    return null
-  }
+  return iconRegistry.resolveUrl(iconName, color)
 }

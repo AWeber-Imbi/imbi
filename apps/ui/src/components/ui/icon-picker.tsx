@@ -1,45 +1,9 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { Search, X, icons as lucideIcons } from 'lucide-react'
-import * as simpleIcons from '@icons-pack/react-simple-icons'
+import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { getIcon, AWS_ICONS } from '@/lib/icons'
-import type { ComponentType, SVGProps } from 'react'
-
-type IconComponent = ComponentType<
-  SVGProps<SVGSVGElement> & { size?: number | string }
->
-
-interface IconEntry {
-  /** Display name, e.g. "GitHub" */
-  label: string
-  /** Stored value, e.g. "si-github" */
-  value: string
-}
-
-type IconSet = 'simple' | 'lucide' | 'aws'
-
-// Build the index once at module level
-const siLookup = simpleIcons as Record<string, unknown>
-const SI_ICONS: IconEntry[] = Object.keys(siLookup)
-  .filter((k) => k.startsWith('Si') && !k.endsWith('Hex') && k !== 'default')
-  .map((k) => {
-    // SiGithub → github, SiGoogleCloud → google-cloud
-    const raw = k.slice(2)
-    const kebab = raw.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
-    return { label: raw, value: `si-${kebab}` }
-  })
-  .sort((a, b) => a.label.localeCompare(b.label))
-
-// Build the Lucide icon index
-const LUCIDE_ICONS: IconEntry[] = Object.keys(lucideIcons)
-  .filter((k) => k !== 'default' && k !== 'icons' && k !== 'createLucideIcon')
-  .map((k) => {
-    // ExternalLink → external-link
-    const kebab = k.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
-    return { label: k, value: `lucide-${kebab}` }
-  })
-  .sort((a, b) => a.label.localeCompare(b.label))
+import { getIcon, iconRegistry } from '@/lib/icons'
+import type { IconComponent } from '@/lib/icons'
 
 const MAX_RESULTS = 60
 
@@ -52,15 +16,12 @@ interface IconPickerProps {
 export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [iconSet, setIconSet] = useState<IconSet>('simple')
+  const [iconSet, setIconSet] = useState('lucide')
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const icons =
-    iconSet === 'simple'
-      ? SI_ICONS
-      : iconSet === 'lucide'
-        ? LUCIDE_ICONS
-        : AWS_ICONS
+  const sets = iconRegistry.getSets()
+  const currentSet = sets.find((s) => s.id === iconSet)
+  const icons = useMemo(() => currentSet?.icons ?? [], [currentSet])
 
   const filtered = useMemo(() => {
     if (!query.trim()) return icons.slice(0, MAX_RESULTS)
@@ -175,23 +136,17 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
           }`}
         >
           <div className="p-2">
-            <div className="mb-2 flex gap-1">
-              {(
-                [
-                  ['simple', 'Simple Icons'],
-                  ['lucide', 'Lucide'],
-                  ['aws', 'AWS'],
-                ] as const
-              ).map(([key, label]) => (
+            <div className="mb-2 flex flex-wrap gap-1">
+              {sets.map((set) => (
                 <button
-                  key={key}
+                  key={set.id}
                   type="button"
                   onClick={() => {
-                    setIconSet(key)
+                    setIconSet(set.id)
                     setQuery('')
                   }}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                    iconSet === key
+                    iconSet === set.id
                       ? isDarkMode
                         ? 'bg-blue-600/30 text-blue-300'
                         : 'bg-blue-50 text-blue-700'
@@ -200,7 +155,7 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
                         : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  {label}
+                  {set.label}
                 </button>
               ))}
             </div>
@@ -233,7 +188,8 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
             ) : (
               <div className="grid grid-cols-6 gap-1">
                 {filtered.map((icon) => {
-                  const Icon = getIcon(icon.value)
+                  const Icon = getIcon(icon.value, null)
+                  if (!Icon) return null
                   const isSelected = value === icon.value
                   return (
                     <button
