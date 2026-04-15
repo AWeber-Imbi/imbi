@@ -1,6 +1,7 @@
 services:
   imbi:
     build: .
+    image: ghcr.io/aweber-imbi/imbi:local
     ports:
       - "2019"
       - "8080:8080"
@@ -32,6 +33,11 @@ services:
       - ./runtime/uv-cache/:/root/.cache/uv/
       - ./runtime/wheels/:/mnt/wheels/
     working_dir: /source
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     depends_on:
       clickhouse:
         condition: service_healthy
