@@ -25,5 +25,9 @@ RUN apt-get update \
  && uv venv $UV_PROJECT_DIRECTORY \
  && uv pip install fastembed
 
+# NB -- I am pre-installing fastembed since it is used by imbi-common
+# and takes **forever** to install. I want to have it installed and
+# in the docker cache to speed up uses of this docker file.
+
 COPY --chmod=755 ./api-entrypoint.sh /
 ENTRYPOINT ["/api-entrypoint.sh"]
