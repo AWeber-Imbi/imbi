@@ -42,11 +42,6 @@ spec:
                 secretKeyRef:
                   name: {{ include "imbi.secretName" . }}
                   key: encryption-key
-            - name: NEO4J_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "imbi.secretName" . }}
-                  key: neo4j-url
             - name: CLICKHOUSE_URL
               valueFrom:
                 secretKeyRef:

@@ -16,12 +16,6 @@ all service-specific variables are required.
 | `IMBI_AUTH_JWT_SECRET` | Secret key for signing JWT tokens. Use a random string of at least 32 characters. |
 | `IMBI_AUTH_ENCRYPTION_KEY` | Fernet encryption key for encrypting sensitive data at rest. |
 
-### API and Assistant
-
-| Variable | Description |
-|----------|-------------|
-| `NEO4J_URL` | Neo4j Bolt connection URL (e.g. `bolt://neo4j:7687`) |
-
 ### API only
 
 | Variable | Description |
@@ -33,14 +27,6 @@ all service-specific variables are required.
 | Variable | Description |
 |----------|-------------|
 | `POSTGRES_URL` | PostgreSQL connection URL (e.g. `postgresql://user:pass@host/db`) |
-
-## Neo4j
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NEO4J_URL` | Bolt connection URL. Credentials can be embedded: `bolt://user:pass@host:7687` | - |
-| `NEO4J_USER` | Username (overrides URL credentials) | - |
-| `NEO4J_PASSWORD` | Password (overrides URL credentials) | - |
 
 ## ClickHouse
 

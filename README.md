@@ -124,7 +124,6 @@ Useful services during UI development:
 ```bash
 # Run all services (default)
 docker run -p 8080:8080 \
-  -e NEO4J_URL=bolt://neo4j:7687 \
   -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret-here \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-encryption-key \
@@ -138,7 +137,6 @@ docker run -e IMBI_SERVICE=mcp ...
 
 # Run initial setup (create admin user, seed permissions)
 docker run -it \
-  -e NEO4J_URL=bolt://neo4j:7687 \
   -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret-here \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-encryption-key \
@@ -184,7 +182,6 @@ just update-submodules-tag v1.0.0
 
 | Variable | Description | Services |
 |----------|-------------|----------|
-| `NEO4J_URL` | Neo4j connection URL | api, assistant |
 | `CLICKHOUSE_URL` | ClickHouse connection URL | api |
 | `IMBI_AUTH_JWT_SECRET` | JWT signing secret | api, assistant |
 | `IMBI_AUTH_ENCRYPTION_KEY` | Fernet encryption key | api |
