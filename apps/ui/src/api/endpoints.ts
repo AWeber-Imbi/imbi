@@ -108,6 +108,7 @@ export interface ProjectSchemaSectionProperty {
   minimum?: number | null
   maximum?: number | null
   'x-ui'?: {
+    editable?: boolean
     'color-map'?: Record<string, string>
     'icon-map'?: Record<string, string>
     'color-range'?: Record<string, string>

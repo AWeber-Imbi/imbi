@@ -150,7 +150,8 @@ function buildJsonSchema(
       ['color-age', prop.colorAge],
       ['icon-age', prop.iconAge],
     ]
-    const xUiObj: Record<string, Record<string, string>> = {}
+    const xUiObj: Record<string, unknown> = {}
+    if (prop.editable === false) xUiObj['editable'] = false
     for (const [key, map] of uiEntries) {
       if (map && Object.keys(map).length > 0) xUiObj[key] = map
     }
@@ -192,6 +193,7 @@ function schemaToProperties(schema: Record<string, unknown>): SchemaProperty[] {
       maximum: propSchema.maximum as number | undefined,
       minLength: propSchema.minLength as number | undefined,
       maxLength: propSchema.maxLength as number | undefined,
+      editable: xUi?.['editable'] === false ? false : undefined,
       colorMap: xUi?.['color-map'] as Record<string, string> | undefined,
       iconMap: xUi?.['icon-map'] as Record<string, string> | undefined,
       colorRange: xUi?.['color-range'] as Record<string, string> | undefined,
@@ -1409,6 +1411,24 @@ export function BlueprintForm({
                           className={`cursor-pointer select-none text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                         >
                           Required
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <Checkbox
+                          id={`editable-${prop.id}`}
+                          checked={prop.editable !== false}
+                          onCheckedChange={(checked) =>
+                            updateProperty(prop.id, {
+                              editable: checked === true ? undefined : false,
+                            })
+                          }
+                        />
+                        <label
+                          htmlFor={`editable-${prop.id}`}
+                          className={`cursor-pointer select-none text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                        >
+                          Editable
                         </label>
                       </div>
 

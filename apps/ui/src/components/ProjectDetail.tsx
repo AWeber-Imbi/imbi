@@ -11,6 +11,7 @@ import { resolveColor, resolveIcon } from '@/lib/ui-maps'
 import type { XUiMaps } from '@/lib/ui-maps'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -23,12 +24,16 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { Link, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { ApiError } from '@/api/client'
+import { sortEnvironments } from '@/lib/utils'
 import {
   listLinkDefinitions,
   getProjectSchema,
   getProjectRelationships,
+  updateProject,
+  deleteProject,
 } from '@/api/endpoints'
 import { buildRelationshipEdges } from '@/lib/relationship-edges'
 import type { ProjectSchemaSection } from '@/api/endpoints'
@@ -37,6 +42,10 @@ import {
   type GraphProject,
 } from '@/components/ProjectsGraphCanvas'
 import { EditRelationshipsDialog } from '@/components/EditRelationshipsDialog'
+import { EditProjectForm } from '@/components/EditProjectForm'
+import { EditableKeyValueCard } from '@/components/EditableKeyValueCard'
+import { EditLinksCard } from '@/components/EditLinksCard'
+import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
 import type { Project, ProjectRelationship } from '@/types'
 
 interface ProjectDetailProps {
@@ -48,7 +57,7 @@ interface ProjectDetailProps {
 const VALID_TABS = [
   'overview',
   'configuration',
-  'components',
+  'dependencies',
   'relationships',
   'logs',
   'notes',
@@ -266,11 +275,7 @@ export function ProjectDetail({
   ]
 
   const sortedEnvironments = useMemo(
-    () =>
-      [...(project.environments || [])].sort((a, b) => {
-        const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
-        return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name)
-      }),
+    () => sortEnvironments(project.environments || []),
     [project.environments],
   )
 
@@ -354,8 +359,11 @@ export function ProjectDetail({
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'overview', label: 'Overview' },
-    { id: 'components', label: 'Components' },
     { id: 'configuration', label: 'Configuration' },
+    { id: 'dependencies', label: 'Dependencies' },
+    { id: 'logs', label: 'Logs' },
+    { id: 'notes', label: 'Notes' },
+    { id: 'operations-log', label: 'Operations Log' },
     {
       id: 'relationships',
       label: (() => {
@@ -364,9 +372,6 @@ export function ProjectDetail({
         return `Relationships (${total})`
       })(),
     },
-    { id: 'logs', label: 'Logs' },
-    { id: 'notes', label: 'Notes' },
-    { id: 'operations-log', label: 'Operations Log' },
     { id: 'settings', label: '' },
   ]
 
@@ -491,13 +496,7 @@ export function ProjectDetail({
               <Card
                 className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
               >
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className={value}>Project Details</h3>
-                  <Button variant="ghost" size="sm">
-                    Edit
-                  </Button>
-                </div>
-
+                <h3 className={`mb-4 ${value}`}>Project Details</h3>
                 <div className="space-y-0">
                   <div
                     className={`flex items-center justify-between border-b py-1.5 ${divider}`}
@@ -512,9 +511,7 @@ export function ProjectDetail({
                     className={`flex items-center justify-between border-b py-1.5 ${divider}`}
                   >
                     <span className={`text-sm ${label}`}>Slug</span>
-                    <span
-                      className={`rounded px-2 py-0.5 font-mono text-sm ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-slate-100 text-slate-900'}`}
-                    >
+                    <span className={`font-mono text-sm ${value}`}>
                       {project.slug}
                     </span>
                   </div>
@@ -546,7 +543,6 @@ export function ProjectDetail({
                     </div>
                   )}
 
-                  {/* Blueprint attributes */}
                   {attributeFields.map(
                     ({
                       key,
@@ -610,32 +606,73 @@ export function ProjectDetail({
                 </div>
               </Card>
 
-              {/* Identifiers */}
-              {project.identifiers &&
-                Object.keys(project.identifiers).length > 0 && (
-                  <Card
-                    className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-                  >
-                    <h3 className={`mb-4 ${value}`}>Identifiers</h3>
-                    <div className="space-y-0">
-                      {Object.entries(project.identifiers)
-                        .sort(([a], [b]) => a.localeCompare(b))
-                        .map(([owner, id]) => (
-                          <div
-                            key={owner}
-                            className={`flex items-center justify-between border-b py-2 ${divider} last:border-0`}
-                          >
-                            <span className={`text-sm ${label}`}>{owner}</span>
+              {/* Environments */}
+              {sortedEnvironments.length > 0 && (
+                <Card
+                  className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
+                >
+                  <h3 className={`mb-4 ${value}`}>Environments</h3>
+                  <div className="space-y-0">
+                    {sortedEnvironments.map((env) => {
+                      let url: string | null = null
+                      if (typeof env.url === 'string' && env.url !== '') {
+                        try {
+                          const parsed = new URL(env.url)
+                          if (
+                            parsed.protocol === 'http:' ||
+                            parsed.protocol === 'https:'
+                          ) {
+                            url = parsed.toString()
+                          }
+                        } catch {
+                          url = null
+                        }
+                      }
+                      const deployment = deploymentStatus[env.slug]
+                      return (
+                        <div
+                          key={env.slug}
+                          className={`flex items-center border-b py-2 ${divider} last:border-0`}
+                        >
+                          <div className="w-32 flex-shrink-0">
+                            <EnvironmentBadge
+                              name={env.name}
+                              slug={env.slug}
+                              label_color={env.label_color}
+                            />
+                          </div>
+                          <div className="flex-1 text-center">
                             <span
-                              className={`rounded px-2 py-0.5 font-mono text-sm ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-slate-100 text-slate-900'}`}
+                              className={`font-mono text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
                             >
-                              {id}
+                              {deployment?.version ?? ''}
                             </span>
                           </div>
-                        ))}
-                    </div>
-                  </Card>
-                )}
+                          <div className="flex-1 text-right">
+                            {url ? (
+                              <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`inline-flex items-center gap-1.5 text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-text'} hover:underline`}
+                              >
+                                {url}
+                                <ExternalLink
+                                  className={`h-3 w-3 ${isDarkMode ? 'text-amber-400' : 'text-amber-text'}`}
+                                />
+                              </a>
+                            ) : (
+                              <span className={`text-sm ${muted}`}>
+                                &mdash;
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </Card>
+              )}
             </div>
 
             {/* Right column: Health & Compliance + Recent Activity */}
@@ -681,60 +718,6 @@ export function ProjectDetail({
                   Policy scoring and compliance checks will appear here.
                 </p>
               </Card>
-
-              {/* Environments */}
-              {sortedEnvironments.length > 0 && (
-                <Card
-                  className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-                >
-                  <h3 className={`mb-4 ${value}`}>Environments</h3>
-                  <div className="space-y-0">
-                    {sortedEnvironments.map((env) => {
-                      let url: string | null = null
-                      if (typeof env.url === 'string' && env.url !== '') {
-                        try {
-                          const parsed = new URL(env.url)
-                          if (
-                            parsed.protocol === 'http:' ||
-                            parsed.protocol === 'https:'
-                          ) {
-                            url = parsed.toString()
-                          }
-                        } catch {
-                          url = null
-                        }
-                      }
-                      return (
-                        <div
-                          key={env.slug}
-                          className={`flex items-center justify-between border-b py-2 ${divider} last:border-0`}
-                        >
-                          <EnvironmentBadge
-                            name={env.name}
-                            slug={env.slug}
-                            label_color={env.label_color}
-                          />
-                          {url ? (
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className={`flex items-center gap-1.5 text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-text'} hover:underline`}
-                            >
-                              {url}
-                              <ExternalLink
-                                className={`h-3 w-3 ${isDarkMode ? 'text-amber-400' : 'text-amber-text'}`}
-                              />
-                            </a>
-                          ) : (
-                            <span className={`text-sm ${muted}`}>—</span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </Card>
-              )}
 
               {/* Recent Activity (mocked) */}
               <Card
@@ -791,8 +774,8 @@ export function ProjectDetail({
             isDarkMode={isDarkMode}
           />
         </TabsContent>
-        <TabsContent value="components">
-          <PlaceholderTab name="Components" isDarkMode={isDarkMode} />
+        <TabsContent value="dependencies">
+          <PlaceholderTab name="Dependencies" isDarkMode={isDarkMode} />
         </TabsContent>
         <TabsContent value="logs">
           <PlaceholderTab name="Logs" isDarkMode={isDarkMode} />
@@ -804,7 +787,7 @@ export function ProjectDetail({
           <PlaceholderTab name="Operations Log" isDarkMode={isDarkMode} />
         </TabsContent>
         <TabsContent value="settings">
-          <PlaceholderTab name="Settings" isDarkMode={isDarkMode} />
+          <SettingsTab project={project} isDarkMode={isDarkMode} />
         </TabsContent>
       </Tabs>
     </div>
@@ -1089,6 +1072,266 @@ function SidebarProjectRow({
         <span className={`flex-shrink-0 text-[10px] ${muted}`}>{typeSlug}</span>
       )}
     </li>
+  )
+}
+
+function SettingsTab({
+  project,
+  isDarkMode,
+}: {
+  project: Project
+  isDarkMode: boolean
+}) {
+  const { selectedOrganization } = useOrganization()
+  const orgSlug = selectedOrganization?.slug || ''
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const projectTypeSlug =
+    project.project_type?.slug ?? project.project_types?.[0]?.slug ?? ''
+  const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  const invalidateProject = () => {
+    queryClient.invalidateQueries({
+      queryKey: ['project', orgSlug, project.id],
+    })
+  }
+
+  const mutationErrorHandler = (label: string) => {
+    return (error: ApiError<{ detail?: string }> | Error) => {
+      const detail =
+        error instanceof ApiError
+          ? error.response?.data?.detail || error.message
+          : error.message
+      alert(`Failed to ${label}: ${detail}`)
+    }
+  }
+
+  const linksMutation = useMutation({
+    mutationFn: (links: Record<string, string>) => {
+      if (!orgSlug || !projectTypeSlug)
+        return Promise.reject(new Error('Missing project type'))
+      return updateProject(orgSlug, projectTypeSlug, project.slug, { links })
+    },
+    onSuccess: invalidateProject,
+    onError: mutationErrorHandler('save links'),
+  })
+
+  const identifiersMutation = useMutation({
+    mutationFn: (identifiers: Record<string, string>) => {
+      if (!orgSlug || !projectTypeSlug)
+        return Promise.reject(new Error('Missing project type'))
+      return updateProject(orgSlug, projectTypeSlug, project.slug, {
+        identifiers,
+      })
+    },
+    onSuccess: invalidateProject,
+    onError: mutationErrorHandler('save identifiers'),
+  })
+
+  const envMutation = useMutation({
+    mutationFn: (environments: Record<string, Record<string, string>>) => {
+      if (!orgSlug || !projectTypeSlug)
+        return Promise.reject(new Error('Missing project type'))
+      return updateProject(orgSlug, projectTypeSlug, project.slug, {
+        environments,
+      })
+    },
+    onSuccess: invalidateProject,
+    onError: mutationErrorHandler('save environments'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => {
+      if (!orgSlug || !projectTypeSlug)
+        return Promise.reject(new Error('Missing project type'))
+      return deleteProject(orgSlug, projectTypeSlug, project.slug)
+    },
+    onSuccess: () => navigate('/'),
+    onError: mutationErrorHandler('delete project'),
+  })
+
+  const {
+    data: linkDefs = [],
+    isLoading: linkDefsLoading,
+    isError: linkDefsError,
+  } = useQuery({
+    queryKey: ['linkDefinitions', orgSlug],
+    queryFn: () => listLinkDefinitions(orgSlug),
+    enabled: !!orgSlug,
+  })
+
+  const sortedEnvironments = useMemo(
+    () => sortEnvironments(project.environments || []),
+    [project.environments],
+  )
+
+  return (
+    <div className="space-y-6">
+      <EditProjectForm project={project} isDarkMode={isDarkMode} />
+
+      {linkDefsLoading && (
+        <Card
+          className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
+        >
+          <p
+            className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
+          >
+            Loading link definitions...
+          </p>
+        </Card>
+      )}
+      {linkDefsError && (
+        <Card
+          className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
+        >
+          <p className="text-sm text-red-600 dark:text-red-400">
+            Failed to load link definitions.
+          </p>
+        </Card>
+      )}
+      {!linkDefsLoading && !linkDefsError && linkDefs.length > 0 && (
+        <EditLinksCard
+          linkDefs={linkDefs}
+          links={project.links || {}}
+          isDarkMode={isDarkMode}
+          isSaving={linksMutation.isPending}
+          onSave={(entries) => linksMutation.mutate(entries)}
+        />
+      )}
+
+      {sortedEnvironments.length > 0 && (
+        <EditEnvironmentsCard
+          environments={sortedEnvironments}
+          isDarkMode={isDarkMode}
+          isSaving={envMutation.isPending}
+          onSave={(envData) => envMutation.mutate(envData)}
+        />
+      )}
+
+      <EditableKeyValueCard
+        title="Identifiers"
+        entries={project.identifiers || {}}
+        isDarkMode={isDarkMode}
+        isSaving={identifiersMutation.isPending}
+        readOnlyKeys
+        showHeader={false}
+        valuePlaceholder="identifier"
+        onSave={(entries) => identifiersMutation.mutate(entries)}
+      />
+
+      <Card
+        className={`border-amber-300 p-6 ${isDarkMode ? 'border-amber-700 bg-gray-800' : ''}`}
+      >
+        <h3
+          className={`mb-2 font-semibold ${isDarkMode ? 'text-amber-500' : 'text-amber-700'}`}
+        >
+          Archive Project
+        </h3>
+        <p
+          className={`mb-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+        >
+          Archiving the project will make it entirely read only.
+        </p>
+        <p
+          className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-amber-400' : 'text-amber-700'}`}
+        >
+          It will be hidden from the dashboard, won&apos;t show up in searches,
+          and will be disabled as a dependency for any other projects that are
+          dependent upon it.
+        </p>
+        <Button variant="outline" size="sm" disabled>
+          Archive Project
+        </Button>
+      </Card>
+
+      <Card
+        className={`border-red-300 p-6 ${isDarkMode ? 'border-red-800 bg-gray-800' : ''}`}
+      >
+        <h3
+          className={`mb-2 font-semibold ${isDarkMode ? 'text-red-500' : 'text-red-700'}`}
+        >
+          Delete Project
+        </h3>
+        <p
+          className={`mb-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+        >
+          This action will <strong>permanently delete</strong>{' '}
+          <code
+            className={`rounded px-1.5 py-0.5 font-mono text-sm ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-slate-100 text-slate-900'}`}
+          >
+            {project.slug}
+          </code>{' '}
+          immediately, removing the project and all associated data, including
+          facts, operation logs, and notes.
+        </p>
+        <p
+          className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-red-400' : 'text-red-700'}`}
+        >
+          Are you ABSOLUTELY SURE you wish to delete this project?
+        </p>
+        {!showDeleteConfirm ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className={`bg-red-700 text-white hover:bg-red-800 ${isDarkMode ? 'border-red-700' : 'border-red-300'}`}
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={!projectTypeSlug}
+          >
+            Delete Project
+          </Button>
+        ) : (
+          <div className="space-y-3">
+            <p
+              className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+            >
+              Type{' '}
+              <code
+                className={`rounded px-1.5 py-0.5 font-mono text-sm ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-slate-100 text-slate-900'}`}
+              >
+                {project.slug}
+              </code>{' '}
+              to confirm deletion:
+            </p>
+            <Input
+              value={deleteConfirmSlug}
+              onChange={(e) => setDeleteConfirmSlug(e.target.value)}
+              placeholder={project.slug}
+              disabled={deleteMutation.isPending}
+              className={
+                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+              }
+            />
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className={`bg-red-700 text-white hover:bg-red-800 ${isDarkMode ? 'border-red-700' : 'border-red-300'}`}
+                onClick={() => deleteMutation.mutate()}
+                disabled={
+                  deleteConfirmSlug !== project.slug ||
+                  deleteMutation.isPending ||
+                  !projectTypeSlug
+                }
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setDeleteConfirmSlug('')
+                }}
+                disabled={deleteMutation.isPending}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
   )
 }
 

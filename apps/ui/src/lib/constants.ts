@@ -21,8 +21,22 @@ export const NODE_BASE_FIELDS_SET = new Set(NODE_BASE_FIELDS)
 export const TEAM_BASE_FIELDS = NODE_BASE_FIELDS
 export const TEAM_BASE_FIELDS_SET = NODE_BASE_FIELDS_SET
 
-export const ENVIRONMENT_BASE_FIELDS = [...NODE_BASE_FIELDS, 'sort_order']
+export const ENVIRONMENT_BASE_FIELDS = [...NODE_BASE_FIELDS, 'sort_order', 'id']
 export const ENVIRONMENT_BASE_FIELDS_SET = new Set(ENVIRONMENT_BASE_FIELDS)
 
 export const PROJECT_TYPE_BASE_FIELDS = NODE_BASE_FIELDS
 export const PROJECT_TYPE_BASE_FIELDS_SET = NODE_BASE_FIELDS_SET
+
+export const PROJECT_BASE_FIELDS = [
+  ...NODE_BASE_FIELDS,
+  'team',
+  'team_slug',
+  'id',
+  'project_type',
+  'project_types',
+  'environments',
+  'links',
+  'identifiers',
+  'url',
+]
+export const PROJECT_BASE_FIELDS_SET = new Set(PROJECT_BASE_FIELDS)

@@ -723,6 +723,7 @@ export interface SchemaProperty {
   maximum?: number
   minLength?: number
   maxLength?: number
+  editable?: boolean
   colorMap?: Record<string, string>
   iconMap?: Record<string, string>
   colorRange?: Record<string, string>

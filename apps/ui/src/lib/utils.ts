@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import type { BlueprintFilter } from '@/types'
+import type { BlueprintFilter, Environment } from '@/types'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -44,6 +44,17 @@ export function extractDynamicFields(
     }
   }
   return result
+}
+
+/**
+ * Return a new array of environments sorted by sort_order (ascending,
+ * nullish treated as 0) and falling back to name.localeCompare for ties.
+ */
+export function sortEnvironments(environments: Environment[]): Environment[] {
+  return [...environments].sort((a, b) => {
+    const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name)
+  })
 }
 
 /**
