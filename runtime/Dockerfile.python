@@ -25,5 +25,5 @@ RUN apt-get update \
  && uv venv $UV_PROJECT_DIRECTORY \
  && uv pip install fastembed
 
-COPY ./api-entrypoint.sh /
+COPY --chmod=755 ./api-entrypoint.sh /
 ENTRYPOINT ["/api-entrypoint.sh"]
