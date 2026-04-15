@@ -53,7 +53,10 @@ export function OrganizationManagement({
     }
     const teamCount = org.relationships?.teams?.count ?? 0
     if (teamCount > 0) {
-      return { allowed: false, reason: `Has ${teamCount} team(s)` }
+      return {
+        allowed: false,
+        blockedBy: [{ count: teamCount, label: 'team', href: '/admin/teams' }],
+      }
     }
     return { allowed: true }
   }

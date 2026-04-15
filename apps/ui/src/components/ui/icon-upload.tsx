@@ -32,7 +32,8 @@ export function IconUpload({
     mutationFn: deleteUpload,
   })
 
-  const isImageUrl = value && value.length > 0
+  const isImageUrl =
+    value != null && (value.startsWith('/') || value.startsWith('http'))
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target

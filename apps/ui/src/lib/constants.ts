@@ -18,14 +18,14 @@ export const NODE_BASE_FIELDS = [
 export const NODE_BASE_FIELDS_SET = new Set(NODE_BASE_FIELDS)
 
 // Re-export under model-specific names for clarity in imports
-export const TEAM_BASE_FIELDS = NODE_BASE_FIELDS
-export const TEAM_BASE_FIELDS_SET = NODE_BASE_FIELDS_SET
+export const TEAM_BASE_FIELDS = [...NODE_BASE_FIELDS, 'id']
+export const TEAM_BASE_FIELDS_SET = new Set(TEAM_BASE_FIELDS)
 
 export const ENVIRONMENT_BASE_FIELDS = [...NODE_BASE_FIELDS, 'sort_order', 'id']
 export const ENVIRONMENT_BASE_FIELDS_SET = new Set(ENVIRONMENT_BASE_FIELDS)
 
-export const PROJECT_TYPE_BASE_FIELDS = NODE_BASE_FIELDS
-export const PROJECT_TYPE_BASE_FIELDS_SET = NODE_BASE_FIELDS_SET
+export const PROJECT_TYPE_BASE_FIELDS = [...NODE_BASE_FIELDS, 'id']
+export const PROJECT_TYPE_BASE_FIELDS_SET = new Set(PROJECT_TYPE_BASE_FIELDS)
 
 export const PROJECT_BASE_FIELDS = [
   ...NODE_BASE_FIELDS,

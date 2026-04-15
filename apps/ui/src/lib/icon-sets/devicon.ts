@@ -1,6 +1,6 @@
+import { createElement } from 'react'
 import { iconRegistry } from '@/lib/icon-registry'
 import type { IconComponent, IconEntry } from '@/lib/icon-registry'
-import { createImgComponent } from '@/lib/icon-sets/utils'
 
 const deviconGlob = import.meta.glob<string>(
   '/node_modules/devicon/icons/**/*.svg',
@@ -15,17 +15,53 @@ for (const [path, url] of Object.entries(deviconGlob)) {
   deviconIndex[`devicon-${name}`] = url
 }
 
-export const DEVICON_ICONS: IconEntry[] = Object.entries(deviconIndex)
-  .map(([value]) => ({
-    label: value.slice(8).replace(/-/g, ' '), // strip "devicon-" → "javascript original"
-    value,
-  }))
+// For the picker: one monochrome icon per tech, preferring -plain over -line.
+// Collect which techs have plain/line variants, then pick one per tech.
+const techVariants: Record<string, { plain?: string; line?: string }> = {}
+for (const key of Object.keys(deviconIndex)) {
+  if (key.endsWith('-plain')) {
+    const tech = key.slice(8, -6) // strip "devicon-" and "-plain"
+    if (!techVariants[tech]) techVariants[tech] = {}
+    techVariants[tech].plain = key
+  } else if (key.endsWith('-line')) {
+    const tech = key.slice(8, -5) // strip "devicon-" and "-line"
+    if (!techVariants[tech]) techVariants[tech] = {}
+    techVariants[tech].line = key
+  }
+}
+
+export const DEVICON_ICONS: IconEntry[] = Object.entries(techVariants)
+  .map(([, variants]) => {
+    const value = variants.line ?? variants.plain!
+    const tech = value.slice(8).replace(/-plain$|-line$/, '') // strip prefix+variant
+    return { label: tech.replace(/-/g, ' '), value }
+  })
   .sort((a, b) => a.label.localeCompare(b.label))
+
+function createGrayscaleImg(url: string): IconComponent {
+  const Img: IconComponent = (props) => {
+    const { className, width, height, ...rest } = props as Record<
+      string,
+      unknown
+    >
+    return createElement('img', {
+      src: url,
+      alt: '',
+      className,
+      style: { filter: 'brightness(0)' },
+      width: width ?? 16,
+      height: height ?? 16,
+      ...rest,
+    })
+  }
+  return Img
+}
 
 function resolve(value: string): IconComponent | null {
   if (!value.startsWith('devicon-')) return null
   const url = deviconIndex[value]
-  return url ? createImgComponent(url) : null
+  if (!url) return null
+  return createGrayscaleImg(url)
 }
 
 function resolveUrl(value: string): string | null {

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiError } from '@/api/client'
 import { Plus, Search, Link2, AlertCircle } from 'lucide-react'
-import { getIcon } from '@/lib/icons'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -116,7 +116,10 @@ export function LinkDefinitionManagement({
   ): CanDeleteResult => {
     const projects = ld.relationships?.projects?.count ?? 0
     if (projects === 0) return { allowed: true }
-    return { allowed: false, reason: `Has ${projects} project(s)` }
+    return {
+      allowed: false,
+      blockedBy: [{ count: projects, label: 'project', href: '/projects' }],
+    }
   }
 
   const handleSave = (formOrgSlug: string, data: LinkDefinitionCreate) => {
@@ -243,9 +246,16 @@ export function LinkDefinitionManagement({
                 <div
                   className={`flex size-8 flex-shrink-0 items-center justify-center rounded-lg ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}
                 >
-                  <Link2
-                    className={`h-4 w-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
-                  />
+                  {ld.icon ? (
+                    <EntityIcon
+                      icon={ld.icon}
+                      className="size-5 object-cover"
+                    />
+                  ) : (
+                    <Link2
+                      className={`h-4 w-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
+                    />
+                  )}
                 </div>
                 <div>
                   <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
@@ -274,34 +284,6 @@ export function LinkDefinitionManagement({
                 {ld.slug}
               </code>
             ),
-          },
-          {
-            key: 'icon',
-            header: 'Icon',
-            headerAlign: 'center',
-            cellAlign: 'center',
-            render: (ld) => {
-              if (!ld.icon)
-                return (
-                  <span
-                    className={isDarkMode ? 'text-gray-600' : 'text-gray-400'}
-                  >
-                    --
-                  </span>
-                )
-              const Icon = getIcon(ld.icon, null)
-              return Icon ? (
-                <Icon
-                  className={`mx-auto h-5 w-5 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                />
-              ) : (
-                <span
-                  className={`text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-                >
-                  {ld.icon}
-                </span>
-              )
-            },
           },
           {
             key: 'url_template',

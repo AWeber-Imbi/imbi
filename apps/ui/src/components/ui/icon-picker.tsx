@@ -2,6 +2,11 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import {
+  HoverCard,
+  HoverCardTrigger,
+  HoverCardContent,
+} from '@/components/ui/hover-card'
 import { getIcon, iconRegistry } from '@/lib/icons'
 import type { IconComponent } from '@/lib/icons'
 
@@ -143,7 +148,6 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
                   type="button"
                   onClick={() => {
                     setIconSet(set.id)
-                    setQuery('')
                   }}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     iconSet === set.id
@@ -192,27 +196,43 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
                   if (!Icon) return null
                   const isSelected = value === icon.value
                   return (
-                    <button
+                    <HoverCard
                       key={icon.value}
-                      type="button"
-                      title={icon.value}
-                      onClick={() => handleSelect(icon.value)}
-                      className={`flex h-10 w-full items-center justify-center rounded-md transition-colors ${
-                        isSelected
-                          ? isDarkMode
-                            ? 'bg-blue-600/30 ring-1 ring-blue-500'
-                            : 'bg-blue-50 ring-1 ring-blue-400'
-                          : isDarkMode
-                            ? 'hover:bg-gray-700'
-                            : 'hover:bg-gray-100'
-                      }`}
+                      openDelay={300}
+                      closeDelay={100}
                     >
-                      <Icon
-                        className={`h-5 w-5 ${
-                          isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                        }`}
-                      />
-                    </button>
+                      <HoverCardTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={() => handleSelect(icon.value)}
+                          className={`flex h-10 w-full items-center justify-center rounded-md transition-colors ${
+                            isSelected
+                              ? isDarkMode
+                                ? 'bg-blue-600/30 ring-1 ring-blue-500'
+                                : 'bg-blue-50 ring-1 ring-blue-400'
+                              : isDarkMode
+                                ? 'hover:bg-gray-700'
+                                : 'hover:bg-gray-100'
+                          }`}
+                        >
+                          <Icon
+                            className={`h-5 w-5 ${
+                              isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                            }`}
+                          />
+                        </button>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-auto p-4" side="top">
+                        <div className="flex flex-col items-center gap-3">
+                          <Icon
+                            className={`h-20 w-20 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}
+                          />
+                          <span className="max-w-[180px] break-all text-center text-sm text-muted-foreground">
+                            {icon.label}
+                          </span>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
                   )
                 })}
               </div>

@@ -113,7 +113,10 @@ export function ProjectTypeManagement({
   ): CanDeleteResult => {
     const projects = pt.relationships?.projects?.count ?? 0
     if (projects === 0) return { allowed: true }
-    return { allowed: false, reason: `Has ${projects} project(s)` }
+    return {
+      allowed: false,
+      blockedBy: [{ count: projects, label: 'project', href: '/projects' }],
+    }
   }
 
   const handleSave = (formOrgSlug: string, ptData: ProjectTypeCreate) => {

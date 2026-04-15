@@ -118,7 +118,10 @@ export function EnvironmentManagement({
   const canDeleteEnvironment = (env: Environment): CanDeleteResult => {
     const projects = env.relationships?.projects?.count ?? 0
     if (projects === 0) return { allowed: true }
-    return { allowed: false, reason: `Has ${projects} project(s)` }
+    return {
+      allowed: false,
+      blockedBy: [{ count: projects, label: 'project', href: '/projects' }],
+    }
   }
 
   const handleSave = (formOrgSlug: string, envData: EnvironmentCreate) => {
@@ -277,7 +280,7 @@ export function EnvironmentManagement({
             render: (env) =>
               env.label_color ? (
                 <span
-                  className="rounded px-2 py-1 text-xs font-medium"
+                  className="whitespace-nowrap rounded px-2 py-1 text-xs font-medium"
                   style={{
                     backgroundColor: env.label_color + '20',
                     color: env.label_color,
@@ -288,7 +291,7 @@ export function EnvironmentManagement({
                 </span>
               ) : (
                 <code
-                  className={`rounded px-2 py-1 ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}
+                  className={`whitespace-nowrap rounded px-2 py-1 ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}
                 >
                   {env.slug}
                 </code>

@@ -1,4 +1,5 @@
 import { useState, useEffect, type MouseEvent, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from './button'
@@ -13,6 +14,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from './alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './dialog'
 import {
   Table,
   TableBody,
@@ -36,9 +45,16 @@ export interface AdminTableColumn<T> {
   render: (row: T) => ReactNode
 }
 
+export interface BlockedReason {
+  count: number
+  label: string // e.g. "project", "team", "member"
+  href?: string // optional link to filtered view
+}
+
 export interface CanDeleteResult {
   allowed: boolean
-  reason?: string
+  reason?: string // free-form fallback (system roles, etc.)
+  blockedBy?: BlockedReason[] // structured blocking conditions
 }
 
 interface AdminTableProps<T> {
@@ -82,7 +98,12 @@ export function AdminTable<T>({
   actions,
   emptyMessage = 'No items found.',
 }: AdminTableProps<T>) {
+  const navigate = useNavigate()
   const [deleteTarget, setDeleteTarget] = useState<T | null>(null)
+  const [blockedTarget, setBlockedTarget] = useState<{
+    row: T
+    result: CanDeleteResult
+  } | null>(null)
   const [wasDeleting, setWasDeleting] = useState(false)
 
   useEffect(() => {
@@ -94,9 +115,17 @@ export function AdminTable<T>({
     }
   }, [isDeleting, wasDeleting])
 
-  const handleDeleteClick = (row: T, e: MouseEvent<HTMLButtonElement>) => {
+  const handleDeleteClick = (
+    row: T,
+    e: MouseEvent<HTMLButtonElement>,
+    deleteCheck: CanDeleteResult,
+  ) => {
     e.stopPropagation()
-    setDeleteTarget(row)
+    if (!deleteCheck.allowed) {
+      setBlockedTarget({ row, result: deleteCheck })
+    } else {
+      setDeleteTarget(row)
+    }
   }
 
   const handleDeleteConfirm = () => {
@@ -108,6 +137,80 @@ export function AdminTable<T>({
 
   return (
     <>
+      <Dialog
+        open={blockedTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setBlockedTarget(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Restricted</DialogTitle>
+            <DialogDescription>
+              This item cannot be deleted at this time.
+            </DialogDescription>
+          </DialogHeader>
+          {blockedTarget &&
+            (() => {
+              const name = getDeleteLabel(blockedTarget.row)
+              const { blockedBy, reason } = blockedTarget.result
+              if (blockedBy && blockedBy.length > 0) {
+                const parts = blockedBy.map((b, i) => (
+                  <span key={i}>
+                    {b.href ? (
+                      <button
+                        className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                        onClick={() => {
+                          setBlockedTarget(null)
+                          navigate(b.href!)
+                        }}
+                      >
+                        {b.count} {b.label}
+                        {b.count !== 1 ? 's' : ''}
+                      </button>
+                    ) : (
+                      <span className="font-medium">
+                        {b.count} {b.label}
+                        {b.count !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </span>
+                ))
+                const joined = parts.reduce<ReactNode[]>((acc, el, i) => {
+                  if (i === 0) return [el]
+                  if (i === parts.length - 1) return [...acc, ' and ', el]
+                  return [...acc, ', ', el]
+                }, [])
+                return (
+                  <p className="text-sm">
+                    <span className="font-semibold">{name}</span> cannot be
+                    deleted because it is referenced by {joined}. Remove or
+                    reassign
+                    {blockedBy.length === 1
+                      ? blockedBy[0].count === 1
+                        ? ` that ${blockedBy[0].label}`
+                        : ` those ${blockedBy[0].label}s`
+                      : ' them'}{' '}
+                    before deleting this item.
+                  </p>
+                )
+              }
+              return (
+                <p className="text-sm">
+                  <span className="font-semibold">{name}</span> cannot be
+                  deleted
+                  {reason
+                    ? `: ${reason.toLowerCase().replace(/^cannot delete the only /, 'because it is the only ')}.`
+                    : '.'}
+                </p>
+              )
+            })()}
+          <DialogFooter>
+            <Button onClick={() => setBlockedTarget(null)}>OK</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
@@ -218,12 +321,15 @@ export function AdminTable<T>({
                                     variant="ghost"
                                     size="sm"
                                     aria-label={`Delete ${label}`}
-                                    onClick={(e) => handleDeleteClick(row, e)}
-                                    disabled={isDeleting || !canDeleteRow}
+                                    onClick={(e) =>
+                                      handleDeleteClick(row, e, deleteCheck)
+                                    }
+                                    disabled={isDeleting}
                                     className={cn(
                                       'text-destructive hover:bg-destructive/10 hover:text-destructive',
-                                      (!canDeleteRow || isDeleting) &&
+                                      isDeleting &&
                                         'pointer-events-none opacity-30',
+                                      !canDeleteRow && 'opacity-30',
                                     )}
                                   >
                                     <Trash2 className="h-4 w-4" />

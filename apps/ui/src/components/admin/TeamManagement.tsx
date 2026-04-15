@@ -107,11 +107,13 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
     const projects = team.relationships?.projects?.count ?? 0
     const members = team.relationships?.members?.count ?? 0
     if (projects === 0 && members === 0) return { allowed: true }
-    const parts = [
-      projects > 0 ? `${projects} project(s)` : '',
-      members > 0 ? `${members} member(s)` : '',
-    ].filter(Boolean)
-    return { allowed: false, reason: `Has ${parts.join(' and ')}` }
+    const blockedBy = [
+      ...(projects > 0
+        ? [{ count: projects, label: 'project', href: '/projects' }]
+        : []),
+      ...(members > 0 ? [{ count: members, label: 'member' }] : []),
+    ]
+    return { allowed: false, blockedBy }
   }
 
   const handleSave = (formOrgSlug: string, teamData: TeamCreate) => {

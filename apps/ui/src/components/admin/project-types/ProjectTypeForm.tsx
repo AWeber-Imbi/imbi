@@ -320,9 +320,7 @@ export function ProjectTypeForm({
                   </p>
                   <IconPicker
                     value={
-                      icon.startsWith('si-') ||
-                      icon.startsWith('lucide-') ||
-                      icon.startsWith('aws-')
+                      !icon.startsWith('/') && !icon.startsWith('http')
                         ? icon
                         : ''
                     }
@@ -338,11 +336,9 @@ export function ProjectTypeForm({
                   </p>
                   <IconUpload
                     value={
-                      icon.startsWith('si-') ||
-                      icon.startsWith('lucide-') ||
-                      icon.startsWith('aws-')
-                        ? ''
-                        : icon
+                      icon.startsWith('/') || icon.startsWith('http')
+                        ? icon
+                        : ''
                     }
                     onChange={handleIconChange}
                     isDarkMode={isDarkMode}
