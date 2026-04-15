@@ -119,6 +119,31 @@ Useful services during UI development:
 | Mailpit | http://localhost:8025 | View emails sent by the app |
 | Neo4j Browser | http://localhost:7474 | Inspect graph data directly |
 
+### Python Service Development (Beta)
+
+> **Note:** This workflow is in beta. The existing Docker Compose workflow
+> above remains the recommended approach for most development.
+
+You can develop individual Python services locally with hot-reload while
+the rest of the stack runs in Docker. The `start-dev` and `stop-dev`
+commands manage the Caddy reverse proxy to route traffic to a standalone
+dev container that mounts your local source code:
+
+```bash
+# First-time setup (builds the image and annotates Caddy routes)
+just bootstrap
+
+# Start developing a service (builds, starts, and routes traffic)
+just start-dev imbi-api
+
+# Stop the dev service (scales down and reroutes traffic to the main container)
+just stop-dev imbi-api
+```
+
+The dev container mounts the service's source directory and uses
+[uv](https://docs.astral.sh/uv/) for fast dependency installation.
+Changes to your local source files are reflected immediately.
+
 ### Running the Docker Image
 
 ```bash
