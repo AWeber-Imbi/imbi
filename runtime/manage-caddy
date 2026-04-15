@@ -12,10 +12,15 @@ Tag upstreams with @id for named access, then switch traffic
 between Docker Compose services and localhost.
 
 Usage:
-    ./manage-caddy annotate http://127.0.0.1:2019
-    ./manage-caddy list http://127.0.0.1:2019
-    ./manage-caddy up http://127.0.0.1:2019 imbi-api
-    ./manage-caddy down http://127.0.0.1:2019 imbi-api
+    ./manage-caddy list
+    ./manage-caddy annotate
+    ./manage-caddy up imbi-api
+    ./manage-caddy down imbi-api
+    ./manage-caddy list --caddy-url http://127.0.0.1:2019
+
+By default, the Caddy admin URL is read from
+runtime/state/caddy-url (relative to this script). Use
+--caddy-url to override or --caddy-url-file to point elsewhere.
 
 Exit codes:
     0: Success
@@ -26,6 +31,7 @@ Exit codes:
 import contextlib
 import http.client
 import json
+import pathlib
 import typing as t
 import urllib.parse
 
@@ -34,6 +40,31 @@ import rich.table
 import typer
 
 console = rich.console.Console()
+
+DEFAULT_CADDY_FILE = (
+    pathlib.Path(__file__).resolve().parent / 'state' / 'caddy-url'
+)
+
+
+def resolve_caddy_url(
+    caddy_url: str | None,
+    caddy_url_file: pathlib.Path,
+) -> str:
+    """Resolve the Caddy admin API URL from option or file."""
+    if caddy_url is not None:
+        return caddy_url
+    try:
+        url = caddy_url_file.read_text().strip()
+        if url:
+            return url
+    except FileNotFoundError:
+        pass
+    console.print(
+        '[bold red]Error:[/bold red] No --caddy-url given and '
+        f'{caddy_url_file} not found'
+    )
+    raise typer.Exit(2)
+
 
 app = typer.Typer(
     help='Manage Caddy reverse_proxy upstreams for Imbi services',
@@ -106,17 +137,22 @@ def find_upstreams(routes):
 @app.command(name='list')
 def list_upstreams(
     caddy_url: t.Annotated[
-        str,
-        typer.Argument(
-            help='Caddy admin API URL (e.g. http://127.0.0.1:2019)'
+        str | None,
+        typer.Option(help='Caddy admin API URL'),
+    ] = None,
+    caddy_url_file: t.Annotated[
+        pathlib.Path,
+        typer.Option(
+            help='File containing the Caddy admin API URL',
         ),
-    ],
+    ] = DEFAULT_CADDY_FILE,
 ) -> None:
     """Show current upstream targets for all services."""
+    url = resolve_caddy_url(caddy_url, caddy_url_file)
     routes_path = '/config/apps/http/servers/srv0/routes'
 
     try:
-        routes = api_request(caddy_url, routes_path)
+        routes = api_request(url, routes_path)
     except CaddyAPIError as exc:
         console.print(
             f'[bold red]Error:[/bold red] {exc}'
@@ -135,7 +171,7 @@ def list_upstreams(
             f'/handle/0/upstreams/0'
         )
         try:
-            upstream = api_request(caddy_url, upstream_path)
+            upstream = api_request(url, upstream_path)
             dial = upstream['dial']
             if dial.startswith('127.0.0.1:'):
                 status = '[yellow]down[/yellow]'
@@ -153,17 +189,22 @@ def list_upstreams(
 @app.command()
 def annotate(
     caddy_url: t.Annotated[
-        str,
-        typer.Argument(
-            help='Caddy admin API URL (e.g. http://127.0.0.1:2019)'
+        str | None,
+        typer.Option(help='Caddy admin API URL'),
+    ] = None,
+    caddy_url_file: t.Annotated[
+        pathlib.Path,
+        typer.Option(
+            help='File containing the Caddy admin API URL',
         ),
-    ],
+    ] = DEFAULT_CADDY_FILE,
 ) -> None:
     """Tag each reverse_proxy upstream with an @id."""
+    url = resolve_caddy_url(caddy_url, caddy_url_file)
     routes_path = '/config/apps/http/servers/srv0/routes'
 
     try:
-        routes = api_request(caddy_url, routes_path)
+        routes = api_request(url, routes_path)
     except CaddyAPIError as exc:
         console.print(
             f'[bold red]Error:[/bold red] {exc}'
@@ -183,10 +224,10 @@ def annotate(
             f'/handle/0/upstreams/0'
         )
         try:
-            upstream = api_request(caddy_url, upstream_path)
+            upstream = api_request(url, upstream_path)
             upstream['@id'] = name
             api_request(
-                caddy_url,
+                url,
                 upstream_path,
                 method='PATCH',
                 body=json.dumps(upstream),
@@ -208,20 +249,25 @@ def annotate(
 
 @app.command()
 def up(
-    caddy_url: t.Annotated[
-        str,
-        typer.Argument(
-            help='Caddy admin API URL (e.g. http://127.0.0.1:2019)'
-        ),
-    ],
     service: t.Annotated[
         str,
         typer.Argument(help='Service name (e.g. imbi-api)'),
     ],
+    caddy_url: t.Annotated[
+        str | None,
+        typer.Option(help='Caddy admin API URL'),
+    ] = None,
+    caddy_url_file: t.Annotated[
+        pathlib.Path,
+        typer.Option(
+            help='File containing the Caddy admin API URL',
+        ),
+    ] = DEFAULT_CADDY_FILE,
 ) -> None:
     """Route traffic to the Docker Compose service."""
+    url = resolve_caddy_url(caddy_url, caddy_url_file)
     try:
-        upstream = api_request(caddy_url, f'/id/{service}')
+        upstream = api_request(url, f'/id/{service}')
     except CaddyAPIError as exc:
         console.print(
             f'[bold red]Error:[/bold red] {exc}'
@@ -234,7 +280,7 @@ def up(
 
     try:
         api_request(
-            caddy_url,
+            url,
             f'/id/{service}',
             method='PATCH',
             body=json.dumps({'@id': service, 'dial': new_dial}),
@@ -252,20 +298,25 @@ def up(
 
 @app.command()
 def down(
-    caddy_url: t.Annotated[
-        str,
-        typer.Argument(
-            help='Caddy admin API URL (e.g. http://127.0.0.1:2019)'
-        ),
-    ],
     service: t.Annotated[
         str,
         typer.Argument(help='Service name (e.g. imbi-api)'),
     ],
+    caddy_url: t.Annotated[
+        str | None,
+        typer.Option(help='Caddy admin API URL'),
+    ] = None,
+    caddy_url_file: t.Annotated[
+        pathlib.Path,
+        typer.Option(
+            help='File containing the Caddy admin API URL',
+        ),
+    ] = DEFAULT_CADDY_FILE,
 ) -> None:
     """Route traffic to localhost (disable service)."""
+    url = resolve_caddy_url(caddy_url, caddy_url_file)
     try:
-        upstream = api_request(caddy_url, f'/id/{service}')
+        upstream = api_request(url, f'/id/{service}')
     except CaddyAPIError as exc:
         console.print(
             f'[bold red]Error:[/bold red] {exc}'
@@ -278,7 +329,7 @@ def down(
 
     try:
         api_request(
-            caddy_url,
+            url,
             f'/id/{service}',
             method='PATCH',
             body=json.dumps({'@id': service, 'dial': new_dial}),
