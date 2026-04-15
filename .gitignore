@@ -7,3 +7,4 @@ build/
 dist/
 docs/site/
 helm/imbi/charts/
+runtime/state/

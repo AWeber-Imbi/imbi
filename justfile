@@ -64,8 +64,33 @@ clean:
 bootstrap:
     docker compose up --build --wait --detach
     docker compose exec imbi imbi-api setup
+    ./runtime/manage-caddy annotate --caddy-url http://localhost:$(docker compose port imbi 2019 | cut -d: -f2)
 
 [doc("Destroy docker environment and remove artifacts")]
 [group("Development")]
 teardown: clean
     docker compose down --remove-orphans --volumes
+    rm -fr runtime/uv-cache/ runtime/wheels/* runtime/state/*
+
+[doc("Run a single service in 'dev' mode (beta)")]
+[group("Development")]
+start-dev service: _state-caddy-url
+    docker compose build '{{service}}'
+    docker compose up --scale '{{service}}=1' --detach --wait
+    ./runtime/manage-caddy up '{{service}}'
+
+[doc("Stop running service in 'dev' mode (beta)")]
+[group("Development")]
+stop-dev service: _state-caddy-url
+    docker compose up --scale '{{service}}=0' --detach --wait
+    ./runtime/manage-caddy down '{{service}}'
+
+_state-caddy-url:
+    #!/usr/bin/env sh
+    set -eu
+    mkdir -p ./runtime/state
+    if [ ! -e "./runtime/state/caddy-url" ]; then
+        docker compose up --wait --detach imbi
+        port_spec="$(docker compose port imbi 2019)"
+        echo "http://localhost:${port_spec#*:}" >./runtime/state/caddy-url
+    fi
