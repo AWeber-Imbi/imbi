@@ -69,3 +69,4 @@ bootstrap:
 [group("Development")]
 teardown: clean
     docker compose down --remove-orphans --volumes
+    rm -fr runtime/uv-cache/ runtime/wheels/*
