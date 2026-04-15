@@ -14,8 +14,15 @@ import {
 } from 'lucide-react'
 import Ajv from 'ajv'
 import { Button } from '@/components/ui/button'
+import { CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   getBlueprint,
   listEnvironments,
@@ -641,11 +648,9 @@ export function BlueprintForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2
-            className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+          <CardTitle>
             {isEditing ? 'Edit Blueprint' : 'Create Blueprint'}
-          </h2>
+          </CardTitle>
           <p
             className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
           >
@@ -738,7 +743,7 @@ export function BlueprintForm({
         }`}
       >
         <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
           Basic Information
         </h3>
@@ -776,32 +781,34 @@ export function BlueprintForm({
           </div>
 
           {/* Slug */}
-          <div>
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
-              Slug
-            </label>
-            <Input
-              value={slug}
-              onChange={(e) => handleSlugChange(e.target.value)}
-              disabled={isLoading}
-              placeholder="auto-generated"
-              className={`font-mono ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
-            />
-            {!isEditing && !slugManuallyEdited && name && (
-              <p
-                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+          {!isEditing && (
+            <div>
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
               >
-                Auto-generated from name
-              </p>
-            )}
-            {touched.slug && validationErrors.slug && (
-              <p className="mt-1 text-sm text-red-600">
-                {validationErrors.slug}
-              </p>
-            )}
-          </div>
+                Slug
+              </label>
+              <Input
+                value={slug}
+                onChange={(e) => handleSlugChange(e.target.value)}
+                disabled={isLoading}
+                placeholder="auto-generated"
+                className={`font-mono ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+              />
+              {!slugManuallyEdited && name && (
+                <p
+                  className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                >
+                  Auto-generated from name
+                </p>
+              )}
+              {touched.slug && validationErrors.slug && (
+                <p className="mt-1 text-sm text-red-600">
+                  {validationErrors.slug}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Kind */}
           <div>
@@ -1096,7 +1103,7 @@ export function BlueprintForm({
               className={`h-4 w-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
             />
             <h3
-              className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+              className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
             >
               Conditional Filter
             </h3>
@@ -1250,7 +1257,7 @@ export function BlueprintForm({
       >
         <div className="mb-4 flex items-center justify-between">
           <h3
-            className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             JSON Schema
           </h3>
@@ -1335,34 +1342,60 @@ export function BlueprintForm({
                     {/* Property Row */}
                     <div className="flex items-center gap-3 p-3">
                       <div className="flex flex-col gap-0.5">
-                        <button
-                          onClick={() => moveProperty(index, 'up')}
-                          disabled={index === 0}
-                          className={`rounded p-0.5 ${
-                            index === 0
-                              ? 'cursor-not-allowed opacity-30'
-                              : isDarkMode
-                                ? 'text-gray-400 hover:bg-gray-700'
-                                : 'text-gray-600 hover:bg-gray-200'
-                          }`}
-                          title="Move up"
-                        >
-                          <ChevronUp className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={() => moveProperty(index, 'down')}
-                          disabled={index === schemaProperties.length - 1}
-                          className={`rounded p-0.5 ${
-                            index === schemaProperties.length - 1
-                              ? 'cursor-not-allowed opacity-30'
-                              : isDarkMode
-                                ? 'text-gray-400 hover:bg-gray-700'
-                                : 'text-gray-600 hover:bg-gray-200'
-                          }`}
-                          title="Move down"
-                        >
-                          <ChevronDown className="h-3 w-3" />
-                        </button>
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex">
+                                <button
+                                  type="button"
+                                  aria-label="Move property up"
+                                  onClick={() => moveProperty(index, 'up')}
+                                  disabled={index === 0}
+                                  className={`rounded p-0.5 ${
+                                    index === 0
+                                      ? 'cursor-not-allowed opacity-30'
+                                      : isDarkMode
+                                        ? 'text-gray-400 hover:bg-gray-700'
+                                        : 'text-gray-600 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  <ChevronUp className="h-3 w-3" />
+                                </button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Move up</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex">
+                                <button
+                                  type="button"
+                                  aria-label="Move property down"
+                                  onClick={() => moveProperty(index, 'down')}
+                                  disabled={
+                                    index === schemaProperties.length - 1
+                                  }
+                                  className={`rounded p-0.5 ${
+                                    index === schemaProperties.length - 1
+                                      ? 'cursor-not-allowed opacity-30'
+                                      : isDarkMode
+                                        ? 'text-gray-400 hover:bg-gray-700'
+                                        : 'text-gray-600 hover:bg-gray-200'
+                                  }`}
+                                >
+                                  <ChevronDown className="h-3 w-3" />
+                                </button>
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Move down</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </div>
 
                       <Input
@@ -1432,33 +1465,57 @@ export function BlueprintForm({
                         </label>
                       </div>
 
-                      <button
-                        onClick={() => toggleExpandProp(prop.id)}
-                        className={`rounded p-1.5 text-xs ${
-                          isDarkMode
-                            ? 'text-gray-400 hover:bg-gray-700'
-                            : 'text-gray-600 hover:bg-gray-200'
-                        }`}
-                        title="Advanced options"
-                      >
-                        {isExpanded ? (
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        ) : (
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        )}
-                      </button>
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={
+                                isExpanded
+                                  ? 'Collapse advanced options'
+                                  : 'Expand advanced options'
+                              }
+                              onClick={() => toggleExpandProp(prop.id)}
+                              className={`rounded p-1.5 text-xs ${
+                                isDarkMode
+                                  ? 'text-gray-400 hover:bg-gray-700'
+                                  : 'text-gray-600 hover:bg-gray-200'
+                              }`}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              ) : (
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Advanced options</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
 
-                      <button
-                        onClick={() => removeProperty(prop.id)}
-                        className={`rounded p-1.5 ${
-                          isDarkMode
-                            ? 'text-red-400 hover:bg-red-900/20'
-                            : 'text-red-600 hover:bg-red-50'
-                        }`}
-                        title="Remove property"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label="Remove property"
+                              onClick={() => removeProperty(prop.id)}
+                              className={`rounded p-1.5 ${
+                                isDarkMode
+                                  ? 'text-red-400 hover:bg-red-900/20'
+                                  : 'text-red-600 hover:bg-red-50'
+                              }`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Remove property</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
 
                     {/* Advanced Options */}

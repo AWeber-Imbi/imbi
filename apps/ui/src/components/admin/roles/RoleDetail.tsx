@@ -15,6 +15,7 @@ import {
   Bot,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Gravatar } from '@/components/ui/gravatar'
 import {
   getRole,
@@ -26,6 +27,12 @@ import {
   revokePermission,
 } from '@/api/endpoints'
 import type { Permission, RoleUser, ServiceAccount } from '@/types'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface RoleDetailProps {
   slug: string
@@ -206,13 +213,8 @@ export function RoleDetail({
       </div>
 
       {/* Role info card */}
-      <div
-        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
-      >
-        {/* Title row */}
-        <div
-          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div className="flex items-center gap-3">
             <div
               className={`rounded-lg p-2 ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100'}`}
@@ -223,11 +225,7 @@ export function RoleDetail({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2
-                  className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
-                  {role.name}
-                </h2>
+                <CardTitle>{role.name}</CardTitle>
                 {role.is_system && (
                   <span
                     className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
@@ -257,7 +255,7 @@ export function RoleDetail({
               Edit Role
             </Button>
           )}
-        </div>
+        </CardHeader>
 
         {/* Stats Bar */}
         <div
@@ -355,7 +353,7 @@ export function RoleDetail({
             })}
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Permissions Tab */}
       {activeTab === 'permissions' && (
@@ -443,96 +441,106 @@ export function RoleDetail({
               )}
             </div>
           ) : (
-            <div
-              className={`overflow-hidden rounded-lg border ${
-                isDarkMode
-                  ? 'border-gray-700 bg-gray-800'
-                  : 'border-gray-200 bg-white'
-              }`}
+            <Card
+              className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
             >
-              <table className="w-full">
-                <thead className="border-b border-tertiary bg-secondary">
-                  <tr>
-                    <th
-                      className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                        isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                      }`}
-                    >
-                      Permission
-                    </th>
-                    <th
-                      className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                        isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                      }`}
-                    >
-                      Description
-                    </th>
-                    {!role.is_system && (
+              <CardContent className="p-0">
+                <table className="w-full">
+                  <thead className="border-b border-tertiary bg-secondary">
+                    <tr>
                       <th
-                        className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
+                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
                           isDarkMode ? 'text-gray-400' : 'text-gray-500'
                         }`}
                       >
-                        Actions
+                        Permission
                       </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody
-                  className={
-                    isDarkMode
-                      ? 'divide-y divide-gray-700'
-                      : 'divide-y divide-gray-200'
-                  }
-                >
-                  {(role.permissions || [])
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((perm) => (
-                      <tr
-                        key={perm.name}
-                        className={
-                          isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-                        }
+                      <th
+                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
+                          isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                        }`}
                       >
-                        <td
-                          className={`px-6 py-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                        Description
+                      </th>
+                      {!role.is_system && (
+                        <th
+                          className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
+                            isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                          }`}
                         >
-                          <code
-                            className={`rounded px-2 py-1 text-sm ${
-                              isDarkMode
-                                ? 'bg-gray-700 text-blue-400'
-                                : 'bg-gray-100 text-[#2A4DD0]'
-                            }`}
+                          Actions
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody
+                    className={
+                      isDarkMode
+                        ? 'divide-y divide-gray-700'
+                        : 'divide-y divide-gray-200'
+                    }
+                  >
+                    {(role.permissions || [])
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((perm) => (
+                        <tr
+                          key={perm.name}
+                          className={
+                            isDarkMode
+                              ? 'hover:bg-gray-700'
+                              : 'hover:bg-gray-50'
+                          }
+                        >
+                          <td
+                            className={`px-6 py-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
                           >
-                            {perm.name}
-                          </code>
-                        </td>
-                        <td
-                          className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                        >
-                          {perm.description || perm.action}
-                        </td>
-                        {!role.is_system && (
-                          <td className="px-6 py-4 text-right">
-                            <button
-                              onClick={() => handleRevokePermission(perm.name)}
-                              disabled={revokeMutation.isPending}
-                              className={`rounded p-1.5 ${
+                            <code
+                              className={`rounded px-2 py-1 text-sm ${
                                 isDarkMode
-                                  ? 'text-red-400 hover:bg-red-900/20'
-                                  : 'text-red-600 hover:bg-red-50'
+                                  ? 'bg-gray-700 text-blue-400'
+                                  : 'bg-gray-100 text-[#2A4DD0]'
                               }`}
-                              title="Remove permission"
                             >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                              {perm.name}
+                            </code>
                           </td>
-                        )}
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+                          <td
+                            className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                          >
+                            {perm.description || perm.action}
+                          </td>
+                          {!role.is_system && (
+                            <td className="px-6 py-4 text-right">
+                              <TooltipProvider delayDuration={200}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      onClick={() =>
+                                        handleRevokePermission(perm.name)
+                                      }
+                                      disabled={revokeMutation.isPending}
+                                      className={`rounded p-1.5 ${
+                                        isDarkMode
+                                          ? 'text-red-400 hover:bg-red-900/20'
+                                          : 'text-red-600 hover:bg-red-50'
+                                      }`}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Remove permission</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
@@ -599,96 +607,94 @@ export function RoleDetail({
               </div>
             </div>
           ) : (
-            <div
-              className={`overflow-hidden rounded-lg border ${
-                isDarkMode
-                  ? 'border-gray-700 bg-gray-800'
-                  : 'border-gray-200 bg-white'
-              }`}
+            <Card
+              className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
             >
-              <div
-                className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${
-                  isDarkMode
-                    ? 'border-gray-700 bg-gray-800 text-gray-400'
-                    : 'border-gray-200 bg-gray-50 text-gray-500'
-                }`}
-              >
-                <div>User</div>
-                <div>Status</div>
-                <div>Last Login</div>
-              </div>
-              <div
-                className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}
-              >
-                {roleUsers.map((user: RoleUser) => (
-                  <div
-                    key={user.email}
-                    className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-3"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Gravatar
-                        email={user.email}
-                        size={32}
-                        className="flex-shrink-0 rounded-full"
-                      />
-                      <div className="min-w-0">
-                        <div
-                          className={`truncate text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                        >
-                          {user.display_name}
-                        </div>
-                        <div
-                          className={`truncate text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                        >
-                          {user.email}
+              <CardContent className="p-0">
+                <div
+                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${
+                    isDarkMode
+                      ? 'border-gray-700 bg-gray-800 text-gray-400'
+                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                  }`}
+                >
+                  <div>User</div>
+                  <div>Status</div>
+                  <div>Last Login</div>
+                </div>
+                <div
+                  className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}
+                >
+                  {roleUsers.map((user: RoleUser) => (
+                    <div
+                      key={user.email}
+                      className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Gravatar
+                          email={user.email}
+                          size={32}
+                          className="flex-shrink-0 rounded-full"
+                        />
+                        <div className="min-w-0">
+                          <div
+                            className={`truncate text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                          >
+                            {user.display_name}
+                          </div>
+                          <div
+                            className={`truncate text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                          >
+                            {user.email}
+                          </div>
                         </div>
                       </div>
+                      <div className="flex items-center gap-2">
+                        {user.is_active ? (
+                          <span
+                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                              isDarkMode
+                                ? 'bg-green-900/30 text-green-400'
+                                : 'bg-green-100 text-green-700'
+                            }`}
+                          >
+                            Active
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                              isDarkMode
+                                ? 'bg-gray-700 text-gray-400'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}
+                          >
+                            Inactive
+                          </span>
+                        )}
+                        {user.is_service_account && (
+                          <span
+                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                              isDarkMode
+                                ? 'bg-purple-900/30 text-purple-400'
+                                : 'bg-purple-100 text-purple-700'
+                            }`}
+                          >
+                            Service
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                      >
+                        {user.last_login
+                          ? new Date(user.last_login).toLocaleDateString()
+                          : 'Never'}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {user.is_active ? (
-                        <span
-                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                            isDarkMode
-                              ? 'bg-green-900/30 text-green-400'
-                              : 'bg-green-100 text-green-700'
-                          }`}
-                        >
-                          Active
-                        </span>
-                      ) : (
-                        <span
-                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                            isDarkMode
-                              ? 'bg-gray-700 text-gray-400'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          Inactive
-                        </span>
-                      )}
-                      {user.is_service_account && (
-                        <span
-                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                            isDarkMode
-                              ? 'bg-purple-900/30 text-purple-400'
-                              : 'bg-purple-100 text-purple-700'
-                          }`}
-                        >
-                          Service
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                    >
-                      {user.last_login
-                        ? new Date(user.last_login).toLocaleDateString()
-                        : 'Never'}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
@@ -759,87 +765,85 @@ export function RoleDetail({
               </div>
             </div>
           ) : (
-            <div
-              className={`overflow-hidden rounded-lg border ${
-                isDarkMode
-                  ? 'border-gray-700 bg-gray-800'
-                  : 'border-gray-200 bg-white'
-              }`}
+            <Card
+              className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
             >
-              <div
-                className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${
-                  isDarkMode
-                    ? 'border-gray-700 bg-gray-800 text-gray-400'
-                    : 'border-gray-200 bg-gray-50 text-gray-500'
-                }`}
-              >
-                <div>Service Account</div>
-                <div>Status</div>
-                <div>Last Authenticated</div>
-              </div>
-              <div
-                className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}
-              >
-                {roleServiceAccounts.map((sa: ServiceAccount) => (
-                  <div
-                    key={sa.slug}
-                    className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-3"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div
-                        className={`rounded-full p-1.5 ${isDarkMode ? 'bg-purple-900/30' : 'bg-purple-100'}`}
-                      >
-                        <Bot
-                          className={`h-4 w-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
-                        />
-                      </div>
-                      <div className="min-w-0">
-                        <div
-                          className={`truncate text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                        >
-                          {sa.display_name}
-                        </div>
-                        <div
-                          className={`truncate font-mono text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                        >
-                          {sa.slug}
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      {sa.is_active ? (
-                        <span
-                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                            isDarkMode
-                              ? 'bg-green-900/30 text-green-400'
-                              : 'bg-green-100 text-green-700'
-                          }`}
-                        >
-                          Active
-                        </span>
-                      ) : (
-                        <span
-                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                            isDarkMode
-                              ? 'bg-gray-700 text-gray-400'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          Inactive
-                        </span>
-                      )}
-                    </div>
+              <CardContent className="p-0">
+                <div
+                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${
+                    isDarkMode
+                      ? 'border-gray-700 bg-gray-800 text-gray-400'
+                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                  }`}
+                >
+                  <div>Service Account</div>
+                  <div>Status</div>
+                  <div>Last Authenticated</div>
+                </div>
+                <div
+                  className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}
+                >
+                  {roleServiceAccounts.map((sa: ServiceAccount) => (
                     <div
-                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                      key={sa.slug}
+                      className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-3"
                     >
-                      {sa.last_authenticated
-                        ? new Date(sa.last_authenticated).toLocaleDateString()
-                        : 'Never'}
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div
+                          className={`rounded-full p-1.5 ${isDarkMode ? 'bg-purple-900/30' : 'bg-purple-100'}`}
+                        >
+                          <Bot
+                            className={`h-4 w-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <div
+                            className={`truncate text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                          >
+                            {sa.display_name}
+                          </div>
+                          <div
+                            className={`truncate font-mono text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                          >
+                            {sa.slug}
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        {sa.is_active ? (
+                          <span
+                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                              isDarkMode
+                                ? 'bg-green-900/30 text-green-400'
+                                : 'bg-green-100 text-green-700'
+                            }`}
+                          >
+                            Active
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                              isDarkMode
+                                ? 'bg-gray-700 text-gray-400'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}
+                          >
+                            Inactive
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                      >
+                        {sa.last_authenticated
+                          ? new Date(sa.last_authenticated).toLocaleDateString()
+                          : 'Never'}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
@@ -906,67 +910,65 @@ export function RoleDetail({
               </div>
             </div>
           ) : (
-            <div
-              className={`overflow-hidden rounded-lg border ${
-                isDarkMode
-                  ? 'border-gray-700 bg-gray-800'
-                  : 'border-gray-200 bg-white'
-              }`}
+            <Card
+              className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
             >
-              <div
-                className={`grid grid-cols-[1fr_1fr] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${
-                  isDarkMode
-                    ? 'border-gray-700 bg-gray-800 text-gray-400'
-                    : 'border-gray-200 bg-gray-50 text-gray-500'
-                }`}
-              >
-                <div>Group</div>
-                <div>Description</div>
-              </div>
-              <div
-                className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}
-              >
-                {roleGroups.map(
-                  (group: {
-                    name: string
-                    slug: string
-                    description?: string | null
-                  }) => (
-                    <div
-                      key={group.slug}
-                      className="grid grid-cols-[1fr_1fr] items-center gap-4 px-4 py-3"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div
-                          className={`rounded p-1.5 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
-                        >
-                          <UsersRound
-                            className={`h-4 w-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <div
-                            className={`truncate text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                          >
-                            {group.name}
-                          </div>
-                          <div
-                            className={`truncate font-mono text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                          >
-                            {group.slug}
-                          </div>
-                        </div>
-                      </div>
+              <CardContent className="p-0">
+                <div
+                  className={`grid grid-cols-[1fr_1fr] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${
+                    isDarkMode
+                      ? 'border-gray-700 bg-gray-800 text-gray-400'
+                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                  }`}
+                >
+                  <div>Group</div>
+                  <div>Description</div>
+                </div>
+                <div
+                  className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}
+                >
+                  {roleGroups.map(
+                    (group: {
+                      name: string
+                      slug: string
+                      description?: string | null
+                    }) => (
                       <div
-                        className={`truncate text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                        key={group.slug}
+                        className="grid grid-cols-[1fr_1fr] items-center gap-4 px-4 py-3"
                       >
-                        {group.description || 'No description'}
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div
+                            className={`rounded p-1.5 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
+                          >
+                            <UsersRound
+                              className={`h-4 w-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <div
+                              className={`truncate text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                            >
+                              {group.name}
+                            </div>
+                            <div
+                              className={`truncate font-mono text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                            >
+                              {group.slug}
+                            </div>
+                          </div>
+                        </div>
+                        <div
+                          className={`truncate text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                        >
+                          {group.description || 'No description'}
+                        </div>
                       </div>
-                    </div>
-                  ),
-                )}
-              </div>
-            </div>
+                    ),
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}

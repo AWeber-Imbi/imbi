@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiError } from '@/api/client'
-import { Plus, Search, Trash2, Link2, AlertCircle } from 'lucide-react'
+import { Plus, Search, Link2, AlertCircle } from 'lucide-react'
 import { getIcon } from '@/lib/icons'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { AdminTable, type CanDeleteResult } from '@/components/ui/admin-table'
 import { LinkDefinitionForm } from './link-definitions/LinkDefinitionForm'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAdminNav } from '@/hooks/useAdminNav'
@@ -106,16 +107,16 @@ export function LinkDefinitionManagement({
     [linkDefinitions, selectedSlug],
   )
 
-  const handleDelete = (slug: string) => {
-    const ld = linkDefinitions.find((l) => l.slug === slug)
-    if (
-      ld &&
-      confirm(
-        `Delete link definition "${ld.name}"? This action cannot be undone.`,
-      )
-    ) {
-      deleteMutation.mutate({ orgSlug: ld.organization.slug, slug })
-    }
+  const handleDelete = (ld: (typeof linkDefinitions)[number]) => {
+    deleteMutation.mutate({ orgSlug: ld.organization.slug, slug: ld.slug })
+  }
+
+  const canDeleteLinkDefinition = (
+    ld: (typeof linkDefinitions)[number],
+  ): CanDeleteResult => {
+    const projects = ld.relationships?.projects?.count ?? 0
+    if (projects === 0) return { allowed: true }
+    return { allowed: false, reason: `Has ${projects} project(s)` }
   }
 
   const handleSave = (formOrgSlug: string, data: LinkDefinitionCreate) => {
@@ -230,230 +231,142 @@ export function LinkDefinitionManagement({
         </Button>
       </div>
 
-      {/* Link Definitions Table */}
-      <div
-        className={`rounded-lg border ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="border-b border-tertiary bg-secondary">
-              <tr>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
+      <AdminTable
+        columns={[
+          {
+            key: 'name',
+            header: 'Name',
+            headerAlign: 'left',
+            cellAlign: 'left',
+            render: (ld) => (
+              <div className="flex items-center gap-3">
+                <div
+                  className={`flex size-8 flex-shrink-0 items-center justify-center rounded-lg ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}
                 >
-                  Name
-                </th>
-                <th
-                  className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Slug
-                </th>
-                <th
-                  className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Icon
-                </th>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  URL Template
-                </th>
-                <th
-                  className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Projects
-                </th>
-                <th
-                  className={`whitespace-nowrap px-6 py-3 text-center text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Last Updated
-                </th>
-                <th
-                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody
-              className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
-            >
-              {filteredLinkDefinitions.map((ld) => (
-                <tr
-                  key={ld.slug}
-                  onClick={() => goToEdit(ld.slug)}
-                  onKeyDown={(e) => {
-                    if (e.currentTarget !== e.target) return
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      goToEdit(ld.slug)
-                    }
-                  }}
-                  tabIndex={0}
-                  aria-label={`Edit link definition ${ld.name}`}
-                  className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
-                          isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'
-                        }`}
-                      >
-                        <Link2
-                          className={`h-4 w-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
-                        />
-                      </div>
-                      <div>
-                        <div
-                          className={
-                            isDarkMode ? 'text-white' : 'text-gray-900'
-                          }
-                        >
-                          {ld.name}
-                        </div>
-                        {ld.description && (
-                          <div
-                            className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                          >
-                            {ld.description}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-center text-sm">
-                    <code
-                      className={`rounded px-2 py-1 ${
-                        isDarkMode
-                          ? 'bg-gray-700 text-gray-300'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}
+                  <Link2
+                    className={`h-4 w-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
+                  />
+                </div>
+                <div>
+                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                    {ld.name}
+                  </div>
+                  {ld.description && (
+                    <div
+                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                     >
-                      {ld.slug}
-                    </code>
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                    }`}
-                  >
-                    {ld.icon
-                      ? (() => {
-                          const Icon = getIcon(ld.icon, null)
-                          return Icon ? (
-                            <Icon
-                              className={`mx-auto h-5 w-5 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                            />
-                          ) : (
-                            <span
-                              className={`text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-                            >
-                              {ld.icon}
-                            </span>
-                          )
-                        })()
-                      : '--'}
-                  </td>
-                  <td
-                    className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                  >
-                    {ld.url_template ? (
-                      <code
-                        className={`rounded px-2 py-1 text-xs ${
-                          isDarkMode
-                            ? 'bg-gray-700 text-gray-300'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
-                      >
-                        {ld.url_template}
-                      </code>
-                    ) : (
-                      <span
-                        className={
-                          isDarkMode ? 'text-gray-600' : 'text-gray-400'
-                        }
-                      >
-                        --
-                      </span>
-                    )}
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${
-                      (ld.relationships?.projects?.count ?? 0) === 0
-                        ? isDarkMode
-                          ? 'text-gray-600'
-                          : 'text-gray-400'
-                        : isDarkMode
-                          ? 'text-gray-300'
-                          : 'text-gray-600'
-                    }`}
-                  >
-                    {ld.relationships?.projects?.count ?? 0}
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                  >
-                    {formatRelativeDate(ld.updated_at ?? ld.created_at)}
-                  </td>
-                  <td
-                    className="whitespace-nowrap px-6 py-4 text-right"
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Delete link definition ${ld.name}`}
-                        onClick={() => handleDelete(ld.slug)}
-                        disabled={deleteMutation.isPending}
-                        className={
-                          isDarkMode
-                            ? 'text-red-400 hover:bg-red-900/20 hover:text-red-300'
-                            : 'text-red-600 hover:bg-red-50 hover:text-red-700'
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {ld.description}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {filteredLinkDefinitions.length === 0 && (
-            <div
-              className={`py-12 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
-              {searchQuery
-                ? 'No link definitions found matching your search.'
-                : selectedOrganization
-                  ? `No link definitions in ${selectedOrganization.name} yet.`
-                  : 'No link definitions created yet.'}
-            </div>
-          )}
-        </div>
-      </div>
+                  )}
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'slug',
+            header: 'Slug',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (ld) => (
+              <code
+                className={`rounded px-2 py-1 ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}
+              >
+                {ld.slug}
+              </code>
+            ),
+          },
+          {
+            key: 'icon',
+            header: 'Icon',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (ld) => {
+              if (!ld.icon)
+                return (
+                  <span
+                    className={isDarkMode ? 'text-gray-600' : 'text-gray-400'}
+                  >
+                    --
+                  </span>
+                )
+              const Icon = getIcon(ld.icon, null)
+              return Icon ? (
+                <Icon
+                  className={`mx-auto h-5 w-5 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                />
+              ) : (
+                <span
+                  className={`text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                >
+                  {ld.icon}
+                </span>
+              )
+            },
+          },
+          {
+            key: 'url_template',
+            header: 'URL Template',
+            headerAlign: 'left',
+            cellAlign: 'left',
+            render: (ld) =>
+              ld.url_template ? (
+                <code
+                  className={`rounded px-2 py-1 text-xs ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}
+                >
+                  {ld.url_template}
+                </code>
+              ) : (
+                <span
+                  className={isDarkMode ? 'text-gray-600' : 'text-gray-400'}
+                >
+                  --
+                </span>
+              ),
+          },
+          {
+            key: 'projects',
+            header: 'Projects',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (ld) => (
+              <span
+                className={
+                  (ld.relationships?.projects?.count ?? 0) === 0
+                    ? isDarkMode
+                      ? 'text-gray-600'
+                      : 'text-gray-400'
+                    : isDarkMode
+                      ? 'text-gray-300'
+                      : 'text-gray-600'
+                }
+              >
+                {ld.relationships?.projects?.count ?? 0}
+              </span>
+            ),
+          },
+          {
+            key: 'updated',
+            header: 'Last Updated',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (ld) => formatRelativeDate(ld.updated_at ?? ld.created_at),
+          },
+        ]}
+        rows={filteredLinkDefinitions}
+        getRowKey={(ld) => ld.slug}
+        getDeleteLabel={(ld) => ld.name}
+        onRowClick={(ld) => goToEdit(ld.slug)}
+        onDelete={handleDelete}
+        canDelete={canDeleteLinkDefinition}
+        isDeleting={deleteMutation.isPending}
+        emptyMessage={
+          searchQuery
+            ? 'No link definitions found matching your search.'
+            : selectedOrganization
+              ? `No link definitions in ${selectedOrganization.name} yet.`
+              : 'No link definitions created yet.'
+        }
+      />
     </div>
   )
 }

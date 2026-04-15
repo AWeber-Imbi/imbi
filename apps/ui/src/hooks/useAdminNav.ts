@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 
 export type ViewMode = 'list' | 'create' | 'edit' | 'detail'
@@ -48,6 +48,12 @@ export function useAdminNav(): AdminNavState {
     (s: string) => navigate(`${base}/${encodeURIComponent(s)}/edit`),
     [navigate, base],
   )
+
+  useEffect(() => {
+    if (viewMode === 'edit' || viewMode === 'create') {
+      window.scrollTo({ top: 0, behavior: 'instant' })
+    }
+  }, [viewMode])
 
   return {
     viewMode,

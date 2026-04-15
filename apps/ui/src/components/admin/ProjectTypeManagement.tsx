@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react'
+import { AdminTable } from '@/components/ui/admin-table'
+import type { CanDeleteResult } from '@/components/ui/admin-table'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiError } from '@/api/client'
-import { Plus, Search, Trash2, Layers, AlertCircle } from 'lucide-react'
+import { Plus, Search, Layers, AlertCircle } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -33,7 +35,6 @@ export function ProjectTypeManagement({
     slug: selectedPtSlug,
     goToList,
     goToCreate,
-    goToDetail,
     goToEdit,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
@@ -103,14 +104,16 @@ export function ProjectTypeManagement({
     [projectTypes, selectedPtSlug],
   )
 
-  const handleDelete = (slug: string) => {
-    const pt = projectTypes.find((p) => p.slug === slug)
-    if (
-      pt &&
-      confirm(`Delete project type "${pt.name}"? This action cannot be undone.`)
-    ) {
-      deleteMutation.mutate({ orgSlug: pt.organization.slug, slug })
-    }
+  const handleDelete = (pt: (typeof projectTypes)[number]) => {
+    deleteMutation.mutate({ orgSlug: pt.organization.slug, slug: pt.slug })
+  }
+
+  const canDeleteProjectType = (
+    pt: (typeof projectTypes)[number],
+  ): CanDeleteResult => {
+    const projects = pt.relationships?.projects?.count ?? 0
+    if (projects === 0) return { allowed: true }
+    return { allowed: false, reason: `Has ${projects} project(s)` }
   }
 
   const handleSave = (formOrgSlug: string, ptData: ProjectTypeCreate) => {
@@ -223,180 +226,101 @@ export function ProjectTypeManagement({
         </Button>
       </div>
 
-      {/* Project Types Table */}
-      <div
-        className={`rounded-lg border ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="border-b border-tertiary bg-secondary">
-              <tr>
-                <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
+      <AdminTable
+        columns={[
+          {
+            key: 'name',
+            header: 'Project Type',
+            headerAlign: 'left',
+            cellAlign: 'left',
+            render: (pt) => (
+              <div className="flex items-center gap-3">
+                <div
+                  className={`flex size-8 flex-shrink-0 items-center justify-center rounded-lg ${isDarkMode ? 'bg-purple-900/30' : 'bg-purple-50'}`}
                 >
-                  Project Type
-                </th>
-                <th
-                  className={`px-6 py-3 text-center text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Slug
-                </th>
-                <th
-                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Projects
-                </th>
-                <th
-                  className={`whitespace-nowrap px-6 py-3 text-center text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Last Updated
-                </th>
-                <th
-                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody
-              className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
-            >
-              {filteredProjectTypes.map((pt) => (
-                <tr
-                  key={pt.slug}
-                  onClick={() => goToDetail(pt.slug)}
-                  onKeyDown={(e) => {
-                    if (e.currentTarget !== e.target) return
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      goToDetail(pt.slug)
-                    }
-                  }}
-                  tabIndex={0}
-                  aria-label={`View project type ${pt.name}`}
-                  className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
-                          isDarkMode ? 'bg-purple-900/30' : 'bg-purple-50'
-                        }`}
-                      >
-                        {pt.icon ? (
-                          <EntityIcon
-                            icon={pt.icon}
-                            className="h-5 w-5 rounded object-cover"
-                          />
-                        ) : (
-                          <Layers
-                            className={`h-4 w-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
-                          />
-                        )}
-                      </div>
-                      <div>
-                        <div
-                          className={
-                            isDarkMode ? 'text-white' : 'text-gray-900'
-                          }
-                        >
-                          {pt.name}
-                        </div>
-                        {pt.description && (
-                          <div
-                            className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                          >
-                            {pt.description}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                  >
-                    <code
-                      className={`rounded px-2 py-1 ${
-                        isDarkMode
-                          ? 'bg-gray-700 text-gray-300'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}
+                  {pt.icon ? (
+                    <EntityIcon
+                      icon={pt.icon}
+                      className="size-5 rounded object-cover"
+                    />
+                  ) : (
+                    <Layers
+                      className={`h-4 w-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
+                    />
+                  )}
+                </div>
+                <div>
+                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                    {pt.name}
+                  </div>
+                  {pt.description && (
+                    <div
+                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                     >
-                      {pt.slug}
-                    </code>
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-6 py-4 text-right text-sm ${
-                      (pt.relationships?.projects?.count ?? 0) === 0
-                        ? isDarkMode
-                          ? 'text-gray-600'
-                          : 'text-gray-400'
-                        : isDarkMode
-                          ? 'text-gray-300'
-                          : 'text-gray-600'
-                    }`}
-                  >
-                    {pt.relationships?.projects?.count ?? 0}
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-6 py-4 text-center text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                  >
-                    {formatRelativeDate(pt.updated_at ?? pt.created_at)}
-                  </td>
-                  <td
-                    className="whitespace-nowrap px-6 py-4 text-right"
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Delete project type ${pt.name}`}
-                        onClick={() => handleDelete(pt.slug)}
-                        disabled={deleteMutation.isPending}
-                        className={
-                          isDarkMode
-                            ? 'text-red-400 hover:bg-red-900/20 hover:text-red-300'
-                            : 'text-red-600 hover:bg-red-50 hover:text-red-700'
-                        }
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {pt.description}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {filteredProjectTypes.length === 0 && (
-            <div
-              className={`py-12 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
-              {searchQuery
-                ? 'No project types found matching your search.'
-                : selectedOrganization
-                  ? `No project types in ${selectedOrganization.name} yet.`
-                  : 'No project types created yet.'}
-            </div>
-          )}
-        </div>
-      </div>
+                  )}
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'slug',
+            header: 'Slug',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (pt) => (
+              <code
+                className={`rounded px-2 py-1 ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}
+              >
+                {pt.slug}
+              </code>
+            ),
+          },
+          {
+            key: 'projects',
+            header: 'Projects',
+            headerAlign: 'right',
+            cellAlign: 'right',
+            render: (pt) => (
+              <span
+                className={
+                  (pt.relationships?.projects?.count ?? 0) === 0
+                    ? isDarkMode
+                      ? 'text-gray-600'
+                      : 'text-gray-400'
+                    : isDarkMode
+                      ? 'text-gray-300'
+                      : 'text-gray-600'
+                }
+              >
+                {pt.relationships?.projects?.count ?? 0}
+              </span>
+            ),
+          },
+          {
+            key: 'updated',
+            header: 'Last Updated',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (pt) => formatRelativeDate(pt.updated_at ?? pt.created_at),
+          },
+        ]}
+        rows={filteredProjectTypes}
+        getRowKey={(pt) => pt.slug}
+        getDeleteLabel={(pt) => pt.name}
+        onRowClick={(pt) => goToEdit(pt.slug)}
+        onDelete={handleDelete}
+        canDelete={canDeleteProjectType}
+        isDeleting={deleteMutation.isPending}
+        emptyMessage={
+          searchQuery
+            ? 'No project types found matching your search.'
+            : selectedOrganization
+              ? `No project types in ${selectedOrganization.name} yet.`
+              : 'No project types created yet.'
+        }
+      />
     </div>
   )
 }

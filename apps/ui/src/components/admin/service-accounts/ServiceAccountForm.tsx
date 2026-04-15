@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Save, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Card, CardContent } from '@/components/ui/card'
 import { getRoles } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import type { ServiceAccount, ServiceAccountCreate } from '@/types'
@@ -42,7 +43,11 @@ export function ServiceAccountForm({
   const [roleSlug, setRoleSlug] = useState('')
 
   // Fetch available roles
-  const { data: availableRoles = [], isLoading: rolesLoading } = useQuery({
+  const {
+    data: availableRoles = [],
+    isLoading: rolesLoading,
+    isError: rolesError,
+  } = useQuery({
     queryKey: ['roles'],
     queryFn: getRoles,
   })
@@ -132,7 +137,7 @@ export function ServiceAccountForm({
       <div className="flex items-center justify-between">
         <div>
           <h2
-            className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {isEditing ? 'Edit Service Account' : 'Create Service Account'}
           </h2>
@@ -203,203 +208,134 @@ export function ServiceAccountForm({
       )}
 
       {/* Section 1: Basic Information */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Basic Information
-        </h3>
-
-        <div className="grid grid-cols-2 gap-4">
-          {/* Slug */}
-          <div className="col-span-2">
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
-              Slug <span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={slug}
-              onChange={(e) => handleSlugChange(e.target.value)}
-              onBlur={() => {
-                setTouched({ ...touched, slug: true })
-                const error = validateSlug(slug)
-                if (error) {
-                  setValidationErrors({
-                    ...validationErrors,
-                    slug: error,
-                  })
-                }
-              }}
-              disabled={isEditing || isLoading}
-              placeholder="my-service-account"
-              className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                isEditing ? 'cursor-not-allowed opacity-60' : ''
-              }`}
-            />
-            {isEditing && (
-              <p
-                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-              >
-                Slug cannot be changed after creation
-              </p>
-            )}
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardContent className="space-y-4 pt-6">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Slug */}
             {!isEditing && (
-              <p
-                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              <div className="col-span-2">
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Slug <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  value={slug}
+                  onChange={(e) => handleSlugChange(e.target.value)}
+                  onBlur={() => {
+                    setTouched({ ...touched, slug: true })
+                    const error = validateSlug(slug)
+                    if (error) {
+                      setValidationErrors({
+                        ...validationErrors,
+                        slug: error,
+                      })
+                    }
+                  }}
+                  disabled={isLoading}
+                  placeholder="my-service-account"
+                  className={
+                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+                  }
+                />
+                <p
+                  className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                >
+                  Lowercase letters, numbers, and hyphens only. Must start with
+                  a letter.
+                </p>
+                {touched.slug && validationErrors.slug && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.slug}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Display Name */}
+            <div className="col-span-2">
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
               >
-                Lowercase letters, numbers, and hyphens only. Must start with a
-                letter.
-              </p>
-            )}
-            {touched.slug && validationErrors.slug && (
-              <p className="mt-1 text-sm text-red-600">
-                {validationErrors.slug}
-              </p>
-            )}
-          </div>
-
-          {/* Display Name */}
-          <div className="col-span-2">
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
-              Display Name <span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={displayName}
-              onChange={(e) => {
-                setDisplayName(e.target.value)
-                handleFieldChange('display_name')
-              }}
-              onBlur={() => {
-                setTouched({ ...touched, display_name: true })
-                const error = validateDisplayName(displayName)
-                if (error) {
-                  setValidationErrors({
-                    ...validationErrors,
-                    display_name: error,
-                  })
+                Display Name <span className="text-red-500">*</span>
+              </label>
+              <Input
+                value={displayName}
+                onChange={(e) => {
+                  setDisplayName(e.target.value)
+                  handleFieldChange('display_name')
+                }}
+                onBlur={() => {
+                  setTouched({ ...touched, display_name: true })
+                  const error = validateDisplayName(displayName)
+                  if (error) {
+                    setValidationErrors({
+                      ...validationErrors,
+                      display_name: error,
+                    })
+                  }
+                }}
+                disabled={isLoading}
+                placeholder="CI/CD Pipeline"
+                className={
+                  isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
                 }
-              }}
-              disabled={isLoading}
-              placeholder="CI/CD Pipeline"
-              className={
-                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-              }
-            />
-            {touched.display_name && validationErrors.display_name && (
-              <p className="mt-1 text-sm text-red-600">
-                {validationErrors.display_name}
-              </p>
-            )}
-          </div>
+              />
+              {touched.display_name && validationErrors.display_name && (
+                <p className="mt-1 text-sm text-red-600">
+                  {validationErrors.display_name}
+                </p>
+              )}
+            </div>
 
-          {/* Description */}
-          <div className="col-span-2">
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
-              Description
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={isLoading}
-              placeholder="What does this service account do?"
-              rows={3}
-              className={`w-full rounded-md border px-3 py-2 text-sm ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
-                  : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
-              } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
-            />
+            {/* Description */}
+            <div className="col-span-2">
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
+                Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                disabled={isLoading}
+                placeholder="What does this service account do?"
+                rows={3}
+                className={`w-full rounded-md border px-3 py-2 text-sm ${
+                  isDarkMode
+                    ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
+                    : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
+                } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+              />
+            </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Section 2: Organization Membership (creation only) */}
       {!isEditing && (
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Organization Membership
-          </h3>
-          <p
-            className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Service accounts must belong to at least one organization with a
-            role to have any permissions.
-          </p>
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardContent className="space-y-4 pt-6">
+            <p
+              className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Service accounts must belong to at least one organization with a
+              role to have any permissions.
+            </p>
 
-          <div className="grid grid-cols-2 gap-4">
-            {/* Organization */}
-            <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Organization <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={organizationSlug}
-                onChange={(e) => {
-                  setOrganizationSlug(e.target.value)
-                  handleFieldChange('organization_slug')
-                }}
-                disabled={isLoading}
-                className={`w-full rounded-md border px-3 py-2 text-sm ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700 text-white'
-                    : 'border-gray-300 bg-white text-gray-900'
-                } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
-              >
-                <option value="">Select an organization...</option>
-                {organizations.map((org) => (
-                  <option key={org.slug} value={org.slug}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
-              {touched.organization_slug &&
-                validationErrors.organization_slug && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {validationErrors.organization_slug}
-                  </p>
-                )}
-            </div>
-
-            {/* Role */}
-            <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Role <span className="text-red-500">*</span>
-              </label>
-              {rolesLoading ? (
-                <p
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Organization */}
+              <div>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
-                  Loading roles...
-                </p>
-              ) : (
+                  Organization <span className="text-red-500">*</span>
+                </label>
                 <select
-                  value={roleSlug}
+                  value={organizationSlug}
                   onChange={(e) => {
-                    setRoleSlug(e.target.value)
-                    handleFieldChange('role_slug')
+                    setOrganizationSlug(e.target.value)
+                    handleFieldChange('organization_slug')
                   }}
                   disabled={isLoading}
                   className={`w-full rounded-md border px-3 py-2 text-sm ${
@@ -408,58 +344,97 @@ export function ServiceAccountForm({
                       : 'border-gray-300 bg-white text-gray-900'
                   } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
                 >
-                  <option value="">Select a role...</option>
-                  {availableRoles.map((role) => (
-                    <option key={role.slug} value={role.slug}>
-                      {role.name}
+                  <option value="">Select an organization...</option>
+                  {organizations.map((org) => (
+                    <option key={org.slug} value={org.slug}>
+                      {org.name}
                     </option>
                   ))}
                 </select>
-              )}
-              {touched.role_slug && validationErrors.role_slug && (
-                <p className="mt-1 text-sm text-red-600">
-                  {validationErrors.role_slug}
-                </p>
-              )}
+                {touched.organization_slug &&
+                  validationErrors.organization_slug && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {validationErrors.organization_slug}
+                    </p>
+                  )}
+              </div>
+
+              {/* Role */}
+              <div>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Role <span className="text-red-500">*</span>
+                </label>
+                {rolesLoading ? (
+                  <p
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Loading roles...
+                  </p>
+                ) : rolesError ? (
+                  <p
+                    className={`text-sm ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                  >
+                    Failed to load roles. Please refresh and try again.
+                  </p>
+                ) : (
+                  <select
+                    value={roleSlug}
+                    onChange={(e) => {
+                      setRoleSlug(e.target.value)
+                      handleFieldChange('role_slug')
+                    }}
+                    disabled={isLoading}
+                    className={`w-full rounded-md border px-3 py-2 text-sm ${
+                      isDarkMode
+                        ? 'border-gray-600 bg-gray-700 text-white'
+                        : 'border-gray-300 bg-white text-gray-900'
+                    } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  >
+                    <option value="">Select a role...</option>
+                    {availableRoles.map((role) => (
+                      <option key={role.slug} value={role.slug}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {touched.role_slug && validationErrors.role_slug && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.role_slug}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Section 3: Account Status */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Account Status
-        </h3>
-
-        <div>
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              disabled={isLoading}
-              className="rounded"
-            />
-            <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
-              Account Active
-            </span>
-          </label>
-          <p
-            className={`ml-6 mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Inactive service accounts cannot authenticate via API
-          </p>
-        </div>
-      </div>
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardContent className="space-y-4 pt-6">
+          <div>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={(e) => setIsActive(e.target.checked)}
+                disabled={isLoading}
+                className="rounded"
+              />
+              <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
+                Account Active
+              </span>
+            </label>
+            <p
+              className={`ml-6 mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Inactive service accounts cannot authenticate via API
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

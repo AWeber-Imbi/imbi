@@ -5,8 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
   Search,
-  Edit2,
-  Trash2,
   FileJson,
   AlertCircle,
   CheckCircle,
@@ -16,6 +14,13 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { AdminTable } from '@/components/ui/admin-table'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { BlueprintForm } from './blueprints/BlueprintForm'
 import { BlueprintDetail } from './blueprints/BlueprintDetail'
 import { ImportBlueprintDialog } from './blueprints/ImportBlueprintDialog'
@@ -119,18 +124,27 @@ function renderFilterCell(
 ): React.ReactNode {
   const f = parseFilterFromBlueprint(filter)
   if (!f) return null
-  const title = [
+  const tooltipLines = [
     f.project_type?.length ? `Project Types: ${f.project_type.join(', ')}` : '',
     f.environment?.length ? `Environments: ${f.environment.join(', ')}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n')
+  ].filter(Boolean)
   return (
-    <span title={title}>
-      <Filter
-        className={`mx-auto h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
-      />
-    </span>
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span>
+            <Filter
+              className={`mx-auto h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
+            />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          {tooltipLines.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }
 
@@ -141,7 +155,6 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     slug: selectedSlug,
     goToList,
     goToCreate,
-    goToDetail,
     goToEdit,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
@@ -255,16 +268,6 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
     return true
   })
 
-  const handleDelete = (key: BlueprintKey) => {
-    if (
-      confirm(
-        'Are you sure you want to delete this blueprint? This action cannot be undone.',
-      )
-    ) {
-      deleteMutation.mutate(key)
-    }
-  }
-
   const handleCreateClick = () => {
     goToCreate()
   }
@@ -274,7 +277,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
   }
 
   const handleViewClick = (key: BlueprintKey) => {
-    goToDetail(`${key.type}:${key.slug}`)
+    goToEdit(`${key.type}:${key.slug}`)
   }
 
   const handleSave = (data: BlueprintCreate) => {
@@ -426,142 +429,114 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
         </div>
       </div>
 
-      {/* Blueprints Table */}
-      <div className="overflow-hidden rounded-md border border-tertiary bg-primary">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="border-b border-tertiary bg-secondary">
-              <tr>
-                <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-secondary">
-                  Name
-                </th>
-                <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-secondary">
-                  Slug
-                </th>
-                <th className="px-5 py-3 text-left text-xs font-medium uppercase tracking-wider text-secondary">
-                  Type
-                </th>
-                <th className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-secondary">
-                  Enabled
-                </th>
-                <th className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-secondary">
-                  Filter
-                </th>
-                <th className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-secondary">
-                  Priority
-                </th>
-                <th className="px-5 py-3 text-center text-xs font-medium uppercase tracking-wider text-secondary">
-                  Version
-                </th>
-                <th className="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-secondary">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-border-tertiary)]">
-              {filteredBlueprints.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center">
-                    <div className="text-sm text-tertiary">
-                      {searchQuery || typeFilter || enabledFilter
-                        ? 'No blueprints match your filters'
-                        : 'No blueprints created yet'}
+      <AdminTable<Blueprint>
+        columns={[
+          {
+            key: 'name',
+            header: 'Name',
+            headerAlign: 'left',
+            cellAlign: 'left',
+            render: (bp) => (
+              <div className="flex items-center gap-2.5">
+                <FileJson className="h-4 w-4 flex-shrink-0 text-amber-text-mid" />
+                <div>
+                  <span className="text-sm font-medium text-primary">
+                    {bp.name}
+                  </span>
+                  {bp.description && (
+                    <div className="mt-0.5 text-xs text-tertiary">
+                      {bp.description}
                     </div>
-                  </td>
-                </tr>
+                  )}
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'slug',
+            header: 'Slug',
+            headerAlign: 'left',
+            cellAlign: 'left',
+            render: (bp) => (
+              <span className="whitespace-nowrap font-mono text-sm text-secondary">
+                {bp.slug}
+              </span>
+            ),
+          },
+          {
+            key: 'type',
+            header: 'Type',
+            headerAlign: 'left',
+            cellAlign: 'left',
+            render: (bp) => (
+              <span
+                className={`inline-flex items-center whitespace-nowrap rounded-sm px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprintPathType(bp), blueprintTypes, isDarkMode)}`}
+              >
+                {blueprintTypeLabel(bp)}
+              </span>
+            ),
+          },
+          {
+            key: 'enabled',
+            header: 'Enabled',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (bp) =>
+              bp.enabled ? (
+                <CheckCircle className="mx-auto h-4 w-4 text-success" />
               ) : (
-                filteredBlueprints.map((bp: Blueprint) => (
-                  <tr
-                    key={`${blueprintPathType(bp)}/${bp.slug}`}
-                    onClick={() =>
-                      handleViewClick({
-                        type: blueprintPathType(bp),
-                        slug: bp.slug,
-                      })
-                    }
-                    className="cursor-pointer transition-colors hover:bg-secondary"
-                  >
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <FileJson className="h-4 w-4 flex-shrink-0 text-amber-text-mid" />
-                        <div>
-                          <span className="text-sm font-medium text-primary">
-                            {bp.name}
-                          </span>
-                          {bp.description && (
-                            <div className="mt-0.5 text-xs text-tertiary">
-                              {bp.description}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-3.5 font-mono text-sm text-secondary">
-                      {bp.slug}
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-3.5">
-                      <span
-                        className={`inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprintPathType(bp), blueprintTypes, isDarkMode)}`}
-                      >
-                        {blueprintTypeLabel(bp)}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-3.5 text-center">
-                      {bp.enabled ? (
-                        <CheckCircle className="mx-auto h-4 w-4 text-success" />
-                      ) : (
-                        <XCircle className="mx-auto h-4 w-4 text-tertiary" />
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-3.5 text-center">
-                      {renderFilterCell(bp.filter, isDarkMode) || (
-                        <span className="text-xs text-tertiary">&mdash;</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-3.5 text-center text-sm text-primary">
-                      {bp.priority}
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-3.5 text-center font-mono text-sm text-secondary">
-                      v{bp.version}
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-3.5">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleEditClick({
-                              type: blueprintPathType(bp),
-                              slug: bp.slug,
-                            })
-                          }}
-                          className="rounded-sm p-1.5 text-tertiary transition-colors hover:bg-secondary hover:text-primary"
-                          title="Edit"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDelete({
-                              type: blueprintPathType(bp),
-                              slug: bp.slug,
-                            })
-                          }}
-                          disabled={deleteMutation.isPending}
-                          className="rounded-sm p-1.5 text-tertiary transition-colors hover:bg-danger hover:text-danger"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                <XCircle className="mx-auto h-4 w-4 text-tertiary" />
+              ),
+          },
+          {
+            key: 'filter',
+            header: 'Filter',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (bp) =>
+              renderFilterCell(bp.filter, isDarkMode) || (
+                <span className="text-xs text-tertiary">&mdash;</span>
+              ),
+          },
+          {
+            key: 'priority',
+            header: 'Priority',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (bp) => (
+              <span className="whitespace-nowrap text-sm text-primary">
+                {bp.priority}
+              </span>
+            ),
+          },
+          {
+            key: 'version',
+            header: 'Version',
+            headerAlign: 'center',
+            cellAlign: 'center',
+            render: (bp) => (
+              <span className="whitespace-nowrap font-mono text-sm text-secondary">
+                v{bp.version}
+              </span>
+            ),
+          },
+        ]}
+        rows={filteredBlueprints}
+        getRowKey={(bp) => `${blueprintPathType(bp)}/${bp.slug}`}
+        getDeleteLabel={(bp) => bp.name}
+        onRowClick={(bp) =>
+          handleViewClick({ type: blueprintPathType(bp), slug: bp.slug })
+        }
+        onDelete={(bp) =>
+          deleteMutation.mutate({ type: blueprintPathType(bp), slug: bp.slug })
+        }
+        isDeleting={deleteMutation.isPending}
+        emptyMessage={
+          searchQuery || typeFilter || enabledFilter
+            ? 'No blueprints match your filters'
+            : 'No blueprints created yet'
+        }
+      />
 
       {/* Import Dialog */}
       <ImportBlueprintDialog

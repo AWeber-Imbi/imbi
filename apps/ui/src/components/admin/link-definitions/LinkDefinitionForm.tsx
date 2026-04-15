@@ -1,7 +1,14 @@
 import { useState } from 'react'
-import { Save, X, AlertCircle } from 'lucide-react'
+import { Save, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -21,7 +28,6 @@ interface LinkDefinitionFormProps {
 export function LinkDefinitionForm({
   linkDefinition,
   onSave,
-  onCancel,
   isDarkMode,
   isLoading = false,
   error,
@@ -79,47 +85,6 @@ export function LinkDefinitionForm({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2
-            className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            {isEditing ? 'Edit Link Definition' : 'Create New Link Definition'}
-          </h2>
-          <p
-            className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            {isEditing
-              ? 'Update link definition information'
-              : 'Create a new link definition'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={onCancel}
-            disabled={isLoading}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
-            <X className="mr-2 h-4 w-4" />
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={isLoading}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {isLoading
-              ? 'Saving...'
-              : isEditing
-                ? 'Save Changes'
-                : 'Create Link Definition'}
-          </Button>
-        </div>
-      </div>
-
       {/* API Error */}
       {error && (
         <div
@@ -153,20 +118,31 @@ export function LinkDefinitionForm({
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Link Definition Information
-          </h3>
-
-          <div className="space-y-4">
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b pb-4">
+            <div>
+              <CardTitle>
+                {isEditing ? 'Edit Link Definition' : 'Create Link Definition'}
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Defines a type of project link displayed on the project details
+                page.
+              </CardDescription>
+            </div>
+            <Button
+              onClick={handleSubmit}
+              disabled={isLoading}
+              className="bg-amber-border text-white hover:bg-amber-border-strong"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {isLoading
+                ? 'Saving...'
+                : isEditing
+                  ? 'Save Changes'
+                  : 'Create Link Definition'}
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div>
               <label
                 htmlFor="link-def-org"
@@ -206,7 +182,9 @@ export function LinkDefinitionForm({
               )}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div
+              className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
+            >
               <div>
                 <label
                   htmlFor="link-def-name"
@@ -236,34 +214,36 @@ export function LinkDefinitionForm({
                 )}
               </div>
 
-              <div>
-                <label
-                  htmlFor="link-def-slug"
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Slug <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  id="link-def-slug"
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  placeholder="e.g., github-repository"
-                  disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.slug ? 'border-red-500' : ''
-                  }`}
-                />
-                {errors.slug && (
-                  <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${
-                      isDarkMode ? 'text-red-400' : 'text-red-600'
-                    }`}
+              {!isEditing && (
+                <div>
+                  <label
+                    htmlFor="link-def-slug"
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.slug}
-                  </div>
-                )}
-              </div>
+                    Slug <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    id="link-def-slug"
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    placeholder="e.g., github-repository"
+                    disabled={isLoading}
+                    className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                      errors.slug ? 'border-red-500' : ''
+                    }`}
+                  />
+                  {errors.slug && (
+                    <div
+                      className={`mt-1 flex items-center gap-1 text-xs ${
+                        isDarkMode ? 'text-red-400' : 'text-red-600'
+                      }`}
+                    >
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.slug}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -357,8 +337,8 @@ export function LinkDefinitionForm({
                 URL template with placeholders in curly braces
               </p>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </form>
     </div>
   )

@@ -8,6 +8,7 @@ import {
   Webhook,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { OAuth2ApplicationList } from './OAuth2ApplicationList'
 import { ServiceWebhookList } from './ServiceWebhookList'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -96,11 +97,7 @@ export function ThirdPartyServiceDetail({
                       className="h-8 w-8 rounded object-cover"
                     />
                   )}
-                  <h2
-                    className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                  >
-                    {service.name}
-                  </h2>
+                  <CardTitle>{service.name}</CardTitle>
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       isDarkMode
@@ -165,152 +162,103 @@ export function ThirdPartyServiceDetail({
       {activeTab === 'details' && (
         <div className="space-y-6">
           {/* Service Info */}
-          <div
-            className={`rounded-lg border p-6 ${
-              isDarkMode
-                ? 'border-gray-700 bg-gray-800'
-                : 'border-gray-200 bg-white'
-            }`}
-          >
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <div
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Slug
-                </div>
-                <div
-                  className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
-                  <code
-                    className={`rounded px-2 py-1 text-sm ${
-                      isDarkMode
-                        ? 'bg-gray-700 text-gray-300'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
+          <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+            <CardContent className="p-6">
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                   >
-                    {service.slug}
-                  </code>
-                </div>
-              </div>
-              <div>
-                <div
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Vendor
-                </div>
-                <div
-                  className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
-                  {service.vendor}
-                </div>
-              </div>
-              <div>
-                <div
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Organization
-                </div>
-                <div
-                  className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
-                  {service.organization.name}
-                </div>
-              </div>
-              <div>
-                <div
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Managing Team
-                </div>
-                <div
-                  className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
-                  {service.team?.name || (
-                    <span
-                      className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}
-                    >
-                      Not assigned
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <div
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Category
-                </div>
-                <div
-                  className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
-                  {service.category || (
-                    <span
-                      className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}
-                    >
-                      Not set
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <div
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Service URL
-                </div>
-                <div className="mt-1">
-                  {service.service_url ? (
-                    <a
-                      href={service.service_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center gap-1 text-sm ${
+                    Slug
+                  </div>
+                  <div
+                    className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    <code
+                      className={`rounded px-2 py-1 text-sm ${
                         isDarkMode
-                          ? 'text-blue-400 hover:text-blue-300'
-                          : 'text-blue-600 hover:text-blue-700'
+                          ? 'bg-gray-700 text-gray-300'
+                          : 'bg-gray-100 text-gray-700'
                       }`}
                     >
-                      {service.service_url}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    <span
-                      className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}
-                    >
-                      Not set
-                    </span>
-                  )}
+                      {service.slug}
+                    </code>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Links */}
-          {linkEntries.length > 0 && (
-            <div
-              className={`rounded-lg border p-6 ${
-                isDarkMode
-                  ? 'border-gray-700 bg-gray-800'
-                  : 'border-gray-200 bg-white'
-              }`}
-            >
-              <h3
-                className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
-                Links
-              </h3>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {linkEntries.map(([label, url]) => (
-                  <div key={label}>
-                    <div
-                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                    >
-                      {label}
-                    </div>
-                    <div className="mt-1">
+                <div>
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Vendor
+                  </div>
+                  <div
+                    className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    {service.vendor}
+                  </div>
+                </div>
+                <div>
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Organization
+                  </div>
+                  <div
+                    className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    {service.organization.name}
+                  </div>
+                </div>
+                <div>
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Managing Team
+                  </div>
+                  <div
+                    className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    {service.team?.name || (
+                      <span
+                        className={
+                          isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                        }
+                      >
+                        Not assigned
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Category
+                  </div>
+                  <div
+                    className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                  >
+                    {service.category || (
+                      <span
+                        className={
+                          isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                        }
+                      >
+                        Not set
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Service URL
+                  </div>
+                  <div className="mt-1">
+                    {service.service_url ? (
                       <a
-                        href={String(url)}
+                        href={service.service_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className={`inline-flex items-center gap-1 text-sm ${
@@ -319,55 +267,94 @@ export function ThirdPartyServiceDetail({
                             : 'text-blue-600 hover:text-blue-700'
                         }`}
                       >
-                        {String(url)}
+                        {service.service_url}
                         <ExternalLink className="h-3 w-3" />
                       </a>
-                    </div>
+                    ) : (
+                      <span
+                        className={
+                          isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                        }
+                      >
+                        Not set
+                      </span>
+                    )}
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
+            </CardContent>
+          </Card>
+
+          {/* Links */}
+          {linkEntries.length > 0 && (
+            <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+              <CardHeader className="px-6 pb-0 pt-5">
+                <CardTitle>Links</CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {linkEntries.map(([label, url]) => (
+                    <div key={label}>
+                      <div
+                        className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                      >
+                        {label}
+                      </div>
+                      <div className="mt-1">
+                        <a
+                          href={String(url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`inline-flex items-center gap-1 text-sm ${
+                            isDarkMode
+                              ? 'text-blue-400 hover:text-blue-300'
+                              : 'text-blue-600 hover:text-blue-700'
+                          }`}
+                        >
+                          {String(url)}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Identifiers */}
           {identifierEntries.length > 0 && (
-            <div
-              className={`rounded-lg border p-6 ${
-                isDarkMode
-                  ? 'border-gray-700 bg-gray-800'
-                  : 'border-gray-200 bg-white'
-              }`}
-            >
-              <h3
-                className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
-                Identifiers
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                {identifierEntries.map(([label, val]) => (
-                  <div key={label}>
-                    <div
-                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                    >
-                      {label}
-                    </div>
-                    <div
-                      className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                    >
-                      <code
-                        className={`rounded px-2 py-1 text-sm ${
-                          isDarkMode
-                            ? 'bg-gray-700 text-gray-300'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
+            <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+              <CardHeader className="px-6 pb-0 pt-5">
+                <CardTitle>Identifiers</CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="grid grid-cols-2 gap-4">
+                  {identifierEntries.map(([label, val]) => (
+                    <div key={label}>
+                      <div
+                        className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
                       >
-                        {String(val)}
-                      </code>
+                        {label}
+                      </div>
+                      <div
+                        className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                      >
+                        <code
+                          className={`rounded px-2 py-1 text-sm ${
+                            isDarkMode
+                              ? 'bg-gray-700 text-gray-300'
+                              : 'bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {String(val)}
+                        </code>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}

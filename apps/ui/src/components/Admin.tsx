@@ -277,9 +277,9 @@ export function Admin({ isDarkMode }: AdminProps) {
             <div className="px-8 py-6">
               <div className="flex items-center gap-3">
                 {currentSectionData && (
-                  <currentSectionData.icon className="h-6 w-6 text-amber-text" />
+                  <currentSectionData.icon className="h-5 w-5 text-amber-text" />
                 )}
-                <h1 className="text-2xl font-semibold text-primary">
+                <h1 className="text-xl font-semibold text-primary">
                   {currentSectionData?.label}
                 </h1>
               </div>

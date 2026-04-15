@@ -13,6 +13,7 @@ import {
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { Gravatar } from '../../ui/gravatar'
+import { Card, CardContent } from '../../ui/card'
 import { getRoles } from '@/api/endpoints'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import type { AdminUser, AdminUserCreate } from '@/types'
@@ -198,7 +199,7 @@ export function UserForm({
       <div className="flex items-center justify-between">
         <div>
           <h2
-            className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {isEditing ? 'Edit User' : 'Create New User'}
           </h2>
@@ -269,344 +270,317 @@ export function UserForm({
       )}
 
       {/* Section 1: Basic Information */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Basic Information
-        </h3>
-
-        <div className="grid grid-cols-2 gap-4">
-          {/* Email */}
-          <div className="col-span-2">
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
-              Email <span className="text-red-500">*</span>
-            </label>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value)
-                handleFieldChange('email')
-              }}
-              onBlur={() => {
-                setTouched({ ...touched, email: true })
-                const error = validateEmail(email)
-                if (error) {
-                  setValidationErrors({ ...validationErrors, email: error })
-                }
-              }}
-              disabled={isEditing || isLoading}
-              placeholder="john.doe@company.com"
-              className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                isEditing ? 'cursor-not-allowed opacity-60' : ''
-              }`}
-            />
-            {isEditing && (
-              <p
-                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-              >
-                Email cannot be changed after creation
-              </p>
-            )}
-            {touched.email && validationErrors.email && (
-              <p className="mt-1 text-sm text-red-600">
-                {validationErrors.email}
-              </p>
-            )}
-          </div>
-
-          {/* Display Name */}
-          <div className="col-span-2">
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
-              Display Name <span className="text-red-500">*</span>
-            </label>
-            <Input
-              value={displayName}
-              onChange={(e) => {
-                setDisplayName(e.target.value)
-                handleFieldChange('display_name')
-              }}
-              onBlur={() => {
-                setTouched({ ...touched, display_name: true })
-                const error = validateDisplayName(displayName)
-                if (error) {
-                  setValidationErrors({
-                    ...validationErrors,
-                    display_name: error,
-                  })
-                }
-              }}
-              disabled={isLoading}
-              placeholder="John Doe"
-              className={
-                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-              }
-            />
-            {touched.display_name && validationErrors.display_name && (
-              <p className="mt-1 text-sm text-red-600">
-                {validationErrors.display_name}
-              </p>
-            )}
-          </div>
-
-          {/* Gravatar Preview */}
-          {email && validateEmail(email) === '' && (
-            <div className="col-span-2">
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Avatar (Gravatar)
-              </label>
-              <div className="flex items-center gap-3">
-                <Gravatar
-                  email={email}
-                  size={64}
-                  className="h-16 w-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
-                />
-                <p
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Avatar will be loaded from{' '}
-                  <a
-                    href="https://gravatar.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline"
-                  >
-                    Gravatar
-                  </a>{' '}
-                  based on email address
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Password Section */}
-          {isEditing && (
-            <div className="col-span-2">
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={changePassword}
-                  onChange={(e) => setChangePassword(e.target.checked)}
-                  disabled={isLoading}
-                  className="rounded"
-                />
-                <span
-                  className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}
-                >
-                  Change Password
-                </span>
-              </label>
-            </div>
-          )}
-
-          {(changePassword || !isEditing) && (
-            <>
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardContent className="space-y-4 pt-6">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Email */}
+            {!isEditing && (
               <div className="col-span-2">
                 <label
                   className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
-                  Password <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value)
-                      handleFieldChange('password')
-                    }}
-                    onBlur={() => {
-                      setTouched({ ...touched, password: true })
-                      const error = validatePassword(password)
-                      if (error) {
-                        setValidationErrors({
-                          ...validationErrors,
-                          password: error,
-                        })
-                      }
-                    }}
-                    disabled={isLoading}
-                    placeholder="Minimum 12 characters"
-                    className={`pr-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={isLoading}
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 ${
-                      isDarkMode
-                        ? 'text-gray-400 hover:text-gray-200'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-                {touched.password && validationErrors.password && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {validationErrors.password}
-                  </p>
-                )}
-                {password && !validationErrors.password && (
-                  <div className="mt-2">
-                    <div className="mb-1 flex items-center gap-2">
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                        <div
-                          className={`h-full transition-all ${
-                            passwordStrength.color === 'red'
-                              ? 'bg-red-500'
-                              : passwordStrength.color === 'yellow'
-                                ? 'bg-yellow-500'
-                                : 'bg-green-500'
-                          }`}
-                          style={{
-                            width: `${(passwordStrength.score / 6) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      <span
-                        className={`text-xs ${
-                          passwordStrength.color === 'red'
-                            ? 'text-red-500'
-                            : passwordStrength.color === 'yellow'
-                              ? 'text-yellow-500'
-                              : 'text-green-500'
-                        }`}
-                      >
-                        {passwordStrength.label}
-                      </span>
-                    </div>
-                    <ul
-                      className={`space-y-0.5 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                    >
-                      <li
-                        className={`flex items-center gap-1 ${password.length >= 12 ? 'text-green-600 dark:text-green-400' : ''}`}
-                      >
-                        {password.length >= 12 ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <XIcon className="h-3 w-3" />
-                        )}
-                        At least 12 characters
-                      </li>
-                      <li
-                        className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
-                      >
-                        {/[A-Z]/.test(password) ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <XIcon className="h-3 w-3" />
-                        )}
-                        Uppercase letter
-                      </li>
-                      <li
-                        className={`flex items-center gap-1 ${/[a-z]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
-                      >
-                        {/[a-z]/.test(password) ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <XIcon className="h-3 w-3" />
-                        )}
-                        Lowercase letter
-                      </li>
-                      <li
-                        className={`flex items-center gap-1 ${/[0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
-                      >
-                        {/[0-9]/.test(password) ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <XIcon className="h-3 w-3" />
-                        )}
-                        Number
-                      </li>
-                      <li
-                        className={`flex items-center gap-1 ${/[^a-zA-Z0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
-                      >
-                        {/[^a-zA-Z0-9]/.test(password) ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <XIcon className="h-3 w-3" />
-                        )}
-                        Special character
-                      </li>
-                    </ul>
-                  </div>
-                )}
-              </div>
-
-              <div className="col-span-2">
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Confirm Password <span className="text-red-500">*</span>
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <Input
-                  type={showPassword ? 'text' : 'password'}
-                  value={confirmPassword}
+                  type="email"
+                  value={email}
                   onChange={(e) => {
-                    setConfirmPassword(e.target.value)
-                    handleFieldChange('confirmPassword')
+                    setEmail(e.target.value)
+                    handleFieldChange('email')
                   }}
                   onBlur={() => {
-                    setTouched({ ...touched, confirmPassword: true })
-                    const error = validateConfirmPassword(confirmPassword)
+                    setTouched({ ...touched, email: true })
+                    const error = validateEmail(email)
                     if (error) {
-                      setValidationErrors({
-                        ...validationErrors,
-                        confirmPassword: error,
-                      })
+                      setValidationErrors({ ...validationErrors, email: error })
                     }
                   }}
                   disabled={isLoading}
-                  placeholder="Re-enter password"
+                  placeholder="john.doe@company.com"
                   className={
                     isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
                   }
                 />
-                {touched.confirmPassword &&
-                  validationErrors.confirmPassword && (
+                {touched.email && validationErrors.email && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.email}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Display Name */}
+            <div className="col-span-2">
+              <label
+                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              >
+                Display Name <span className="text-red-500">*</span>
+              </label>
+              <Input
+                value={displayName}
+                onChange={(e) => {
+                  setDisplayName(e.target.value)
+                  handleFieldChange('display_name')
+                }}
+                onBlur={() => {
+                  setTouched({ ...touched, display_name: true })
+                  const error = validateDisplayName(displayName)
+                  if (error) {
+                    setValidationErrors({
+                      ...validationErrors,
+                      display_name: error,
+                    })
+                  }
+                }}
+                disabled={isLoading}
+                placeholder="John Doe"
+                className={
+                  isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+                }
+              />
+              {touched.display_name && validationErrors.display_name && (
+                <p className="mt-1 text-sm text-red-600">
+                  {validationErrors.display_name}
+                </p>
+              )}
+            </div>
+
+            {/* Gravatar Preview */}
+            {email && validateEmail(email) === '' && (
+              <div className="col-span-2">
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Avatar (Gravatar)
+                </label>
+                <div className="flex items-center gap-3">
+                  <Gravatar
+                    email={email}
+                    size={64}
+                    className="h-16 w-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
+                  />
+                  <p
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Avatar will be loaded from{' '}
+                    <a
+                      href="https://gravatar.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline"
+                    >
+                      Gravatar
+                    </a>{' '}
+                    based on email address
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Password Section */}
+            {isEditing && (
+              <div className="col-span-2">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={changePassword}
+                    onChange={(e) => setChangePassword(e.target.checked)}
+                    disabled={isLoading}
+                    className="rounded"
+                  />
+                  <span
+                    className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}
+                  >
+                    Change Password
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {(changePassword || !isEditing) && (
+              <>
+                <div className="col-span-2">
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  >
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value)
+                        handleFieldChange('password')
+                      }}
+                      onBlur={() => {
+                        setTouched({ ...touched, password: true })
+                        const error = validatePassword(password)
+                        if (error) {
+                          setValidationErrors({
+                            ...validationErrors,
+                            password: error,
+                          })
+                        }
+                      }}
+                      disabled={isLoading}
+                      placeholder="Minimum 12 characters"
+                      className={`pr-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={isLoading}
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 ${
+                        isDarkMode
+                          ? 'text-gray-400 hover:text-gray-200'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  {touched.password && validationErrors.password && (
                     <p className="mt-1 text-sm text-red-600">
-                      {validationErrors.confirmPassword}
+                      {validationErrors.password}
                     </p>
                   )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+                  {password && !validationErrors.password && (
+                    <div className="mt-2">
+                      <div className="mb-1 flex items-center gap-2">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                          <div
+                            className={`h-full transition-all ${
+                              passwordStrength.color === 'red'
+                                ? 'bg-red-500'
+                                : passwordStrength.color === 'yellow'
+                                  ? 'bg-yellow-500'
+                                  : 'bg-green-500'
+                            }`}
+                            style={{
+                              width: `${(passwordStrength.score / 6) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <span
+                          className={`text-xs ${
+                            passwordStrength.color === 'red'
+                              ? 'text-red-500'
+                              : passwordStrength.color === 'yellow'
+                                ? 'text-yellow-500'
+                                : 'text-green-500'
+                          }`}
+                        >
+                          {passwordStrength.label}
+                        </span>
+                      </div>
+                      <ul
+                        className={`space-y-0.5 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                      >
+                        <li
+                          className={`flex items-center gap-1 ${password.length >= 12 ? 'text-green-600 dark:text-green-400' : ''}`}
+                        >
+                          {password.length >= 12 ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <XIcon className="h-3 w-3" />
+                          )}
+                          At least 12 characters
+                        </li>
+                        <li
+                          className={`flex items-center gap-1 ${/[A-Z]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
+                        >
+                          {/[A-Z]/.test(password) ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <XIcon className="h-3 w-3" />
+                          )}
+                          Uppercase letter
+                        </li>
+                        <li
+                          className={`flex items-center gap-1 ${/[a-z]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
+                        >
+                          {/[a-z]/.test(password) ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <XIcon className="h-3 w-3" />
+                          )}
+                          Lowercase letter
+                        </li>
+                        <li
+                          className={`flex items-center gap-1 ${/[0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
+                        >
+                          {/[0-9]/.test(password) ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <XIcon className="h-3 w-3" />
+                          )}
+                          Number
+                        </li>
+                        <li
+                          className={`flex items-center gap-1 ${/[^a-zA-Z0-9]/.test(password) ? 'text-green-600 dark:text-green-400' : ''}`}
+                        >
+                          {/[^a-zA-Z0-9]/.test(password) ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <XIcon className="h-3 w-3" />
+                          )}
+                          Special character
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                <div className="col-span-2">
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  >
+                    Confirm Password <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value)
+                      handleFieldChange('confirmPassword')
+                    }}
+                    onBlur={() => {
+                      setTouched({ ...touched, confirmPassword: true })
+                      const error = validateConfirmPassword(confirmPassword)
+                      if (error) {
+                        setValidationErrors({
+                          ...validationErrors,
+                          confirmPassword: error,
+                        })
+                      }
+                    }}
+                    disabled={isLoading}
+                    placeholder="Re-enter password"
+                    className={
+                      isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+                    }
+                  />
+                  {touched.confirmPassword &&
+                    validationErrors.confirmPassword && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {validationErrors.confirmPassword}
+                      </p>
+                    )}
+                </div>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Section 2: Account Type */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Account Type & Status
-        </h3>
-
-        <div className="space-y-4">
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardContent className="space-y-4 pt-6">
           <div>
             <label
               className={`mb-2 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
@@ -741,85 +715,33 @@ export function UserForm({
               Inactive accounts cannot authenticate
             </p>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Section 3: Organization Membership (creation only) */}
       {!isEditing && (
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Organization Membership
-          </h3>
-          <p
-            className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Users must belong to at least one organization with a role to have
-            any permissions.
-          </p>
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardContent className="space-y-4 pt-6">
+            <p
+              className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Users must belong to at least one organization with a role to have
+              any permissions.
+            </p>
 
-          <div className="grid grid-cols-2 gap-4">
-            {/* Organization */}
-            <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Organization <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={organizationSlug}
-                onChange={(e) => {
-                  setOrganizationSlug(e.target.value)
-                  handleFieldChange('organization_slug')
-                }}
-                disabled={isLoading}
-                className={`w-full rounded-md border px-3 py-2 text-sm ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700 text-white'
-                    : 'border-gray-300 bg-white text-gray-900'
-                } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
-              >
-                <option value="">Select an organization...</option>
-                {organizations.map((org) => (
-                  <option key={org.slug} value={org.slug}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
-              {touched.organization_slug &&
-                validationErrors.organization_slug && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {validationErrors.organization_slug}
-                  </p>
-                )}
-            </div>
-
-            {/* Role */}
-            <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Role <span className="text-red-500">*</span>
-              </label>
-              {rolesLoading ? (
-                <p
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Organization */}
+              <div>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
-                  Loading roles...
-                </p>
-              ) : (
+                  Organization <span className="text-red-500">*</span>
+                </label>
                 <select
-                  value={roleSlug}
+                  value={organizationSlug}
                   onChange={(e) => {
-                    setRoleSlug(e.target.value)
-                    handleFieldChange('role_slug')
+                    setOrganizationSlug(e.target.value)
+                    handleFieldChange('organization_slug')
                   }}
                   disabled={isLoading}
                   className={`w-full rounded-md border px-3 py-2 text-sm ${
@@ -828,22 +750,65 @@ export function UserForm({
                       : 'border-gray-300 bg-white text-gray-900'
                   } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
                 >
-                  <option value="">Select a role...</option>
-                  {availableRoles.map((role) => (
-                    <option key={role.slug} value={role.slug}>
-                      {role.name}
+                  <option value="">Select an organization...</option>
+                  {organizations.map((org) => (
+                    <option key={org.slug} value={org.slug}>
+                      {org.name}
                     </option>
                   ))}
                 </select>
-              )}
-              {touched.role_slug && validationErrors.role_slug && (
-                <p className="mt-1 text-sm text-red-600">
-                  {validationErrors.role_slug}
-                </p>
-              )}
+                {touched.organization_slug &&
+                  validationErrors.organization_slug && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {validationErrors.organization_slug}
+                    </p>
+                  )}
+              </div>
+
+              {/* Role */}
+              <div>
+                <label
+                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                >
+                  Role <span className="text-red-500">*</span>
+                </label>
+                {rolesLoading ? (
+                  <p
+                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Loading roles...
+                  </p>
+                ) : (
+                  <select
+                    value={roleSlug}
+                    onChange={(e) => {
+                      setRoleSlug(e.target.value)
+                      handleFieldChange('role_slug')
+                    }}
+                    disabled={isLoading}
+                    className={`w-full rounded-md border px-3 py-2 text-sm ${
+                      isDarkMode
+                        ? 'border-gray-600 bg-gray-700 text-white'
+                        : 'border-gray-300 bg-white text-gray-900'
+                    } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  >
+                    <option value="">Select a role...</option>
+                    {availableRoles.map((role) => (
+                      <option key={role.slug} value={role.slug}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {touched.role_slug && validationErrors.role_slug && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors.role_slug}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

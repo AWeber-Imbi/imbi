@@ -121,7 +121,7 @@ export function ThirdPartyServiceForm({
       <div className="flex items-center justify-between">
         <div>
           <h2
-            className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {isEditing ? 'Edit Third-Party Service' : 'Add Third-Party Service'}
           </h2>
@@ -200,7 +200,7 @@ export function ThirdPartyServiceForm({
           }`}
         >
           <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             Service Information
           </h3>
@@ -227,7 +227,9 @@ export function ThirdPartyServiceForm({
               </select>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div
+              className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
+            >
               <div>
                 <label
                   className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
@@ -253,30 +255,32 @@ export function ThirdPartyServiceForm({
                 )}
               </div>
 
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Slug <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  placeholder="e.g., stripe"
-                  disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.slug ? 'border-red-500' : ''
-                  }`}
-                />
-                {errors.slug && (
-                  <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+              {!isEditing && (
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.slug}
-                  </div>
-                )}
-              </div>
+                    Slug <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    placeholder="e.g., stripe"
+                    disabled={isLoading}
+                    className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                      errors.slug ? 'border-red-500' : ''
+                    }`}
+                  />
+                  {errors.slug && (
+                    <div
+                      className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                    >
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.slug}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -447,7 +451,7 @@ export function ThirdPartyServiceForm({
           }`}
         >
           <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             Links
           </h3>
@@ -475,7 +479,7 @@ export function ThirdPartyServiceForm({
           }`}
         >
           <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             Identifiers
           </h3>

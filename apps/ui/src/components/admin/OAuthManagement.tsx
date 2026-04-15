@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, Power, AlertCircle, CheckCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { getAuthProviders } from '@/api/endpoints'
 import type { AuthProvider } from '@/types'
 
@@ -111,28 +112,18 @@ export function OAuthManagement({ isDarkMode }: OAuthManagementProps) {
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProviders.map((provider: AuthProvider) => (
-            <div
+            <Card
               key={provider.id}
-              className={`rounded-lg border p-4 ${
-                isDarkMode
-                  ? 'border-gray-700 bg-gray-800'
-                  : 'border-gray-200 bg-white'
-              }`}
+              className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}
             >
-              <div className="mb-3 flex items-start justify-between">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">
                     {provider.type === 'oauth'
                       ? '\uD83D\uDD12'
                       : '\uD83D\uDD11'}
                   </span>
-                  <h3
-                    className={`font-medium ${
-                      isDarkMode ? 'text-white' : 'text-gray-900'
-                    }`}
-                  >
-                    {provider.name}
-                  </h3>
+                  <CardTitle>{provider.name}</CardTitle>
                 </div>
                 {provider.enabled ? (
                   <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
@@ -143,30 +134,32 @@ export function OAuthManagement({ isDarkMode }: OAuthManagementProps) {
                     }`}
                   />
                 )}
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                    isDarkMode
-                      ? 'bg-gray-700 text-gray-300'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {provider.type}
-                </span>
-                <span
-                  className={`text-xs ${
-                    provider.enabled
-                      ? 'text-green-500'
-                      : isDarkMode
-                        ? 'text-gray-500'
-                        : 'text-gray-400'
-                  }`}
-                >
-                  {provider.enabled ? 'Enabled' : 'Disabled'}
-                </span>
-              </div>
-            </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                      isDarkMode
+                        ? 'bg-gray-700 text-gray-300'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {provider.type}
+                  </span>
+                  <span
+                    className={`text-xs ${
+                      provider.enabled
+                        ? 'text-green-500'
+                        : isDarkMode
+                          ? 'text-gray-500'
+                          : 'text-gray-400'
+                    }`}
+                  >
+                    {provider.enabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

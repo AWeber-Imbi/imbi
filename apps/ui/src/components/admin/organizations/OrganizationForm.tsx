@@ -3,6 +3,7 @@ import { Save, X, AlertCircle } from 'lucide-react'
 import { Button } from '../../ui/button'
 import { Input } from '../../ui/input'
 import { IconUpload } from '../../ui/icon-upload'
+import { Card, CardContent } from '../../ui/card'
 import type { Organization, OrganizationCreate } from '@/types'
 
 interface OrganizationFormProps {
@@ -76,7 +77,7 @@ export function OrganizationForm({
       <div className="flex items-center justify-between">
         <div>
           <h2
-            className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {isEditing ? 'Edit Organization' : 'Create New Organization'}
           </h2>
@@ -146,21 +147,11 @@ export function OrganizationForm({
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Organization Information
-          </h3>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardContent className="space-y-4 pt-6">
+            <div
+              className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
+            >
               <div>
                 <label
                   className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
@@ -188,32 +179,34 @@ export function OrganizationForm({
                 )}
               </div>
 
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Slug <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  placeholder="e.g., engineering"
-                  disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.slug ? 'border-red-500' : ''
-                  }`}
-                />
-                {errors.slug && (
-                  <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${
-                      isDarkMode ? 'text-red-400' : 'text-red-600'
-                    }`}
+              {!isEditing && (
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.slug}
-                  </div>
-                )}
-              </div>
+                    Slug <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    placeholder="e.g., engineering"
+                    disabled={isLoading}
+                    className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                      errors.slug ? 'border-red-500' : ''
+                    }`}
+                  />
+                  {errors.slug && (
+                    <div
+                      className={`mt-1 flex items-center gap-1 text-xs ${
+                        isDarkMode ? 'text-red-400' : 'text-red-600'
+                      }`}
+                    >
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.slug}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -248,8 +241,8 @@ export function OrganizationForm({
                 isDarkMode={isDarkMode}
               />
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </form>
     </div>
   )

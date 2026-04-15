@@ -10,7 +10,13 @@ import { getIcon } from '@/lib/icons'
 import { resolveColor, resolveIcon } from '@/lib/ui-maps'
 import type { XUiMaps } from '@/lib/ui-maps'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
@@ -493,184 +499,192 @@ export function ProjectDetail({
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[3fr_2fr]">
             {/* Left column: Details */}
             <div className="space-y-6">
-              <Card
-                className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-              >
-                <h3 className={`mb-4 ${value}`}>Project Details</h3>
-                <div className="space-y-0">
-                  <div
-                    className={`flex items-center justify-between border-b py-1.5 ${divider}`}
-                  >
-                    <span className={`text-sm ${label}`}>Team</span>
-                    <span className={`text-sm ${value}`}>
-                      {project.team.name}
-                    </span>
-                  </div>
-
-                  <div
-                    className={`flex items-center justify-between border-b py-1.5 ${divider}`}
-                  >
-                    <span className={`text-sm ${label}`}>Slug</span>
-                    <span className={`font-mono text-sm ${value}`}>
-                      {project.slug}
-                    </span>
-                  </div>
-
-                  {project.created_at && (
+              <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+                <CardHeader>
+                  <CardTitle>Project details</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-0">
                     <div
                       className={`flex items-center justify-between border-b py-1.5 ${divider}`}
                     >
-                      <span className={`text-sm ${label}`}>Created</span>
-                      <TooltipProvider delayDuration={200}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span
-                              className={`text-sm ${value} cursor-help underline decoration-dotted`}
-                            >
-                              {formatDistanceToNow(
-                                new Date(project.created_at),
-                                { addSuffix: true },
-                              )}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>
-                              {new Date(project.created_at).toLocaleString()}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <span className={`text-sm ${label}`}>Team</span>
+                      <span className={`text-sm ${value}`}>
+                        {project.team.name}
+                      </span>
                     </div>
-                  )}
 
-                  {attributeFields.map(
-                    ({
-                      key,
-                      label: fieldLabel,
-                      value: fieldValue,
-                      rawValue,
-                      title: fieldTitle,
-                      uiMaps,
-                    }) => {
-                      const mappedColor = resolveColor(uiMaps, rawValue)
-                      const mappedIcon = resolveIcon(uiMaps, rawValue)
-                      const FieldIcon = mappedIcon ? getIcon(mappedIcon) : null
-                      const textColorClass = mappedColor
-                        ? (COLOR_TEXT[mappedColor] ?? value)
-                        : value
-                      return (
-                        <div
-                          key={key}
-                          className={`flex items-center justify-between border-b py-1.5 ${divider} last:border-0`}
-                        >
-                          <span className={`text-sm ${label}`}>
-                            {fieldLabel}
-                          </span>
-                          {fieldValue !== null ? (
-                            <span className="flex items-center gap-1.5">
-                              {FieldIcon && (
-                                <FieldIcon
-                                  className={`h-3.5 w-3.5 flex-shrink-0 ${textColorClass}`}
-                                />
-                              )}
-                              {fieldTitle ? (
-                                <TooltipProvider delayDuration={200}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span
-                                        className={`text-sm ${textColorClass} cursor-help underline decoration-dotted`}
-                                      >
-                                        {fieldValue}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>{fieldTitle}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              ) : (
-                                <span className={`text-sm ${textColorClass}`}>
-                                  {fieldValue}
-                                </span>
-                              )}
+                    <div
+                      className={`flex items-center justify-between border-b py-1.5 ${divider}`}
+                    >
+                      <span className={`text-sm ${label}`}>Slug</span>
+                      <span className={`font-mono text-sm ${value}`}>
+                        {project.slug}
+                      </span>
+                    </div>
+
+                    {project.created_at && (
+                      <div
+                        className={`flex items-center justify-between border-b py-1.5 ${divider}`}
+                      >
+                        <span className={`text-sm ${label}`}>Created</span>
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                className={`text-sm ${value} cursor-help underline decoration-dotted`}
+                              >
+                                {formatDistanceToNow(
+                                  new Date(project.created_at),
+                                  { addSuffix: true },
+                                )}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>
+                                {new Date(project.created_at).toLocaleString()}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    )}
+
+                    {attributeFields.map(
+                      ({
+                        key,
+                        label: fieldLabel,
+                        value: fieldValue,
+                        rawValue,
+                        title: fieldTitle,
+                        uiMaps,
+                      }) => {
+                        const mappedColor = resolveColor(uiMaps, rawValue)
+                        const mappedIcon = resolveIcon(uiMaps, rawValue)
+                        const FieldIcon = mappedIcon
+                          ? getIcon(mappedIcon)
+                          : null
+                        const textColorClass = mappedColor
+                          ? (COLOR_TEXT[mappedColor] ?? value)
+                          : value
+                        return (
+                          <div
+                            key={key}
+                            className={`flex items-center justify-between border-b py-1.5 ${divider} last:border-0`}
+                          >
+                            <span className={`text-sm ${label}`}>
+                              {fieldLabel}
                             </span>
-                          ) : (
-                            <span className={`text-sm italic ${muted}`}>
-                              Not set
-                            </span>
-                          )}
-                        </div>
-                      )
-                    },
-                  )}
-                </div>
+                            {fieldValue !== null ? (
+                              <span className="flex items-center gap-1.5">
+                                {FieldIcon && (
+                                  <FieldIcon
+                                    className={`h-3.5 w-3.5 flex-shrink-0 ${textColorClass}`}
+                                  />
+                                )}
+                                {fieldTitle ? (
+                                  <TooltipProvider delayDuration={200}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span
+                                          className={`text-sm ${textColorClass} cursor-help underline decoration-dotted`}
+                                        >
+                                          {fieldValue}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>{fieldTitle}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : (
+                                  <span className={`text-sm ${textColorClass}`}>
+                                    {fieldValue}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className={`text-sm italic ${muted}`}>
+                                Not set
+                              </span>
+                            )}
+                          </div>
+                        )
+                      },
+                    )}
+                  </div>
+                </CardContent>
               </Card>
 
               {/* Environments */}
               {sortedEnvironments.length > 0 && (
                 <Card
-                  className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
+                  className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}
                 >
-                  <h3 className={`mb-4 ${value}`}>Environments</h3>
-                  <div className="space-y-0">
-                    {sortedEnvironments.map((env) => {
-                      let url: string | null = null
-                      if (typeof env.url === 'string' && env.url !== '') {
-                        try {
-                          const parsed = new URL(env.url)
-                          if (
-                            parsed.protocol === 'http:' ||
-                            parsed.protocol === 'https:'
-                          ) {
-                            url = parsed.toString()
+                  <CardHeader>
+                    <CardTitle>Environments</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-0">
+                      {sortedEnvironments.map((env) => {
+                        let url: string | null = null
+                        if (typeof env.url === 'string' && env.url !== '') {
+                          try {
+                            const parsed = new URL(env.url)
+                            if (
+                              parsed.protocol === 'http:' ||
+                              parsed.protocol === 'https:'
+                            ) {
+                              url = parsed.toString()
+                            }
+                          } catch {
+                            url = null
                           }
-                        } catch {
-                          url = null
                         }
-                      }
-                      const deployment = deploymentStatus[env.slug]
-                      return (
-                        <div
-                          key={env.slug}
-                          className={`flex items-center border-b py-2 ${divider} last:border-0`}
-                        >
-                          <div className="w-32 flex-shrink-0">
-                            <EnvironmentBadge
-                              name={env.name}
-                              slug={env.slug}
-                              label_color={env.label_color}
-                            />
-                          </div>
-                          <div className="flex-1 text-center">
-                            <span
-                              className={`font-mono text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
-                            >
-                              {deployment?.version ?? ''}
-                            </span>
-                          </div>
-                          <div className="flex-1 text-right">
-                            {url ? (
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`inline-flex items-center gap-1.5 text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-text'} hover:underline`}
+                        const deployment = deploymentStatus[env.slug]
+                        return (
+                          <div
+                            key={env.slug}
+                            className={`flex items-center border-b py-2 ${divider} last:border-0`}
+                          >
+                            <div className="w-32 flex-shrink-0">
+                              <EnvironmentBadge
+                                name={env.name}
+                                slug={env.slug}
+                                label_color={env.label_color}
+                              />
+                            </div>
+                            <div className="flex-1 text-center">
+                              <span
+                                className={`font-mono text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
                               >
-                                {url}
-                                <ExternalLink
-                                  className={`h-3 w-3 ${isDarkMode ? 'text-amber-400' : 'text-amber-text'}`}
-                                />
-                              </a>
-                            ) : (
-                              <span className={`text-sm ${muted}`}>
-                                &mdash;
+                                {deployment?.version ?? ''}
                               </span>
-                            )}
+                            </div>
+                            <div className="flex-1 text-right">
+                              {url ? (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`inline-flex items-center gap-1.5 text-sm ${isDarkMode ? 'text-amber-400' : 'text-amber-text'} hover:underline`}
+                                >
+                                  {url}
+                                  <ExternalLink
+                                    className={`h-3 w-3 ${isDarkMode ? 'text-amber-400' : 'text-amber-text'}`}
+                                  />
+                                </a>
+                              ) : (
+                                <span className={`text-sm ${muted}`}>
+                                  &mdash;
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
                 </Card>
               )}
             </div>
@@ -678,86 +692,88 @@ export function ProjectDetail({
             {/* Right column: Health & Compliance + Recent Activity */}
             <div className="space-y-6">
               {/* Health & Compliance */}
-              <Card
-                className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-              >
-                <h3 className={`mb-4 ${value}`}>Health &amp; Compliance</h3>
-
-                <div className="mb-4 flex items-center gap-3">
-                  <div
-                    className={`flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg text-2xl font-medium ${
-                      healthScore >= 90
-                        ? 'bg-green-50 text-green-700'
-                        : healthScore >= 80
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : healthScore >= 70
-                            ? 'bg-amber-50 text-amber-700'
-                            : 'bg-red-50 text-red-700'
-                    }`}
-                  >
-                    {healthScore}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      {healthTrend === 'down' ? (
-                        <TrendingDown className="h-4 w-4 text-red-600" />
-                      ) : (
-                        <TrendingUp className="h-4 w-4 text-green-600" />
-                      )}
-                      <span
-                        className={`text-sm ${healthTrend === 'down' ? 'text-red-600' : 'text-green-600'}`}
-                      >
-                        {healthTrend === 'down' ? 'Declining' : 'Improving'}
-                      </span>
+              <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+                <CardHeader>
+                  <CardTitle>Health &amp; compliance</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-4 flex items-center gap-3">
+                    <div
+                      className={`flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg text-2xl font-medium ${
+                        healthScore >= 90
+                          ? 'bg-green-50 text-green-700'
+                          : healthScore >= 80
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : healthScore >= 70
+                              ? 'bg-amber-50 text-amber-700'
+                              : 'bg-red-50 text-red-700'
+                      }`}
+                    >
+                      {healthScore}
                     </div>
-                    <p className={`text-xs ${muted}`}>Health score</p>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        {healthTrend === 'down' ? (
+                          <TrendingDown className="h-4 w-4 text-red-600" />
+                        ) : (
+                          <TrendingUp className="h-4 w-4 text-green-600" />
+                        )}
+                        <span
+                          className={`text-sm ${healthTrend === 'down' ? 'text-red-600' : 'text-green-600'}`}
+                        >
+                          {healthTrend === 'down' ? 'Declining' : 'Improving'}
+                        </span>
+                      </div>
+                      <p className={`text-xs ${muted}`}>Health score</p>
+                    </div>
                   </div>
-                </div>
 
-                <p className={`text-sm ${muted}`}>
-                  Policy scoring and compliance checks will appear here.
-                </p>
+                  <p className={`text-sm ${muted}`}>
+                    Policy scoring and compliance checks will appear here.
+                  </p>
+                </CardContent>
               </Card>
 
               {/* Recent Activity (mocked) */}
-              <Card
-                className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-              >
-                <h3 className={`mb-4 ${value}`}>Recent Activity</h3>
-
-                <div className="space-y-4">
-                  {feed.map((item, index) => (
-                    <div key={index} className="flex items-start gap-2.5">
-                      <div className="min-w-0 flex-1">
-                        <p className={`text-sm leading-snug ${value}`}>
-                          <span className="font-medium">{item.user}</span>{' '}
-                          <span className={label}>{item.action}</span>{' '}
-                          <span
-                            style={{
-                              color:
-                                project.environments?.find(
-                                  (e) => e.name === item.environment,
-                                )?.label_color || undefined,
-                            }}
-                          >
-                            {item.environment}
-                          </span>
-                        </p>
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          <span className={`text-xs ${muted}`}>
-                            {item.time}
-                          </span>
-                          <span className={`text-xs ${muted}`}>&bull;</span>
-                          <span
-                            className={`font-mono text-xs ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
-                          >
-                            {item.version}
-                          </span>
+              <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+                <CardHeader>
+                  <CardTitle>Recent activity</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {feed.map((item, index) => (
+                      <div key={index} className="flex items-start gap-2.5">
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm leading-snug ${value}`}>
+                            <span className="font-medium">{item.user}</span>{' '}
+                            <span className={label}>{item.action}</span>{' '}
+                            <span
+                              style={{
+                                color:
+                                  project.environments?.find(
+                                    (e) => e.name === item.environment,
+                                  )?.label_color || undefined,
+                              }}
+                            >
+                              {item.environment}
+                            </span>
+                          </p>
+                          <div className="mt-0.5 flex items-center gap-1.5">
+                            <span className={`text-xs ${muted}`}>
+                              {item.time}
+                            </span>
+                            <span className={`text-xs ${muted}`}>&bull;</span>
+                            <span
+                              className={`font-mono text-xs ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
+                            >
+                              {item.version}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </CardContent>
               </Card>
             </div>
           </div>
@@ -814,20 +830,23 @@ function RelationshipsTab({
   const [filter, setFilter] = useState<RelFilter>('all')
   const [editDialogOpen, setEditDialogOpen] = useState(false)
 
-  const cardClass = `p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`
   const sub = isDarkMode ? 'text-gray-400' : 'text-slate-500'
 
   if (isLoading) {
     return (
-      <Card className={cardClass}>
-        <p className={sub}>Loading relationships…</p>
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardContent>
+          <p className={sub}>Loading relationships…</p>
+        </CardContent>
       </Card>
     )
   }
   if (isError && !data) {
     return (
-      <Card className={cardClass}>
-        <p className={sub}>Failed to load relationships.</p>
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardContent>
+          <p className={sub}>Failed to load relationships.</p>
+        </CardContent>
       </Card>
     )
   }
@@ -890,15 +909,17 @@ function RelationshipsTab({
   return (
     <>
       {rels.length === 0 ? (
-        <Card className={`${cardClass} flex items-center justify-between`}>
-          <p className={sub}>This project has no relationships.</p>
-          <Button
-            size="sm"
-            className="gap-1 border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
-            onClick={() => setEditDialogOpen(true)}
-          >
-            Edit
-          </Button>
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardContent className="flex items-center justify-between">
+            <p className={sub}>This project has no relationships.</p>
+            <Button
+              size="sm"
+              className="gap-1 border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
+              onClick={() => setEditDialogOpen(true)}
+            >
+              Edit
+            </Button>
+          </CardContent>
         </Card>
       ) : (
         <div
@@ -973,77 +994,80 @@ function RelationshipsSidebar({
 
   return (
     <Card
-      className={`h-full min-h-0 w-full flex-shrink-0 overflow-y-auto p-4 ${
+      className={`h-full min-h-0 w-full flex-shrink-0 overflow-y-auto ${
         isDarkMode ? 'border-gray-700 bg-gray-800' : ''
       }`}
     >
-      {/* Filter chips + Add button */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex flex-wrap gap-1.5">
-          {(['all', 'uses', 'used-by'] as const).map((f) => (
-            <button
-              key={f}
-              type="button"
-              aria-pressed={filter === f}
-              onClick={() => onFilterChange(f)}
-              className={`${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
+      <CardHeader className="p-4 pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap gap-1.5">
+            {(['all', 'uses', 'used-by'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={filter === f}
+                onClick={() => onFilterChange(f)}
+                className={`${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
+              >
+                {f === 'all' ? 'All' : f === 'uses' ? 'Uses' : 'Used by'}
+              </button>
+            ))}
+          </div>
+          <Button variant="ghost" size="sm" onClick={onAdd}>
+            Edit
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-4 pt-2">
+        {/* Outbound (USES) section */}
+        {outboundVisible && (
+          <div className="mb-4">
+            <h4
+              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
             >
-              {f === 'all' ? 'All' : f === 'uses' ? 'Uses' : 'Used by'}
-            </button>
-          ))}
-        </div>
-        <Button variant="ghost" size="sm" onClick={onAdd}>
-          Edit
-        </Button>
-      </div>
+              Uses
+            </h4>
+            {outbound.length === 0 ? (
+              <p className={`text-xs ${sub}`}>None</p>
+            ) : (
+              <ul className="space-y-1">
+                {outbound.map((r, i) => (
+                  <SidebarProjectRow
+                    key={`out:${r.project.id}:${i}`}
+                    rel={r}
+                    isDarkMode={isDarkMode}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
-      {/* Outbound (USES) section */}
-      {outboundVisible && (
-        <div className="mb-4">
-          <h4
-            className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
-          >
-            Uses
-          </h4>
-          {outbound.length === 0 ? (
-            <p className={`text-xs ${sub}`}>None</p>
-          ) : (
-            <ul className="space-y-1">
-              {outbound.map((r, i) => (
-                <SidebarProjectRow
-                  key={`out:${r.project.id}:${i}`}
-                  rel={r}
-                  isDarkMode={isDarkMode}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Inbound (USED BY) section */}
-      {inboundVisible && (
-        <div>
-          <h4
-            className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
-          >
-            Used by
-          </h4>
-          {inbound.length === 0 ? (
-            <p className={`text-xs ${sub}`}>None</p>
-          ) : (
-            <ul className="space-y-1">
-              {inbound.map((r, i) => (
-                <SidebarProjectRow
-                  key={`in:${r.project.id}:${i}`}
-                  rel={r}
-                  isDarkMode={isDarkMode}
-                />
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+        {/* Inbound (USED BY) section */}
+        {inboundVisible && (
+          <div>
+            <h4
+              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
+            >
+              Used by
+            </h4>
+            {inbound.length === 0 ? (
+              <p className={`text-xs ${sub}`}>None</p>
+            ) : (
+              <ul className="space-y-1">
+                {inbound.map((r, i) => (
+                  <SidebarProjectRow
+                    key={`in:${r.project.id}:${i}`}
+                    rel={r}
+                    isDarkMode={isDarkMode}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }
@@ -1171,23 +1195,23 @@ function SettingsTab({
       <EditProjectForm project={project} isDarkMode={isDarkMode} />
 
       {linkDefsLoading && (
-        <Card
-          className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-        >
-          <p
-            className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
-          >
-            Loading link definitions...
-          </p>
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardContent>
+            <p
+              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
+            >
+              Loading link definitions...
+            </p>
+          </CardContent>
         </Card>
       )}
       {linkDefsError && (
-        <Card
-          className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-        >
-          <p className="text-sm text-red-600 dark:text-red-400">
-            Failed to load link definitions.
-          </p>
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardContent>
+            <p className="text-sm text-red-600 dark:text-red-400">
+              Failed to load link definitions.
+            </p>
+          </CardContent>
         </Card>
       )}
       {!linkDefsLoading && !linkDefsError && linkDefs.length > 0 && (
@@ -1221,115 +1245,106 @@ function SettingsTab({
       />
 
       <Card
-        className={`border-amber-300 p-6 ${isDarkMode ? 'border-amber-700 bg-gray-800' : ''}`}
+        className={`border-amber-300 ${isDarkMode ? 'border-amber-700 bg-gray-800' : ''}`}
       >
-        <h3
-          className={`mb-2 font-semibold ${isDarkMode ? 'text-amber-500' : 'text-amber-700'}`}
-        >
-          Archive Project
-        </h3>
-        <p
-          className={`mb-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
-        >
-          Archiving the project will make it entirely read only.
-        </p>
-        <p
-          className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-amber-400' : 'text-amber-700'}`}
-        >
-          It will be hidden from the dashboard, won&apos;t show up in searches,
-          and will be disabled as a dependency for any other projects that are
-          dependent upon it.
-        </p>
-        <Button variant="outline" size="sm" disabled>
-          Archive Project
-        </Button>
+        <CardHeader>
+          <CardTitle>Archive project</CardTitle>
+          <CardDescription
+            className={isDarkMode ? 'text-gray-300' : 'text-slate-700'}
+          >
+            Archiving the project will make it entirely read only. It will be
+            hidden from the dashboard, won&apos;t show up in searches, and will
+            be disabled as a dependency for any other projects that are
+            dependent upon it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" size="sm" disabled>
+            Archive project
+          </Button>
+        </CardContent>
       </Card>
 
       <Card
-        className={`border-red-300 p-6 ${isDarkMode ? 'border-red-800 bg-gray-800' : ''}`}
+        className={`border-red-300 ${isDarkMode ? 'border-red-800 bg-gray-800' : ''}`}
       >
-        <h3
-          className={`mb-2 font-semibold ${isDarkMode ? 'text-red-500' : 'text-red-700'}`}
-        >
-          Delete Project
-        </h3>
-        <p
-          className={`mb-1 text-sm ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
-        >
-          This action will <strong>permanently delete</strong>{' '}
-          <code
-            className={`rounded px-1.5 py-0.5 font-mono text-sm ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-slate-100 text-slate-900'}`}
+        <CardHeader>
+          <CardTitle>Delete project</CardTitle>
+          <CardDescription
+            className={isDarkMode ? 'text-gray-300' : 'text-slate-700'}
           >
-            {project.slug}
-          </code>{' '}
-          immediately, removing the project and all associated data, including
-          facts, operation logs, and notes.
-        </p>
-        <p
-          className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-red-400' : 'text-red-700'}`}
-        >
-          Are you ABSOLUTELY SURE you wish to delete this project?
-        </p>
-        {!showDeleteConfirm ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className={`bg-red-700 text-white hover:bg-red-800 ${isDarkMode ? 'border-red-700' : 'border-red-300'}`}
-            onClick={() => setShowDeleteConfirm(true)}
-            disabled={!projectTypeSlug}
-          >
-            Delete Project
-          </Button>
-        ) : (
-          <div className="space-y-3">
-            <p
-              className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+            This action will <strong>permanently delete</strong>{' '}
+            <code
+              className={`rounded px-1.5 py-0.5 font-mono text-sm ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-slate-100 text-slate-900'}`}
             >
-              Type{' '}
-              <code
-                className={`rounded px-1.5 py-0.5 font-mono text-sm ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-slate-100 text-slate-900'}`}
+              {project.slug}
+            </code>{' '}
+            immediately, removing the project and all associated data, including
+            facts, operation logs, and notes. Are you absolutely sure?
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!showDeleteConfirm ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className={`bg-red-700 text-white hover:bg-red-800 ${isDarkMode ? 'border-red-700' : 'border-red-300'}`}
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={!projectTypeSlug}
+            >
+              Delete Project
+            </Button>
+          ) : (
+            <div className="space-y-3">
+              <p
+                className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
               >
-                {project.slug}
-              </code>{' '}
-              to confirm deletion:
-            </p>
-            <Input
-              value={deleteConfirmSlug}
-              onChange={(e) => setDeleteConfirmSlug(e.target.value)}
-              placeholder={project.slug}
-              disabled={deleteMutation.isPending}
-              className={
-                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-              }
-            />
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className={`bg-red-700 text-white hover:bg-red-800 ${isDarkMode ? 'border-red-700' : 'border-red-300'}`}
-                onClick={() => deleteMutation.mutate()}
-                disabled={
-                  deleteConfirmSlug !== project.slug ||
-                  deleteMutation.isPending ||
-                  !projectTypeSlug
-                }
-              >
-                {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setShowDeleteConfirm(false)
-                  setDeleteConfirmSlug('')
-                }}
+                Type{' '}
+                <code
+                  className={`rounded px-1.5 py-0.5 font-mono text-sm ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-slate-100 text-slate-900'}`}
+                >
+                  {project.slug}
+                </code>{' '}
+                to confirm deletion:
+              </p>
+              <Input
+                value={deleteConfirmSlug}
+                onChange={(e) => setDeleteConfirmSlug(e.target.value)}
+                placeholder={project.slug}
                 disabled={deleteMutation.isPending}
-              >
-                Cancel
-              </Button>
+                className={
+                  isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+                }
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`bg-red-700 text-white hover:bg-red-800 ${isDarkMode ? 'border-red-700' : 'border-red-300'}`}
+                  onClick={() => deleteMutation.mutate()}
+                  disabled={
+                    deleteConfirmSlug !== project.slug ||
+                    deleteMutation.isPending ||
+                    !projectTypeSlug
+                  }
+                >
+                  {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowDeleteConfirm(false)
+                    setDeleteConfirmSlug('')
+                  }}
+                  disabled={deleteMutation.isPending}
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </CardContent>
       </Card>
     </div>
   )
@@ -1343,17 +1358,15 @@ function PlaceholderTab({
   isDarkMode: boolean
 }) {
   return (
-    <Card className={`p-12 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
-      <div className="text-center">
-        <h3
-          className={`mb-2 text-lg ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
+    <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <CardContent className="py-12 text-center">
+        <CardTitle>{name}</CardTitle>
+        <CardDescription
+          className={isDarkMode ? 'text-gray-400' : 'text-slate-500'}
         >
-          {name}
-        </h3>
-        <p className={isDarkMode ? 'text-gray-400' : 'text-slate-500'}>
           This tab will be implemented in a future update.
-        </p>
-      </div>
+        </CardDescription>
+      </CardContent>
     </Card>
   )
 }

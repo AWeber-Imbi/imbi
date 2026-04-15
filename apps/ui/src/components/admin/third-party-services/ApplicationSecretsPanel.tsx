@@ -17,6 +17,12 @@ import {
   updateApplicationSecrets,
 } from '@/api/endpoints'
 import type { ServiceApplicationSecretsUpdate } from '@/types'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface ApplicationSecretsPanelProps {
   orgSlug: string
@@ -132,7 +138,7 @@ export function ApplicationSecretsPanel({
             className={`h-5 w-5 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}
           />
           <h3
-            className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             Secrets
           </h3>
@@ -245,21 +251,34 @@ export function ApplicationSecretsPanel({
                       value
                     )}
                   </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleCopy(field, value!)}
-                    title="Copy to clipboard"
-                    className={
-                      isDarkMode ? 'text-gray-400 hover:text-gray-200' : ''
-                    }
-                  >
-                    {copiedField === field ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
+                  {value != null && (
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Copy ${FIELD_LABELS[field]}`}
+                            onClick={() => handleCopy(field, value)}
+                            className={
+                              isDarkMode
+                                ? 'text-gray-400 hover:text-gray-200'
+                                : ''
+                            }
+                          >
+                            {copiedField === field ? (
+                              <Check className="h-4 w-4 text-green-500" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Copy to clipboard</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                 </div>
               </div>
             )

@@ -16,6 +16,12 @@ import type {
   ServiceApplicationCreate,
   ServiceApplicationUpdate,
 } from '@/types'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 type ViewMode = 'list' | 'create' | 'edit'
 
@@ -352,19 +358,28 @@ export function OAuth2ApplicationList({
                     >
                       <div className="flex items-center justify-end gap-1">
                         {app.application_url && (
-                          <a
-                            href={app.application_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`inline-flex items-center rounded p-1.5 ${
-                              isDarkMode
-                                ? 'text-blue-400 hover:bg-blue-900/20 hover:text-blue-300'
-                                : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700'
-                            }`}
-                            title="Open application"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
+                          <TooltipProvider delayDuration={200}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <a
+                                  href={app.application_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={`Open ${app.name} application`}
+                                  className={`inline-flex items-center rounded p-1.5 ${
+                                    isDarkMode
+                                      ? 'text-blue-400 hover:bg-blue-900/20 hover:text-blue-300'
+                                      : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700'
+                                  }`}
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Open application</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                         <Button
                           variant="ghost"

@@ -19,6 +19,7 @@ import {
   Braces,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CardTitle } from '@/components/ui/card'
 import { getBlueprint } from '@/api/endpoints'
 import { getTypeBadgeClasses } from '../BlueprintManagement'
 import { parseFilterFromBlueprint } from '@/lib/utils'
@@ -237,11 +238,7 @@ export function BlueprintDetail({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2
-                  className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
-                  {blueprint.name}
-                </h2>
+                <CardTitle>{blueprint.name}</CardTitle>
                 <span
                   className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.kind === 'relationship' ? 'relationship' : blueprint.type || '', blueprintTypes, isDarkMode)}`}
                 >
@@ -420,7 +417,7 @@ export function BlueprintDetail({
                 className={`h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
               />
               <h3
-                className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
               >
                 Conditional Filter
               </h3>
@@ -494,7 +491,7 @@ export function BlueprintDetail({
           className={`border-b px-6 py-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
         >
           <h3
-            className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             Schema Properties
           </h3>
@@ -762,7 +759,7 @@ export function BlueprintDetail({
             />
           )}
           <h3
-            className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             Raw JSON Schema
           </h3>

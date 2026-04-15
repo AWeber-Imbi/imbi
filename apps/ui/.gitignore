@@ -30,3 +30,4 @@ dist-ssr
 .env.*.local
 
 figma/
+.worktrees/

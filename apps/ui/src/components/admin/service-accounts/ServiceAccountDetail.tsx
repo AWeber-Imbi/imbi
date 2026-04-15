@@ -18,6 +18,13 @@ import {
   Building2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   listServiceAccountApiKeys,
@@ -82,7 +89,7 @@ export function ServiceAccountDetail({
   const [newOrgSlug, setNewOrgSlug] = useState('')
   const [newRoleSlug, setNewRoleSlug] = useState('')
 
-  const { data: availableRoles = [] } = useQuery({
+  const { data: availableRoles = [], isError: rolesError } = useQuery({
     queryKey: ['roles'],
     queryFn: getRoles,
   })
@@ -406,19 +413,10 @@ export function ServiceAccountDetail({
       </div>
 
       {/* Service Account info card */}
-      <div
-        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
-      >
-        {/* Title row */}
-        <div
-          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div>
-            <h2
-              className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
-              {account.display_name}
-            </h2>
+            <CardTitle>{account.display_name}</CardTitle>
             <p
               className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             >
@@ -432,10 +430,10 @@ export function ServiceAccountDetail({
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Account
           </Button>
-        </div>
+        </CardHeader>
 
         {/* Account Status */}
-        <div className="px-6 py-5">
+        <CardContent className="px-6 py-5">
           <div className="flex items-center gap-6">
             <div
               className={`flex items-center gap-2 rounded px-3 py-1.5 ${
@@ -461,27 +459,17 @@ export function ServiceAccountDetail({
               Service Account
             </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Organization Memberships */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <div className="mb-4 flex items-center justify-between">
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
             <Building2
               className={`h-5 w-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             />
-            <h3
-              className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
-              Organization Memberships
-            </h3>
+            <CardTitle>Organization Memberships</CardTitle>
           </div>
           {availableOrgs.length > 0 && (
             <Button
@@ -498,201 +486,223 @@ export function ServiceAccountDetail({
               Add to Organization
             </Button>
           )}
-        </div>
-
-        {/* Add to Organization Form */}
-        {showAddOrg && (
-          <div
-            className={`mb-4 rounded-lg border p-4 ${
-              isDarkMode
-                ? 'border-gray-600 bg-gray-700'
-                : 'border-gray-200 bg-gray-50'
-            }`}
-          >
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Organization
-                </label>
-                <select
-                  value={newOrgSlug}
-                  onChange={(e) => setNewOrgSlug(e.target.value)}
-                  className={`w-full rounded-md border px-3 py-2 text-sm ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white'
-                      : 'border-gray-300 bg-white text-gray-900'
-                  }`}
-                >
-                  <option value="">Select...</option>
-                  {availableOrgs.map((org) => (
-                    <option key={org.slug} value={org.slug}>
-                      {org.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Role
-                </label>
-                <select
-                  value={newRoleSlug}
-                  onChange={(e) => setNewRoleSlug(e.target.value)}
-                  className={`w-full rounded-md border px-3 py-2 text-sm ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white'
-                      : 'border-gray-300 bg-white text-gray-900'
-                  }`}
-                >
-                  <option value="">Select...</option>
-                  {availableRoles.map((role) => (
-                    <option key={role.slug} value={role.slug}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <Button
-                onClick={() =>
-                  addOrgMutation.mutate({
-                    organization_slug: newOrgSlug,
-                    role_slug: newRoleSlug,
-                  })
-                }
-                disabled={
-                  !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
-                }
-                className="bg-amber-border text-white hover:bg-amber-border-strong"
-                size="sm"
-              >
-                {addOrgMutation.isPending ? 'Adding...' : 'Add'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setShowAddOrg(false)
-                  setNewOrgSlug('')
-                  setNewRoleSlug('')
-                }}
-                className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Memberships List */}
-        {(account.organizations ?? []).length > 0 ? (
-          <div className="space-y-2">
-            {(account.organizations ?? []).map((membership: OrgMembership) => (
-              <div
-                key={membership.organization_slug}
-                className={`flex items-center justify-between rounded-lg border p-3 ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700'
-                    : 'border-gray-200 bg-gray-50'
-                }`}
-              >
-                <div className="flex-1">
-                  <div
-                    className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+        </CardHeader>
+        <CardContent>
+          {/* Add to Organization Form */}
+          {showAddOrg && (
+            <div
+              className={`mb-4 rounded-lg border p-4 ${
+                isDarkMode
+                  ? 'border-gray-600 bg-gray-700'
+                  : 'border-gray-200 bg-gray-50'
+              }`}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    {membership.organization_name}
-                  </div>
-                  <div
-                    className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
-                  >
-                    {membership.organization_slug}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
+                    Organization
+                  </label>
                   <select
-                    value={membership.role}
-                    onChange={(e) =>
-                      updateOrgRoleMutation.mutate({
-                        orgSlug: membership.organization_slug,
-                        roleSlug: e.target.value,
-                      })
-                    }
-                    disabled={updateOrgRoleMutation.isPending}
-                    className={`rounded border px-2 py-1 text-xs ${
+                    value={newOrgSlug}
+                    onChange={(e) => setNewOrgSlug(e.target.value)}
+                    className={`w-full rounded-md border px-3 py-2 text-sm ${
                       isDarkMode
                         ? 'border-gray-600 bg-gray-700 text-white'
                         : 'border-gray-300 bg-white text-gray-900'
                     }`}
                   >
-                    {availableRoles.map((role) => (
-                      <option key={role.slug} value={role.slug}>
-                        {role.name}
+                    <option value="">Select...</option>
+                    {availableOrgs.map((org) => (
+                      <option key={org.slug} value={org.slug}>
+                        {org.name}
                       </option>
                     ))}
                   </select>
-                  <button
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Remove ${account.display_name} from ${membership.organization_name}?`,
-                        )
-                      ) {
-                        removeOrgMutation.mutate(membership.organization_slug)
-                      }
-                    }}
-                    disabled={removeOrgMutation.isPending}
-                    className={`rounded p-1.5 ${
-                      isDarkMode
-                        ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
-                        : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
-                    }`}
-                    title="Remove from organization"
+                </div>
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                    Role
+                  </label>
+                  {rolesError ? (
+                    <p
+                      className={`text-sm ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                    >
+                      Failed to load roles
+                    </p>
+                  ) : (
+                    <select
+                      value={newRoleSlug}
+                      onChange={(e) => setNewRoleSlug(e.target.value)}
+                      className={`w-full rounded-md border px-3 py-2 text-sm ${
+                        isDarkMode
+                          ? 'border-gray-600 bg-gray-700 text-white'
+                          : 'border-gray-300 bg-white text-gray-900'
+                      }`}
+                    >
+                      <option value="">Select...</option>
+                      {availableRoles.map((role) => (
+                        <option key={role.slug} value={role.slug}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div
-            className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          >
-            <Building2
-              className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
-            />
-            <div>Not a member of any organization</div>
-            <div className="mt-1 text-sm">
-              This service account has no permissions until added to an
-              organization
+              <div className="mt-3 flex items-center gap-2">
+                <Button
+                  onClick={() =>
+                    addOrgMutation.mutate({
+                      organization_slug: newOrgSlug,
+                      role_slug: newRoleSlug,
+                    })
+                  }
+                  disabled={
+                    !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
+                  }
+                  className="bg-amber-border text-white hover:bg-amber-border-strong"
+                  size="sm"
+                >
+                  {addOrgMutation.isPending ? 'Adding...' : 'Add'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowAddOrg(false)
+                    setNewOrgSlug('')
+                    setNewRoleSlug('')
+                  }}
+                  className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          {/* Memberships List */}
+          {(account.organizations ?? []).length > 0 ? (
+            <div className="space-y-2">
+              {(account.organizations ?? []).map(
+                (membership: OrgMembership) => (
+                  <div
+                    key={membership.organization_slug}
+                    className={`flex items-center justify-between rounded-lg border p-3 ${
+                      isDarkMode
+                        ? 'border-gray-600 bg-gray-700'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex-1">
+                      <div
+                        className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                      >
+                        {membership.organization_name}
+                      </div>
+                      <div
+                        className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                      >
+                        {membership.organization_slug}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {rolesError ? (
+                        <span
+                          className={`text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                        >
+                          Roles unavailable
+                        </span>
+                      ) : (
+                        <select
+                          value={membership.role}
+                          onChange={(e) =>
+                            updateOrgRoleMutation.mutate({
+                              orgSlug: membership.organization_slug,
+                              roleSlug: e.target.value,
+                            })
+                          }
+                          disabled={updateOrgRoleMutation.isPending}
+                          aria-label={`Role for ${membership.organization_name}`}
+                          className={`rounded border px-2 py-1 text-xs ${
+                            isDarkMode
+                              ? 'border-gray-600 bg-gray-700 text-white'
+                              : 'border-gray-300 bg-white text-gray-900'
+                          }`}
+                        >
+                          {availableRoles.map((role) => (
+                            <option key={role.slug} value={role.slug}>
+                              {role.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Remove from ${membership.organization_name}`}
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    `Remove ${account.display_name} from ${membership.organization_name}?`,
+                                  )
+                                ) {
+                                  removeOrgMutation.mutate(
+                                    membership.organization_slug,
+                                  )
+                                }
+                              }}
+                              disabled={removeOrgMutation.isPending}
+                              className={`rounded p-1.5 ${
+                                isDarkMode
+                                  ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                                  : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
+                              }`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Remove from organization</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </div>
+                ),
+              )}
+            </div>
+          ) : (
+            <div
+              className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            >
+              <Building2
+                className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
+              />
+              <div>Not a member of any organization</div>
+              <div className="mt-1 text-sm">
+                This service account has no permissions until added to an
+                organization
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Client Credentials */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <div className="mb-4 flex items-center justify-between">
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
             <Shield
               className={`h-5 w-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             />
-            <h3
-              className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
-              Client Credentials
-            </h3>
+            <CardTitle>Client Credentials</CardTitle>
           </div>
           <Button
             onClick={() => setShowCreateCredential(!showCreateCredential)}
@@ -707,357 +717,395 @@ export function ServiceAccountDetail({
             <Plus className="mr-2 h-4 w-4" />
             Create Credential
           </Button>
-        </div>
-
-        {/* Create Credential Form */}
-        {showCreateCredential && (
-          <div
-            className={`mb-4 rounded-lg border p-4 ${
-              isDarkMode
-                ? 'border-gray-600 bg-gray-700'
-                : 'border-gray-200 bg-gray-50'
-            }`}
-          >
-            <div className="space-y-3">
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  value={credentialName}
-                  onChange={(e) => setCredentialName(e.target.value)}
-                  placeholder="e.g., production-api"
-                  className={
-                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                  }
-                />
-              </div>
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Description
-                </label>
-                <Input
-                  value={credentialDescription}
-                  onChange={(e) => setCredentialDescription(e.target.value)}
-                  placeholder="What is this credential used for?"
-                  className={
-                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                  }
-                />
-              </div>
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Scopes{' '}
-                  <span
-                    className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                  >
-                    (comma-separated)
-                  </span>
-                </label>
-                <Input
-                  value={credentialScopes}
-                  onChange={(e) => setCredentialScopes(e.target.value)}
-                  placeholder="e.g., read:projects, write:projects"
-                  className={
-                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                  }
-                />
-              </div>
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Expires in (days){' '}
-                  <span
-                    className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                  >
-                    (leave empty for no expiration)
-                  </span>
-                </label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={credentialExpiresDays}
-                  onChange={(e) => setCredentialExpiresDays(e.target.value)}
-                  placeholder="e.g., 90"
-                  className={
-                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                  }
-                />
-              </div>
-              <div className="flex items-center gap-2 pt-2">
-                <Button
-                  onClick={handleCreateCredential}
-                  disabled={
-                    !credentialName.trim() || createCredentialMutation.isPending
-                  }
-                  className="bg-amber-border text-white hover:bg-amber-border-strong"
-                >
-                  {createCredentialMutation.isPending
-                    ? 'Creating...'
-                    : 'Create'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowCreateCredential(false)
-                    resetCredentialForm()
-                  }}
-                  className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Newly Created Credential Banner */}
-        {newlyCreatedCredential && (
-          <div
-            className={`mb-4 rounded-lg border p-4 ${
-              isDarkMode
-                ? 'border-green-700 bg-green-900/20'
-                : 'border-green-200 bg-green-50'
-            }`}
-          >
+        </CardHeader>
+        <CardContent>
+          {/* Create Credential Form */}
+          {showCreateCredential && (
             <div
-              className={`mb-2 font-medium ${isDarkMode ? 'text-green-400' : 'text-green-800'}`}
+              className={`mb-4 rounded-lg border p-4 ${
+                isDarkMode
+                  ? 'border-gray-600 bg-gray-700'
+                  : 'border-gray-200 bg-gray-50'
+              }`}
             >
-              Client Credential Created - Copy the secret now, it will not be
-              shown again!
-            </div>
-            <div className="space-y-2">
-              <div>
-                <span
-                  className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Client ID
-                </span>
-                <div className="flex items-center gap-2">
-                  <code
-                    className={`flex-1 rounded border px-3 py-2 text-sm ${
-                      isDarkMode
-                        ? 'border-gray-600 bg-gray-800 text-green-300'
-                        : 'border-gray-200 bg-white text-green-700'
-                    }`}
+              <div className="space-y-3">
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    {newlyCreatedCredential.client_id}
-                  </code>
-                  <button
-                    onClick={() =>
-                      copyToClipboard(
-                        newlyCreatedCredential.client_id,
-                        'cred-id',
-                      )
+                    Name <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={credentialName}
+                    onChange={(e) => setCredentialName(e.target.value)}
+                    placeholder="e.g., production-api"
+                    className={
+                      isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
                     }
-                    className={`rounded-lg p-2 ${
-                      copiedId === 'cred-id'
-                        ? 'bg-green-600 text-white'
-                        : isDarkMode
-                          ? 'text-gray-400 hover:bg-gray-700'
-                          : 'text-gray-600 hover:bg-gray-200'
-                    }`}
-                    title="Copy to clipboard"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
+                  />
                 </div>
-              </div>
-              <div>
-                <span
-                  className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Client Secret
-                </span>
-                <div className="flex items-center gap-2">
-                  <code
-                    className={`flex-1 rounded border px-3 py-2 text-sm ${
-                      isDarkMode
-                        ? 'border-gray-600 bg-gray-800 text-green-300'
-                        : 'border-gray-200 bg-white text-green-700'
-                    }`}
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    {newlyCreatedCredential.client_secret}
-                  </code>
-                  <button
-                    onClick={() =>
-                      copyToClipboard(
-                        newlyCreatedCredential.client_secret,
-                        'cred-secret',
-                      )
+                    Description
+                  </label>
+                  <Input
+                    value={credentialDescription}
+                    onChange={(e) => setCredentialDescription(e.target.value)}
+                    placeholder="What is this credential used for?"
+                    className={
+                      isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
                     }
-                    className={`rounded-lg p-2 ${
-                      copiedId === 'cred-secret'
-                        ? 'bg-green-600 text-white'
-                        : isDarkMode
-                          ? 'text-gray-400 hover:bg-gray-700'
-                          : 'text-gray-600 hover:bg-gray-200'
-                    }`}
-                    title="Copy to clipboard"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
+                  />
                 </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setNewlyCreatedCredential(null)}
-              className={`mt-2 text-sm ${isDarkMode ? 'text-green-400 hover:text-green-300' : 'text-green-700 hover:text-green-800'}`}
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Credentials List */}
-        {credentialsLoading ? (
-          <div
-            className={`py-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Loading client credentials...
-          </div>
-        ) : credentialsError ? (
-          <div
-            className={`flex items-center gap-2 rounded-lg p-3 ${
-              isDarkMode
-                ? 'bg-red-900/20 text-red-400'
-                : 'bg-red-50 text-red-700'
-            }`}
-          >
-            <AlertCircle className="h-4 w-4 flex-shrink-0" />
-            <span className="text-sm">Failed to load client credentials</span>
-          </div>
-        ) : credentials.length === 0 ? (
-          <div
-            className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          >
-            <Shield
-              className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
-            />
-            <div>No client credentials created yet</div>
-            <div className="mt-1 text-sm">
-              Create a credential for OAuth2 client_credentials flow
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {credentials.map((cred: ClientCredential) => (
-              <div
-                key={cred.client_id}
-                className={`flex items-center justify-between rounded-lg border p-3 ${
-                  cred.revoked
-                    ? isDarkMode
-                      ? 'border-gray-600 bg-gray-700 opacity-50'
-                      : 'border-gray-200 bg-gray-50 opacity-50'
-                    : isDarkMode
-                      ? 'border-gray-600 bg-gray-700'
-                      : 'border-gray-200 bg-gray-50'
-                }`}
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  >
+                    Scopes{' '}
                     <span
-                      className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                      className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
                     >
-                      {cred.name}
+                      (comma-separated)
                     </span>
+                  </label>
+                  <Input
+                    value={credentialScopes}
+                    onChange={(e) => setCredentialScopes(e.target.value)}
+                    placeholder="e.g., read:projects, write:projects"
+                    className={
+                      isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+                    }
+                  />
+                </div>
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  >
+                    Expires in (days){' '}
+                    <span
+                      className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                    >
+                      (leave empty for no expiration)
+                    </span>
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={credentialExpiresDays}
+                    onChange={(e) => setCredentialExpiresDays(e.target.value)}
+                    placeholder="e.g., 90"
+                    className={
+                      isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
+                    }
+                  />
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <Button
+                    onClick={handleCreateCredential}
+                    disabled={
+                      !credentialName.trim() ||
+                      createCredentialMutation.isPending
+                    }
+                    className="bg-amber-border text-white hover:bg-amber-border-strong"
+                  >
+                    {createCredentialMutation.isPending
+                      ? 'Creating...'
+                      : 'Create'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowCreateCredential(false)
+                      resetCredentialForm()
+                    }}
+                    className={
+                      isDarkMode ? 'border-gray-600 text-gray-300' : ''
+                    }
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Newly Created Credential Banner */}
+          {newlyCreatedCredential && (
+            <div
+              className={`mb-4 rounded-lg border p-4 ${
+                isDarkMode
+                  ? 'border-green-700 bg-green-900/20'
+                  : 'border-green-200 bg-green-50'
+              }`}
+            >
+              <div
+                className={`mb-2 font-medium ${isDarkMode ? 'text-green-400' : 'text-green-800'}`}
+              >
+                Client Credential Created - Copy the secret now, it will not be
+                shown again!
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <span
+                    className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Client ID
+                  </span>
+                  <div className="flex items-center gap-2">
                     <code
-                      className={`rounded px-2 py-0.5 text-xs ${
+                      className={`flex-1 rounded border px-3 py-2 text-sm ${
                         isDarkMode
-                          ? 'bg-gray-700 text-gray-400'
-                          : 'bg-gray-100 text-gray-600'
+                          ? 'border-gray-600 bg-gray-800 text-green-300'
+                          : 'border-gray-200 bg-white text-green-700'
                       }`}
                     >
-                      {truncateClientId(cred.client_id)}
+                      {newlyCreatedCredential.client_id}
                     </code>
-                    {cred.revoked && (
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Copy client ID"
+                            onClick={() =>
+                              copyToClipboard(
+                                newlyCreatedCredential.client_id,
+                                'cred-id',
+                              )
+                            }
+                            className={`rounded-lg p-2 ${
+                              copiedId === 'cred-id'
+                                ? 'bg-green-600 text-white'
+                                : isDarkMode
+                                  ? 'text-gray-400 hover:bg-gray-700'
+                                  : 'text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Copy to clipboard</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+                <div>
+                  <span
+                    className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                  >
+                    Client Secret
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <code
+                      className={`flex-1 rounded border px-3 py-2 text-sm ${
+                        isDarkMode
+                          ? 'border-gray-600 bg-gray-800 text-green-300'
+                          : 'border-gray-200 bg-white text-green-700'
+                      }`}
+                    >
+                      {newlyCreatedCredential.client_secret}
+                    </code>
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="Copy client secret"
+                            onClick={() =>
+                              copyToClipboard(
+                                newlyCreatedCredential.client_secret,
+                                'cred-secret',
+                              )
+                            }
+                            className={`rounded-lg p-2 ${
+                              copiedId === 'cred-secret'
+                                ? 'bg-green-600 text-white'
+                                : isDarkMode
+                                  ? 'text-gray-400 hover:bg-gray-700'
+                                  : 'text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Copy to clipboard</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setNewlyCreatedCredential(null)}
+                className={`mt-2 text-sm ${isDarkMode ? 'text-green-400 hover:text-green-300' : 'text-green-700 hover:text-green-800'}`}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Credentials List */}
+          {credentialsLoading ? (
+            <div
+              className={`py-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Loading client credentials...
+            </div>
+          ) : credentialsError ? (
+            <div
+              className={`flex items-center gap-2 rounded-lg p-3 ${
+                isDarkMode
+                  ? 'bg-red-900/20 text-red-400'
+                  : 'bg-red-50 text-red-700'
+              }`}
+            >
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span className="text-sm">Failed to load client credentials</span>
+            </div>
+          ) : credentials.length === 0 ? (
+            <div
+              className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            >
+              <Shield
+                className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
+              />
+              <div>No client credentials created yet</div>
+              <div className="mt-1 text-sm">
+                Create a credential for OAuth2 client_credentials flow
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {credentials.map((cred: ClientCredential) => (
+                <div
+                  key={cred.client_id}
+                  className={`flex items-center justify-between rounded-lg border p-3 ${
+                    cred.revoked
+                      ? isDarkMode
+                        ? 'border-gray-600 bg-gray-700 opacity-50'
+                        : 'border-gray-200 bg-gray-50 opacity-50'
+                      : isDarkMode
+                        ? 'border-gray-600 bg-gray-700'
+                        : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
                       <span
+                        className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                      >
+                        {cred.name}
+                      </span>
+                      <code
                         className={`rounded px-2 py-0.5 text-xs ${
                           isDarkMode
-                            ? 'bg-red-900/30 text-red-400'
-                            : 'bg-red-100 text-red-600'
+                            ? 'bg-gray-700 text-gray-400'
+                            : 'bg-gray-100 text-gray-600'
                         }`}
                       >
-                        Revoked
-                      </span>
-                    )}
-                    {cred.scopes.length > 0 && cred.scopes[0] !== '*' && (
-                      <span
-                        className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                      >
-                        {cred.scopes.join(', ')}
-                      </span>
-                    )}
+                        {truncateClientId(cred.client_id)}
+                      </code>
+                      {cred.revoked && (
+                        <span
+                          className={`rounded px-2 py-0.5 text-xs ${
+                            isDarkMode
+                              ? 'bg-red-900/30 text-red-400'
+                              : 'bg-red-100 text-red-600'
+                          }`}
+                        >
+                          Revoked
+                        </span>
+                      )}
+                      {cred.scopes.length > 0 && cred.scopes[0] !== '*' && (
+                        <span
+                          className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                        >
+                          {cred.scopes.join(', ')}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                    >
+                      Created {formatDate(cred.created_at)}
+                      {cred.last_used &&
+                        ` | Last used ${formatDate(cred.last_used)}`}
+                      {cred.expires_at &&
+                        ` | Expires ${formatDate(cred.expires_at)}`}
+                    </div>
                   </div>
-                  <div
-                    className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
-                  >
-                    Created {formatDate(cred.created_at)}
-                    {cred.last_used &&
-                      ` | Last used ${formatDate(cred.last_used)}`}
-                    {cred.expires_at &&
-                      ` | Expires ${formatDate(cred.expires_at)}`}
-                  </div>
+                  {!cred.revoked && (
+                    <div className="flex items-center gap-1">
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Rotate credential ${cred.name}`}
+                              onClick={() =>
+                                handleRotateCredential(cred.client_id)
+                              }
+                              disabled={rotateCredentialMutation.isPending}
+                              className={`rounded p-1.5 ${
+                                isDarkMode
+                                  ? 'text-blue-400 hover:bg-gray-700 hover:text-blue-300'
+                                  : 'text-blue-600 hover:bg-gray-100 hover:text-blue-700'
+                              }`}
+                            >
+                              <RotateCw className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Rotate credential</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Revoke credential ${cred.name}`}
+                              onClick={() =>
+                                handleRevokeCredential(cred.client_id)
+                              }
+                              disabled={revokeCredentialMutation.isPending}
+                              className={`rounded p-1.5 ${
+                                isDarkMode
+                                  ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                                  : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
+                              }`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Revoke credential</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  )}
                 </div>
-                {!cred.revoked && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleRotateCredential(cred.client_id)}
-                      disabled={rotateCredentialMutation.isPending}
-                      className={`rounded p-1.5 ${
-                        isDarkMode
-                          ? 'text-blue-400 hover:bg-gray-700 hover:text-blue-300'
-                          : 'text-blue-600 hover:bg-gray-100 hover:text-blue-700'
-                      }`}
-                      title="Rotate credential"
-                    >
-                      <RotateCw className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleRevokeCredential(cred.client_id)}
-                      disabled={revokeCredentialMutation.isPending}
-                      className={`rounded p-1.5 ${
-                        isDarkMode
-                          ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
-                          : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
-                      }`}
-                      title="Revoke credential"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* API Keys */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <div className="mb-4 flex items-center justify-between">
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
             <Key
               className={`h-5 w-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             />
-            <h3
-              className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
-              API Keys
-            </h3>
+            <CardTitle>API Keys</CardTitle>
           </div>
           <Button
             onClick={() => setShowCreateKey(!showCreateKey)}
@@ -1072,299 +1120,323 @@ export function ServiceAccountDetail({
             <Plus className="mr-2 h-4 w-4" />
             Create API Key
           </Button>
-        </div>
-
-        {/* Create Key Form */}
-        {showCreateKey && (
-          <div
-            className={`mb-4 rounded-lg border p-4 ${
-              isDarkMode
-                ? 'border-gray-600 bg-gray-700'
-                : 'border-gray-200 bg-gray-50'
-            }`}
-          >
-            <div className="flex items-end gap-3">
-              <div className="flex-1">
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Key Name
-                </label>
-                <input
-                  type="text"
-                  value={newKeyName}
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                  placeholder="e.g., production, staging"
-                  className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
-                      : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
-                  }`}
-                />
-              </div>
-              <Button
-                onClick={handleCreateKey}
-                disabled={createKeyMutation.isPending}
-                className="bg-amber-border text-white hover:bg-amber-border-strong"
-              >
-                {createKeyMutation.isPending ? 'Creating...' : 'Create'}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowCreateKey(false)
-                  setNewKeyName('')
-                }}
-                className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Newly Created Key Banner */}
-        {newlyCreatedKey && (
-          <div
-            className={`mb-4 rounded-lg border p-4 ${
-              isDarkMode
-                ? 'border-green-700 bg-green-900/20'
-                : 'border-green-200 bg-green-50'
-            }`}
-          >
+        </CardHeader>
+        <CardContent>
+          {/* Create Key Form */}
+          {showCreateKey && (
             <div
-              className={`mb-2 font-medium ${isDarkMode ? 'text-green-400' : 'text-green-800'}`}
+              className={`mb-4 rounded-lg border p-4 ${
+                isDarkMode
+                  ? 'border-gray-600 bg-gray-700'
+                  : 'border-gray-200 bg-gray-50'
+              }`}
             >
-              API Key Created - Copy it now, it will not be shown again!
-            </div>
-            <div className="flex items-center gap-2">
-              <code
-                className={`flex-1 rounded border px-3 py-2 text-sm ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-800 text-green-300'
-                    : 'border-gray-200 bg-white text-green-700'
-                }`}
-              >
-                {newlyCreatedKey.key_secret}
-              </code>
-              <button
-                onClick={() =>
-                  copyToClipboard(newlyCreatedKey.key_secret, 'new-key')
-                }
-                className={`rounded-lg p-2 ${
-                  copiedId === 'new-key'
-                    ? 'bg-green-600 text-white'
-                    : isDarkMode
-                      ? 'text-gray-400 hover:bg-gray-700'
-                      : 'text-gray-600 hover:bg-gray-200'
-                }`}
-                title="Copy to clipboard"
-              >
-                <Copy className="h-4 w-4" />
-              </button>
-            </div>
-            <button
-              onClick={() => setNewlyCreatedKey(null)}
-              className={`mt-2 text-sm ${isDarkMode ? 'text-green-400 hover:text-green-300' : 'text-green-700 hover:text-green-800'}`}
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Keys List */}
-        {keysLoading ? (
-          <div
-            className={`py-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Loading API keys...
-          </div>
-        ) : keysError ? (
-          <div
-            className={`flex items-center gap-2 rounded-lg p-3 ${
-              isDarkMode
-                ? 'bg-red-900/20 text-red-400'
-                : 'bg-red-50 text-red-700'
-            }`}
-          >
-            <AlertCircle className="h-4 w-4 flex-shrink-0" />
-            <span className="text-sm">Failed to load API keys</span>
-          </div>
-        ) : apiKeys.length === 0 ? (
-          <div
-            className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          >
-            <Key
-              className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
-            />
-            <div>No API keys created yet</div>
-            <div className="mt-1 text-sm">
-              Create an API key to enable programmatic access
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {apiKeys.map((key: ApiKey) => (
-              <div
-                key={key.key_id}
-                className={`flex items-center justify-between rounded-lg border p-3 ${
-                  key.revoked
-                    ? isDarkMode
-                      ? 'border-gray-600 bg-gray-700 opacity-50'
-                      : 'border-gray-200 bg-gray-50 opacity-50'
-                    : isDarkMode
-                      ? 'border-gray-600 bg-gray-700'
-                      : 'border-gray-200 bg-gray-50'
-                }`}
-              >
+              <div className="flex items-end gap-3">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                    >
-                      {key.name}
-                    </span>
-                    <code
-                      className={`rounded px-2 py-0.5 text-xs ${
-                        isDarkMode
-                          ? 'bg-gray-700 text-gray-400'
-                          : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {key.key_id.substring(0, 7)}...
-                    </code>
-                    {key.revoked && (
-                      <span
-                        className={`rounded px-2 py-0.5 text-xs ${
-                          isDarkMode
-                            ? 'bg-red-900/30 text-red-400'
-                            : 'bg-red-100 text-red-600'
-                        }`}
-                      >
-                        Revoked
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    Created {formatDate(key.created_at)}
-                    {key.last_used &&
-                      ` | Last used ${formatDate(key.last_used)}`}
-                    {key.expires_at &&
-                      ` | Expires ${formatDate(key.expires_at)}`}
-                  </div>
+                    Key Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newKeyName}
+                    onChange={(e) => setNewKeyName(e.target.value)}
+                    placeholder="e.g., production, staging"
+                    className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                      isDarkMode
+                        ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
+                        : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
+                    }`}
+                  />
                 </div>
-                {!key.revoked && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleRotateKey(key.key_id)}
-                      disabled={rotateKeyMutation.isPending}
-                      className={`rounded p-1.5 ${
-                        isDarkMode
-                          ? 'text-blue-400 hover:bg-gray-700 hover:text-blue-300'
-                          : 'text-blue-600 hover:bg-gray-100 hover:text-blue-700'
-                      }`}
-                      title="Rotate API key"
-                    >
-                      <RotateCw className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleRevokeKey(key.key_id)}
-                      disabled={revokeKeyMutation.isPending}
-                      className={`rounded p-1.5 ${
-                        isDarkMode
-                          ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
-                          : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
-                      }`}
-                      title="Revoke API key"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Basic Information */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Basic Information
-        </h3>
-
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <div
-              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              <Tag className="h-4 w-4" />
-              Slug
-            </div>
-            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-              {account.slug}
-            </div>
-          </div>
-
-          <div>
-            <div
-              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Display Name
-            </div>
-            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-              {account.display_name}
-            </div>
-          </div>
-
-          {account.description && (
-            <div className="col-span-2">
-              <div
-                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Description
-              </div>
-              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                {account.description}
+                <Button
+                  onClick={handleCreateKey}
+                  disabled={createKeyMutation.isPending}
+                  className="bg-amber-border text-white hover:bg-amber-border-strong"
+                >
+                  {createKeyMutation.isPending ? 'Creating...' : 'Create'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowCreateKey(false)
+                    setNewKeyName('')
+                  }}
+                  className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
+                >
+                  Cancel
+                </Button>
               </div>
             </div>
           )}
 
-          <div>
+          {/* Newly Created Key Banner */}
+          {newlyCreatedKey && (
             <div
-              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              className={`mb-4 rounded-lg border p-4 ${
+                isDarkMode
+                  ? 'border-green-700 bg-green-900/20'
+                  : 'border-green-200 bg-green-50'
+              }`}
             >
-              <Calendar className="h-4 w-4" />
-              Created
+              <div
+                className={`mb-2 font-medium ${isDarkMode ? 'text-green-400' : 'text-green-800'}`}
+              >
+                API Key Created - Copy it now, it will not be shown again!
+              </div>
+              <div className="flex items-center gap-2">
+                <code
+                  className={`flex-1 rounded border px-3 py-2 text-sm ${
+                    isDarkMode
+                      ? 'border-gray-600 bg-gray-800 text-green-300'
+                      : 'border-gray-200 bg-white text-green-700'
+                  }`}
+                >
+                  {newlyCreatedKey.key_secret}
+                </code>
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Copy API key"
+                        onClick={() =>
+                          copyToClipboard(newlyCreatedKey.key_secret, 'new-key')
+                        }
+                        className={`rounded-lg p-2 ${
+                          copiedId === 'new-key'
+                            ? 'bg-green-600 text-white'
+                            : isDarkMode
+                              ? 'text-gray-400 hover:bg-gray-700'
+                              : 'text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Copy to clipboard</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <button
+                onClick={() => setNewlyCreatedKey(null)}
+                className={`mt-2 text-sm ${isDarkMode ? 'text-green-400 hover:text-green-300' : 'text-green-700 hover:text-green-800'}`}
+              >
+                Dismiss
+              </button>
             </div>
-            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-              {formatDate(account.created_at)}
-            </div>
-          </div>
+          )}
 
-          <div>
+          {/* Keys List */}
+          {keysLoading ? (
             <div
-              className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              className={`py-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
             >
-              <Clock className="h-4 w-4" />
-              Last Authenticated
+              Loading API keys...
             </div>
-            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-              {formatDate(account.last_authenticated)}
+          ) : keysError ? (
+            <div
+              className={`flex items-center gap-2 rounded-lg p-3 ${
+                isDarkMode
+                  ? 'bg-red-900/20 text-red-400'
+                  : 'bg-red-50 text-red-700'
+              }`}
+            >
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span className="text-sm">Failed to load API keys</span>
+            </div>
+          ) : apiKeys.length === 0 ? (
+            <div
+              className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            >
+              <Key
+                className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
+              />
+              <div>No API keys created yet</div>
+              <div className="mt-1 text-sm">
+                Create an API key to enable programmatic access
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {apiKeys.map((key: ApiKey) => (
+                <div
+                  key={key.key_id}
+                  className={`flex items-center justify-between rounded-lg border p-3 ${
+                    key.revoked
+                      ? isDarkMode
+                        ? 'border-gray-600 bg-gray-700 opacity-50'
+                        : 'border-gray-200 bg-gray-50 opacity-50'
+                      : isDarkMode
+                        ? 'border-gray-600 bg-gray-700'
+                        : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+                      >
+                        {key.name}
+                      </span>
+                      <code
+                        className={`rounded px-2 py-0.5 text-xs ${
+                          isDarkMode
+                            ? 'bg-gray-700 text-gray-400'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {key.key_id.substring(0, 7)}...
+                      </code>
+                      {key.revoked && (
+                        <span
+                          className={`rounded px-2 py-0.5 text-xs ${
+                            isDarkMode
+                              ? 'bg-red-900/30 text-red-400'
+                              : 'bg-red-100 text-red-600'
+                          }`}
+                        >
+                          Revoked
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
+                    >
+                      Created {formatDate(key.created_at)}
+                      {key.last_used &&
+                        ` | Last used ${formatDate(key.last_used)}`}
+                      {key.expires_at &&
+                        ` | Expires ${formatDate(key.expires_at)}`}
+                    </div>
+                  </div>
+                  {!key.revoked && (
+                    <div className="flex items-center gap-1">
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Rotate API key ${key.name}`}
+                              onClick={() => handleRotateKey(key.key_id)}
+                              disabled={rotateKeyMutation.isPending}
+                              className={`rounded p-1.5 ${
+                                isDarkMode
+                                  ? 'text-blue-400 hover:bg-gray-700 hover:text-blue-300'
+                                  : 'text-blue-600 hover:bg-gray-100 hover:text-blue-700'
+                              }`}
+                            >
+                              <RotateCw className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Rotate API key</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              aria-label={`Revoke API key ${key.name}`}
+                              onClick={() => handleRevokeKey(key.key_id)}
+                              disabled={revokeKeyMutation.isPending}
+                              className={`rounded p-1.5 ${
+                                isDarkMode
+                                  ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
+                                  : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
+                              }`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Revoke API key</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Basic Information */}
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="space-y-0 pb-4">
+          <CardTitle>Basic Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <div
+                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                <Tag className="h-4 w-4" />
+                Slug
+              </div>
+              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                {account.slug}
+              </div>
+            </div>
+
+            <div>
+              <div
+                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                Display Name
+              </div>
+              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                {account.display_name}
+              </div>
+            </div>
+
+            {account.description && (
+              <div className="col-span-2">
+                <div
+                  className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                >
+                  Description
+                </div>
+                <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                  {account.description}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div
+                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                <Calendar className="h-4 w-4" />
+                Created
+              </div>
+              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                {formatDate(account.created_at)}
+              </div>
+            </div>
+
+            <div>
+              <div
+                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                <Clock className="h-4 w-4" />
+                Last Authenticated
+              </div>
+              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                {formatDate(account.last_authenticated)}
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

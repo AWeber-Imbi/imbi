@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Edit2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { getProjectTypeSchema } from '@/api/endpoints'
 import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
@@ -42,13 +43,8 @@ export function ProjectTypeDetail({
       </div>
 
       {/* Project Type info card */}
-      <div
-        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
-      >
-        {/* Title row */}
-        <div
-          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div>
             <div className="flex items-center gap-3">
               {projectType.icon &&
@@ -64,11 +60,7 @@ export function ProjectTypeDetail({
                     return Icon ? <Icon className="h-8 w-8" /> : null
                   })()
                 ))}
-              <h2
-                className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
-                {projectType.name}
-              </h2>
+              <CardTitle>{projectType.name}</CardTitle>
             </div>
             {projectType.description && (
               <p
@@ -85,10 +77,9 @@ export function ProjectTypeDetail({
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Project Type
           </Button>
-        </div>
+        </CardHeader>
 
-        {/* Info section */}
-        <div className="p-6">
+        <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6">
             <div>
               <div
@@ -133,8 +124,8 @@ export function ProjectTypeDetail({
               />
             )}
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

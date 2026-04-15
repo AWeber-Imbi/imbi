@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -187,7 +188,7 @@ export function WebhookForm({
       <div className="flex items-center justify-between">
         <div>
           <h2
-            className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {isEditing ? 'Edit Webhook' : 'Add Webhook'}
           </h2>
@@ -260,21 +261,11 @@ export function WebhookForm({
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Webhook Information
-          </h3>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardContent className="space-y-4 pt-6">
+            <div
+              className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
+            >
               <div>
                 <label
                   className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
@@ -300,30 +291,32 @@ export function WebhookForm({
                 )}
               </div>
 
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Slug <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  placeholder="e.g., github-push-events"
-                  disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.slug ? 'border-red-500' : ''
-                  }`}
-                />
-                {errors.slug && (
-                  <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+              {!isEditing && (
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.slug}
-                  </div>
-                )}
-              </div>
+                    Slug <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    placeholder="e.g., github-push-events"
+                    disabled={isLoading}
+                    className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                      errors.slug ? 'border-red-500' : ''
+                    }`}
+                  />
+                  {errors.slug && (
+                    <div
+                      className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                    >
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.slug}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -445,104 +438,85 @@ export function WebhookForm({
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Third-Party Service Binding */}
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Third-Party Service
-          </h3>
-          <p
-            className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            Optionally link this webhook to a third-party service for automatic
-            project resolution.
-          </p>
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardContent className="space-y-4 pt-6">
+            <p
+              className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              Optionally link this webhook to a third-party service for
+              automatic project resolution.
+            </p>
 
-          <div className="space-y-4">
-            <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                Third-Party Service
-              </label>
-              <select
-                value={tpsSlug}
-                onChange={(e) => {
-                  setTpsSlug(e.target.value)
-                  if (!e.target.value) setIdentifierSelector('')
-                }}
-                disabled={isLoading}
-                className={selectClass}
-              >
-                <option value="">None</option>
-                {services.map((svc) => (
-                  <option key={svc.slug} value={svc.slug}>
-                    {svc.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {tpsSlug && (
+            <div className="space-y-4">
               <div>
                 <label
                   className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                 >
-                  Identifier Selector (JSON Path)
+                  Third-Party Service
                 </label>
-                <Input
-                  value={identifierSelector}
-                  onChange={(e) => setIdentifierSelector(e.target.value)}
-                  placeholder="e.g., $.repository.full_name"
+                <select
+                  value={tpsSlug}
+                  onChange={(e) => {
+                    setTpsSlug(e.target.value)
+                    if (!e.target.value) setIdentifierSelector('')
+                  }}
                   disabled={isLoading}
-                  className={`font-mono text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.identifier_selector ? 'border-red-500' : ''
-                  }`}
-                />
-                {errors.identifier_selector && (
-                  <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-                  >
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.identifier_selector}
-                  </div>
-                )}
-                <p
-                  className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  className={selectClass}
                 >
-                  JSON Path expression to extract the project identifier from
-                  the webhook payload.
-                </p>
+                  <option value="">None</option>
+                  {services.map((svc) => (
+                    <option key={svc.slug} value={svc.slug}>
+                      {svc.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
-          </div>
-        </div>
+
+              {tpsSlug && (
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                  >
+                    Identifier Selector (JSON Path)
+                  </label>
+                  <Input
+                    value={identifierSelector}
+                    onChange={(e) => setIdentifierSelector(e.target.value)}
+                    placeholder="e.g., $.repository.full_name"
+                    disabled={isLoading}
+                    className={`font-mono text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                      errors.identifier_selector ? 'border-red-500' : ''
+                    }`}
+                  />
+                  {errors.identifier_selector && (
+                    <div
+                      className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                    >
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.identifier_selector}
+                    </div>
+                  )}
+                  <p
+                    className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  >
+                    JSON Path expression to extract the project identifier from
+                    the webhook payload.
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Rules */}
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <div className="mb-4 flex items-center justify-between">
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
             <div>
-              <h3
-                className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
-                Rules
-              </h3>
+              <CardTitle>Rules</CardTitle>
               <p
                 className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
@@ -561,188 +535,193 @@ export function WebhookForm({
               <Plus className="mr-1 h-4 w-4" />
               Add Rule
             </Button>
-          </div>
-
-          {rules.length === 0 ? (
-            <div
-              className={`py-8 text-center text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-            >
-              No rules defined. Click "Add Rule" to get started.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {rules.map((rule, index) => (
-                <div
-                  key={index}
-                  className={`rounded-lg border p-4 ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700/50'
-                      : 'border-gray-200 bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    {/* Order controls */}
-                    <div className="flex flex-col gap-1 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => moveRule(index, 'up')}
-                        disabled={index === 0 || isLoading}
-                        className={`rounded p-1 transition-colors ${
-                          index === 0
-                            ? 'cursor-not-allowed opacity-30'
-                            : isDarkMode
-                              ? 'text-gray-400 hover:bg-gray-600'
-                              : 'text-gray-500 hover:bg-gray-200'
-                        }`}
-                      >
-                        <ArrowUp className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveRule(index, 'down')}
-                        disabled={index === rules.length - 1 || isLoading}
-                        className={`rounded p-1 transition-colors ${
-                          index === rules.length - 1
-                            ? 'cursor-not-allowed opacity-30'
-                            : isDarkMode
-                              ? 'text-gray-400 hover:bg-gray-600'
-                              : 'text-gray-500 hover:bg-gray-200'
-                        }`}
-                      >
-                        <ArrowDown className="h-3 w-3" />
-                      </button>
-                    </div>
-
-                    {/* Rule number */}
-                    <div
-                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-medium ${
-                        isDarkMode
-                          ? 'bg-gray-600 text-gray-300'
-                          : 'bg-gray-200 text-gray-600'
-                      }`}
-                    >
-                      {index + 1}
-                    </div>
-
-                    {/* Fields */}
-                    <div className="flex-1 space-y-3">
-                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                        <div>
-                          <label
-                            className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                          >
-                            Filter Expression (CEL){' '}
-                            <span className="text-red-500">*</span>
-                          </label>
-                          <Input
-                            value={rule.filter_expression}
-                            onChange={(e) =>
-                              updateRuleField(
-                                index,
-                                'filter_expression',
-                                e.target.value,
-                              )
-                            }
-                            placeholder='e.g., body.action == "push"'
-                            disabled={isLoading}
-                            className={`font-mono text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                              errors[`rule_${index}_filter`]
-                                ? 'border-red-500'
-                                : ''
-                            }`}
-                          />
-                          {errors[`rule_${index}_filter`] && (
-                            <div
-                              className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-                            >
-                              <AlertCircle className="h-3 w-3" />
-                              {errors[`rule_${index}_filter`]}
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <label
-                            className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                          >
-                            Handler <span className="text-red-500">*</span>
-                          </label>
-                          <Input
-                            value={rule.handler}
-                            onChange={(e) =>
-                              updateRuleField(index, 'handler', e.target.value)
-                            }
-                            placeholder="e.g., imbi_gateway.handlers.sync_project"
-                            disabled={isLoading}
-                            className={`font-mono text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                              errors[`rule_${index}_handler`]
-                                ? 'border-red-500'
-                                : ''
-                            }`}
-                          />
-                          {errors[`rule_${index}_handler`] && (
-                            <div
-                              className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-                            >
-                              <AlertCircle className="h-3 w-3" />
-                              {errors[`rule_${index}_handler`]}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label
-                          className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+          </CardHeader>
+          <CardContent>
+            {rules.length === 0 ? (
+              <div
+                className={`py-8 text-center text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+              >
+                No rules defined. Click "Add Rule" to get started.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {rules.map((rule, index) => (
+                  <div
+                    key={index}
+                    className={`rounded-lg border p-4 ${
+                      isDarkMode
+                        ? 'border-gray-600 bg-gray-700/50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Order controls */}
+                      <div className="flex flex-col gap-1 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => moveRule(index, 'up')}
+                          disabled={index === 0 || isLoading}
+                          className={`rounded p-1 transition-colors ${
+                            index === 0
+                              ? 'cursor-not-allowed opacity-30'
+                              : isDarkMode
+                                ? 'text-gray-400 hover:bg-gray-600'
+                                : 'text-gray-500 hover:bg-gray-200'
+                          }`}
                         >
-                          Handler Config (JSON)
-                        </label>
-                        <textarea
-                          defaultValue={JSON.stringify(
-                            rule.handler_config,
-                            null,
-                            2,
-                          )}
-                          onBlur={(e) =>
-                            updateRuleConfig(index, e.target.value)
-                          }
-                          rows={6}
-                          disabled={isLoading}
-                          placeholder="{}"
-                          className={`w-full resize-y rounded-lg border px-3 py-2 font-mono text-sm ${
-                            isDarkMode
-                              ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
-                              : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
-                          } ${errors[`rule_${index}_config`] ? 'border-red-500' : ''}`}
-                        />
-                        {errors[`rule_${index}_config`] && (
-                          <div
-                            className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-                          >
-                            <AlertCircle className="h-3 w-3" />
-                            {errors[`rule_${index}_config`]}
-                          </div>
-                        )}
+                          <ArrowUp className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveRule(index, 'down')}
+                          disabled={index === rules.length - 1 || isLoading}
+                          className={`rounded p-1 transition-colors ${
+                            index === rules.length - 1
+                              ? 'cursor-not-allowed opacity-30'
+                              : isDarkMode
+                                ? 'text-gray-400 hover:bg-gray-600'
+                                : 'text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          <ArrowDown className="h-3 w-3" />
+                        </button>
                       </div>
-                    </div>
 
-                    {/* Delete */}
-                    <button
-                      type="button"
-                      onClick={() => removeRule(index)}
-                      disabled={isLoading}
-                      className={`rounded p-1.5 transition-colors ${
-                        isDarkMode
-                          ? 'text-red-400 hover:bg-red-900/20'
-                          : 'text-red-500 hover:bg-red-50'
-                      }`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                      {/* Rule number */}
+                      <div
+                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-medium ${
+                          isDarkMode
+                            ? 'bg-gray-600 text-gray-300'
+                            : 'bg-gray-200 text-gray-600'
+                        }`}
+                      >
+                        {index + 1}
+                      </div>
+
+                      {/* Fields */}
+                      <div className="flex-1 space-y-3">
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <div>
+                            <label
+                              className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                            >
+                              Filter Expression (CEL){' '}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <Input
+                              value={rule.filter_expression}
+                              onChange={(e) =>
+                                updateRuleField(
+                                  index,
+                                  'filter_expression',
+                                  e.target.value,
+                                )
+                              }
+                              placeholder='e.g., body.action == "push"'
+                              disabled={isLoading}
+                              className={`font-mono text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                                errors[`rule_${index}_filter`]
+                                  ? 'border-red-500'
+                                  : ''
+                              }`}
+                            />
+                            {errors[`rule_${index}_filter`] && (
+                              <div
+                                className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                              >
+                                <AlertCircle className="h-3 w-3" />
+                                {errors[`rule_${index}_filter`]}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <label
+                              className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                            >
+                              Handler <span className="text-red-500">*</span>
+                            </label>
+                            <Input
+                              value={rule.handler}
+                              onChange={(e) =>
+                                updateRuleField(
+                                  index,
+                                  'handler',
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="e.g., imbi_gateway.handlers.sync_project"
+                              disabled={isLoading}
+                              className={`font-mono text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                                errors[`rule_${index}_handler`]
+                                  ? 'border-red-500'
+                                  : ''
+                              }`}
+                            />
+                            {errors[`rule_${index}_handler`] && (
+                              <div
+                                className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                              >
+                                <AlertCircle className="h-3 w-3" />
+                                {errors[`rule_${index}_handler`]}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <label
+                            className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                          >
+                            Handler Config (JSON)
+                          </label>
+                          <textarea
+                            defaultValue={JSON.stringify(
+                              rule.handler_config,
+                              null,
+                              2,
+                            )}
+                            onBlur={(e) =>
+                              updateRuleConfig(index, e.target.value)
+                            }
+                            rows={6}
+                            disabled={isLoading}
+                            placeholder="{}"
+                            className={`w-full resize-y rounded-lg border px-3 py-2 font-mono text-sm ${
+                              isDarkMode
+                                ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
+                                : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
+                            } ${errors[`rule_${index}_config`] ? 'border-red-500' : ''}`}
+                          />
+                          {errors[`rule_${index}_config`] && (
+                            <div
+                              className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                            >
+                              <AlertCircle className="h-3 w-3" />
+                              {errors[`rule_${index}_config`]}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Delete */}
+                      <button
+                        type="button"
+                        onClick={() => removeRule(index)}
+                        disabled={isLoading}
+                        className={`rounded p-1.5 transition-colors ${
+                          isDarkMode
+                            ? 'text-red-400 hover:bg-red-900/20'
+                            : 'text-red-500 hover:bg-red-50'
+                        }`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </form>
     </div>
   )

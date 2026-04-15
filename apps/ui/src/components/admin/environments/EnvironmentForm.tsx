@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Save, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Card, CardContent } from '@/components/ui/card'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { ColorPicker } from '@/components/ui/color-picker'
@@ -124,7 +125,7 @@ export function EnvironmentForm({
       <div className="flex items-center justify-between">
         <div>
           <h2
-            className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {isEditing ? 'Edit Environment' : 'Create New Environment'}
           </h2>
@@ -194,20 +195,8 @@ export function EnvironmentForm({
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Environment Information
-          </h3>
-
-          <div className="space-y-4">
+        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+          <CardContent className="space-y-4 pt-6">
             <div>
               <label
                 className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
@@ -245,7 +234,9 @@ export function EnvironmentForm({
               )}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div
+              className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
+            >
               <div>
                 <label
                   className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
@@ -273,32 +264,34 @@ export function EnvironmentForm({
                 )}
               </div>
 
-              <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Slug <span className="text-red-500">*</span>
-                </label>
-                <Input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  placeholder="e.g., production"
-                  disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.slug ? 'border-red-500' : ''
-                  }`}
-                />
-                {errors.slug && (
-                  <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${
-                      isDarkMode ? 'text-red-400' : 'text-red-600'
-                    }`}
+              {!isEditing && (
+                <div>
+                  <label
+                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
                   >
-                    <AlertCircle className="h-3 w-3" />
-                    {errors.slug}
-                  </div>
-                )}
-              </div>
+                    Slug <span className="text-red-500">*</span>
+                  </label>
+                  <Input
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    placeholder="e.g., production"
+                    disabled={isLoading}
+                    className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
+                      errors.slug ? 'border-red-500' : ''
+                    }`}
+                  />
+                  {errors.slug && (
+                    <div
+                      className={`mt-1 flex items-center gap-1 text-xs ${
+                        isDarkMode ? 'text-red-400' : 'text-red-600'
+                      }`}
+                    >
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.slug}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -405,8 +398,8 @@ export function EnvironmentForm({
                 isLoading={isLoading}
               />
             )}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       </form>
     </div>
   )

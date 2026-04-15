@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -258,8 +258,8 @@ export function ProjectsGraphCanvas({
         } ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
       >
         {/* Toolbar */}
-        <div
-          className={`flex flex-shrink-0 items-center gap-2 border-b px-4 py-3 ${
+        <CardHeader
+          className={`flex-shrink-0 flex-row items-center gap-2 space-y-0 border-b px-4 py-3 ${
             isDarkMode ? 'border-gray-700' : 'border-gray-200'
           }`}
         >
@@ -384,11 +384,11 @@ export function ProjectsGraphCanvas({
               Double-click to open
             </span>
           </div>
-        </div>
+        </CardHeader>
 
         {/* Canvas */}
-        <div
-          className={`relative ${isFullscreen ? 'flex-1' : 'min-h-[400px] flex-1'}`}
+        <CardContent
+          className={`relative p-0 ${isFullscreen ? 'flex-1' : 'min-h-[400px] flex-1'}`}
         >
           {isRendering && nodes.length > 0 && (
             <div
@@ -431,7 +431,7 @@ export function ProjectsGraphCanvas({
               onNodeDoubleClick={handleNodeDoubleClick}
             />
           )}
-        </div>
+        </CardContent>
       </Card>
     </div>
   )

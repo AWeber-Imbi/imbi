@@ -1,5 +1,6 @@
 import { ArrowLeft, Edit2, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { formatDate } from '@/lib/formatDate'
 import type { Organization } from '@/types'
@@ -32,13 +33,8 @@ export function OrganizationDetail({
       </div>
 
       {/* Organization info card */}
-      <div
-        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
-      >
-        {/* Title row */}
-        <div
-          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div className="flex items-center gap-3">
             {organization.icon ? (
               <EntityIcon
@@ -51,11 +47,7 @@ export function OrganizationDetail({
               />
             )}
             <div>
-              <h2
-                className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
-                {organization.name}
-              </h2>
+              <CardTitle>{organization.name}</CardTitle>
               <p
                 className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
@@ -70,10 +62,9 @@ export function OrganizationDetail({
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Organization
           </Button>
-        </div>
+        </CardHeader>
 
-        {/* Info section */}
-        <div className="p-6">
+        <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
             <div>
               <div
@@ -116,8 +107,8 @@ export function OrganizationDetail({
               </div>
             )}
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

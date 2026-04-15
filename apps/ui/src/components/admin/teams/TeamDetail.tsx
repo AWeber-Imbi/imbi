@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Gravatar } from '@/components/ui/gravatar'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import {
@@ -24,6 +25,12 @@ import { TEAM_BASE_FIELDS_SET } from '@/lib/constants'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { extractDynamicFields } from '@/lib/utils'
 import type { Team } from '@/types'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface TeamDetailProps {
   team: Team
@@ -111,13 +118,8 @@ export function TeamDetail({
       </div>
 
       {/* Team info card */}
-      <div
-        className={`rounded-lg border ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
-      >
-        {/* Title row */}
-        <div
-          className={`flex items-start justify-between border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div>
             <div className="flex items-center gap-3">
               {team.icon && (
@@ -126,11 +128,7 @@ export function TeamDetail({
                   className="h-8 w-8 rounded object-cover"
                 />
               )}
-              <h2
-                className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
-                {team.name}
-              </h2>
+              <CardTitle>{team.name}</CardTitle>
             </div>
             {team.description && (
               <p
@@ -147,10 +145,9 @@ export function TeamDetail({
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Team
           </Button>
-        </div>
+        </CardHeader>
 
-        {/* Info section */}
-        <div className="p-6">
+        <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6">
             <div>
               <div
@@ -192,30 +189,18 @@ export function TeamDetail({
               />
             )}
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Team Members */}
-      <div
-        className={`rounded-lg border ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <div
-          className={`border-b p-6 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="space-y-0 border-b px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Users
                 className={`h-5 w-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               />
-              <h3
-                className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
-                Team Members
-              </h3>
+              <CardTitle>Team Members</CardTitle>
               <span
                 className={`ml-2 rounded px-2 py-1 text-sm ${
                   isDarkMode
@@ -283,122 +268,134 @@ export function TeamDetail({
               )}
             </div>
           )}
-        </div>
+        </CardHeader>
 
         {/* Members List */}
-        {membersLoading ? (
-          <div className="p-8 text-center">
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Loading members...
+        <CardContent className="p-0">
+          {membersLoading ? (
+            <div className="p-8 text-center">
+              <div
+                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                Loading members...
+              </div>
             </div>
-          </div>
-        ) : members.length === 0 ? (
-          <div
-            className={`py-12 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          >
-            No members in this team yet. Click "Add Member" to get started.
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead className="border-b border-tertiary bg-secondary">
-              <tr>
-                <th
-                  className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Member
-                </th>
-                <th
-                  className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Email
-                </th>
-                <th
-                  className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Status
-                </th>
-                <th
-                  className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody
-              className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
+          ) : members.length === 0 ? (
+            <div
+              className={`py-12 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
             >
-              {members.map((member) => (
-                <tr
-                  key={member.email}
-                  className={
-                    isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-                  }
-                >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <Gravatar
-                        email={member.email}
-                        size={32}
-                        alt={member.display_name}
-                        className="h-8 w-8 rounded-full"
-                      />
-                      <div
-                        className={isDarkMode ? 'text-white' : 'text-gray-900'}
-                      >
-                        {member.display_name}
-                      </div>
-                    </div>
-                  </td>
-                  <td
-                    className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              No members in this team yet. Click "Add Member" to get started.
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead className="border-b border-tertiary bg-secondary">
+                <tr>
+                  <th
+                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}
                   >
-                    {member.email}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center rounded px-2 py-1 text-xs font-medium ${
-                        member.is_active
-                          ? isDarkMode
-                            ? 'bg-green-900/30 text-green-400'
-                            : 'bg-green-100 text-green-700'
-                          : isDarkMode
-                            ? 'bg-gray-700 text-gray-400'
-                            : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {member.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => handleRemoveMember(member.email)}
-                      disabled={removeMemberMutation.isPending}
-                      className={`rounded p-1.5 ${
-                        isDarkMode
-                          ? 'text-red-400 hover:bg-red-900/20'
-                          : 'text-red-600 hover:bg-red-50'
-                      }`}
-                      title="Remove from team"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </td>
+                    Member
+                  </th>
+                  <th
+                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}
+                  >
+                    Email
+                  </th>
+                  <th
+                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}
+                  >
+                    Status
+                  </th>
+                  <th
+                    className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider ${
+                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}
+                  >
+                    Actions
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody
+                className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
+              >
+                {members.map((member) => (
+                  <tr
+                    key={member.email}
+                    className={
+                      isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
+                    }
+                  >
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <Gravatar
+                          email={member.email}
+                          size={32}
+                          alt={member.display_name}
+                          className="h-8 w-8 rounded-full"
+                        />
+                        <div
+                          className={
+                            isDarkMode ? 'text-white' : 'text-gray-900'
+                          }
+                        >
+                          {member.display_name}
+                        </div>
+                      </div>
+                    </td>
+                    <td
+                      className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                    >
+                      {member.email}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex items-center rounded px-2 py-1 text-xs font-medium ${
+                          member.is_active
+                            ? isDarkMode
+                              ? 'bg-green-900/30 text-green-400'
+                              : 'bg-green-100 text-green-700'
+                            : isDarkMode
+                              ? 'bg-gray-700 text-gray-400'
+                              : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {member.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={() => handleRemoveMember(member.email)}
+                              disabled={removeMemberMutation.isPending}
+                              className={`rounded p-1.5 ${
+                                isDarkMode
+                                  ? 'text-red-400 hover:bg-red-900/20'
+                                  : 'text-red-600 hover:bg-red-50'
+                              }`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Remove from team</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

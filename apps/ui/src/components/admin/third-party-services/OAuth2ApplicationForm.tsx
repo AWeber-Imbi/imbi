@@ -157,7 +157,7 @@ export function OAuth2ApplicationForm({
             Back
           </Button>
           <h3
-            className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
           >
             {isEdit ? 'Edit Application' : 'New Application'}
           </h3>

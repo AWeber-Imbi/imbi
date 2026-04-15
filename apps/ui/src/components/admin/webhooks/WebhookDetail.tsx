@@ -1,5 +1,6 @@
 import { ArrowLeft, Edit2, Webhook } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import type { Webhook as WebhookType } from '@/types'
 
@@ -47,11 +48,7 @@ export function WebhookDetail({
                   />
                 </div>
               )}
-              <h2
-                className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
-                {webhook.name}
-              </h2>
+              <CardTitle>{webhook.name}</CardTitle>
             </div>
             {webhook.description && (
               <p
@@ -72,79 +69,17 @@ export function WebhookDetail({
       </div>
 
       {/* Webhook Info */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Configuration
-        </h3>
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Slug
-            </div>
-            <div className="mt-1">
-              <code
-                className={`rounded px-2 py-1 text-sm ${
-                  isDarkMode
-                    ? 'bg-gray-700 text-gray-300'
-                    : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {webhook.slug}
-              </code>
-            </div>
-          </div>
-          <div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Notification Path
-            </div>
-            <div className="mt-1">
-              <code
-                className={`rounded px-2 py-1 text-sm ${
-                  isDarkMode
-                    ? 'bg-gray-700 text-gray-300'
-                    : 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {webhook.notification_path}
-              </code>
-            </div>
-          </div>
-          <div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Third-Party Service
-            </div>
-            <div
-              className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
-              {webhook.third_party_service?.name || (
-                <span
-                  className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}
-                >
-                  None
-                </span>
-              )}
-            </div>
-          </div>
-          {webhook.identifier_selector && (
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="pb-4">
+          <CardTitle>Configuration</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-6">
             <div>
               <div
                 className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
               >
-                Identifier Selector
+                Slug
               </div>
               <div className="mt-1">
                 <code
@@ -154,108 +89,130 @@ export function WebhookDetail({
                       : 'bg-gray-100 text-gray-700'
                   }`}
                 >
-                  {webhook.identifier_selector}
+                  {webhook.slug}
                 </code>
               </div>
             </div>
-          )}
-        </div>
-      </div>
+            <div>
+              <div
+                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                Notification Path
+              </div>
+              <div className="mt-1">
+                <code
+                  className={`rounded px-2 py-1 text-sm ${
+                    isDarkMode
+                      ? 'bg-gray-700 text-gray-300'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  {webhook.notification_path}
+                </code>
+              </div>
+            </div>
+            <div>
+              <div
+                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+              >
+                Third-Party Service
+              </div>
+              <div
+                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+              >
+                {webhook.third_party_service?.name || (
+                  <span
+                    className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}
+                  >
+                    None
+                  </span>
+                )}
+              </div>
+            </div>
+            {webhook.identifier_selector && (
+              <div>
+                <div
+                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                >
+                  Identifier Selector
+                </div>
+                <div className="mt-1">
+                  <code
+                    className={`rounded px-2 py-1 text-sm ${
+                      isDarkMode
+                        ? 'bg-gray-700 text-gray-300'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {webhook.identifier_selector}
+                  </code>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Rules */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Rules ({webhook.rules.length})
-        </h3>
-
-        {webhook.rules.length === 0 ? (
-          <div
-            className={`py-6 text-center text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-          >
-            No rules defined for this webhook.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead
-                className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-              >
-                <tr>
-                  <th
-                    className={`w-12 px-4 py-2 text-left text-xs uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
-                  >
-                    #
-                  </th>
-                  <th
-                    className={`px-4 py-2 text-left text-xs uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
-                  >
-                    Filter Expression
-                  </th>
-                  <th
-                    className={`px-4 py-2 text-left text-xs uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
-                  >
-                    Handler
-                  </th>
-                  <th
-                    className={`px-4 py-2 text-left text-xs uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
-                  >
-                    Config
-                  </th>
-                </tr>
-              </thead>
-              <tbody
-                className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
-              >
-                {webhook.rules.map((rule, index) => (
-                  <tr key={index}>
-                    <td
-                      className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <CardHeader className="pb-4">
+          <CardTitle>Rules ({webhook.rules.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {webhook.rules.length === 0 ? (
+            <div
+              className={`py-6 text-center text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+            >
+              No rules defined for this webhook.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead
+                  className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+                >
+                  <tr>
+                    <th
+                      className={`w-12 px-4 py-2 text-left text-xs uppercase tracking-wider ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`}
                     >
-                      {index + 1}
-                    </td>
-                    <td className="px-4 py-3">
-                      <code
-                        className={`rounded px-2 py-1 text-sm ${
-                          isDarkMode
-                            ? 'bg-gray-700 text-gray-300'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
+                      #
+                    </th>
+                    <th
+                      className={`px-4 py-2 text-left text-xs uppercase tracking-wider ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`}
+                    >
+                      Filter Expression
+                    </th>
+                    <th
+                      className={`px-4 py-2 text-left text-xs uppercase tracking-wider ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`}
+                    >
+                      Handler
+                    </th>
+                    <th
+                      className={`px-4 py-2 text-left text-xs uppercase tracking-wider ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-500'
+                      }`}
+                    >
+                      Config
+                    </th>
+                  </tr>
+                </thead>
+                <tbody
+                  className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
+                >
+                  {webhook.rules.map((rule, index) => (
+                    <tr key={index}>
+                      <td
+                        className={`px-4 py-3 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
                       >
-                        {rule.filter_expression}
-                      </code>
-                    </td>
-                    <td className="px-4 py-3">
-                      <code
-                        className={`rounded px-2 py-1 text-sm ${
-                          isDarkMode
-                            ? 'bg-gray-700 text-gray-300'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
-                      >
-                        {rule.handler}
-                      </code>
-                    </td>
-                    <td className="px-4 py-3">
-                      {rule.handler_config &&
-                      (Array.isArray(rule.handler_config)
-                        ? rule.handler_config.length > 0
-                        : Object.keys(rule.handler_config).length > 0) ? (
+                        {index + 1}
+                      </td>
+                      <td className="px-4 py-3">
                         <code
                           className={`rounded px-2 py-1 text-sm ${
                             isDarkMode
@@ -263,25 +220,52 @@ export function WebhookDetail({
                               : 'bg-gray-100 text-gray-700'
                           }`}
                         >
-                          {JSON.stringify(rule.handler_config)}
+                          {rule.filter_expression}
                         </code>
-                      ) : (
-                        <span
-                          className={
-                            isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                          }
+                      </td>
+                      <td className="px-4 py-3">
+                        <code
+                          className={`rounded px-2 py-1 text-sm ${
+                            isDarkMode
+                              ? 'bg-gray-700 text-gray-300'
+                              : 'bg-gray-100 text-gray-700'
+                          }`}
                         >
-                          --
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                          {rule.handler}
+                        </code>
+                      </td>
+                      <td className="px-4 py-3">
+                        {rule.handler_config &&
+                        (Array.isArray(rule.handler_config)
+                          ? rule.handler_config.length > 0
+                          : Object.keys(rule.handler_config).length > 0) ? (
+                          <code
+                            className={`rounded px-2 py-1 text-sm ${
+                              isDarkMode
+                                ? 'bg-gray-700 text-gray-300'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {JSON.stringify(rule.handler_config)}
+                          </code>
+                        ) : (
+                          <span
+                            className={
+                              isDarkMode ? 'text-gray-500' : 'text-gray-400'
+                            }
+                          >
+                            --
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
