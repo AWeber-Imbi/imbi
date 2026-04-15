@@ -88,7 +88,7 @@ def api_request(admin_url, path, method='GET', body=None):
     """Send a request to the Caddy admin API."""
     parsed = urllib.parse.urlparse(admin_url)
     with contextlib.closing(
-        http.client.HTTPConnection(parsed.hostname, parsed.port)
+        http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=5)
     ) as conn:
         headers = {}
         if body is not None:
