@@ -403,3 +403,79 @@ class ServiceAccountsEndpointsTestCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 204)
+
+    def test_patch_service_account_display_name(self) -> None:
+        """Test patching only the display name."""
+        import datetime as dt
+
+        from imbi_api import models as api_models
+
+        existing = api_models.ServiceAccount(
+            slug='my-sa',
+            display_name='Old Name',
+            description='A service account',
+            is_active=True,
+            created_at=dt.datetime(2024, 1, 1, tzinfo=dt.UTC),
+        )
+        self.mock_db.match.return_value = [existing]
+        self.mock_db.merge.return_value = None
+
+        response = self.client.patch(
+            '/service-accounts/my-sa',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/display_name',
+                    'value': 'New Name',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['display_name'], 'New Name')
+        self.mock_db.merge.assert_called_once()
+
+    def test_patch_service_account_not_found(self) -> None:
+        """Test patching a non-existent service account returns 404."""
+        self.mock_db.match.return_value = []
+
+        response = self.client.patch(
+            '/service-accounts/nonexistent',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/display_name',
+                    'value': 'X',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_service_account_slug_change_raises_400(self) -> None:
+        """Test patching slug to a different value raises 400."""
+        import datetime as dt
+
+        from imbi_api import models as api_models
+
+        existing = api_models.ServiceAccount(
+            slug='my-sa',
+            display_name='SA',
+            is_active=True,
+            created_at=dt.datetime(2024, 1, 1, tzinfo=dt.UTC),
+        )
+        self.mock_db.match.return_value = [existing]
+
+        response = self.client.patch(
+            '/service-accounts/my-sa',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/slug',
+                    'value': 'other-sa',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)

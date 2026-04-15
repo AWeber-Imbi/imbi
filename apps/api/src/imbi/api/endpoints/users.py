@@ -9,6 +9,7 @@ import psycopg.errors
 from imbi_common import graph
 
 from imbi_api import models
+from imbi_api import patch as json_patch
 from imbi_api.auth import password, permissions
 
 LOGGER = logging.getLogger(__name__)
@@ -369,6 +370,118 @@ async def update_user(
         is_active=user_update.is_active,
         is_admin=user_update.is_admin,
         is_service_account=user_update.is_service_account,
+        created_at=existing_user.created_at,
+        last_login=existing_user.last_login,
+        avatar_url=existing_user.avatar_url,
+    )
+
+    await db.merge(updated_user, match_on=['email'])
+
+    return models.UserResponse(
+        email=updated_user.email,
+        display_name=updated_user.display_name,
+        is_active=updated_user.is_active,
+        is_admin=updated_user.is_admin,
+        is_service_account=updated_user.is_service_account,
+        created_at=updated_user.created_at,
+        last_login=updated_user.last_login,
+        avatar_url=updated_user.avatar_url,
+    )
+
+
+@users_router.patch('/{email}', response_model=models.UserResponse)
+async def patch_user(
+    email: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('user:update')),
+    ],
+) -> models.UserResponse:
+    """Partially update a user using JSON Patch (RFC 6902).
+
+    Parameters:
+        email: Email from URL path (percent-encoded).
+        operations: JSON Patch operations.
+
+    Returns:
+        The updated user.
+
+    Raises:
+        fastapi.HTTPException: HTTP 400 if invalid patch, read-only
+            path, or business logic violation. HTTP 403 if insufficient
+            privileges. HTTP 404 if user not found. HTTP 422 if patch
+            test failed.
+
+    """
+    email = urlparse.unquote(email)
+
+    results = await db.match(models.User, {'email': email})
+    if not results:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'User with email {email!r} not found',
+        )
+    existing_user = results[0]
+
+    # Prevent non-admins from modifying admin users
+    if existing_user.is_admin and not auth.require_user.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only admins can modify admin users',
+        )
+
+    # Build patchable document (exclude password_hash and timestamps)
+    current: dict[str, typing.Any] = {
+        'email': existing_user.email,
+        'display_name': existing_user.display_name,
+        'is_active': existing_user.is_active,
+        'is_admin': existing_user.is_admin,
+        'is_service_account': existing_user.is_service_account,
+    }
+
+    patched = json_patch.apply_patch(
+        current,
+        operations,
+        readonly_paths=json_patch.READONLY_PATHS | frozenset(['/email']),
+    )
+
+    # Prevent non-admins from granting admin privileges
+    if patched.get('is_admin') and not auth.require_user.is_admin:
+        raise fastapi.HTTPException(
+            status_code=403,
+            detail='Only admins can grant admin privileges',
+        )
+
+    # Prevent users from deactivating themselves
+    if email == auth.require_user.email and not patched.get('is_active', True):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Cannot deactivate your own account',
+        )
+
+    # Prevent service accounts from being admins
+    if patched.get('is_service_account') and patched.get('is_admin'):
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Service accounts cannot be admins',
+        )
+
+    # Preserve existing password_hash; clear if becoming service account
+    password_hash = existing_user.password_hash
+    if patched.get('is_service_account', existing_user.is_service_account):
+        password_hash = None
+
+    updated_user = models.User(
+        email=patched['email'],
+        display_name=patched.get('display_name', existing_user.display_name),
+        password_hash=password_hash,
+        is_active=patched.get('is_active', existing_user.is_active),
+        is_admin=patched.get('is_admin', existing_user.is_admin),
+        is_service_account=patched.get(
+            'is_service_account', existing_user.is_service_account
+        ),
         created_at=existing_user.created_at,
         last_login=existing_user.last_login,
         avatar_url=existing_user.avatar_url,

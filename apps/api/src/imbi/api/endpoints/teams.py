@@ -9,6 +9,7 @@ import psycopg.errors
 import pydantic
 from imbi_common import blueprints, graph, models
 
+from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.relationships import relationship_link
 
@@ -262,6 +263,99 @@ async def get_team(
     return _add_relationships(team, org_slug, pc or 0, mc or 0)
 
 
+async def _persist_team(
+    original_slug: str,
+    org_slug: str,
+    team_model: type,
+    existing_org: dict[str, typing.Any],
+    payload: dict[str, typing.Any],
+    existing_created_at: str | None,
+    db: graph.Pool,
+) -> dict[str, typing.Any]:
+    """Validate, stamp timestamps, and persist a team to the graph.
+
+    Parameters:
+        original_slug: Current slug to match on in Cypher.
+        org_slug: Organization slug for the BELONGS_TO edge.
+        team_model: Dynamic Pydantic model (from blueprints.get_model).
+        existing_org: Parsed org dict from the graph (for organization
+            field).
+        payload: New field values (slug, name, description, etc.).
+        existing_created_at: ISO string from existing node or None.
+        db: Graph database connection.
+
+    Returns:
+        Updated team dict with organization and relationships.
+
+    Raises:
+        HTTPException 400: Validation error.
+        HTTPException 404: Team not found.
+        HTTPException 409: Slug conflict.
+
+    """
+    try:
+        team = team_model(
+            organization=existing_org,
+            **payload,
+        )
+    except pydantic.ValidationError as e:
+        LOGGER.warning('Validation error persisting team: %s', e)
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Validation error: {e.errors()}',
+        ) from e
+
+    team.created_at = (
+        datetime.datetime.fromisoformat(existing_created_at)
+        if existing_created_at
+        else datetime.datetime.now(datetime.UTC)
+    )
+    team.updated_at = datetime.datetime.now(datetime.UTC)
+    props = team.model_dump(mode='json', exclude={'organization'})
+
+    set_stmt = _set_clause('t', props)
+    update_query = (
+        f'MATCH (t:Team {{{{slug: {{slug}}}}}})'
+        f' -[:BELONGS_TO]->(o:Organization {{{{slug: {{org_slug}}}}}})'
+        f' {set_stmt}'
+        f' WITH t, o'
+        f' OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t)'
+        f' OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)'
+        f' WITH t, o, count(DISTINCT p) AS project_count,'
+        f' count(DISTINCT u) AS member_count'
+        f' RETURN t, o, project_count, member_count'
+    )
+    params = {**props, 'slug': original_slug, 'org_slug': org_slug}
+    try:
+        updated = await db.execute(
+            update_query,
+            params,
+            columns=['t', 'o', 'project_count', 'member_count'],
+        )
+    except psycopg.errors.UniqueViolation as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=(
+                f'Team with slug'
+                f' {payload.get("slug", original_slug)!r}'
+                f' already exists'
+            ),
+        ) from e
+
+    if not updated:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Team with slug {original_slug!r} not found',
+        )
+
+    team_data = graph.parse_agtype(updated[0]['t'])
+    org_data = graph.parse_agtype(updated[0]['o'])
+    team_data['organization'] = org_data
+    pc = graph.parse_agtype(updated[0]['project_count'])
+    mc = graph.parse_agtype(updated[0]['member_count'])
+    return _add_relationships(team_data, org_slug, pc or 0, mc or 0)
+
+
 @teams_router.put('/{slug}')
 async def update_team(
     org_slug: str,
@@ -321,77 +415,85 @@ async def update_team(
 
     existing = graph.parse_agtype(records[0]['t'])
     existing_org = graph.parse_agtype(records[0]['o'])
-    existing['organization'] = existing_org
 
-    try:
-        team = dynamic_model(
-            organization=existing['organization'],
-            **payload,
-        )
-    except pydantic.ValidationError as e:
-        LOGGER.warning(
-            'Validation error updating team: %s',
-            e,
-        )
-        raise fastapi.HTTPException(
-            status_code=400,
-            detail=f'Validation error: {e.errors()}',
-        ) from e
-
-    # Build property SET from model fields, excluding relationship
-    raw_created = existing.get('created_at')
-    team.created_at = (
-        datetime.datetime.fromisoformat(raw_created)
-        if raw_created
-        else datetime.datetime.now(datetime.UTC)
-    )
-    team.updated_at = datetime.datetime.now(datetime.UTC)
-    props = team.model_dump(
-        mode='json',
-        exclude={'organization'},
+    return await _persist_team(
+        slug,
+        org_slug,
+        dynamic_model,
+        existing_org,
+        payload,
+        existing.get('created_at'),
+        db,
     )
 
-    set_stmt = _set_clause('t', props)
-    update_query = (
-        f'MATCH (t:Team {{{{slug: {{slug}}}}}})'
-        f' -[:BELONGS_TO]->(o:Organization {{{{slug: {{org_slug}}}}}})'
-        f' {set_stmt}'
-        f' WITH t, o'
-        f' OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t)'
-        f' OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(t)'
-        f' WITH t, o, count(DISTINCT p) AS project_count,'
-        f' count(DISTINCT u) AS member_count'
-        f' RETURN t, o, project_count, member_count'
-    )
-    params = {**props, 'slug': slug, 'org_slug': org_slug}
-    try:
-        updated = await db.execute(
-            update_query,
-            params,
-            columns=['t', 'o', 'project_count', 'member_count'],
-        )
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'Team with slug {payload["slug"]!r} already exists'),
-        ) from e
 
-    if not updated:
+@teams_router.patch('/{slug}')
+async def patch_team(
+    org_slug: str,
+    slug: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('team:update')),
+    ],
+) -> dict[str, typing.Any]:
+    """Partially update a team using JSON Patch (RFC 6902).
+
+    Parameters:
+        org_slug: Organization slug from URL path.
+        slug: Team slug from URL.
+        operations: JSON Patch operations.
+
+    Returns:
+        The updated team.
+
+    Raises:
+        400: Invalid patch, read-only path, or validation error.
+        404: Team not found.
+        409: Slug conflict.
+        422: Patch test operation failed.
+
+    """
+    dynamic_model = await blueprints.get_model(db, models.Team)
+
+    fetch_query = """
+    MATCH (t:Team {{slug: {slug}}})
+          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+    RETURN t, o
+    """
+    records = await db.execute(
+        fetch_query,
+        {'slug': slug, 'org_slug': org_slug},
+        columns=['t', 'o'],
+    )
+    if not records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Team with slug {slug!r} not found',
         )
+    existing = graph.parse_agtype(records[0]['t'])
+    existing_org = graph.parse_agtype(records[0]['o'])
 
-    team_data = graph.parse_agtype(updated[0]['t'])
-    org_data = graph.parse_agtype(updated[0]['o'])
-    team_data['organization'] = org_data
-    pc = graph.parse_agtype(updated[0]['project_count'])
-    mc = graph.parse_agtype(updated[0]['member_count'])
-    return _add_relationships(
-        team_data,
+    current = dict(existing)
+    current.pop('created_at', None)
+    current.pop('updated_at', None)
+    current.pop('organization', None)
+
+    patched = json_patch.apply_patch(current, operations)
+    patched.pop('organization_slug', None)
+    patched.pop('organization', None)
+    if 'slug' not in patched:
+        patched['slug'] = slug
+
+    return await _persist_team(
+        slug,
         org_slug,
-        pc or 0,
-        mc or 0,
+        dynamic_model,
+        existing_org,
+        patched,
+        existing.get('created_at'),
+        db,
     )
 
 

@@ -505,6 +505,73 @@ class EnvironmentEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    def test_patch_environment_name(self) -> None:
+        """Test patching only the environment name."""
+        from imbi_common import models as common_models
+
+        existing_env = {
+            'name': 'Production',
+            'slug': 'production',
+            'description': None,
+            'sort_order': 0,
+        }
+        self.mock_db.execute.side_effect = [
+            [
+                {
+                    'e': existing_env,
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                }
+            ],
+            [
+                {
+                    'e': {
+                        'name': 'Production Env',
+                        'slug': 'production',
+                        'sort_order': 0,
+                    },
+                    'o': {'name': 'Engineering', 'slug': 'engineering'},
+                    'project_count': 5,
+                }
+            ],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            with mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.Environment,
+            ):
+                response = self.client.patch(
+                    '/organizations/engineering/environments/production',
+                    json=[
+                        {
+                            'op': 'replace',
+                            'path': '/name',
+                            'value': 'Production Env',
+                        }
+                    ],
+                )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_environment_not_found(self) -> None:
+        """Test patching non-existent environment returns 404."""
+        from imbi_common import models as common_models
+
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.blueprints.get_model',
+            return_value=common_models.Environment,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/environments/nonexistent',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'X'}],
+            )
+
+        self.assertEqual(response.status_code, 404)
+
     def test_delete_environment(self) -> None:
         """Test deleting an environment."""
         self.mock_db.execute.return_value = [{'e': True}]

@@ -572,3 +572,51 @@ class RoleEndpointsTestCase(unittest.TestCase):
             'not granted',
             response.json()['detail'],
         )
+
+    def test_patch_role_description(self) -> None:
+        """Test patching only the role description."""
+        from imbi_api import models as api_models
+
+        existing_role = api_models.Role(
+            name='Developer',
+            slug='developer',
+            description='Old desc',
+            priority=10,
+        )
+        self.mock_db.match.return_value = [existing_role]
+        self.mock_db.execute.side_effect = [
+            [{'user_count': 5, 'permission_count': 0}],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/roles/developer',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/description',
+                        'value': 'New desc',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_role_not_found(self) -> None:
+        """Test patching non-existent role returns 404."""
+        self.mock_db.match.return_value = []
+
+        response = self.client.patch(
+            '/roles/nonexistent',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/description',
+                    'value': 'X',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 404)

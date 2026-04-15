@@ -331,6 +331,73 @@ class BlueprintEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    def test_patch_blueprint_enabled(self) -> None:
+        """Test patching a blueprint's enabled flag."""
+        from imbi_common import models as common_models
+
+        existing = common_models.Blueprint(
+            name='Extra Field',
+            slug='extra-field',
+            type='Project',
+            json_schema=common_models.Schema.model_validate(
+                {'type': 'object', 'properties': {'extra': {'type': 'string'}}}
+            ),
+            enabled=True,
+        )
+        self.mock_db.match.side_effect = [
+            [existing],  # fetch
+        ]
+        self.mock_db.merge.return_value = None
+
+        with mock.patch(
+            'imbi_api.endpoints.blueprints.openapi.refresh_blueprint_models',
+        ) as mock_refresh:
+            mock_refresh.return_value = None
+            response = self.client.patch(
+                '/blueprints/Project/extra-field',
+                json=[{'op': 'replace', 'path': '/enabled', 'value': False}],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['enabled'])
+        self.mock_db.merge.assert_called_once()
+
+    def test_patch_blueprint_not_found(self) -> None:
+        """Test patching a non-existent blueprint returns 404."""
+        self.mock_db.match.return_value = []
+
+        response = self.client.patch(
+            '/blueprints/Project/nonexistent',
+            json=[{'op': 'replace', 'path': '/enabled', 'value': False}],
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_blueprint_slug_mismatch_raises_400(self) -> None:
+        """Test that patching slug to a different value raises 400."""
+        from imbi_common import models as common_models
+
+        existing = common_models.Blueprint(
+            name='Extra Field',
+            slug='extra-field',
+            type='Project',
+            json_schema=common_models.Schema.model_validate(
+                {'type': 'object'}
+            ),
+            enabled=True,
+        )
+        self.mock_db.match.return_value = [existing]
+
+        response = self.client.patch(
+            '/blueprints/Project/extra-field',
+            json=[
+                {'op': 'replace', 'path': '/slug', 'value': 'different-slug'}
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)
+
     def test_blueprint_requires_authentication(self) -> None:
         """Verify blueprint endpoints reject unauthenticated."""
         from imbi_api.auth import permissions

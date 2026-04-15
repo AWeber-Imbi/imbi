@@ -617,6 +617,82 @@ class UserEndpointsTestCase(unittest.TestCase):
             'user:delete',
         }
 
+    def test_patch_user_display_name(self) -> None:
+        """Test patching only the user's display name."""
+        existing_user = models.User(
+            email='dev@example.com',
+            display_name='Old Name',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
+        )
+        self.mock_db.match.return_value = [existing_user]
+        self.mock_db.merge.return_value = None
+
+        response = self.client.patch(
+            '/users/dev%40example.com',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/display_name',
+                    'value': 'New Name',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['display_name'], 'New Name')
+
+    def test_patch_user_not_found(self) -> None:
+        """Test patching non-existent user returns 404."""
+        self.mock_db.match.return_value = []
+
+        response = self.client.patch(
+            '/users/nobody%40example.com',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/display_name',
+                    'value': 'X',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_user_non_admin_cannot_grant_admin(
+        self,
+    ) -> None:
+        """Test that non-admin cannot patch is_admin to True."""
+        self.auth_context.user.is_admin = False
+
+        existing_user = models.User(
+            email='dev@example.com',
+            display_name='Dev',
+            is_active=True,
+            is_admin=False,
+            is_service_account=False,
+            created_at=datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC),
+        )
+        self.mock_db.match.return_value = [existing_user]
+
+        response = self.client.patch(
+            '/users/dev%40example.com',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/is_admin',
+                    'value': True,
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+        self.auth_context.user.is_admin = True
+
 
 class OrgMembershipEndpointsTestCase(unittest.TestCase):
     """Test org membership endpoints on users."""

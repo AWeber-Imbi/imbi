@@ -35,6 +35,7 @@ dependencies = [
   "httpx>=0.28.1",
   "imbi-common",
   "jinja2",
+  "jsonpatch>=1.33",
   "nanoid>=2.0.0",
   "orjson>=3.11.6",
   "pydantic[email]",

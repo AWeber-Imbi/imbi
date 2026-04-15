@@ -359,3 +359,69 @@ class OrganizationEndpointsTestCase(unittest.TestCase):
             'not found',
             response.json()['detail'],
         )
+
+    def test_patch_organization_name(self) -> None:
+        """Test patching only the organization name."""
+        self.mock_db.match.return_value = [self.test_org]
+        self.mock_db.execute.side_effect = [
+            [{'n': 'true'}],  # SET query
+            [
+                {'team_count': 1, 'member_count': 2, 'project_count': 3}
+            ],  # counts
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering',
+                json=[{'op': 'replace', 'path': '/name', 'value': 'Eng Dept'}],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['name'], 'Eng Dept')
+        self.assertIn('relationships', data)
+
+    def test_patch_organization_not_found(self) -> None:
+        """Test patching non-existent organization returns 404."""
+        self.mock_db.match.return_value = []
+
+        response = self.client.patch(
+            '/organizations/nonexistent',
+            json=[{'op': 'replace', 'path': '/name', 'value': 'Test'}],
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_organization_readonly_field(self) -> None:
+        """Test patching created_at returns 400."""
+        self.mock_db.match.return_value = [self.test_org]
+
+        response = self.client.patch(
+            '/organizations/engineering',
+            json=[
+                {
+                    'op': 'replace',
+                    'path': '/created_at',
+                    'value': '2025-01-01T00:00:00Z',
+                }
+            ],
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_patch_organization_slug_conflict(self) -> None:
+        """Test slug rename to conflicting slug returns 409."""
+        self.mock_db.match.return_value = [self.test_org]
+        self.mock_db.execute.side_effect = psycopg.errors.UniqueViolation(
+            'Duplicate'
+        )
+
+        response = self.client.patch(
+            '/organizations/engineering',
+            json=[{'op': 'replace', 'path': '/slug', 'value': 'taken-slug'}],
+        )
+
+        self.assertEqual(response.status_code, 409)

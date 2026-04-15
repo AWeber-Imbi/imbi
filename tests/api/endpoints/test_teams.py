@@ -609,6 +609,128 @@ class TeamEndpointsTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertIn('not found', response.json()['detail'])
 
+    def test_patch_team_name(self) -> None:
+        """Test patching only the team name."""
+        from imbi_common import models as common_models
+
+        test_team_dict = {
+            'name': 'Platform',
+            'slug': 'platform',
+            'description': 'Platform team',
+        }
+        self.mock_db.execute.side_effect = [
+            # fetch query
+            [
+                {
+                    't': test_team_dict,
+                    'o': {
+                        'name': 'Engineering',
+                        'slug': 'engineering',
+                    },
+                }
+            ],
+            # SET update query (returns with counts)
+            [
+                {
+                    't': {
+                        'name': 'Platform Eng',
+                        'slug': 'platform',
+                        'description': 'Platform team',
+                    },
+                    'o': {
+                        'name': 'Engineering',
+                        'slug': 'engineering',
+                    },
+                    'project_count': 0,
+                    'member_count': 0,
+                }
+            ],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            with mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.Team,
+            ):
+                response = self.client.patch(
+                    '/organizations/engineering/teams/platform',
+                    json=[
+                        {
+                            'op': 'replace',
+                            'path': '/name',
+                            'value': 'Platform Eng',
+                        }
+                    ],
+                )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_team_not_found(self) -> None:
+        """Test patching a non-existent team returns 404."""
+        from imbi_common import models as common_models
+
+        self.mock_db.execute.return_value = []
+
+        with mock.patch(
+            'imbi_common.blueprints.get_model',
+            return_value=common_models.Team,
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/teams/nonexistent',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/name',
+                        'value': 'X',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_team_readonly_field(self) -> None:
+        """Test patching created_at returns 400."""
+        from imbi_common import models as common_models
+
+        test_team_dict = {
+            'name': 'Platform',
+            'slug': 'platform',
+            'description': 'Platform team',
+        }
+        self.mock_db.execute.return_value = [
+            {
+                't': test_team_dict,
+                'o': {
+                    'name': 'Engineering',
+                    'slug': 'engineering',
+                },
+            }
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype',
+            side_effect=lambda x: x,
+        ):
+            with mock.patch(
+                'imbi_common.blueprints.get_model',
+                return_value=common_models.Team,
+            ):
+                response = self.client.patch(
+                    '/organizations/engineering/teams/platform',
+                    json=[
+                        {
+                            'op': 'replace',
+                            'path': '/created_at',
+                            'value': '2025-01-01T00:00:00Z',
+                        }
+                    ],
+                )
+
+        self.assertEqual(response.status_code, 400)
+
 
 class TeamMembershipTestCase(unittest.TestCase):
     """Test cases for team membership endpoints."""

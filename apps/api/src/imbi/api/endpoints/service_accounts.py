@@ -6,9 +6,11 @@ import typing
 
 import fastapi
 import psycopg
+import pydantic
 from imbi_common import graph
 
 from imbi_api import models
+from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 
 LOGGER = logging.getLogger(__name__)
@@ -242,6 +244,85 @@ async def update_service_account(
         created_at=existing.created_at,
         last_authenticated=existing.last_authenticated,
     )
+    await db.merge(updated, match_on=['slug'])
+
+    return models.ServiceAccountResponse(
+        slug=updated.slug,
+        display_name=updated.display_name,
+        description=updated.description,
+        is_active=updated.is_active,
+        created_at=updated.created_at,
+        last_authenticated=updated.last_authenticated,
+    )
+
+
+@service_accounts_router.patch(
+    '/{slug}', response_model=models.ServiceAccountResponse
+)
+async def patch_service_account(
+    slug: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('service_account:update')
+        ),
+    ],
+) -> models.ServiceAccountResponse:
+    """Partially update a service account using JSON Patch (RFC 6902).
+
+    Parameters:
+        slug: Service account slug from URL.
+        operations: JSON Patch operations.
+
+    Returns:
+        The updated service account.
+
+    Raises:
+        400: Invalid patch, read-only path, or slug change attempted.
+        404: Service account not found.
+        422: Patch test failed or validation error.
+
+    """
+    results = await db.match(models.ServiceAccount, {'slug': slug})
+    existing = results[0] if results else None
+    if existing is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Service account {slug!r} not found',
+        )
+
+    current = {
+        'slug': existing.slug,
+        'display_name': existing.display_name,
+        'description': existing.description,
+        'is_active': existing.is_active,
+    }
+
+    patched = json_patch.apply_patch(current, operations)
+
+    if patched.get('slug') != slug:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Service account slug cannot be changed via PATCH',
+        )
+
+    try:
+        updated = models.ServiceAccount(
+            slug=patched['slug'],
+            display_name=patched.get('display_name', existing.display_name),
+            description=patched.get('description', existing.description),
+            is_active=patched.get('is_active', existing.is_active),
+            created_at=existing.created_at,
+            last_authenticated=existing.last_authenticated,
+        )
+    except pydantic.ValidationError as e:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Validation error: {e.errors()}',
+        ) from e
+
     await db.merge(updated, match_on=['slug'])
 
     return models.ServiceAccountResponse(

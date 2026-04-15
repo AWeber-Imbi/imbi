@@ -5,9 +5,11 @@ import typing
 
 import fastapi
 import psycopg.errors
+import pydantic
 from imbi_common import graph, models
 
 from imbi_api import openapi
+from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 
 LOGGER = logging.getLogger(__name__)
@@ -202,6 +204,97 @@ async def update_blueprint(
                 detail='Blueprint type in body must match URL',
             )
         match_on = ['slug', 'type']
+    await db.merge(blueprint, match_on=match_on)
+    try:
+        await openapi.refresh_blueprint_models(db)
+    except Exception:
+        LOGGER.exception('Failed to refresh blueprint models')
+    return blueprint
+
+
+@blueprint_router.patch(
+    '/{type}/{slug}',
+    response_model=models.Blueprint,
+)
+async def patch_blueprint(
+    blueprint_type: typing.Annotated[
+        BlueprintType,
+        fastapi.Path(alias='type'),
+    ],
+    slug: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('blueprint:write'),
+        ),
+    ],
+) -> models.Blueprint:
+    """Partially update a blueprint using JSON Patch (RFC 6902).
+
+    Parameters:
+        blueprint_type: Blueprint type from URL (or 'relationship').
+        slug: Blueprint slug from URL.
+        operations: JSON Patch operations.
+
+    Returns:
+        The updated blueprint.
+
+    Raises:
+        400: Invalid patch, read-only path, or slug/type mismatch.
+        404: Blueprint not found.
+        422: Patch test failed or validation error.
+
+    """
+    results = await db.match(
+        models.Blueprint,
+        _match_params(blueprint_type, slug),
+    )
+    existing = results[0] if results else None
+    if existing is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=(
+                f'Blueprint with slug {slug!r} and '
+                f'type {blueprint_type!r} not found'
+            ),
+        )
+
+    current = existing.model_dump(mode='json')
+    current.pop('created_at', None)
+    current.pop('updated_at', None)
+
+    patched = json_patch.apply_patch(current, operations)
+
+    if patched.get('slug') != slug:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Blueprint slug cannot be changed via PATCH',
+        )
+    if blueprint_type == _RELATIONSHIP:
+        if patched.get('kind') != _RELATIONSHIP:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail='Blueprint kind must remain relationship',
+            )
+        match_on = ['slug', 'kind']
+    else:
+        if patched.get('type') != blueprint_type:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail='Blueprint type cannot be changed via PATCH',
+            )
+        match_on = ['slug', 'type']
+
+    try:
+        blueprint = models.Blueprint(**patched)
+    except pydantic.ValidationError as e:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Validation error: {e.errors()}',
+        ) from e
+
     await db.merge(blueprint, match_on=match_on)
     try:
         await openapi.refresh_blueprint_models(db)

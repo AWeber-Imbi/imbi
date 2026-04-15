@@ -6,8 +6,10 @@ import typing
 
 import fastapi
 import psycopg.errors
+import pydantic
 from imbi_common import graph, models
 
+from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.relationships import relationship_link
 
@@ -225,6 +227,83 @@ async def get_organization(
     )
 
 
+async def _persist_organization(
+    original_slug: str,
+    org: models.Organization,
+    db: graph.Pool,
+) -> dict[str, typing.Any]:
+    """Execute the Cypher SET + count queries to update an organization.
+
+    Parameters:
+        original_slug: The slug that currently identifies the node.
+        org: Validated organization model with updated fields.
+        db: Graph database connection.
+
+    Returns:
+        Organization dict with relationship counts.
+
+    Raises:
+        HTTPException 409: Slug rename conflicts with existing org.
+        HTTPException 404: Organization vanished between fetch and update.
+
+    """
+    update_query: typing.LiteralString = (
+        'MATCH (n:Organization {{slug: {original_slug}}})'
+        ' SET n.name = {name},'
+        ' n.slug = {slug},'
+        ' n.description = {description},'
+        ' n.icon = {icon},'
+        ' n.updated_at = {updated_at}'
+        ' RETURN n'
+    )
+    props = org.model_dump(mode='json')
+    params: dict[str, typing.Any] = {
+        'original_slug': original_slug,
+        'name': props['name'],
+        'slug': props['slug'],
+        'description': props.get('description'),
+        'icon': props.get('icon'),
+        'updated_at': props['updated_at'],
+    }
+    try:
+        records = await db.execute(update_query, params)
+    except psycopg.errors.UniqueViolation as e:
+        raise fastapi.HTTPException(
+            status_code=409,
+            detail=f'Organization with slug {org.slug!r} already exists',
+        ) from e
+    if not records:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Organization with slug {original_slug!r} not found',
+        )
+    count_query: typing.LiteralString = (
+        'MATCH (o:Organization {{slug: {slug}}})'
+        ' OPTIONAL MATCH (t:Team)-[:BELONGS_TO]->(o)'
+        ' OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(o)'
+        ' WITH o, count(DISTINCT t) AS team_count,'
+        '        count(DISTINCT u) AS member_count'
+        ' OPTIONAL MATCH (t2:Team)-[:BELONGS_TO]->(o)'
+        ' OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t2)'
+        ' WITH o, team_count, member_count,'
+        '      count(DISTINCT p) AS project_count'
+        ' RETURN team_count, member_count, project_count'
+    )
+    count_records = await db.execute(
+        count_query,
+        {'slug': org.slug},
+        columns=['team_count', 'member_count', 'project_count'],
+    )
+    counts = count_records[0] if count_records else {}
+    org_dict = org.model_dump()
+    return _add_relationships(
+        org_dict,
+        graph.parse_agtype(counts.get('team_count', 0)),
+        graph.parse_agtype(counts.get('member_count', 0)),
+        graph.parse_agtype(counts.get('project_count', 0)),
+    )
+
+
 @organizations_router.put('/{slug}')
 async def update_organization(
     slug: str,
@@ -261,70 +340,63 @@ async def update_organization(
             status_code=404,
             detail=f'Organization with slug {slug!r} not found',
         )
+    org.created_at = existing.created_at
+    org.updated_at = datetime.datetime.now(datetime.UTC)
+    return await _persist_organization(slug, org, db)
+
+
+@organizations_router.patch('/{slug}')
+async def patch_organization(
+    slug: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    _auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(
+            permissions.require_permission('organization:update'),
+        ),
+    ],
+) -> dict[str, typing.Any]:
+    """Partially update an organization using JSON Patch (RFC 6902).
+
+    Parameters:
+        slug: Organization slug from URL.
+        operations: List of JSON Patch operations.
+
+    Returns:
+        The updated organization.
+
+    Raises:
+        400: Invalid patch, read-only path, or validation error.
+        404: Organization not found.
+        409: Slug rename conflicts with existing organization.
+        422: Patch test operation failed.
+
+    """
+    results = await db.match(models.Organization, {'slug': slug})
+    existing = results[0] if results else None
+    if existing is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Organization with slug {slug!r} not found',
+        )
+    current = existing.model_dump(mode='json')
+    current.pop('created_at', None)
+    current.pop('updated_at', None)
+
+    patched = json_patch.apply_patch(current, operations)
+
+    try:
+        org = models.Organization(**patched)
+    except pydantic.ValidationError as e:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Validation error: {e.errors()}',
+        ) from e
 
     org.created_at = existing.created_at
     org.updated_at = datetime.datetime.now(datetime.UTC)
-
-    # Match on the original URL slug to avoid creating a duplicate
-    # node when the slug is being renamed.
-    update_query: typing.LiteralString = (
-        'MATCH (n:Organization {{slug: {original_slug}}})'
-        ' SET n.name = {name},'
-        ' n.slug = {slug},'
-        ' n.description = {description},'
-        ' n.icon = {icon},'
-        ' n.updated_at = {updated_at}'
-        ' RETURN n'
-    )
-    props = org.model_dump(mode='json')
-    params: dict[str, typing.Any] = {
-        'original_slug': slug,
-        'name': props['name'],
-        'slug': props['slug'],
-        'description': props.get('description'),
-        'icon': props.get('icon'),
-        'updated_at': props['updated_at'],
-    }
-    try:
-        records = await db.execute(update_query, params)
-    except psycopg.errors.UniqueViolation as e:
-        raise fastapi.HTTPException(
-            status_code=409,
-            detail=(f'Organization with slug {org.slug!r} already exists'),
-        ) from e
-    if not records:
-        raise fastapi.HTTPException(
-            status_code=404,
-            detail=(f'Organization with slug {slug!r} not found'),
-        )
-
-    # Return with relationship counts
-    count_query: typing.LiteralString = (
-        'MATCH (o:Organization {{slug: {slug}}})'
-        ' OPTIONAL MATCH (t:Team)-[:BELONGS_TO]->(o)'
-        ' OPTIONAL MATCH (u:User)-[:MEMBER_OF]->(o)'
-        ' WITH o, count(DISTINCT t) AS team_count,'
-        '        count(DISTINCT u) AS member_count'
-        ' OPTIONAL MATCH (t2:Team)-[:BELONGS_TO]->(o)'
-        ' OPTIONAL MATCH (p:Project)-[:OWNED_BY]->(t2)'
-        ' WITH o, team_count, member_count,'
-        '      count(DISTINCT p) AS project_count'
-        ' RETURN team_count, member_count, project_count'
-    )
-    records = await db.execute(
-        count_query,
-        {'slug': org.slug},
-        columns=['team_count', 'member_count', 'project_count'],
-    )
-
-    counts = records[0] if records else {}
-    org_dict = org.model_dump()
-    return _add_relationships(
-        org_dict,
-        graph.parse_agtype(counts.get('team_count', 0)),
-        graph.parse_agtype(counts.get('member_count', 0)),
-        graph.parse_agtype(counts.get('project_count', 0)),
-    )
+    return await _persist_organization(slug, org, db)
 
 
 @organizations_router.get('/{slug}/members')

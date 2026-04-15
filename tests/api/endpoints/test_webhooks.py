@@ -466,6 +466,263 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
 
+    # -- Patch --
+
+    def test_patch_webhook_description(self) -> None:
+        """Test patching only the webhook description."""
+        existing_record = {
+            'webhook': {
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'Old',
+                'notification_path': '/deploy',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+        updated_record = {
+            'webhook': {
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'New desc',
+                'notification_path': '/deploy',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/deploy',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/description',
+                        'value': 'New desc',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_webhook_not_found(self) -> None:
+        """Test patching non-existent webhook returns 404."""
+        self.mock_db.execute.return_value = []
+
+        response = self.client.patch(
+            '/organizations/engineering/webhooks/nonexistent',
+            json=[{'op': 'replace', 'path': '/description', 'value': 'X'}],
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_patch_webhook_with_tps(self) -> None:
+        """Test patching a webhook that has a third-party service link."""
+        existing_record = {
+            'webhook': {
+                'name': 'GitHub Hook',
+                'slug': 'github-hook',
+                'description': 'Old desc',
+                'notification_path': '/github',
+                'secret': None,
+            },
+            'tps': {'slug': 'github', 'name': 'GitHub'},
+            'identifier_selector': '$.repo',
+            'rules': [],
+        }
+        updated_record = {
+            'webhook': {
+                'name': 'GitHub Hook',
+                'slug': 'github-hook',
+                'description': 'New desc',
+                'notification_path': '/github',
+                'secret': None,
+            },
+            'tps': {'slug': 'github', 'name': 'GitHub'},
+            'identifier_selector': '$.repo',
+            'rules': [],
+        }
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/github-hook',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/description',
+                        'value': 'New desc',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_patch_webhook_encrypt_new_secret(self) -> None:
+        """Test patching a webhook's secret encrypts the new value."""
+        existing_record = {
+            'webhook': {
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'A hook',
+                'notification_path': '/deploy',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+        updated_record = dict(existing_record)
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/deploy',
+                json=[
+                    {'op': 'replace', 'path': '/secret', 'value': 'my-secret'}
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.mock_encryptor.encrypt.assert_called_once_with('my-secret')
+
+    def test_patch_webhook_clear_secret(self) -> None:
+        """Test patching secret to null clears the encrypted secret."""
+        existing_record = {
+            'webhook': {
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'A hook',
+                'notification_path': '/deploy',
+                'secret': 'enc:old-secret',
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+        updated_record = {
+            'webhook': {
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'A hook',
+                'notification_path': '/deploy',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/deploy',
+                json=[{'op': 'replace', 'path': '/secret', 'value': None}],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.mock_encryptor.encrypt.assert_not_called()
+
+    def test_patch_webhook_with_rules(self) -> None:
+        """Test patching a webhook that has rules stored as a JSON string."""
+        existing_record = {
+            'webhook': {
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'Old',
+                'notification_path': '/deploy',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': json.dumps(
+                [
+                    {
+                        'filter_expression': '$.action == "push"',
+                        'handler': 'my.handler',
+                        'handler_config': '{}',
+                    }
+                ]
+            ),
+        }
+        updated_record = {
+            'webhook': {
+                'name': 'Deploy Hook',
+                'slug': 'deploy',
+                'description': 'New',
+                'notification_path': '/deploy',
+                'secret': None,
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': [],
+        }
+
+        self.mock_db.execute.side_effect = [
+            [existing_record],
+            [updated_record],
+        ]
+
+        with (
+            self._patch_encryption(),
+            mock.patch(
+                'imbi_common.graph.parse_agtype',
+                side_effect=lambda x: x,
+            ),
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/webhooks/deploy',
+                json=[
+                    {'op': 'replace', 'path': '/description', 'value': 'New'}
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+
     # -- Delete --
 
     def test_delete_webhook(self) -> None:

@@ -460,6 +460,69 @@ class ThirdPartyServiceEndpointsTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    # -- Patch --
+
+    def test_patch_third_party_service_name(self) -> None:
+        """Test patching only the third-party service name."""
+        existing_service_record = {
+            'service': {
+                'name': 'GitHub',
+                'slug': 'github',
+                'vendor': 'GitHub Inc.',
+                'category': 'source_control',
+                'status': 'active',
+                'links': '{}',
+                'identifiers': '{}',
+                'organization': {'name': 'Engineering', 'slug': 'engineering'},
+                'team': None,
+            }
+        }
+        updated_service_record = {
+            'service': {
+                'name': 'GitHub Enterprise',
+                'slug': 'github',
+                'vendor': 'GitHub Inc.',
+                'category': 'source_control',
+                'status': 'active',
+                'links': '{}',
+                'identifiers': '{}',
+                'organization': {'name': 'Engineering', 'slug': 'engineering'},
+                'team': None,
+            }
+        }
+        self.mock_db.execute.side_effect = [
+            [existing_service_record],
+            [updated_service_record],
+        ]
+
+        with mock.patch(
+            'imbi_common.graph.parse_agtype', side_effect=lambda x: x
+        ):
+            response = self.client.patch(
+                '/organizations/engineering/third-party-services/github',
+                json=[
+                    {
+                        'op': 'replace',
+                        'path': '/name',
+                        'value': 'GitHub Enterprise',
+                    }
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['name'], 'GitHub Enterprise')
+
+    def test_patch_third_party_service_not_found(self) -> None:
+        """Test patching non-existent third-party service returns 404."""
+        self.mock_db.execute.return_value = []
+
+        response = self.client.patch(
+            '/organizations/engineering/third-party-services/nonexistent',
+            json=[{'op': 'replace', 'path': '/name', 'value': 'X'}],
+        )
+
+        self.assertEqual(response.status_code, 404)
+
     # -- Delete --
 
     def test_delete_service(self) -> None:

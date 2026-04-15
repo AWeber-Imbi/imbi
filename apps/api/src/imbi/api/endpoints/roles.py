@@ -6,9 +6,11 @@ import typing
 
 import fastapi
 import psycopg.errors
+import pydantic
 from imbi_common import graph
 
 from imbi_api import models
+from imbi_api import patch as json_patch
 from imbi_api.auth import permissions
 from imbi_api.relationships import relationship_link
 
@@ -363,6 +365,94 @@ async def update_role(
     result = role.model_dump()
     result['relationships'] = _build_relationships(
         slug,
+        permission_count,
+        user_count,
+    )
+    return result
+
+
+@roles_router.patch('/{slug}')
+async def patch_role(
+    slug: str,
+    operations: list[json_patch.PatchOperation],
+    db: graph.Pool,
+    auth: typing.Annotated[
+        permissions.AuthContext,
+        fastapi.Depends(permissions.require_permission('role:update')),
+    ],
+) -> dict[str, typing.Any]:
+    """Partially update a role using JSON Patch (RFC 6902).
+
+    Parameters:
+        slug: Role slug from URL.
+        operations: JSON Patch operations.
+
+    Returns:
+        The updated role with relationships.
+
+    Raises:
+        400: Invalid patch, read-only path, or validation error.
+        404: Role not found.
+        422: Patch test failed.
+
+    """
+    results = await db.match(models.Role, {'slug': slug})
+    existing = results[0] if results else None
+    if existing is None:
+        raise fastapi.HTTPException(
+            status_code=404,
+            detail=f'Role with slug {slug!r} not found',
+        )
+
+    if existing.is_system:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail='Cannot modify system role',
+        )
+
+    current = existing.model_dump(mode='json')
+    current.pop('created_at', None)
+    current.pop('updated_at', None)
+    current.pop('permissions', None)
+    current.pop('parent_role', None)
+
+    patched = json_patch.apply_patch(current, operations)
+
+    try:
+        role = models.Role(**patched)
+    except pydantic.ValidationError as e:
+        raise fastapi.HTTPException(
+            status_code=400,
+            detail=f'Validation error: {e.errors()}',
+        ) from e
+
+    role.created_at = existing.created_at
+    role.updated_at = datetime.datetime.now(datetime.UTC)
+    await db.merge(role, match_on=['slug'])
+
+    count_query: typing.LiteralString = (
+        'MATCH (r:Role {{slug: {slug}}})'
+        ' OPTIONAL MATCH (r)-[:GRANTS]->(p:Permission)'
+        ' WITH r, count(DISTINCT p) AS permission_count'
+        ' OPTIONAL MATCH (u:User)-[m:MEMBER_OF]->'
+        '(o:Organization)'
+        ' WHERE m.role = r.slug'
+        ' RETURN count(DISTINCT u) AS user_count,'
+        '        permission_count'
+    )
+    records = await db.execute(
+        count_query,
+        {'slug': role.slug},
+        columns=['user_count', 'permission_count'],
+    )
+    permission_count = (
+        graph.parse_agtype(records[0]['permission_count']) if records else 0
+    )
+    user_count = graph.parse_agtype(records[0]['user_count']) if records else 0
+
+    result = role.model_dump()
+    result['relationships'] = _build_relationships(
+        role.slug,
         permission_count,
         user_count,
     )
