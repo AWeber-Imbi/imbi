@@ -62,12 +62,12 @@ async def get_org(slug: str, db: Pool) -> models.Organization:
 
 ### Cypher Query Generation
 
-::: imbi_common.cypher.Statement
+::: imbi_common.graph.cypher.Statement
 
-::: imbi_common.cypher.create
+::: imbi_common.graph.cypher.create
 
-::: imbi_common.cypher.delete
+::: imbi_common.graph.cypher.delete
 
-::: imbi_common.cypher.match
+::: imbi_common.graph.cypher.match
 
-::: imbi_common.cypher.merge
+::: imbi_common.graph.cypher.merge
