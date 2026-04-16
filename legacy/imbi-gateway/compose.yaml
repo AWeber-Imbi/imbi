@@ -5,3 +5,13 @@ services:
       - "5432"
     environment:
       POSTGRES_PASSWORD: "secret"
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379"
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
