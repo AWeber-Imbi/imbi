@@ -45,7 +45,7 @@ docker:
     fi
     cat>".env"<<-EOF
     TEST_HOST="$test_host"
-    CLICKHOUSE_URL="http://default:password@$test_host:$(get_port clickhouse 8123)/imbi"
+    CLICKHOUSE_URL="clickhouse+http://default:password@$test_host:$(get_port clickhouse 8123)/imbi"
     FILE_CACHE_ENABLED="no"
     IMBI_AUTH_ENCRYPTION_KEY="$encryption_key"
     IMBI_AUTH_JWT_SECRET="$jwt_secret"

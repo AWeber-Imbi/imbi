@@ -84,7 +84,7 @@ ClickHouse is used for analytics, operations logs, and time-series metrics.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CLICKHOUSE_URL` | `http://localhost:8123` | ClickHouse HTTP connection URL |
+| `CLICKHOUSE_URL` | `clickhouse+http://localhost:8123` | ClickHouse HTTP connection URL |
 | `CLICKHOUSE_USER` | `default` | ClickHouse username |
 | `CLICKHOUSE_PASSWORD` | `password` | ClickHouse password |
 | `CLICKHOUSE_DATABASE` | `imbi` | ClickHouse database name |
@@ -207,7 +207,7 @@ keep_alive = true
 max_connection_lifetime = 300
 
 [clickhouse]
-url = "http://clickhouse-prod:8123"
+url = "clickhouse+http://clickhouse-prod:8123"
 # Credentials should come from environment variables
 
 [auth]
@@ -251,7 +251,7 @@ NEO4J_DATABASE=neo4j
 NEO4J_MAX_POOL_SIZE=50
 
 # ClickHouse
-CLICKHOUSE_URL=http://localhost:8123
+CLICKHOUSE_URL=clickhouse+http://localhost:8123
 CLICKHOUSE_USER=default
 CLICKHOUSE_PASSWORD=password
 CLICKHOUSE_DATABASE=imbi
