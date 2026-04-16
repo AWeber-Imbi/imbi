@@ -56,7 +56,7 @@ just test tests/path/to/test_file.py::TestClass::test_method
 
 **Singletons**: `Clickhouse.get_instance()`, `TokenEncryption.get_instance()`, and `settings.get_auth_settings()` all use class-level singletons. Tests that need clean state must reset them explicitly (e.g., `TokenEncryption.reset_instance()`). `Graph` is instantiated directly (no singleton).
 
-**Graph + edges**: Models use `typing.Annotated` with `models.Edge(rel_type=..., direction=...)` metadata to declare graph relationships. `graph/client.py` uses `model_construct()` when deserializing raw node data from the graph so that missing edge fields do not cause validation errors.
+**Graph + edges**: Models use `typing.Annotated` with `models.Edge(rel_type=..., direction=...)` metadata to declare graph relationships. `graph/client.py` tries `model_validate()` first when deserializing raw node data; if that raises `ValidationError` (e.g. due to missing edge fields stored as separate relationships), it falls back to `model_construct()`.
 
 **Blueprint system**: `blueprints.get_model(database, MyModel)` accepts a `Graph` instance and a model class, fetches `Blueprint` nodes from the graph whose `type` matches the model class name, then calls `pydantic.create_model` to return a dynamically extended subclass.
 

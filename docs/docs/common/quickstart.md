@@ -5,81 +5,51 @@ This guide will help you get started with imbi-common in just a few minutes.
 ## Basic Setup
 
 ```python
-from imbi_common import logging, settings, neo4j, clickhouse
+from imbi_common import logging, settings, graph, clickhouse
 
 # 1. Configure logging (do this first)
 logging.configure_logging(dev=True)
 
 # 2. Load configuration
 config = settings.load_config()
+```
 
-# 3. Initialize database connections
-async def setup():
-    await neo4j.initialize()
-    await clickhouse.initialize()
+## Working with the Graph Database
 
-# Run setup
+The graph module uses Apache AGE (PostgreSQL extension). The recommended
+pattern in FastAPI services is via `graph_lifespan` and dependency injection,
+but you can also use `Graph` directly:
+
+```python
 import asyncio
-asyncio.run(setup())
-```
+from imbi_common import graph, models
 
-## Working with Models
+async def example() -> None:
+    db = graph.Graph()
+    await db.open()
+    try:
+        # Create an organization
+        org = models.Organization(
+            name="My Company",
+            slug="my-company",
+            description="Our organization",
+        )
+        await db.create(org)
 
-### Create an Organization and Team
+        # Match nodes
+        orgs = await db.match(
+            models.Organization,
+            {"slug": "my-company"},
+        )
+        print(orgs[0].name)
 
-```python
-from imbi_common import models, neo4j
+        # Upsert a node
+        org.description = "Updated description"
+        await db.merge(org, match_on=["slug"])
+    finally:
+        await db.close()
 
-# Create an organization
-org = models.Organization(
-    name="My Company",
-    slug="my-company",
-    description="Our organization"
-)
-await neo4j.create_node(org)
-
-# Create a team linked to the organization
-team = models.Team(
-    name="Platform Team",
-    slug="platform-team",
-    description="Infrastructure and platform",
-    organization=org
-)
-await neo4j.create_node(team)
-```
-
-### Query Nodes
-
-```python
-# Fetch a single node
-org = await neo4j.fetch_node(
-    models.Organization,
-    {"slug": "my-company"}
-)
-
-# Fetch all teams
-async for team in neo4j.fetch_nodes(
-    models.Team,
-    order_by="name"
-):
-    print(f"Team: {team.name}")
-```
-
-### Update a Node
-
-```python
-# Fetch and modify
-org = await neo4j.fetch_node(
-    models.Organization,
-    {"slug": "my-company"}
-)
-org.description = "Updated description"
-
-# Update in database
-await neo4j.upsert(
-    org,
-    constraint={"slug": org.slug}
-)
+asyncio.run(example())
 ```
 
 ## Authentication
@@ -128,7 +98,7 @@ from imbi_common import settings
 # 3. /etc/imbi/config.toml
 config = settings.load_config()
 
-print(f"Neo4j URL: {config.neo4j.url}")
+print(f"Postgres URL: {config.postgres.url}")
 print(f"ClickHouse URL: {config.clickhouse.url}")
 ```
 
@@ -137,9 +107,9 @@ print(f"ClickHouse URL: {config.clickhouse.url}")
 ```python
 from imbi_common import settings
 
-# Get Neo4j settings
-neo4j_config = settings.Neo4j()
-print(f"Database: {neo4j_config.database}")
+# Get PostgreSQL settings
+postgres_config = settings.Postgres()
+print(f"Graph name: {postgres_config.graph_name}")
 
 # Get Auth settings
 auth_config = settings.Auth()
@@ -168,14 +138,15 @@ for row in results:
 The blueprint system allows dynamic schema extension:
 
 ```python
-from imbi_common import blueprints, models
+from imbi_common import blueprints, models, graph
 
-# Get a dynamically extended model class
-# Blueprints defined in Neo4j add extra fields to the model
-ProjectModel = await blueprints.get_model(models.Project)
+async def example(db: graph.Graph) -> None:
+    # Get a dynamically extended model class
+    # Blueprints stored in the graph add extra fields to the model
+    ProjectModel = await blueprints.get_model(db, models.Project)
 
-# ProjectModel now includes additional fields from blueprints
-# defined for the Project type
+    # ProjectModel now includes additional fields from blueprints
+    # defined for the Project type
 ```
 
 ## Next Steps

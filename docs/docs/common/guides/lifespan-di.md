@@ -67,10 +67,13 @@ app = fastapi.FastAPI(
 If you have multiple resources, list all their hooks:
 
 ```python
+from imbi_common.graph import graph_lifespan
+from imbi_common.valkey import valkey_lifespan
+
 app = fastapi.FastAPI(
     lifespan=lifespan.Lifespan(
-        neo4j_hook,
-        redis_hook,
+        graph_lifespan,
+        valkey_lifespan,
         http_client_hook,
     )
 )
@@ -154,6 +157,56 @@ async def health_check(
 
 FastAPI resolves the dependency chain automatically: `HttpClient` →
 `_inject_http_client` → `InjectLifespan` → `_get_lifespan`.
+
+## Using imbi-common Hooks
+
+imbi-common ships ready-made hooks for each of its stateful clients.
+Pass them directly to `Lifespan` — no custom hook code required.
+
+| Resource | Hook | DI alias |
+|----------|------|----------|
+| Apache AGE graph (PostgreSQL) | `graph.graph_lifespan` | `graph.Pool` |
+| Valkey cache | `valkey.valkey_lifespan` | `valkey.Client` |
+
+ClickHouse uses a module-level singleton (`Clickhouse.get_instance()`)
+rather than the lifespan pattern; no hook is needed.
+
+### Complete example
+
+```python
+import fastapi
+from imbi_common import lifespan, models
+from imbi_common.graph import Pool, graph_lifespan
+from imbi_common.valkey import Client as ValkeyClient, valkey_lifespan
+
+app = fastapi.FastAPI(
+    lifespan=lifespan.Lifespan(
+        graph_lifespan,
+        valkey_lifespan,
+    ),
+)
+
+
+@app.get('/orgs/{slug}')
+async def get_org(
+    slug: str,
+    *,
+    db: Pool,
+    cache: ValkeyClient,
+) -> models.Organization:
+    cached = await cache.get(f'org:{slug}')
+    if cached:
+        return models.Organization.model_validate_json(cached)
+
+    results = await db.match(models.Organization, {'slug': slug})
+    org = results[0]
+    await cache.set(f'org:{slug}', org.model_dump_json(), ex=300)
+    return org
+```
+
+`Pool` and `ValkeyClient` are `Annotated` type aliases that wire
+`fastapi.Depends` automatically — no separate DI function needed for
+these built-in resources.
 
 ## Testing
 

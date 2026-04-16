@@ -6,9 +6,9 @@ Shared library for the Imbi ecosystem providing core data access, authentication
 
 `imbi-common` is a Python library that provides common functionality for all Imbi services including:
 
-- **Database Clients**: Neo4j (graph database) and ClickHouse (analytics database) with connection management
-- **Domain Models**: Pydantic models for Projects, Users, Organizations, Teams, and more
-- **Authentication**: Password hashing (Argon2), JWT token creation/verification, token encryption
+- **Database Clients**: Apache AGE/PostgreSQL (graph database) and ClickHouse (analytics database) with connection management
+- **Domain Models**: Pydantic models for Projects, Organizations, Teams, Environments, ProjectTypes, and more
+- **Authentication**: JWT token creation/verification, token encryption
 - **Configuration**: Pydantic Settings-based configuration management with TOML file support
 - **Blueprint System**: Dynamic schema extension system for runtime model customization
 - **Logging**: Consistent logging configuration across all services

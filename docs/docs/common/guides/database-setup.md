@@ -1,67 +1,70 @@
 # Database Setup Guide
 
-This guide covers setting up Neo4j and ClickHouse for use with imbi-common.
+This guide covers setting up PostgreSQL (with Apache AGE) and ClickHouse
+for use with imbi-common.
 
-## Neo4j Setup
+## PostgreSQL + Apache AGE Setup
 
-### Using Docker
+imbi-common's graph layer runs on PostgreSQL with the
+[Apache AGE](https://age.apache.org/) extension for Cypher queries, plus
+pgvector for similarity search.
 
-The easiest way to run Neo4j locally is with Docker:
+### Using the Project Docker Image
+
+The project ships a pre-built PostgreSQL image with all required extensions
+installed (`ghcr.io/aweber-imbi/postgres:latest`). This is the easiest path
+for local development:
 
 ```bash
+# Via project compose setup (recommended)
+just docker
+
+# Or run the image directly
 docker run -d \
-  --name neo4j \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/password \
-  -v $HOME/neo4j/data:/data \
-  -v $HOME/neo4j/logs:/logs \
-  neo4j:5-community
+  --name postgres-age \
+  -p 5432:5432 \
+  -e POSTGRES_PASSWORD=secret \
+  ghcr.io/aweber-imbi/postgres:latest
 ```
 
-Access the Neo4j Browser at: `http://localhost:7474`
+The image bundles: Apache AGE, pgvector, pg_cron, and pgtap. AGE is loaded
+automatically via `shared_preload_libraries` in `postgresql.conf`.
 
 ### Production Setup
 
 For production deployments:
 
-1. **Use Neo4j Enterprise** for clustering and advanced features
-2. **Enable authentication** with strong passwords
-3. **Configure backups** with regular snapshots
-4. **Set up monitoring** with Neo4j metrics
-5. **Tune JVM settings** based on your workload
+1. Use a managed PostgreSQL service (RDS, Cloud SQL, etc.) with the AGE
+   extension available, or self-host with the same custom image.
+2. Create a dedicated database user with limited privileges.
+3. Configure TLS for all connections.
+4. Set `max_pool_size` based on your workload.
 
 Example production configuration:
 
 ```toml
-[neo4j]
-url = "neo4j://neo4j-prod:7687"
-user = "imbi_app"
-password = "strong-password-from-secrets-manager"
-database = "imbi"
-keep_alive = true
-max_connection_lifetime = 600
+[postgres]
+url = "postgresql://imbi_app:strong-password@db-prod:5432/imbi"
+graph_name = "imbi"
+max_pool_size = 20
 ```
 
 ### Schema Initialization
 
-The Neo4j client automatically creates required indexes and constraints:
+The graph schema is initialized from `schema/postgres/` SQL scripts. In
+the project Docker setup these are mounted into
+`/docker-entrypoint-initdb.d/` and run automatically on first start.
+
+For the graph itself, `graph_lifespan` (or `graph.initialize()`) creates
+the AGE graph, vertex labels, indexes, the embeddings table, and supporting
+functions on startup.
 
 ```python
-from imbi_common import neo4j
+from imbi_common import graph
 
-# Initialize client and create schema
-await neo4j.initialize()
-
-# Indexes and constraints are created automatically
-# See imbi_common.neo4j.constants for definitions
+# Initialize schema and open the pool (use graph_lifespan in FastAPI)
+await graph.initialize()
 ```
-
-Required indexes and constraints:
-
-- **Blueprint**: Unique constraint on `(name, type)`
-- **Team**: Unique constraint on `slug`
-- **Conversation**: Unique constraint on `id`, indexes on `user_email` and `updated_at`
-- **Message**: Unique constraint on `id`, index on `conversation_id`
 
 ## ClickHouse Setup
 
@@ -91,7 +94,7 @@ Example production configuration:
 
 ```toml
 [clickhouse]
-url = "https://clickhouse-prod.example.com:8443"
+url = "clickhouse+https://clickhouse-prod.example.com:8443"
 ```
 
 ### Schema Initialization
@@ -101,10 +104,7 @@ Initialize ClickHouse schemas from the bundled `schemata.toml`:
 ```python
 from imbi_common import clickhouse
 
-# Initialize client
-await clickhouse.initialize()
-
-# Create schemas from schemata.toml
+# Create schemas from schemata.toml (called explicitly during setup)
 await clickhouse.setup_schema()
 ```
 
@@ -115,12 +115,11 @@ await clickhouse.setup_schema()
 The recommended way to provide credentials:
 
 ```bash
-# Neo4j
-export NEO4J_URL="neo4j://neo4j:password@localhost:7687"
-export NEO4J_DATABASE="imbi"
+# PostgreSQL
+export POSTGRES_URL="postgresql://imbi_app:password@localhost:5432/imbi"
 
 # ClickHouse
-export CLICKHOUSE_URL="http://localhost:8123"
+export CLICKHOUSE_URL="clickhouse+http://localhost:8123"
 ```
 
 ### Configuration File
@@ -130,14 +129,11 @@ For local development, use a config file:
 ```toml
 # config.toml
 
-[neo4j]
-url = "neo4j://localhost:7687"
-user = "neo4j"
-password = "password"
-database = "imbi"
+[postgres]
+url = "postgresql://postgres:secret@localhost:5432/imbi"
 
 [clickhouse]
-url = "http://localhost:8123"
+url = "clickhouse+http://localhost:8123"
 ```
 
 !!! warning
@@ -158,30 +154,26 @@ the database clients.
 
 ## Connection Pooling
 
-### Neo4j
+### PostgreSQL
 
-The Neo4j client maintains a connection pool configured via settings:
+The graph client maintains a psycopg connection pool configured via settings:
 
 ```toml
-[neo4j]
-keep_alive = true
-max_connection_lifetime = 600  # 10 minutes
-liveness_check_timeout = 60    # 60 seconds
+[postgres]
+min_pool_size = 2
+max_pool_size = 10
 ```
 
-Connection pool tuning:
-- **keep_alive**: Enable TCP keep-alive to detect dead connections
-- **max_connection_lifetime**: Rotate connections to avoid staleness
-- **liveness_check_timeout**: How long to wait for connection health checks
+- **min_pool_size**: Connections kept open at idle
+- **max_pool_size**: Maximum concurrent connections
 
 ### ClickHouse
 
-ClickHouse uses HTTP connections that are created per-request. For
+ClickHouse uses HTTP connections created per-request. For
 high-throughput scenarios, consider:
 
-- Using a connection pool at the HTTP client level
-- Enabling HTTP keep-alive
 - Batch inserts to reduce connection overhead
+- Enabling HTTP keep-alive
 
 ## Testing Connections
 
@@ -189,20 +181,19 @@ Verify database connectivity:
 
 ```python
 import asyncio
-from imbi_common import neo4j, clickhouse, logging
+from imbi_common import graph, clickhouse, logging
 
-async def test_connections():
+async def test_connections() -> None:
     logging.configure_logging(dev=True)
 
-    # Test Neo4j
-    await neo4j.initialize()
-    async with neo4j.run("RETURN 'Neo4j connected!' as message") as result:
-        record = await result.single()
-        print(record['message'])
-    await neo4j.aclose()
+    # Test PostgreSQL + AGE
+    db = graph.Graph()
+    await db.open()
+    rows = await db.execute("SELECT 1 AS test")
+    print(f"PostgreSQL connected! Test value: {rows[0]['test']}")
+    await db.close()
 
     # Test ClickHouse
-    await clickhouse.initialize()
     result = await clickhouse.query("SELECT 1 as test")
     print(f"ClickHouse connected! Test value: {result[0]['test']}")
 
@@ -211,15 +202,23 @@ asyncio.run(test_connections())
 
 ## Troubleshooting
 
-### Neo4j Connection Issues
+### PostgreSQL Connection Issues
 
-**Problem**: `ServiceUnavailable: Unable to connect to localhost:7687`
+**Problem**: `OperationalError: could not connect to server`
 
 **Solutions**:
-- Verify Neo4j is running: `docker ps | grep neo4j`
-- Check firewall rules allow port 7687
-- Verify credentials are correct
-- Check Neo4j logs: `docker logs neo4j`
+- Verify PostgreSQL is running: `docker ps | grep postgres`
+- Check port 5432 is accessible
+- Verify credentials in `POSTGRES_URL`
+- Check PostgreSQL logs: `docker logs postgres-age`
+
+### AGE Extension Issues
+
+**Problem**: `ERROR: extension "age" does not exist`
+
+**Solutions**:
+- Ensure you are using the custom `ghcr.io/aweber-imbi/postgres:latest` image
+- Verify `shared_preload_libraries` includes `age` in `postgresql.conf`
 
 ### ClickHouse Connection Issues
 
@@ -227,8 +226,8 @@ asyncio.run(test_connections())
 
 **Solutions**:
 - Verify ClickHouse is running: `docker ps | grep clickhouse`
-- Check firewall rules allow port 8123
-- Verify URL uses `http://` (not `https://` unless configured)
+- Check port 8123 is accessible
+- Verify the URL scheme (`clickhouse+http://` not bare `http://`)
 - Check ClickHouse logs: `docker logs clickhouse`
 
 ### Schema Creation Failures
@@ -238,27 +237,22 @@ asyncio.run(test_connections())
 **Solutions**:
 - Check for existing data that violates constraints
 - Verify database user has CREATE privileges
-- Check for naming conflicts with existing objects
 - Review database logs for detailed error messages
 
 ## Docker Compose Example
 
-For local development, use Docker Compose:
+For local development, use Docker Compose (or the project's `compose.yaml`):
 
 ```yaml
-# docker-compose.yml
-
 services:
-  neo4j:
-    image: neo4j:5-community
+  postgres:
+    image: ghcr.io/aweber-imbi/postgres:latest
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "5432:5432"
     environment:
-      NEO4J_AUTH: neo4j/password
+      POSTGRES_PASSWORD: secret
     volumes:
-      - neo4j-data:/data
-      - neo4j-logs:/logs
+      - postgres-data:/var/lib/postgresql/data
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -269,13 +263,12 @@ services:
       - clickhouse-data:/var/lib/clickhouse
 
 volumes:
-  neo4j-data:
-  neo4j-logs:
+  postgres-data:
   clickhouse-data:
 ```
 
 Start services:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```

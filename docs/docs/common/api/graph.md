@@ -41,13 +41,35 @@ await db.close()
 
 ## FastAPI Dependency Injection
 
-```python
-from imbi_common import models
-from imbi_common.graph import Pool
+Wire `graph_lifespan` into the application lifespan, then declare `Pool`
+as a route parameter to receive the injected `Graph` instance:
 
+```python
+import fastapi
+from imbi_common import lifespan, models
+from imbi_common.graph import Pool, graph_lifespan
+
+app = fastapi.FastAPI(
+    lifespan=lifespan.Lifespan(graph_lifespan),
+)
+
+
+@app.get('/orgs/{slug}')
 async def get_org(slug: str, db: Pool) -> models.Organization:
     results = await db.match(models.Organization, {"slug": slug})
     return results[0]
+```
+
+To run custom initialisation after the pool opens (e.g. schema setup),
+register a startup callback before creating the app:
+
+```python
+from imbi_common import graph
+
+async def on_graph_ready(db: graph.Graph) -> None:
+    await graph.initialize()
+
+graph.set_on_startup(on_graph_ready)
 ```
 
 ## API Reference

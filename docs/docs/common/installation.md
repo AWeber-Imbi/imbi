@@ -3,7 +3,7 @@
 ## Requirements
 
 - Python 3.12 or higher
-- Neo4j 5.0+ (for graph database features)
+- PostgreSQL 16+ with [Apache AGE](https://age.apache.org/) extension (for graph features)
 - ClickHouse 23.0+ (for analytics features)
 
 ## Install from PyPI
@@ -18,31 +18,24 @@ pip install imbi-common
 
 ```bash
 # Clone the repository
-git clone https://github.com/aweber/imbi-common.git
+git clone https://github.com/AWeber-Imbi/imbi-common.git
 cd imbi-common
 
-# Install with development dependencies
-pip install -e ".[dev]"
-
-# Install pre-commit hooks
-pre-commit install
+# Install dependencies and pre-commit hooks
+just setup
 ```
 
 ### For Production
 
 ```bash
-pip install git+https://github.com/aweber/imbi-common.git@main
+pip install git+https://github.com/AWeber-Imbi/imbi-common.git@main
 ```
 
 ## Verify Installation
 
 ```python
-import imbi_common
-
-print(f"imbi-common version: {imbi_common.version}")
-
 # Test basic imports
-from imbi_common import settings, models, neo4j, clickhouse, auth
+from imbi_common import settings, models, graph, clickhouse, auth
 
 print("All modules imported successfully")
 ```
@@ -70,15 +63,26 @@ Visit `http://localhost:8000` to view the documentation.
 
 ## Database Setup
 
-### Neo4j
+### PostgreSQL with Apache AGE
+
+imbi-common uses PostgreSQL with the Apache AGE graph extension. The
+recommended approach for local development is the bundled Docker Compose
+setup (via `just docker`), which starts a pre-configured PostgreSQL image
+with AGE, pgvector, pg_cron, and pgtap already installed.
 
 ```bash
-# Using Docker
+# Using the project's compose setup
+just docker
+```
+
+Or run the custom image manually:
+
+```bash
 docker run -d \
-  --name neo4j \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/password \
-  neo4j:5-community
+  --name postgres-age \
+  -p 5432:5432 \
+  -e POSTGRES_PASSWORD=secret \
+  ghcr.io/aweber-imbi/postgres:latest
 ```
 
 ### ClickHouse
@@ -98,13 +102,11 @@ Create a configuration file:
 ```toml
 # config.toml
 
-[neo4j]
-url = "neo4j://localhost:7687"
-user = "neo4j"
-password = "password"
+[postgres]
+url = "postgresql://postgres:secret@localhost:5432/imbi"
 
 [clickhouse]
-url = "http://localhost:8123"
+url = "clickhouse+http://localhost:8123"
 
 [auth]
 jwt_secret = "your-secret-key-here"
@@ -113,10 +115,8 @@ jwt_secret = "your-secret-key-here"
 Or use environment variables:
 
 ```bash
-export NEO4J_URL="neo4j://localhost:7687"
-export NEO4J_USER="neo4j"
-export NEO4J_PASSWORD="password"
-export CLICKHOUSE_URL="http://localhost:8123"
+export POSTGRES_URL="postgresql://postgres:secret@localhost:5432/imbi"
+export CLICKHOUSE_URL="clickhouse+http://localhost:8123"
 export IMBI_AUTH_JWT_SECRET="your-secret-key-here"
 ```
 

@@ -21,50 +21,36 @@ from imbi_common import settings
 config = settings.load_config()
 
 # Access individual settings sections
-neo4j_config = settings.Neo4j()
+postgres_config = settings.Postgres()
 clickhouse_config = settings.Clickhouse()
 auth_config = settings.Auth()
 ```
 
-## Neo4j Settings
+## PostgreSQL Settings
 
-Environment prefix: `NEO4J_`
+Environment prefix: `POSTGRES_`
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `url` | AnyUrl | `neo4j://localhost:7687` | Neo4j connection URL |
-| `user` | str | None | Username (or from URL) |
-| `password` | str | None | Password (or from URL) |
-| `database` | str | `neo4j` | Database name |
-| `keep_alive` | bool | True | Enable TCP keep-alive |
-| `liveness_check_timeout` | int | 60 | Liveness check timeout (seconds) |
-| `max_connection_lifetime` | int | 300 | Max connection lifetime (seconds) |
+| `url` | PostgresDsn | `postgresql://postgres:secret@localhost:5432/imbi` | PostgreSQL connection URL |
+| `graph_name` | str | `imbi` | Apache AGE graph name |
+| `min_pool_size` | int | 2 | Minimum connection pool size |
+| `max_pool_size` | int | 10 | Maximum connection pool size |
 
 ### Example
 
 **TOML:**
 ```toml
-[neo4j]
-url = "neo4j://neo4j:password@production-neo4j:7687"
-database = "imbi"
-keep_alive = true
-max_connection_lifetime = 600
+[postgres]
+url = "postgresql://imbi_app:secret@db-prod:5432/imbi"
+graph_name = "imbi"
+max_pool_size = 20
 ```
 
 **Environment:**
 ```bash
-export NEO4J_URL="neo4j://neo4j:password@production-neo4j:7687"
-export NEO4J_DATABASE="imbi"
-```
-
-### URL Credential Extraction
-
-Credentials in the URL are automatically extracted and URL-decoded:
-
-```python
-config = settings.Neo4j(url="neo4j://user%40example:p%40ssw0rd@host:7687")
-# config.user == "user@example"
-# config.password == "p@ssw0rd"
+export POSTGRES_URL="postgresql://imbi_app:secret@db-prod:5432/imbi"
+export POSTGRES_GRAPH_NAME="imbi"
 ```
 
 ## ClickHouse Settings
@@ -154,19 +140,13 @@ export IMBI_AUTH_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fe
 
 **config.toml:**
 ```toml
-[server]
-environment = "production"
-host = "0.0.0.0"
-port = 8000
-
-[neo4j]
-url = "neo4j://neo4j:password@neo4j-prod:7687"
-database = "imbi"
-keep_alive = true
-max_connection_lifetime = 600
+[postgres]
+url = "postgresql://imbi_app:secret@db-prod:5432/imbi"
+graph_name = "imbi"
+max_pool_size = 20
 
 [clickhouse]
-url = "http://clickhouse-prod:8123"
+url = "clickhouse+http://clickhouse-prod:8123"
 
 [auth]
 jwt_secret = "change-this-in-production"
@@ -183,7 +163,7 @@ from imbi_common import settings
 import pydantic
 
 try:
-    config = settings.Neo4j(url="invalid-url")
+    config = settings.Postgres(url="invalid-url")
 except pydantic.ValidationError as e:
     print(f"Invalid configuration: {e}")
 ```

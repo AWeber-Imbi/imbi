@@ -6,12 +6,12 @@ Accepted
 
 ## Context
 
-The Imbi ecosystem consists of multiple services (imbi-api, imbi-webhooks,
+The Imbi ecosystem consists of multiple services (imbi-api, imbi-gateway,
 imbi-mcp) that share common functionality:
 
-- Database clients (Neo4j, ClickHouse)
-- Domain models (Projects, Users, Roles, etc.)
-- Authentication primitives (password hashing, JWT, encryption)
+- Database clients (graph database, ClickHouse)
+- Domain models (Projects, Organizations, Teams, etc.)
+- Authentication primitives (JWT, token encryption)
 - Configuration management
 - Logging setup
 
@@ -46,16 +46,15 @@ as a simple package.
 
 - **Settings Module** (`imbi_common.settings`): All Pydantic settings
   classes and TOML loading
-- **Neo4j Client** (`imbi_common.neo4j`): Singleton client, CRUD
-  abstractions, schema constants
+- **Graph Client** (`imbi_common.graph`): Apache AGE/PostgreSQL client,
+  CRUD abstractions, Cypher query generation
 - **ClickHouse Client** (`imbi_common.clickhouse`): Singleton client,
   privacy utilities, base schemas
 - **Core Models** (`imbi_common.models`): Domain models, auth models, all
   shared data structures
 - **Blueprint System** (`imbi_common.blueprints`): Dynamic schema extension
   system
-- **Auth Core** (`imbi_common.auth`): Password hashing, JWT primitives,
-  token encryption
+- **Auth Core** (`imbi_common.auth`): JWT primitives, token encryption
 - **Logging Module** (`imbi_common.logging`): Log configuration loading and
   dictConfig application
 
@@ -210,7 +209,7 @@ logging.configure_logging(dev=True)
 2. Write tests and documentation
 3. Set up CI/CD and publish v0.1.0
 4. Migrate imbi-api to use imbi-common (separate effort)
-5. Update other services (imbi-webhooks, imbi-mcp) as they're developed
+5. Update other services (imbi-gateway, imbi-mcp) as they're developed
 
 ## References
 

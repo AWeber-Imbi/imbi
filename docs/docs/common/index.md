@@ -7,14 +7,14 @@ Shared library for the Imbi ecosystem providing core data access, authentication
 `imbi-common` is a Python library that provides common functionality for all Imbi services. It serves as the foundation for:
 
 - **imbi-api**: Main API service for DevOps service management
+- **imbi-gateway**: API gateway service
 - **imbi-mcp**: Model Context Protocol server for Claude integration
-- **imbi-webhooks**: Webhook processing service
 
 ## Key Features
 
 ### Database Clients
 
-- **Neo4j**: Graph database client with connection pooling and cypherantic integration
+- **Apache AGE**: Graph database client (PostgreSQL + AGE extension) with connection pooling and Cypher query generation
 - **ClickHouse**: Analytics database client with GDPR-compliant schema management
 
 ### Authentication
@@ -59,10 +59,11 @@ The library follows a clean architecture with clear separation of concerns:
 imbi_common/
 ├── settings.py      # Configuration management
 ├── models.py        # Domain models
-├── neo4j/           # Graph database client
+├── graph/           # Apache AGE graph database client
 ├── clickhouse/      # Analytics database client
 ├── auth/            # Authentication primitives
 ├── blueprints.py    # Dynamic schema system
+├── valkey.py        # Valkey cache client
 ├── logging.py       # Logging configuration
 └── server.py        # Uvicorn serve command
 ```
@@ -72,11 +73,11 @@ imbi_common/
 ### imbi-api
 Main API service providing RESTful endpoints for managing services, projects, teams, and infrastructure.
 
+### imbi-gateway
+API gateway service routing and authenticating requests across Imbi services.
+
 ### imbi-mcp
 Model Context Protocol server that enables Claude to query and manage Imbi data through natural language.
-
-### imbi-webhooks
-Event processing service that handles webhooks from external systems and updates Imbi data.
 
 ## Support
 
