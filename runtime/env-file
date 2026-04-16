@@ -1,4 +1,4 @@
-CLICKHOUSE_URL="http://default:password@clickhouse:8123/imbi"
+CLICKHOUSE_URL="clickhouse+http://default:password@clickhouse:8123/imbi"
 IMBI_AUTH_ENCRYPTION_KEY="dev-encryption-key-change-in-prod"
 IMBI_AUTH_JWT_SECRET="dev-jwt-secret-change-in-production"
 IMBI_EMAIL_SMTP_HOST="mailpit"

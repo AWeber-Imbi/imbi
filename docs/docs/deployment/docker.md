@@ -10,7 +10,7 @@ By default, the container starts all services behind a Caddy reverse proxy:
 
 ```bash
 docker run -p 8080:8080 \
-  -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
+  -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e POSTGRES_URL=postgresql://user:pass@postgres/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
@@ -36,7 +36,7 @@ set `IMBI_SERVICE` to run a single service:
 # Run only the API
 docker run -p 8000:8000 \
   -e IMBI_SERVICE=api \
-  -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
+  -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
   ghcr.io/aweber-imbi/imbi:latest
@@ -51,7 +51,7 @@ The `setup` command initializes the authentication system:
 
 ```bash
 docker run -it \
-  -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
+  -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
   ghcr.io/aweber-imbi/imbi:latest setup

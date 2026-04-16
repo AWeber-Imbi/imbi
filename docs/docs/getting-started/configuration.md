@@ -20,7 +20,7 @@ all service-specific variables are required.
 
 | Variable | Description |
 |----------|-------------|
-| `CLICKHOUSE_URL` | ClickHouse HTTP connection URL (e.g. `http://default:password@clickhouse:8123/imbi`) |
+| `CLICKHOUSE_URL` | ClickHouse HTTP connection URL (e.g. `clickhouse+http://default:password@clickhouse:8123/imbi`) |
 
 ### Gateway
 

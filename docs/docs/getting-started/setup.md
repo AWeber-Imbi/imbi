@@ -10,7 +10,7 @@ your first admin user.
 
 ```bash
 docker run -it \
-  -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
+  -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-key \
   ghcr.io/aweber-imbi/imbi:latest setup

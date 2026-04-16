@@ -28,7 +28,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      CLICKHOUSE_URL: http://default:password@clickhouse:8123/imbi
+      CLICKHOUSE_URL: clickhouse+http://default:password@clickhouse:8123/imbi
       POSTGRES_URL: postgresql://postgres:secret@postgres/imbi
       IMBI_AUTH_JWT_SECRET: change-me-to-a-random-secret
       IMBI_AUTH_ENCRYPTION_KEY: change-me-to-a-fernet-key

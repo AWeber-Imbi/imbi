@@ -149,7 +149,7 @@ Changes to your local source files are reflected immediately.
 ```bash
 # Run all services (default)
 docker run -p 8080:8080 \
-  -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
+  -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret-here \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-encryption-key \
   ghcr.io/aweber-imbi/imbi:latest
@@ -162,7 +162,7 @@ docker run -e IMBI_SERVICE=mcp ...
 
 # Run initial setup (create admin user, seed permissions)
 docker run -it \
-  -e CLICKHOUSE_URL=http://default:password@clickhouse:8123/imbi \
+  -e CLICKHOUSE_URL=clickhouse+http://default:password@clickhouse:8123/imbi \
   -e IMBI_AUTH_JWT_SECRET=your-secret-here \
   -e IMBI_AUTH_ENCRYPTION_KEY=your-encryption-key \
   ghcr.io/aweber-imbi/imbi:latest setup
