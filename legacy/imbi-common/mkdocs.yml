@@ -41,6 +41,7 @@ nav:
       - Settings: api/settings.md
       - Graph (Apache AGE): api/graph.md
       - ClickHouse Client: api/clickhouse.md
+      - Valkey Client: api/valkey.md
       - Models: api/models.md
       - Blueprints: api/blueprints.md
       - Authentication: api/auth.md

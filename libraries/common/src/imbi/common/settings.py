@@ -82,7 +82,9 @@ class Auth(pydantic_settings.BaseSettings):
 class Clickhouse(pydantic_settings.BaseSettings):
     model_config = base_settings_config(env_prefix='CLICKHOUSE_')
 
-    url: pydantic.HttpUrl = pydantic.HttpUrl('http://localhost:8123')
+    url: pydantic.ClickHouseDsn = pydantic.ClickHouseDsn(
+        'clickhouse+http://localhost:8123'
+    )
     connect_timeout: float = 10.0  # default in clickhouse client
     max_connect_attempts: int = 10
 
@@ -114,7 +116,7 @@ class Embeddings(pydantic_settings.BaseSettings):
 
 
 class Postgres(pydantic_settings.BaseSettings):
-    """Apache AGE (PostgreSQL extension) connection settings."""
+    """PostgreSQL connection settings."""
 
     model_config = base_settings_config(env_prefix='POSTGRES_')
     url: pydantic.PostgresDsn = pydantic.Field(
@@ -125,6 +127,27 @@ class Postgres(pydantic_settings.BaseSettings):
     graph_name: str = 'imbi'
     min_pool_size: int = 2
     max_pool_size: int = 10
+
+
+class ValkeyDSN(pydantic.AnyUrl):
+    """Valkey DSN settings."""
+
+    _constraints = pydantic.UrlConstraints(
+        allowed_schemes=['valkey'],
+        default_host='localhost',
+        default_port=6379,
+        default_path='/0',
+        host_required=True,
+    )
+
+
+class Valkey(pydantic_settings.BaseSettings):
+    """Valkey connection settings."""
+
+    model_config = base_settings_config(env_prefix='VALKEY_')
+    url: ValkeyDSN = pydantic.Field(
+        default=ValkeyDSN('valkey://localhost:6379/0')
+    )
 
 
 class Configuration(pydantic.BaseModel):
@@ -170,6 +193,7 @@ class Configuration(pydantic.BaseModel):
             'clickhouse': Clickhouse,
             'embeddings': Embeddings,
             'postgres': Postgres,
+            'valkey': Valkey,
         }
         for field, settings_cls in settings_fields.items():
             if field in data and data[field] is not None:
@@ -188,6 +212,9 @@ class Configuration(pydantic.BaseModel):
     )
     postgres: Postgres = pydantic.Field(
         default_factory=Postgres,
+    )
+    valkey: Valkey = pydantic.Field(
+        default_factory=Valkey,
     )
 
 

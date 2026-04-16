@@ -32,9 +32,9 @@ docker:
     cat>.env<<EOF
     TEST_HOST="$test_host"
     FILE_CACHE_ENABLED="no"
-    CLICKHOUSE_URL="http://default:password@$test_host:$(port clickhouse 8123)/imbi"
+    CLICKHOUSE_URL="clickhouse+http://default:password@$test_host:$(port clickhouse 8123)/imbi"
     POSTGRES_URL="postgresql://postgres:secret@$test_host:$(port postgres 5432)/imbi"
-    VALKEY_URL="redis://$test_host:$(port valkey 6379)"
+    VALKEY_URL="valkey://$test_host:$(port valkey 6379)/0"
     EOF
 
 [doc("Generate docs")]

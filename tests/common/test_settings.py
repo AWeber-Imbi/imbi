@@ -66,10 +66,12 @@ class ClickhouseSettingsTestCase(unittest.TestCase):
         original_url = os.environ.pop('CLICKHOUSE_URL', None)
         try:
             config = settings.Clickhouse(_env_file=None)
-            # HttpUrl may add trailing slash
             self.assertIn(
                 str(config.url),
-                ('http://localhost:8123', 'http://localhost:8123/'),
+                (
+                    'clickhouse+http://localhost:8123',
+                    'clickhouse+http://localhost:8123/',
+                ),
             )
         finally:
             if original_url:

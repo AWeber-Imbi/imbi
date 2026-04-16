@@ -17,15 +17,11 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-  "clickhouse-connect",
   "cryptography>=42.0.4",
-  "fastembed>=0.6",
   "jsonschema-models",
   "markdown-it-py>=3.0",
   "nanoid>=2.0.0",
   "orjson",
-  "pgvector>=0.3",
-  "psycopg[binary,pool]>=3.3",
   "pydantic-settings",
   "pydantic[email]>=2.0",
   "pyjwt>=2.10.1",  # CVE-2025-45768 disputed, monitor for 2.11.0+ when available
@@ -35,6 +31,13 @@ dependencies = [
 license-file = "LICENSE"
 
 [project.optional-dependencies]
+databases = [
+  "clickhouse-connect",
+  "fastembed>=0.6",
+  "pgvector>=0.3",
+  "psycopg[binary,pool]>=3.3",
+  "valkey>=6",
+]
 server = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.40.0",
