@@ -29,7 +29,6 @@ interface ApplicationSecretsPanelProps {
   serviceSlug: string
   appSlug: string
   appType: string
-  isDarkMode: boolean
 }
 
 const TYPE_SECRET_FIELDS: Record<string, string[]> = {
@@ -50,7 +49,6 @@ export function ApplicationSecretsPanel({
   serviceSlug,
   appSlug,
   appType,
-  isDarkMode,
 }: ApplicationSecretsPanelProps) {
   const queryClient = useQueryClient()
   const [revealed, setRevealed] = useState(false)
@@ -127,50 +125,25 @@ export function ApplicationSecretsPanel({
   const is403 = error && (error as ApiError)?.response?.status === 403
 
   return (
-    <div
-      className={`rounded-lg border p-6 ${
-        isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
-      }`}
-    >
+    <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Shield
-            className={`h-5 w-5 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}
-          />
-          <h3
-            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Secrets
-          </h3>
+          <Shield className={'h-5 w-5 text-warning'} />
+          <h3 className={'text-base font-medium text-primary'}>Secrets</h3>
         </div>
         <div className="flex items-center gap-2">
           {revealed && !editing && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleStartEdit}
-              className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-            >
+            <Button variant="outline" size="sm" onClick={handleStartEdit}>
               Update Secrets
             </Button>
           )}
           {revealed ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleHide}
-              className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-            >
+            <Button variant="outline" size="sm" onClick={handleHide}>
               <EyeOff className="mr-1 h-4 w-4" />
               Hide
             </Button>
           ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReveal}
-              className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-            >
+            <Button variant="outline" size="sm" onClick={handleReveal}>
               <Eye className="mr-1 h-4 w-4" />
               Reveal Secrets
             </Button>
@@ -179,29 +152,19 @@ export function ApplicationSecretsPanel({
       </div>
 
       {!revealed && (
-        <p
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-        >
+        <p className={'text-sm text-tertiary'}>
           Secrets are hidden. Click &ldquo;Reveal Secrets&rdquo; to view or
           update them. Admin privileges required.
         </p>
       )}
 
       {revealed && isLoading && (
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          Loading secrets...
-        </div>
+        <div className={'text-sm text-secondary'}>Loading secrets...</div>
       )}
 
       {revealed && is403 && (
         <div
-          className={`flex items-center gap-3 rounded-lg border p-4 ${
-            isDarkMode
-              ? 'border-yellow-700 bg-yellow-900/20 text-yellow-400'
-              : 'border-yellow-200 bg-yellow-50 text-yellow-700'
-          }`}
+          className={`flex items-center gap-3 rounded-lg border p-4 ${'border-warning bg-warning text-warning'}`}
         >
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <div className="text-sm">Admin access required to view secrets.</div>
@@ -210,11 +173,7 @@ export function ApplicationSecretsPanel({
 
       {revealed && error && !is403 && (
         <div
-          className={`flex items-center gap-3 rounded-lg border p-4 ${
-            isDarkMode
-              ? 'border-red-700 bg-red-900/20 text-red-400'
-              : 'border-red-200 bg-red-50 text-red-700'
-          }`}
+          className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
         >
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <div className="text-sm">
@@ -232,18 +191,12 @@ export function ApplicationSecretsPanel({
             if (value == null && field !== 'client_secret') return null
             return (
               <div key={field}>
-                <div
-                  className={`mb-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
+                <div className={'mb-1 text-sm text-secondary'}>
                   {FIELD_LABELS[field]}
                 </div>
                 <div className="flex items-center gap-2">
                   <code
-                    className={`flex-1 break-all rounded px-3 py-2 font-mono text-sm ${
-                      isDarkMode
-                        ? 'bg-gray-700 text-gray-200'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
+                    className={`flex-1 break-all rounded px-3 py-2 font-mono text-sm ${'bg-secondary text-primary'}`}
                   >
                     {field === 'private_key' ? (
                       <pre className="whitespace-pre-wrap text-xs">{value}</pre>
@@ -260,11 +213,7 @@ export function ApplicationSecretsPanel({
                             size="sm"
                             aria-label={`Copy ${FIELD_LABELS[field]}`}
                             onClick={() => handleCopy(field, value)}
-                            className={
-                              isDarkMode
-                                ? 'text-gray-400 hover:text-gray-200'
-                                : ''
-                            }
+                            className={''}
                           >
                             {copiedField === field ? (
                               <Check className="h-4 w-4 text-green-500" />
@@ -288,20 +237,14 @@ export function ApplicationSecretsPanel({
 
       {revealed && editing && (
         <div className="space-y-4">
-          <p
-            className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          >
+          <p className={'text-sm text-tertiary'}>
             Only fill in the secrets you want to change. Empty fields will be
             left unchanged.
           </p>
 
           {updateMutation.error && (
             <div
-              className={`flex items-center gap-3 rounded-lg border p-3 ${
-                isDarkMode
-                  ? 'border-red-700 bg-red-900/20 text-red-400'
-                  : 'border-red-200 bg-red-50 text-red-700'
-              }`}
+              className={`flex items-center gap-3 rounded-lg border p-3 ${'border-danger bg-danger text-danger'}`}
             >
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <div className="text-sm">
@@ -315,7 +258,7 @@ export function ApplicationSecretsPanel({
           {visibleFields.map((field) => (
             <div key={field}>
               <label
-                className={`mb-1 block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                className={'mb-1 block text-sm font-medium text-secondary'}
               >
                 {FIELD_LABELS[field]}
               </label>
@@ -327,11 +270,7 @@ export function ApplicationSecretsPanel({
                   }
                   placeholder="Paste new value to update"
                   rows={4}
-                  className={`w-full rounded-md border px-3 py-2 font-mono text-sm ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
-                      : 'border-gray-300 bg-white text-gray-900'
-                  }`}
+                  className={`w-full rounded-md border px-3 py-2 font-mono text-sm ${'border-input bg-background text-foreground'}`}
                 />
               ) : (
                 <Input
@@ -341,11 +280,7 @@ export function ApplicationSecretsPanel({
                     setEditValues({ ...editValues, [field]: e.target.value })
                   }
                   placeholder="Paste new value to update"
-                  className={
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
-                      : ''
-                  }
+                  className={''}
                 />
               )}
             </div>
@@ -358,7 +293,7 @@ export function ApplicationSecretsPanel({
                 updateMutation.isPending ||
                 Object.values(editValues).every((v) => !v.trim())
               }
-              className="bg-amber-border text-white hover:bg-amber-border-strong"
+              className="bg-action text-action-foreground hover:bg-action-hover"
             >
               <Save className="mr-1 h-4 w-4" />
               {updateMutation.isPending ? 'Saving...' : 'Save Secrets'}
@@ -367,7 +302,6 @@ export function ApplicationSecretsPanel({
               variant="outline"
               onClick={handleCancelEdit}
               disabled={updateMutation.isPending}
-              className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
             >
               Cancel
             </Button>

@@ -11,13 +11,9 @@ import type { Project } from '@/types'
 
 interface ProjectGraphViewProps {
   projects: Project[]
-  isDarkMode: boolean
 }
 
-export function ProjectGraphView({
-  projects,
-  isDarkMode,
-}: ProjectGraphViewProps) {
+export function ProjectGraphView({ projects }: ProjectGraphViewProps) {
   // Set of project IDs for edge target existence checks.
   const idSet = useMemo(() => new Set(projects.map((p) => p.id)), [projects])
 
@@ -60,8 +56,8 @@ export function ProjectGraphView({
     return result
   }, [projects, idSet, relationshipsData])
 
-  const sub = isDarkMode ? 'text-gray-400' : 'text-slate-500'
-  const cardClass = `flex items-center justify-center p-12 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`
+  const sub = 'text-tertiary'
+  const cardClass = 'flex items-center justify-center p-12'
 
   if (isAnyLoading) {
     return (
@@ -91,11 +87,7 @@ export function ProjectGraphView({
         height: 'calc(100vh - 280px - var(--assistant-height, 64px))',
       }}
     >
-      <ProjectsGraphCanvas
-        projects={projects}
-        edges={edges}
-        isDarkMode={isDarkMode}
-      />
+      <ProjectsGraphCanvas projects={projects} edges={edges} />
     </div>
   )
 }

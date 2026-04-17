@@ -16,47 +16,13 @@ import {
   createThirdPartyService,
   updateThirdPartyService,
 } from '@/api/endpoints'
+import { statusBadgeVariant } from '@/lib/status-colors'
+import { Badge } from '@/components/ui/badge'
 import type { ThirdPartyService, ThirdPartyServiceCreate } from '@/types'
-
-interface ThirdPartyServiceManagementProps {
-  isDarkMode: boolean
-}
 
 type ViewMode = 'list' | 'create' | 'edit' | 'detail'
 
-const STATUS_COLORS: Record<
-  string,
-  { bg: string; text: string; darkBg: string; darkText: string }
-> = {
-  active: {
-    bg: 'bg-green-100',
-    text: 'text-green-700',
-    darkBg: 'bg-green-900/30',
-    darkText: 'text-green-400',
-  },
-  deprecated: {
-    bg: 'bg-yellow-100',
-    text: 'text-yellow-700',
-    darkBg: 'bg-yellow-900/30',
-    darkText: 'text-yellow-400',
-  },
-  evaluating: {
-    bg: 'bg-blue-100',
-    text: 'text-blue-700',
-    darkBg: 'bg-blue-900/30',
-    darkText: 'text-blue-400',
-  },
-  inactive: {
-    bg: 'bg-gray-100',
-    text: 'text-gray-700',
-    darkBg: 'bg-gray-700',
-    darkText: 'text-gray-400',
-  },
-}
-
-export function ThirdPartyServiceManagement({
-  isDarkMode,
-}: ThirdPartyServiceManagementProps) {
+export function ThirdPartyServiceManagement() {
   const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
@@ -166,9 +132,7 @@ export function ThirdPartyServiceManagement({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
+        <div className={'text-sm text-secondary'}>
           Loading third-party services...
         </div>
       </div>
@@ -178,11 +142,7 @@ export function ThirdPartyServiceManagement({
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -201,7 +161,6 @@ export function ThirdPartyServiceManagement({
         service={selectedService}
         onSave={handleSave}
         onCancel={handleCancel}
-        isDarkMode={isDarkMode}
         isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
       />
@@ -217,7 +176,6 @@ export function ThirdPartyServiceManagement({
           setViewMode('edit')
         }}
         onBack={handleCancel}
-        isDarkMode={isDarkMode}
       />
     )
   }
@@ -231,9 +189,7 @@ export function ThirdPartyServiceManagement({
       render: (svc) => (
         <div className="flex items-center gap-3">
           <div
-            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
-              isDarkMode ? 'bg-purple-900/30' : 'bg-purple-50'
-            }`}
+            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${'bg-purple-50 dark:bg-purple-900/30'}`}
           >
             {svc.icon ? (
               <EntityIcon
@@ -242,18 +198,14 @@ export function ThirdPartyServiceManagement({
               />
             ) : (
               <Cloud
-                className={`h-4 w-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
+                className={'h-4 w-4 text-purple-600 dark:text-purple-400'}
               />
             )}
           </div>
           <div>
-            <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-              {svc.name}
-            </div>
+            <div className={'text-primary'}>{svc.name}</div>
             {svc.description && (
-              <div
-                className={`max-w-xs truncate text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-              >
+              <div className={'max-w-xs truncate text-sm text-tertiary'}>
                 {svc.description}
               </div>
             )}
@@ -283,20 +235,9 @@ export function ThirdPartyServiceManagement({
       header: 'Status',
       headerAlign: 'center',
       cellAlign: 'center',
-      render: (svc) => {
-        const statusColor = STATUS_COLORS[svc.status] || STATUS_COLORS.inactive
-        return (
-          <span
-            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-              isDarkMode
-                ? `${statusColor.darkBg} ${statusColor.darkText}`
-                : `${statusColor.bg} ${statusColor.text}`
-            }`}
-          >
-            {svc.status}
-          </span>
-        )
-      },
+      render: (svc) => (
+        <Badge variant={statusBadgeVariant(svc.status)}>{svc.status}</Badge>
+      ),
     },
     {
       key: 'team',
@@ -315,15 +256,13 @@ export function ThirdPartyServiceManagement({
         <div className="flex-1">
           <div className="relative max-w-md">
             <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
             />
             <Input
               placeholder="Search services..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+              className={'pl-10'}
             />
           </div>
         </div>
@@ -332,7 +271,7 @@ export function ThirdPartyServiceManagement({
             setSelectedSlug(null)
             setViewMode('create')
           }}
-          className="bg-amber-border text-white hover:bg-amber-border-strong"
+          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Service
@@ -341,58 +280,42 @@ export function ThirdPartyServiceManagement({
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="p-4">
-            <CardDescription
-              className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}
-            >
+            <CardDescription className={'text-secondary'}>
               Total Services
             </CardDescription>
-            <div
-              className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
+            <div className={'mt-1 text-2xl text-primary'}>
               {filteredServices.length}
             </div>
           </CardContent>
         </Card>
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="p-4">
-            <CardDescription
-              className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}
-            >
+            <CardDescription className={'text-secondary'}>
               Active
             </CardDescription>
-            <div
-              className={`mt-1 text-2xl ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}
-            >
+            <div className={'mt-1 text-2xl text-success'}>
               {statusCounts.active}
             </div>
           </CardContent>
         </Card>
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="p-4">
-            <CardDescription
-              className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}
-            >
+            <CardDescription className={'text-secondary'}>
               Evaluating
             </CardDescription>
-            <div
-              className={`mt-1 text-2xl ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
-            >
+            <div className={'mt-1 text-2xl text-info'}>
               {statusCounts.evaluating}
             </div>
           </CardContent>
         </Card>
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="p-4">
-            <CardDescription
-              className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}
-            >
+            <CardDescription className={'text-secondary'}>
               Deprecated
             </CardDescription>
-            <div
-              className={`mt-1 text-2xl ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}
-            >
+            <div className={'mt-1 text-2xl text-warning'}>
               {statusCounts.deprecated}
             </div>
           </CardContent>

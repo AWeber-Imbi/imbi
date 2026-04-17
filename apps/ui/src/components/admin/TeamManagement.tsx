@@ -16,11 +16,7 @@ import { useAdminNav } from '@/hooks/useAdminNav'
 import { listTeams, deleteTeam, createTeam, updateTeam } from '@/api/endpoints'
 import type { Team, TeamCreate } from '@/types'
 
-interface TeamManagementProps {
-  isDarkMode: boolean
-}
-
-export function TeamManagement({ isDarkMode }: TeamManagementProps) {
+export function TeamManagement() {
   const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
   const {
@@ -135,11 +131,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          Loading teams...
-        </div>
+        <div className={'text-sm text-secondary'}>Loading teams...</div>
       </div>
     )
   }
@@ -147,11 +139,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -166,9 +154,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
 
   if (!orgSlug) {
     return (
-      <div
-        className={`py-12 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-      >
+      <div className={'py-12 text-center text-tertiary'}>
         Select an organization to manage teams.
       </div>
     )
@@ -180,7 +166,6 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
         team={selectedTeam}
         onSave={handleSave}
         onCancel={handleCancel}
-        isDarkMode={isDarkMode}
         isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
       />
@@ -193,7 +178,6 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
         team={selectedTeam}
         onEdit={() => goToEdit(selectedTeam.slug)}
         onBack={handleCancel}
-        isDarkMode={isDarkMode}
       />
     )
   }
@@ -205,21 +189,19 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
         <div className="flex-1">
           <div className="relative max-w-md">
             <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
             />
             <Input
               placeholder="Search teams..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+              className={'pl-10'}
             />
           </div>
         </div>
         <Button
           onClick={goToCreate}
-          className="bg-amber-border text-white hover:bg-amber-border-strong"
+          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Team
@@ -228,30 +210,22 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
 
       {/* Stats */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="p-4">
-            <CardDescription
-              className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}
-            >
+            <CardDescription className={'text-secondary'}>
               Total Teams
             </CardDescription>
-            <div
-              className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
+            <div className={'mt-1 text-2xl text-primary'}>
               {filteredTeams.length}
             </div>
           </CardContent>
         </Card>
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="p-4">
-            <CardDescription
-              className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}
-            >
+            <CardDescription className={'text-secondary'}>
               Total Projects
             </CardDescription>
-            <div
-              className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
+            <div className={'mt-1 text-2xl text-primary'}>
               {filteredTeams.reduce(
                 (sum, t) => sum + (t.relationships?.projects?.count ?? 0),
                 0,
@@ -259,16 +233,12 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             </div>
           </CardContent>
         </Card>
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="p-4">
-            <CardDescription
-              className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}
-            >
+            <CardDescription className={'text-secondary'}>
               Total Members
             </CardDescription>
-            <div
-              className={`mt-1 text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
+            <div className={'mt-1 text-2xl text-primary'}>
               {filteredTeams.reduce(
                 (sum, t) => sum + (t.relationships?.members?.count ?? 0),
                 0,
@@ -288,9 +258,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             render: (team) => (
               <div className="flex items-center gap-3">
                 <div
-                  className={`flex size-8 flex-shrink-0 items-center justify-center rounded-lg ${
-                    isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'
-                  }`}
+                  className={`flex size-8 flex-shrink-0 items-center justify-center rounded-lg ${'bg-info'}`}
                 >
                   {team.icon ? (
                     <EntityIcon
@@ -298,19 +266,13 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
                       className="size-5 rounded object-cover"
                     />
                   ) : (
-                    <Users
-                      className={`h-4 w-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
-                    />
+                    <Users className={'h-4 w-4 text-info'} />
                   )}
                 </div>
                 <div>
-                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                    {team.name}
-                  </div>
+                  <div className={'text-primary'}>{team.name}</div>
                   {team.description && (
-                    <div
-                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                    >
+                    <div className={'text-sm text-tertiary'}>
                       {team.description}
                     </div>
                   )}
@@ -325,11 +287,7 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
             cellAlign: 'center',
             render: (team) => (
               <code
-                className={`rounded px-2 py-1 ${
-                  isDarkMode
-                    ? 'bg-gray-700 text-gray-300'
-                    : 'bg-gray-100 text-gray-700'
-                }`}
+                className={`rounded px-2 py-1 ${'bg-secondary text-primary'}`}
               >
                 {team.slug}
               </code>
@@ -344,12 +302,8 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
               <span
                 className={
                   (team.relationships?.projects?.count ?? 0) === 0
-                    ? isDarkMode
-                      ? 'text-gray-600'
-                      : 'text-gray-400'
-                    : isDarkMode
-                      ? 'text-gray-300'
-                      : 'text-gray-600'
+                    ? 'text-tertiary'
+                    : 'text-secondary'
                 }
               >
                 {team.relationships?.projects?.count ?? 0}
@@ -365,12 +319,8 @@ export function TeamManagement({ isDarkMode }: TeamManagementProps) {
               <span
                 className={
                   (team.relationships?.members?.count ?? 0) === 0
-                    ? isDarkMode
-                      ? 'text-gray-600'
-                      : 'text-gray-400'
-                    : isDarkMode
-                      ? 'text-gray-300'
-                      : 'text-gray-600'
+                    ? 'text-tertiary'
+                    : 'text-secondary'
                 }
               >
                 {team.relationships?.members?.count ?? 0}

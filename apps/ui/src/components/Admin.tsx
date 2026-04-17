@@ -31,10 +31,6 @@ import { WebhookManagement } from './admin/WebhookManagement'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useNavigate, useParams } from 'react-router-dom'
 
-interface AdminProps {
-  isDarkMode: boolean
-}
-
 type AdminSection =
   | 'teams'
   | 'environments'
@@ -76,7 +72,7 @@ interface SectionDef {
   scope: 'org' | 'system'
 }
 
-export function Admin({ isDarkMode }: AdminProps) {
+export function Admin() {
   const navigate = useNavigate()
   const { section } = useParams<{ section?: string }>()
   const currentSection: AdminSection = isValidSection(section)
@@ -288,42 +284,24 @@ export function Admin({ isDarkMode }: AdminProps) {
 
           {/* Section Content */}
           <div className="p-8">
-            {currentSection === 'teams' && (
-              <TeamManagement isDarkMode={isDarkMode} />
-            )}
-            {currentSection === 'environments' && (
-              <EnvironmentManagement isDarkMode={isDarkMode} />
-            )}
-            {currentSection === 'project-types' && (
-              <ProjectTypeManagement isDarkMode={isDarkMode} />
-            )}
+            {currentSection === 'teams' && <TeamManagement />}
+            {currentSection === 'environments' && <EnvironmentManagement />}
+            {currentSection === 'project-types' && <ProjectTypeManagement />}
             {currentSection === 'third-party-services' && (
-              <ThirdPartyServiceManagement isDarkMode={isDarkMode} />
+              <ThirdPartyServiceManagement />
             )}
-            {currentSection === 'webhooks' && (
-              <WebhookManagement isDarkMode={isDarkMode} />
-            )}
+            {currentSection === 'webhooks' && <WebhookManagement />}
             {currentSection === 'link-definitions' && (
-              <LinkDefinitionManagement isDarkMode={isDarkMode} />
+              <LinkDefinitionManagement />
             )}
-            {currentSection === 'blueprints' && (
-              <BlueprintManagement isDarkMode={isDarkMode} />
-            )}
-            {currentSection === 'organizations' && (
-              <OrganizationManagement isDarkMode={isDarkMode} />
-            )}
-            {currentSection === 'users' && (
-              <UserManagement isDarkMode={isDarkMode} />
-            )}
+            {currentSection === 'blueprints' && <BlueprintManagement />}
+            {currentSection === 'organizations' && <OrganizationManagement />}
+            {currentSection === 'users' && <UserManagement />}
             {currentSection === 'service-accounts' && (
-              <ServiceAccountManagement isDarkMode={isDarkMode} />
+              <ServiceAccountManagement />
             )}
-            {currentSection === 'roles' && (
-              <RoleManagement isDarkMode={isDarkMode} />
-            )}
-            {currentSection === 'oauth' && (
-              <OAuthManagement isDarkMode={isDarkMode} />
-            )}
+            {currentSection === 'roles' && <RoleManagement />}
+            {currentSection === 'oauth' && <OAuthManagement />}
           </div>
         </main>
       </div>

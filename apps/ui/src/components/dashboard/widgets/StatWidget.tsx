@@ -2,35 +2,15 @@ interface StatWidgetProps {
   title: string
   value: string
   icon: string
-  isDarkMode: boolean
 }
 
-export function StatWidget({
-  title,
-  value,
-  icon,
-  isDarkMode,
-}: StatWidgetProps) {
+export function StatWidget({ title, value, icon }: StatWidgetProps) {
   return (
-    <div
-      className={`rounded-lg p-6 ${
-        isDarkMode
-          ? 'border border-gray-700 bg-gray-800'
-          : 'border border-gray-200 bg-white'
-      }`}
-    >
+    <div className={`rounded-lg p-6 ${'border border-border bg-card'}`}>
       <div className="flex items-center justify-between">
         <div>
-          <p
-            className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
-            {title}
-          </p>
-          <p
-            className={`mt-2 text-3xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            {value}
-          </p>
+          <p className={'text-sm text-secondary'}>{title}</p>
+          <p className={'mt-2 text-3xl text-primary'}>{value}</p>
         </div>
         <div className="text-4xl">{icon}</div>
       </div>

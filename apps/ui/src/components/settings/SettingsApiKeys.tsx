@@ -16,11 +16,7 @@ import { listApiKeys, createApiKey, deleteApiKey } from '@/api/endpoints'
 import type { ApiKey, ApiKeyCreated } from '@/types'
 import { formatDate } from '@/lib/formatDate'
 
-interface SettingsApiKeysProps {
-  isDarkMode: boolean
-}
-
-export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
+export function SettingsApiKeys() {
   const queryClient = useQueryClient()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
@@ -65,20 +61,11 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
 
   return (
     <div className="space-y-6">
-      <Card
-        className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-        style={{ borderWidth: '0.5px' }}
-      >
+      <Card className={'p-6'} style={{ borderWidth: '0.5px' }}>
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h2
-              className={`text-[18px] font-medium ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}
-            >
-              API keys
-            </h2>
-            <p
-              className={`mt-1 text-[12px] ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
+            <h2 className={'text-[18px] font-medium text-primary'}>API keys</h2>
+            <p className={'mt-1 text-[12px] text-tertiary'}>
               Manage API keys for programmatic access
             </p>
           </div>
@@ -88,18 +75,10 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
         </div>
 
         {isLoading ? (
-          <p
-            className={`text-[13.5px] ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          >
-            Loading...
-          </p>
+          <p className={'text-[13.5px] text-tertiary'}>Loading...</p>
         ) : activeKeys.length === 0 ? (
-          <div
-            className={`rounded-lg p-8 text-center ${isDarkMode ? 'bg-gray-700/50' : 'bg-gray-50'}`}
-          >
-            <p
-              className={`text-[13.5px] ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
+          <div className={'bg-secondary/50 rounded-lg p-8 text-center'}>
+            <p className={'text-[13.5px] text-tertiary'}>
               No API keys yet. Create one to get started.
             </p>
           </div>
@@ -108,19 +87,15 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
             {activeKeys.map((apiKey: ApiKey) => (
               <div
                 key={apiKey.key_id}
-                className={`rounded-lg p-4 ${isDarkMode ? 'border-gray-600 bg-gray-700/50' : 'border-gray-200 bg-gray-50'}`}
+                className={'bg-secondary/50 rounded-lg border-input p-4'}
                 style={{ borderWidth: '0.5px', borderStyle: 'solid' }}
               >
                 <div className="mb-3 flex items-start justify-between">
                   <div>
-                    <h3
-                      className={`text-[14px] font-medium ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}
-                    >
+                    <h3 className={'text-[14px] font-medium text-primary'}>
                       {apiKey.name}
                     </h3>
-                    <p
-                      className={`mt-1 text-[12px] ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                    >
+                    <p className={'mt-1 text-[12px] text-tertiary'}>
                       Created {formatDate(apiKey.created_at)}
                       {apiKey.last_used &&
                         ` · Last used ${formatDate(apiKey.last_used)}`}
@@ -140,7 +115,9 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
                   <Input
                     value={`ik_${apiKey.key_id}_••••••••••••`}
                     readOnly
-                    className={`font-mono text-[12px] ${isDarkMode ? 'border-gray-600 bg-gray-800 text-gray-300' : 'bg-white'}`}
+                    className={
+                      'border-input bg-card font-mono text-[12px] text-secondary'
+                    }
                     style={{ borderWidth: '0.5px' }}
                   />
                   <Button
@@ -149,11 +126,7 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
                     onClick={() =>
                       handleCopyKey(`ik_${apiKey.key_id}`, apiKey.key_id)
                     }
-                    className={
-                      isDarkMode
-                        ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                        : ''
-                    }
+                    className={''}
                     style={{ borderWidth: '0.5px' }}
                   >
                     {copiedKeyId === apiKey.key_id ? '✓' : '⎘'}
@@ -166,7 +139,7 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
                       <Badge
                         key={scope}
                         variant="outline"
-                        className={`text-[11px] ${isDarkMode ? 'border-gray-500 text-gray-300' : ''}`}
+                        className={'text-[11px]'}
                         style={{ borderWidth: '0.5px' }}
                       >
                         {scope}
@@ -182,20 +155,16 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
 
       {/* Security info banner */}
       <Card
-        className={`p-6 ${isDarkMode ? 'border-blue-800 bg-blue-900/20' : 'border-blue-200 bg-blue-50'}`}
+        className={'border-info bg-info p-6'}
         style={{ borderWidth: '0.5px' }}
       >
         <div className="flex gap-3">
           <span className="mt-0.5 flex-shrink-0 text-blue-600">ⓘ</span>
           <div>
-            <h3
-              className={`mb-1 text-[14px] font-medium ${isDarkMode ? 'text-blue-300' : 'text-blue-900'}`}
-            >
+            <h3 className={'mb-1 text-[14px] font-medium text-info'}>
               Keep your API keys secure
             </h3>
-            <p
-              className={`text-[12px] ${isDarkMode ? 'text-blue-400' : 'text-blue-700'}`}
-            >
+            <p className={'text-[12px] text-info'}>
               API keys grant access to your Imbi resources. Never share them or
               commit them to version control. Rotate keys regularly and revoke
               any that may have been compromised.
@@ -216,27 +185,25 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
         }}
       >
         <DialogContent
-          className={isDarkMode ? 'border-gray-700 bg-gray-800' : 'bg-white'}
+          className={'border-border bg-card'}
           style={{ borderWidth: '0.5px' }}
         >
           <DialogHeader>
-            <DialogTitle className={isDarkMode ? 'text-gray-100' : ''}>
+            <DialogTitle>
               {createdKey ? 'API key created' : 'Create new API key'}
             </DialogTitle>
           </DialogHeader>
 
           {createdKey ? (
             <div className="space-y-4">
-              <p
-                className={`text-[13.5px] ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-              >
+              <p className={'text-[13.5px] text-secondary'}>
                 Copy your API key now. You won't be able to see it again.
               </p>
               <div className="flex items-center gap-2">
                 <Input
                   value={createdKey.key_secret}
                   readOnly
-                  className={`font-mono text-[12px] ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-100' : ''}`}
+                  className={'font-mono text-[12px]'}
                   style={{ borderWidth: '0.5px' }}
                 />
                 <Button
@@ -245,11 +212,7 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
                   onClick={() =>
                     handleCopyKey(createdKey.key_secret, 'created')
                   }
-                  className={
-                    isDarkMode
-                      ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                      : ''
-                  }
+                  className={''}
                   style={{ borderWidth: '0.5px' }}
                 >
                   {copiedKeyId === 'created' ? '✓' : '⎘'}
@@ -269,14 +232,12 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
           ) : (
             <div className="space-y-4">
               <div>
-                <Label className={isDarkMode ? 'text-gray-300' : ''}>
-                  Key name
-                </Label>
+                <Label>Key name</Label>
                 <Input
                   value={newKeyName}
                   onChange={(e) => setNewKeyName(e.target.value)}
                   placeholder="e.g. Production API Key"
-                  className={`mt-2 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-gray-100' : ''}`}
+                  className={'mt-2'}
                   style={{ borderWidth: '0.5px' }}
                 />
               </div>
@@ -290,11 +251,7 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
                     setShowCreateDialog(false)
                     setCreateError(null)
                   }}
-                  className={
-                    isDarkMode
-                      ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                      : ''
-                  }
+                  className={''}
                   style={{ borderWidth: '0.5px' }}
                 >
                   Cancel
@@ -318,18 +275,11 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
           if (!open) setRevokingKeyId(null)
         }}
       >
-        <DialogContent
-          className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}
-          style={{ borderWidth: '0.5px' }}
-        >
+        <DialogContent style={{ borderWidth: '0.5px' }}>
           <DialogHeader>
-            <DialogTitle className={isDarkMode ? 'text-gray-100' : ''}>
-              Revoke API key
-            </DialogTitle>
+            <DialogTitle>Revoke API key</DialogTitle>
           </DialogHeader>
-          <p
-            className={`text-[13.5px] ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-          >
+          <p className={'text-[13.5px] text-secondary'}>
             Are you sure you want to revoke this API key? Any applications using
             this key will lose access immediately. This action cannot be undone.
           </p>
@@ -337,11 +287,7 @@ export function SettingsApiKeys({ isDarkMode }: SettingsApiKeysProps) {
             <Button
               variant="outline"
               onClick={() => setRevokingKeyId(null)}
-              className={
-                isDarkMode
-                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                  : ''
-              }
+              className={''}
               style={{ borderWidth: '0.5px' }}
             >
               Cancel

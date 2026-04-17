@@ -61,7 +61,14 @@ describe('authStore', () => {
 
     it('should return false if token is valid and not expiring soon', () => {
       const futureTimestamp = Math.floor(Date.now() / 1000) + 3600
-      const futureToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QGV4YW1wbGUuY29tIiwiZXhwIjoke2Z1dHVyZVRpbWVzdGFtcH0sImlhdCI6MTYwMDAwMDAwMH0.test`
+      const payload = btoa(
+        JSON.stringify({
+          sub: 'test@example.com',
+          exp: futureTimestamp,
+          iat: 1600000000,
+        }),
+      )
+      const futureToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${payload}.test`
 
       useAuthStore.setState({
         accessToken: futureToken,

@@ -15,6 +15,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AdminTable } from '@/components/ui/admin-table'
+import { LabelChip } from '@/components/ui/label-chip'
+import { LABEL_SWATCHES, swatchForType } from '@/lib/chip-colors'
 import {
   Tooltip,
   TooltipContent,
@@ -34,65 +36,9 @@ import {
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { Blueprint, BlueprintCreate } from '@/types'
 
-interface BlueprintManagementProps {
-  isDarkMode: boolean
-}
-
 interface BlueprintKey {
   type: string
   slug: string
-}
-
-const TYPE_COLORS = [
-  'purple',
-  'blue',
-  'green',
-  'orange',
-  'pink',
-  'cyan',
-  'amber',
-  'rose',
-]
-
-const TYPE_COLOR_CLASSES: Record<string, { light: string; dark: string }> = {
-  purple: {
-    light: 'bg-purple-100 text-purple-700',
-    dark: 'bg-purple-900/30 text-purple-400',
-  },
-  blue: {
-    light: 'bg-blue-100 text-blue-700',
-    dark: 'bg-blue-900/30 text-blue-400',
-  },
-  green: {
-    light: 'bg-green-100 text-green-700',
-    dark: 'bg-green-900/30 text-green-400',
-  },
-  orange: {
-    light: 'bg-orange-100 text-orange-700',
-    dark: 'bg-orange-900/30 text-orange-400',
-  },
-  pink: {
-    light: 'bg-pink-100 text-pink-700',
-    dark: 'bg-pink-900/30 text-pink-400',
-  },
-  cyan: {
-    light: 'bg-cyan-100 text-cyan-700',
-    dark: 'bg-cyan-900/30 text-cyan-400',
-  },
-  amber: {
-    light: 'bg-amber-100 text-amber-700',
-    dark: 'bg-amber-900/30 text-amber-400',
-  },
-  rose: {
-    light: 'bg-rose-100 text-rose-700',
-    dark: 'bg-rose-900/30 text-rose-400',
-  },
-}
-
-export function getTypeColor(type: string, allTypes: string[]): string {
-  if (type === 'relationship') return 'amber'
-  const idx = allTypes.indexOf(type)
-  return TYPE_COLORS[(idx >= 0 ? idx : 0) % TYPE_COLORS.length]
 }
 
 /** Return the path type used in API URLs and compound keys. */
@@ -108,20 +54,18 @@ export function blueprintTypeLabel(bp: Blueprint): string {
   return bp.type || 'unknown'
 }
 
-export function getTypeBadgeClasses(
-  type: string,
-  allTypes: string[],
-  isDarkMode: boolean,
-): string {
-  const color = getTypeColor(type, allTypes)
-  const classes = TYPE_COLOR_CLASSES[color] || TYPE_COLOR_CLASSES.blue
-  return isDarkMode ? classes.dark : classes.light
+/** Pick a label palette hex for a blueprint type. Relationship is pinned to Honey. */
+export function getTypeSwatch(type: string, allTypes: string[]): string {
+  if (type === 'relationship') {
+    return (
+      LABEL_SWATCHES.find((s) => s.name === 'Honey')?.hex ??
+      LABEL_SWATCHES[2].hex
+    )
+  }
+  return swatchForType(type, allTypes)
 }
 
-function renderFilterCell(
-  filter: string | null | undefined,
-  isDarkMode: boolean,
-): React.ReactNode {
+function renderFilterCell(filter: string | null | undefined): React.ReactNode {
   const f = parseFilterFromBlueprint(filter)
   if (!f) return null
   const tooltipLines = [
@@ -133,9 +77,7 @@ function renderFilterCell(
       <Tooltip>
         <TooltipTrigger asChild>
           <span>
-            <Filter
-              className={`mx-auto h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
-            />
+            <Filter className={'mx-auto h-4 w-4 text-warning'} />
           </span>
         </TooltipTrigger>
         <TooltipContent>
@@ -148,7 +90,7 @@ function renderFilterCell(
   )
 }
 
-export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
+export function BlueprintManagement() {
   const queryClient = useQueryClient()
   const {
     viewMode,
@@ -349,7 +291,6 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
         blueprintTypes={blueprintTypes}
         onSave={handleSave}
         onCancel={handleCancel}
-        isDarkMode={isDarkMode}
         isLoading={
           isCreate ? createMutation.isPending : updateMutation.isPending
         }
@@ -367,7 +308,6 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
         blueprintTypes={blueprintTypes}
         onEdit={() => handleEditClick(selectedKey)}
         onBack={handleCancel}
-        isDarkMode={isDarkMode}
       />
     )
   }
@@ -421,7 +361,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
           </Button>
           <Button
             onClick={handleCreateClick}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Plus className="mr-2 h-4 w-4" />
             New Blueprint
@@ -469,11 +409,11 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
             headerAlign: 'left',
             cellAlign: 'left',
             render: (bp) => (
-              <span
-                className={`inline-flex items-center whitespace-nowrap rounded-sm px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprintPathType(bp), blueprintTypes, isDarkMode)}`}
+              <LabelChip
+                hex={getTypeSwatch(blueprintPathType(bp), blueprintTypes)}
               >
                 {blueprintTypeLabel(bp)}
-              </span>
+              </LabelChip>
             ),
           },
           {
@@ -494,7 +434,7 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
             headerAlign: 'center',
             cellAlign: 'center',
             render: (bp) =>
-              renderFilterCell(bp.filter, isDarkMode) || (
+              renderFilterCell(bp.filter) || (
                 <span className="text-xs text-tertiary">&mdash;</span>
               ),
           },
@@ -547,7 +487,6 @@ export function BlueprintManagement({ isDarkMode }: BlueprintManagementProps) {
         }}
         onImport={handleImport}
         blueprintTypes={blueprintTypes}
-        isDarkMode={isDarkMode}
         isLoading={createMutation.isPending}
         apiError={importDialogOpen ? createMutation.error : null}
       />

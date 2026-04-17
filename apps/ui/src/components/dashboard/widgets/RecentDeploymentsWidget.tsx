@@ -1,13 +1,12 @@
 import { Rocket, CheckCircle, XCircle, Clock, ChevronRight } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 
 interface RecentDeploymentsWidgetProps {
-  isDarkMode: boolean
   onProjectSelect?: (projectId: string) => void
 }
 
 export function RecentDeploymentsWidget({
-  isDarkMode,
   onProjectSelect,
 }: RecentDeploymentsWidgetProps) {
   const deployments = [
@@ -63,50 +62,28 @@ export function RecentDeploymentsWidget({
     },
   ]
 
-  const statusConfig = {
-    success: {
-      label: 'Success',
-      icon: CheckCircle,
-      color: isDarkMode ? 'text-green-400' : 'text-green-600',
-      bgColor: isDarkMode ? 'bg-green-900/30' : 'bg-green-100',
-    },
-    failed: {
-      label: 'Failed',
-      icon: XCircle,
-      color: isDarkMode ? 'text-red-400' : 'text-red-600',
-      bgColor: isDarkMode ? 'bg-red-900/30' : 'bg-red-100',
-    },
-    'in-progress': {
-      label: 'In Progress',
-      icon: Clock,
-      color: isDarkMode ? 'text-blue-400' : 'text-blue-600',
-      bgColor: isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100',
-    },
+  const statusConfig: Record<
+    'success' | 'failed' | 'in-progress',
+    { label: string; icon: typeof CheckCircle; variant: BadgeProps['variant'] }
+  > = {
+    success: { label: 'Success', icon: CheckCircle, variant: 'success' },
+    failed: { label: 'Failed', icon: XCircle, variant: 'danger' },
+    'in-progress': { label: 'In Progress', icon: Clock, variant: 'info' },
   }
 
-  const envConfig = {
-    Production: {
-      color: isDarkMode ? 'text-purple-400' : 'text-purple-600',
-      bgColor: isDarkMode ? 'bg-purple-900/30' : 'bg-purple-100',
-    },
-    Staging: {
-      color: isDarkMode ? 'text-yellow-400' : 'text-yellow-600',
-      bgColor: isDarkMode ? 'bg-yellow-900/30' : 'bg-yellow-100',
-    },
-    Testing: {
-      color: isDarkMode ? 'text-blue-400' : 'text-blue-600',
-      bgColor: isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100',
-    },
+  const envConfig: Record<
+    'Production' | 'Staging' | 'Testing',
+    { variant: BadgeProps['variant'] }
+  > = {
+    Production: { variant: 'accent' },
+    Staging: { variant: 'warning' },
+    Testing: { variant: 'info' },
   }
 
   return (
-    <Card className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
+    <Card className={'p-6'}>
       <div className="mb-4 flex items-center justify-between">
-        <h3
-          className={`text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Recent Deployments
-        </h3>
+        <h3 className={'text-lg text-primary'}>Recent Deployments</h3>
       </div>
 
       <div className="space-y-2">
@@ -120,50 +97,33 @@ export function RecentDeploymentsWidget({
               type="button"
               key={deployment.id}
               onClick={() => onProjectSelect?.(deployment.projectId)}
-              className={`w-full rounded-lg border p-3 text-left transition-colors ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700 hover:border-gray-500'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
-              }`}
+              className={`w-full rounded-lg border p-3 text-left transition-colors ${'border-input bg-background hover:border-secondary'}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <Rocket
-                    className={`mt-0.5 h-5 w-5 flex-shrink-0 ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
+                    className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-tertiary'}`}
                   />
                   <div className="min-w-0 flex-1">
-                    <div
-                      className={`mb-1 truncate font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                    >
+                    <div className={'mb-1 truncate font-medium text-primary'}>
                       {deployment.project}
                     </div>
                     <div className="mb-1 flex flex-wrap items-center gap-2">
                       <code
-                        className={`rounded px-2 py-0.5 text-xs ${
-                          isDarkMode
-                            ? 'bg-gray-700 text-gray-300'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
+                        className={`rounded px-2 py-0.5 text-xs ${'bg-secondary text-primary'}`}
                       >
                         {deployment.version}
                       </code>
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-                          env.bgColor
-                        } ${env.color}`}
-                      >
+                      <Badge variant={env.variant} className="rounded-full">
                         {deployment.environment}
-                      </span>
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-                          status.bgColor
-                        } ${status.color}`}
+                      </Badge>
+                      <Badge
+                        variant={status.variant}
+                        className="gap-1 rounded-full"
                       >
                         <StatusIcon className="h-3 w-3" />
                         {status.label}
-                      </span>
+                      </Badge>
                     </div>
                     <div className="text-xs text-gray-500">
                       {deployment.deployedBy} • {deployment.deployedAt}
@@ -171,9 +131,7 @@ export function RecentDeploymentsWidget({
                   </div>
                 </div>
                 <ChevronRight
-                  className={`h-4 w-4 flex-shrink-0 ${
-                    isDarkMode ? 'text-gray-600' : 'text-gray-400'
-                  }`}
+                  className={`h-4 w-4 flex-shrink-0 ${'text-tertiary'}`}
                 />
               </div>
             </button>

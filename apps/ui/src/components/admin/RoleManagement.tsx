@@ -1,16 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiError } from '@/api/client'
-import { Plus, Search, Edit2, Shield, AlertCircle, Lock } from 'lucide-react'
+import { Plus, Search, Shield, AlertCircle, Lock } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { AdminTable } from '@/components/ui/admin-table'
 import type { CanDeleteResult } from '@/components/ui/admin-table'
 import { RoleForm } from './roles/RoleForm'
@@ -29,11 +24,7 @@ import type { RoleDetail as RoleDetailType, RoleCreate } from '@/types'
 
 type Role = Awaited<ReturnType<typeof getRoles>>[number]
 
-interface RoleManagementProps {
-  isDarkMode: boolean
-}
-
-export function RoleManagement({ isDarkMode }: RoleManagementProps) {
+export function RoleManagement() {
   const queryClient = useQueryClient()
   const {
     viewMode,
@@ -153,45 +144,6 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
     return { allowed: true }
   }
 
-  const roleActions = (role: Role) => {
-    const isSystem = 'is_system' in role && (role as RoleDetailType).is_system
-    return (
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <button
-                type="button"
-                aria-label={
-                  isSystem
-                    ? `System role ${role.name} cannot be edited`
-                    : `Edit role ${role.name}`
-                }
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleEditClick(role.slug)
-                }}
-                disabled={isSystem}
-                className={`rounded p-1.5 ${
-                  isSystem
-                    ? 'cursor-not-allowed opacity-40'
-                    : isDarkMode
-                      ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                }`}
-              >
-                <Edit2 className="h-4 w-4" />
-              </button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{isSystem ? 'System roles cannot be edited' : 'Edit'}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
-  }
-
   const handleCreateClick = () => {
     goToCreate()
   }
@@ -224,11 +176,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          Loading roles...
-        </div>
+        <div className={'text-sm text-secondary'}>Loading roles...</div>
       </div>
     )
   }
@@ -237,11 +185,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -262,7 +206,6 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
         roleSlug={selectedRoleSlug}
         onSave={handleSave}
         onCancel={handleCancel}
-        isDarkMode={isDarkMode}
         isLoading={
           isCreate ? createMutation.isPending : updateMutation.isPending
         }
@@ -278,7 +221,6 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
         slug={selectedRoleSlug}
         onEdit={() => handleEditClick(selectedRoleSlug)}
         onBack={handleCancel}
-        isDarkMode={isDarkMode}
       />
     )
   }
@@ -291,21 +233,19 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
         <div className="flex-1">
           <div className="relative max-w-md">
             <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
             />
             <Input
               placeholder="Search roles..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+              className={'pl-10'}
             />
           </div>
         </div>
         <Button
           onClick={handleCreateClick}
-          className="bg-amber-border text-white hover:bg-amber-border-strong"
+          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Role
@@ -321,12 +261,8 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
             cellAlign: 'left',
             render: (role) => (
               <div className="flex items-center gap-2">
-                <Shield
-                  className={`h-4 w-4 flex-shrink-0 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
-                />
-                <span
-                  className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
+                <Shield className={'h-4 w-4 flex-shrink-0 text-info'} />
+                <span className={'text-sm font-medium text-primary'}>
                   {role.name}
                 </span>
               </div>
@@ -338,9 +274,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
             headerAlign: 'center',
             cellAlign: 'center',
             render: (role) => (
-              <span
-                className={`font-mono text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
+              <span className={'font-mono text-sm text-secondary'}>
                 {role.slug}
               </span>
             ),
@@ -351,9 +285,7 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
             headerAlign: 'left',
             cellAlign: 'left',
             render: (role) => (
-              <span
-                className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <span className={'text-sm text-secondary'}>
                 {role.description || '-'}
               </span>
             ),
@@ -367,18 +299,12 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
               const isSystem =
                 'is_system' in role && (role as RoleDetailType).is_system
               return isSystem ? (
-                <span
-                  className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium ${isDarkMode ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-100 text-amber-700'}`}
-                >
+                <Badge variant="warning" className="gap-1">
                   <Lock className="h-3 w-3" />
                   System
-                </span>
+                </Badge>
               ) : (
-                <span
-                  className={`rounded px-2 py-1 text-xs font-medium ${isDarkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700'}`}
-                >
-                  Custom
-                </span>
+                <Badge variant="info">Custom</Badge>
               )
             },
           },
@@ -400,7 +326,6 @@ export function RoleManagement({ isDarkMode }: RoleManagementProps) {
         onDelete={handleDelete}
         canDelete={canDeleteRole}
         isDeleting={deleteMutation.isPending}
-        actions={roleActions}
         emptyMessage={
           searchQuery ? 'No roles match your search' : 'No roles created yet'
         }

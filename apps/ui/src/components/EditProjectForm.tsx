@@ -16,10 +16,9 @@ import { PROJECT_BASE_FIELDS_SET } from '@/lib/constants'
 
 interface EditProjectFormProps {
   project: Project
-  isDarkMode: boolean
 }
 
-export function EditProjectForm({ project, isDarkMode }: EditProjectFormProps) {
+export function EditProjectForm({ project }: EditProjectFormProps) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
   const queryClient = useQueryClient()
@@ -126,34 +125,22 @@ export function EditProjectForm({ project, isDarkMode }: EditProjectFormProps) {
     })
   }
 
-  const inputClass = isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-  const labelClass = `mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`
+  const inputClass = ''
+  const labelClass = 'mb-1.5 block text-sm text-secondary'
 
   if (isLoading) {
     return (
-      <Card
-        className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-      >
-        <h3 className={`mb-4 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-          Project Details
-        </h3>
-        <p
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
-        >
-          Loading...
-        </p>
+      <Card className={'p-6'}>
+        <h3 className={'mb-4 text-primary'}>Project Details</h3>
+        <p className={'text-sm text-tertiary'}>Loading...</p>
       </Card>
     )
   }
 
   if (isDataError) {
     return (
-      <Card
-        className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-      >
-        <h3 className={`mb-4 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-          Project Details
-        </h3>
+      <Card className={'p-6'}>
+        <h3 className={'mb-4 text-primary'}>Project Details</h3>
         <p className="text-sm text-red-600 dark:text-red-400">
           Failed to load form data. Please try refreshing the page.
         </p>
@@ -162,10 +149,8 @@ export function EditProjectForm({ project, isDarkMode }: EditProjectFormProps) {
   }
 
   return (
-    <Card className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
-      <h3 className={`mb-4 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-        Project Details
-      </h3>
+    <Card className={'p-6'}>
+      <h3 className={'mb-4 text-primary'}>Project Details</h3>
 
       <div className="space-y-4">
         <div>
@@ -202,11 +187,7 @@ export function EditProjectForm({ project, isDarkMode }: EditProjectFormProps) {
             value={teamSlug}
             onChange={(e) => setTeamSlug(e.target.value)}
             disabled={mutation.isPending || teamsLoading}
-            className={`w-full rounded-lg border px-3 py-2 text-sm ${
-              isDarkMode
-                ? 'border-gray-600 bg-gray-700 text-white'
-                : 'border-gray-300 bg-white text-gray-900'
-            }`}
+            className={`w-full rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
           >
             {teams.map((t) => (
               <option key={t.slug} value={t.slug}>
@@ -223,7 +204,6 @@ export function EditProjectForm({ project, isDarkMode }: EditProjectFormProps) {
           onChange={(key, value) =>
             setDynamicData((prev) => ({ ...prev, [key]: value }))
           }
-          isDarkMode={isDarkMode}
           isLoading={mutation.isPending}
         />
       </div>
@@ -237,7 +217,7 @@ export function EditProjectForm({ project, isDarkMode }: EditProjectFormProps) {
       <div className="mt-4 flex justify-end">
         <Button
           size="sm"
-          className="border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
+          className="bg-action text-action-foreground hover:bg-action-hover"
           onClick={handleSave}
           disabled={mutation.isPending}
         >

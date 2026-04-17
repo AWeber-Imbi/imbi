@@ -22,7 +22,6 @@ interface UserFormProps {
   user: AdminUser | null
   onSave: (user: AdminUserCreate) => void
   onCancel: () => void
-  isDarkMode: boolean
   isLoading?: boolean
   error?: { response?: { data?: { detail?: string } }; message?: string } | null
 }
@@ -31,7 +30,6 @@ export function UserForm({
   user,
   onSave,
   onCancel,
-  isDarkMode,
   isLoading = false,
   error,
 }: UserFormProps) {
@@ -198,33 +196,24 @@ export function UserForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2
-            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+          <h2 className={'text-base font-medium text-primary'}>
             {isEditing ? 'Edit User' : 'Create New User'}
           </h2>
-          <p
-            className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
+          <p className={'mt-1 text-secondary'}>
             {isEditing
               ? `Editing ${user?.display_name}`
               : 'Add a new user account to the system'}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={onCancel}
-            disabled={isLoading}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
+          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={isLoading}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -238,28 +227,14 @@ export function UserForm({
 
       {/* API Error Display */}
       {error && (
-        <div
-          className={`rounded-lg border p-4 ${
-            isDarkMode
-              ? 'border-red-700 bg-red-900/20'
-              : 'border-red-200 bg-red-50'
-          }`}
-        >
+        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
           <div className="flex items-start gap-3">
-            <AlertCircle
-              className={`h-5 w-5 flex-shrink-0 ${
-                isDarkMode ? 'text-red-400' : 'text-red-600'
-              }`}
-            />
+            <AlertCircle className={`h-5 w-5 flex-shrink-0 ${'text-danger'}`} />
             <div>
-              <div
-                className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}
-              >
+              <div className={'font-medium text-danger'}>
                 Failed to save user
               </div>
-              <div
-                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
-              >
+              <div className={'mt-1 text-sm text-danger'}>
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -270,15 +245,13 @@ export function UserForm({
       )}
 
       {/* Section 1: Basic Information */}
-      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <Card>
         <CardContent className="space-y-4 pt-6">
           <div className="grid grid-cols-2 gap-4">
             {/* Email */}
             {!isEditing && (
               <div className="col-span-2">
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Email <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -297,9 +270,7 @@ export function UserForm({
                   }}
                   disabled={isLoading}
                   placeholder="john.doe@company.com"
-                  className={
-                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                  }
+                  className={''}
                 />
                 {touched.email && validationErrors.email && (
                   <p className="mt-1 text-sm text-red-600">
@@ -311,9 +282,7 @@ export function UserForm({
 
             {/* Display Name */}
             <div className="col-span-2">
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Display Name <span className="text-red-500">*</span>
               </label>
               <Input
@@ -334,9 +303,7 @@ export function UserForm({
                 }}
                 disabled={isLoading}
                 placeholder="John Doe"
-                className={
-                  isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                }
+                className={''}
               />
               {touched.display_name && validationErrors.display_name && (
                 <p className="mt-1 text-sm text-red-600">
@@ -348,9 +315,7 @@ export function UserForm({
             {/* Gravatar Preview */}
             {email && validateEmail(email) === '' && (
               <div className="col-span-2">
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Avatar (Gravatar)
                 </label>
                 <div className="flex items-center gap-3">
@@ -359,9 +324,7 @@ export function UserForm({
                     size={64}
                     className="h-16 w-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
                   />
-                  <p
-                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                  >
+                  <p className={'text-sm text-secondary'}>
                     Avatar will be loaded from{' '}
                     <a
                       href="https://gravatar.com"
@@ -388,11 +351,7 @@ export function UserForm({
                     disabled={isLoading}
                     className="rounded"
                   />
-                  <span
-                    className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}
-                  >
-                    Change Password
-                  </span>
+                  <span className={'text-secondary'}>Change Password</span>
                 </label>
               </div>
             )}
@@ -400,9 +359,7 @@ export function UserForm({
             {(changePassword || !isEditing) && (
               <>
                 <div className="col-span-2">
-                  <label
-                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                  >
+                  <label className={'mb-1.5 block text-sm text-secondary'}>
                     Password <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
@@ -425,17 +382,13 @@ export function UserForm({
                       }}
                       disabled={isLoading}
                       placeholder="Minimum 12 characters"
-                      className={`pr-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                      className={'pr-10'}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       disabled={isLoading}
-                      className={`absolute right-3 top-1/2 -translate-y-1/2 ${
-                        isDarkMode
-                          ? 'text-gray-400 hover:text-gray-200'
-                          : 'text-gray-500 hover:text-gray-700'
-                      }`}
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 ${'text-tertiary hover:text-secondary'}`}
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -478,9 +431,7 @@ export function UserForm({
                           {passwordStrength.label}
                         </span>
                       </div>
-                      <ul
-                        className={`space-y-0.5 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                      >
+                      <ul className={'space-y-0.5 text-xs text-secondary'}>
                         <li
                           className={`flex items-center gap-1 ${password.length >= 12 ? 'text-green-600 dark:text-green-400' : ''}`}
                         >
@@ -537,9 +488,7 @@ export function UserForm({
                 </div>
 
                 <div className="col-span-2">
-                  <label
-                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                  >
+                  <label className={'mb-1.5 block text-sm text-secondary'}>
                     Confirm Password <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -561,9 +510,7 @@ export function UserForm({
                     }}
                     disabled={isLoading}
                     placeholder="Re-enter password"
-                    className={
-                      isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                    }
+                    className={''}
                   />
                   {touched.confirmPassword &&
                     validationErrors.confirmPassword && (
@@ -579,24 +526,18 @@ export function UserForm({
       </Card>
 
       {/* Section 2: Account Type */}
-      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <Card>
         <CardContent className="space-y-4 pt-6">
           <div>
-            <label
-              className={`mb-2 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
+            <label className={'mb-2 block text-sm text-secondary'}>
               Account Type
             </label>
             <div className="space-y-2">
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
                   !isAdmin && !isServiceAccount
-                    ? isDarkMode
-                      ? 'border-blue-700 bg-blue-900/20'
-                      : 'border-blue-300 bg-blue-50'
-                    : isDarkMode
-                      ? 'border-gray-600'
-                      : 'border-gray-200'
+                    ? 'border-info bg-info'
+                    : 'border-secondary'
                 }`}
               >
                 <input
@@ -611,12 +552,8 @@ export function UserForm({
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                    Regular User
-                  </div>
-                  <div
-                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                  >
+                  <div className={'text-primary'}>Regular User</div>
+                  <div className={'text-sm text-secondary'}>
                     Standard user account with role-based permissions
                   </div>
                 </div>
@@ -625,12 +562,8 @@ export function UserForm({
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
                   isServiceAccount
-                    ? isDarkMode
-                      ? 'border-purple-700 bg-purple-900/20'
-                      : 'border-purple-300 bg-purple-50'
-                    : isDarkMode
-                      ? 'border-gray-600'
-                      : 'border-gray-200'
+                    ? 'border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-900/20'
+                    : 'border-secondary'
                 }`}
               >
                 <input
@@ -645,12 +578,8 @@ export function UserForm({
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                    Service Account
-                  </div>
-                  <div
-                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                  >
+                  <div className={'text-primary'}>Service Account</div>
+                  <div className={'text-sm text-secondary'}>
                     Automated system account for API access
                   </div>
                 </div>
@@ -658,13 +587,7 @@ export function UserForm({
 
               <label
                 className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
-                  isAdmin
-                    ? isDarkMode
-                      ? 'border-red-700 bg-red-900/20'
-                      : 'border-red-300 bg-red-50'
-                    : isDarkMode
-                      ? 'border-gray-600'
-                      : 'border-gray-200'
+                  isAdmin ? 'border-danger bg-danger' : 'border-secondary'
                 }`}
               >
                 <input
@@ -679,15 +602,11 @@ export function UserForm({
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <div
-                    className={`flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                  >
+                  <div className={'flex items-center gap-2 text-primary'}>
                     Administrator
                     <AlertTriangle className="h-4 w-4 text-red-500" />
                   </div>
-                  <div
-                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                  >
+                  <div className={'text-sm text-secondary'}>
                     Super-user with full system access (bypasses all permission
                     checks)
                   </div>
@@ -705,13 +624,9 @@ export function UserForm({
                 disabled={isLoading}
                 className="rounded"
               />
-              <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>
-                Account Active
-              </span>
+              <span className={'text-secondary'}>Account Active</span>
             </label>
-            <p
-              className={`ml-6 mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
+            <p className={'ml-6 mt-1 text-sm text-secondary'}>
               Inactive accounts cannot authenticate
             </p>
           </div>
@@ -720,11 +635,9 @@ export function UserForm({
 
       {/* Section 3: Organization Membership (creation only) */}
       {!isEditing && (
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="space-y-4 pt-6">
-            <p
-              className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
+            <p className={'mb-4 text-sm text-secondary'}>
               Users must belong to at least one organization with a role to have
               any permissions.
             </p>
@@ -732,9 +645,7 @@ export function UserForm({
             <div className="grid grid-cols-2 gap-4">
               {/* Organization */}
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Organization <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -744,11 +655,7 @@ export function UserForm({
                     handleFieldChange('organization_slug')
                   }}
                   disabled={isLoading}
-                  className={`w-full rounded-md border px-3 py-2 text-sm ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white'
-                      : 'border-gray-300 bg-white text-gray-900'
-                  } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
                 >
                   <option value="">Select an organization...</option>
                   {organizations.map((org) => (
@@ -767,17 +674,11 @@ export function UserForm({
 
               {/* Role */}
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Role <span className="text-red-500">*</span>
                 </label>
                 {rolesLoading ? (
-                  <p
-                    className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                  >
-                    Loading roles...
-                  </p>
+                  <p className={'text-sm text-secondary'}>Loading roles...</p>
                 ) : (
                   <select
                     value={roleSlug}
@@ -786,11 +687,7 @@ export function UserForm({
                       handleFieldChange('role_slug')
                     }}
                     disabled={isLoading}
-                    className={`w-full rounded-md border px-3 py-2 text-sm ${
-                      isDarkMode
-                        ? 'border-gray-600 bg-gray-700 text-white'
-                        : 'border-gray-300 bg-white text-gray-900'
-                    } focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                    className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
                   >
                     <option value="">Select a role...</option>
                     {availableRoles.map((role) => (

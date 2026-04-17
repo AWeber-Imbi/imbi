@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Gravatar } from '@/components/ui/gravatar'
@@ -36,15 +37,9 @@ interface TeamDetailProps {
   team: Team
   onEdit: () => void
   onBack: () => void
-  isDarkMode: boolean
 }
 
-export function TeamDetail({
-  team,
-  onEdit,
-  onBack,
-  isDarkMode,
-}: TeamDetailProps) {
+export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
   const queryClient = useQueryClient()
   const [showAddMember, setShowAddMember] = useState(false)
   const [newMemberEmail, setNewMemberEmail] = useState('')
@@ -107,18 +102,14 @@ export function TeamDetail({
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button
-          variant="outline"
-          onClick={onBack}
-          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-        >
+        <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
       </div>
 
       {/* Team info card */}
-      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <Card>
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div>
             <div className="flex items-center gap-3">
@@ -131,16 +122,14 @@ export function TeamDetail({
               <CardTitle>{team.name}</CardTitle>
             </div>
             {team.description && (
-              <p
-                className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
+              <p className={'mt-1 text-sm text-secondary'}>
                 {team.description}
               </p>
             )}
           </div>
           <Button
             onClick={onEdit}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Team
@@ -150,34 +139,18 @@ export function TeamDetail({
         <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Slug
-              </div>
-              <div
-                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
+              <div className={'text-sm text-secondary'}>Slug</div>
+              <div className={'mt-1 text-primary'}>
                 <code
-                  className={`rounded px-2 py-1 text-sm ${
-                    isDarkMode
-                      ? 'bg-gray-700 text-gray-300'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
+                  className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
                 >
                   {team.slug}
                 </code>
               </div>
             </div>
             <div>
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Organization
-              </div>
-              <div
-                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
+              <div className={'text-sm text-secondary'}>Organization</div>
+              <div className={'mt-1 text-primary'}>
                 {team.organization.name}
               </div>
             </div>
@@ -185,7 +158,6 @@ export function TeamDetail({
               <DynamicDetailFields
                 schema={teamSchema}
                 data={extractDynamicFields(team, TEAM_BASE_FIELDS_SET)}
-                isDarkMode={isDarkMode}
               />
             )}
           </div>
@@ -193,20 +165,14 @@ export function TeamDetail({
       </Card>
 
       {/* Team Members */}
-      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <Card>
         <CardHeader className="space-y-0 border-b px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Users
-                className={`h-5 w-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              />
+              <Users className={'h-5 w-5 text-secondary'} />
               <CardTitle>Team Members</CardTitle>
               <span
-                className={`ml-2 rounded px-2 py-1 text-sm ${
-                  isDarkMode
-                    ? 'bg-gray-700 text-gray-300'
-                    : 'bg-gray-100 text-gray-700'
-                }`}
+                className={`ml-2 rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
               >
                 {members.length}
               </span>
@@ -214,7 +180,6 @@ export function TeamDetail({
             <Button
               onClick={() => setShowAddMember(!showAddMember)}
               variant="outline"
-              className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
             >
               <UserPlus className="mr-2 h-4 w-4" />
               Add Member
@@ -224,25 +189,19 @@ export function TeamDetail({
           {/* Add Member Panel */}
           {showAddMember && (
             <div
-              className={`mt-4 rounded-lg border p-4 ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700'
-                  : 'border-gray-200 bg-gray-50'
-              }`}
+              className={`mt-4 rounded-lg border p-4 ${'border-input bg-secondary'}`}
             >
               <div className="flex items-center gap-3">
                 <div className="relative flex-1">
                   <Search
-                    className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
+                    className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
                   />
                   <Input
                     placeholder="Enter user email address..."
                     value={newMemberEmail}
                     onChange={(e) => setNewMemberEmail(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-                    className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                    className={'pl-10'}
                   />
                 </div>
                 <Button
@@ -250,16 +209,14 @@ export function TeamDetail({
                   disabled={
                     !newMemberEmail.trim() || addMemberMutation.isPending
                   }
-                  className="bg-amber-border text-white hover:bg-amber-border-strong"
+                  className="bg-action text-action-foreground hover:bg-action-hover"
                 >
                   {addMemberMutation.isPending ? 'Adding...' : 'Add'}
                 </Button>
               </div>
               {addMemberMutation.error && (
                 <div
-                  className={`mt-2 flex items-center gap-2 text-xs ${
-                    isDarkMode ? 'text-red-400' : 'text-red-600'
-                  }`}
+                  className={`mt-2 flex items-center gap-2 text-xs ${'text-danger'}`}
                 >
                   <AlertCircle className="h-3 w-3" />
                   {(addMemberMutation.error as ApiError<{ detail?: string }>)
@@ -274,16 +231,10 @@ export function TeamDetail({
         <CardContent className="p-0">
           {membersLoading ? (
             <div className="p-8 text-center">
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Loading members...
-              </div>
+              <div className={'text-sm text-secondary'}>Loading members...</div>
             </div>
           ) : members.length === 0 ? (
-            <div
-              className={`py-12 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
+            <div className={'py-12 text-center text-tertiary'}>
               No members in this team yet. Click "Add Member" to get started.
             </div>
           ) : (
@@ -291,45 +242,30 @@ export function TeamDetail({
               <thead className="border-b border-tertiary bg-secondary">
                 <tr>
                   <th
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
+                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${'text-tertiary'}`}
                   >
                     Member
                   </th>
                   <th
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
+                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${'text-tertiary'}`}
                   >
                     Email
                   </th>
                   <th
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
+                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${'text-tertiary'}`}
                   >
                     Status
                   </th>
                   <th
-                    className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                    }`}
+                    className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider ${'text-tertiary'}`}
                   >
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody
-                className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
-              >
+              <tbody className={'divide-y divide-tertiary'}>
                 {members.map((member) => (
-                  <tr
-                    key={member.email}
-                    className={
-                      isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-                    }
-                  >
+                  <tr key={member.email} className={'hover:bg-secondary'}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <Gravatar
@@ -338,34 +274,18 @@ export function TeamDetail({
                           alt={member.display_name}
                           className="h-8 w-8 rounded-full"
                         />
-                        <div
-                          className={
-                            isDarkMode ? 'text-white' : 'text-gray-900'
-                          }
-                        >
+                        <div className={'text-primary'}>
                           {member.display_name}
                         </div>
                       </div>
                     </td>
-                    <td
-                      className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                    >
+                    <td className={'px-6 py-4 text-sm text-secondary'}>
                       {member.email}
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center rounded px-2 py-1 text-xs font-medium ${
-                          member.is_active
-                            ? isDarkMode
-                              ? 'bg-green-900/30 text-green-400'
-                              : 'bg-green-100 text-green-700'
-                            : isDarkMode
-                              ? 'bg-gray-700 text-gray-400'
-                              : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
+                      <Badge variant={member.is_active ? 'success' : 'neutral'}>
                         {member.is_active ? 'Active' : 'Inactive'}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <TooltipProvider delayDuration={200}>
@@ -374,11 +294,7 @@ export function TeamDetail({
                             <button
                               onClick={() => handleRemoveMember(member.email)}
                               disabled={removeMemberMutation.isPending}
-                              className={`rounded p-1.5 ${
-                                isDarkMode
-                                  ? 'text-red-400 hover:bg-red-900/20'
-                                  : 'text-red-600 hover:bg-red-50'
-                              }`}
+                              className={`rounded p-1.5 ${'text-danger hover:bg-danger'}`}
                             >
                               <X className="h-4 w-4" />
                             </button>

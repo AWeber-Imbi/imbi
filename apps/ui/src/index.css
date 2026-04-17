@@ -22,6 +22,7 @@
     --color-background-danger: #fcebeb;
     --color-background-success: #eaf3de;
     --color-background-warning: #faeeda;
+    --color-background-accent: #eeedfe;
 
     /* Text colors */
     --color-text-primary: #1a1a18;
@@ -31,12 +32,22 @@
     --color-text-danger: #a32d2d;
     --color-text-success: #27500a;
     --color-text-warning: #7c5900;
+    --color-text-accent: #3c3489;
 
     /* Border colors (warm grays at design-specified alpha levels) */
     --color-border-tertiary: rgba(26, 26, 24, 0.15);
     --color-border-secondary: rgba(26, 26, 24, 0.3);
     --color-border-primary: rgba(26, 26, 24, 0.4);
     --color-border-info: #185fa5;
+    --color-border-danger: #f5b4b4;
+    --color-border-success: #b4d99a;
+    --color-border-warning: #e6c77a;
+    --color-border-accent: #c8c4f1;
+
+    /* Action (primary CTA) — matches header logo color per theme */
+    --color-action-bg: #b8860b;
+    --color-action-bg-hover: #8f6a09;
+    --color-action-fg: #ffffff;
 
     /* shadcn/ui compatibility tokens */
     --background: 0 0% 100%;
@@ -69,6 +80,7 @@
     --color-background-danger: #3d1c1c;
     --color-background-success: #1c2e12;
     --color-background-warning: #3d2e12;
+    --color-background-accent: #20204a;
 
     /* Text colors */
     --color-text-primary: #e8e7e3;
@@ -78,12 +90,22 @@
     --color-text-danger: #f08a8a;
     --color-text-success: #7cbf4a;
     --color-text-warning: #e0a830;
+    --color-text-accent: #9d95e8;
 
     /* Border colors */
     --color-border-tertiary: rgba(232, 231, 227, 0.15);
     --color-border-secondary: rgba(232, 231, 227, 0.25);
     --color-border-primary: rgba(232, 231, 227, 0.35);
     --color-border-info: #6db3f2;
+    --color-border-danger: #8a3030;
+    --color-border-success: #4a7a1a;
+    --color-border-warning: #7a5818;
+    --color-border-accent: #3a3570;
+
+    /* Action (primary CTA) — matches header logo color per theme */
+    --color-action-bg: #fbce39;
+    --color-action-bg-hover: #e0b525;
+    --color-action-fg: #1a1a18;
 
     /* shadcn/ui compatibility tokens */
     --background: 40 5% 11%;

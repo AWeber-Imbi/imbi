@@ -14,14 +14,10 @@ interface ViewChangeEvent {
 }
 
 interface TeamActivityWidgetProps {
-  isDarkMode: boolean
   onViewChange?: (view: ViewChangeEvent) => void
 }
 
-export function TeamActivityWidget({
-  isDarkMode,
-  onViewChange,
-}: TeamActivityWidgetProps) {
+export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
   const teams = [
     {
       name: 'Platform Support Engineering',
@@ -68,9 +64,9 @@ export function TeamActivityWidget({
   ]
 
   const getHealthColor = (health: number) => {
-    if (health >= 90) return isDarkMode ? 'text-green-400' : 'text-green-600'
-    if (health >= 75) return isDarkMode ? 'text-yellow-400' : 'text-yellow-600'
-    return isDarkMode ? 'text-red-400' : 'text-red-600'
+    if (health >= 90) return 'text-success'
+    if (health >= 75) return 'text-warning'
+    return 'text-danger'
   }
 
   const getHealthIcon = (health: number) => {
@@ -89,13 +85,9 @@ export function TeamActivityWidget({
   }
 
   return (
-    <Card className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
+    <Card className={'p-6'}>
       <div className="mb-4 flex items-center justify-between">
-        <h3
-          className={`text-lg ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          Team Activity
-        </h3>
+        <h3 className={'text-lg text-primary'}>Team Activity</h3>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -108,17 +100,11 @@ export function TeamActivityWidget({
               type="button"
               key={team.name}
               onClick={() => handleTeamClick(team.name)}
-              className={`rounded-lg border p-4 text-left transition-all ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700 hover:border-gray-500 hover:bg-gray-700'
-                  : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
-              }`}
+              className={`rounded-lg border p-4 text-left transition-all ${'border-input bg-background hover:border-secondary hover:shadow-sm'}`}
             >
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex-1">
-                  <div
-                    className={`mb-1 font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                  >
+                  <div className={'mb-1 font-medium text-primary'}>
                     {team.name}
                   </div>
                   <div className="flex items-center gap-2 text-sm">
@@ -131,26 +117,18 @@ export function TeamActivityWidget({
                     )}
                   </div>
                 </div>
-                <ChevronRight
-                  className={`h-5 w-5 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                />
+                <ChevronRight className={'h-5 w-5 text-tertiary'} />
               </div>
 
               <div className="flex items-center gap-3">
-                <div
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
+                <div className={'text-sm text-secondary'}>
                   {team.projects} projects
                 </div>
-                <div
-                  className={`text-sm ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}
-                >
-                  •
-                </div>
+                <div className={'text-sm text-secondary'}>•</div>
                 <button
                   type="button"
                   onClick={(e) => handleDeploymentClick(e, team.name)}
-                  className={`text-sm ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#2A4DD0] hover:text-blue-700'}`}
+                  className={'hover:text-info/80 text-sm text-info'}
                 >
                   {team.deployments} deployments
                 </button>

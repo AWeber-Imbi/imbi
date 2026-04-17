@@ -20,7 +20,6 @@ interface ImportBlueprintDialogProps {
   onClose: () => void
   onImport: (blueprint: BlueprintCreate) => void
   blueprintTypes: string[]
-  isDarkMode: boolean
   isLoading?: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apiError?: any
@@ -36,7 +35,7 @@ function detectFormat(input: string): DetectedFormat {
   const trimmed = input.trim()
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) return 'json'
   if (
-    trimmed.includes(': ') ||
+    trimmed.includes(':') ||
     trimmed.includes(':\n') ||
     trimmed.startsWith('---')
   )
@@ -223,7 +222,6 @@ export function ImportBlueprintDialog({
   onClose,
   onImport,
   blueprintTypes,
-  isDarkMode,
   isLoading = false,
   apiError,
 }: ImportBlueprintDialogProps) {
@@ -358,48 +356,32 @@ export function ImportBlueprintDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent
-        className={`sm:max-w-2xl ${isDarkMode ? 'border-gray-700 bg-gray-800 text-white' : ''}`}
-      >
+      <DialogContent className={'sm:max-w-2xl'}>
         <DialogHeader>
-          <DialogTitle className={isDarkMode ? 'text-white' : ''}>
-            Import Blueprint
-          </DialogTitle>
-          <DialogDescription className={isDarkMode ? 'text-gray-400' : ''}>
+          <DialogTitle className={'text-primary'}>Import Blueprint</DialogTitle>
+          <DialogDescription>
             Paste a JSON or YAML blueprint definition below. Required fields:{' '}
-            <code
-              className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
-            >
+            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
               name
             </code>
             ,{' '}
-            <code
-              className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
-            >
+            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
               json_schema
             </code>
             , and either{' '}
-            <code
-              className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
-            >
+            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
               type
             </code>{' '}
             (node) or{' '}
-            <code
-              className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
-            >
+            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
               source
             </code>
             /
-            <code
-              className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
-            >
+            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
               target
             </code>
             /
-            <code
-              className={`rounded px-1 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
-            >
+            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
               edge
             </code>{' '}
             (relationship)
@@ -411,9 +393,7 @@ export function ImportBlueprintDialog({
           {detectedFormat !== 'unknown' && rawInput.trim() && (
             <div className="flex items-center gap-1.5">
               {formatIcon}
-              <span
-                className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-              >
+              <span className={'text-xs text-tertiary'}>
                 Detected format: {detectedFormat.toUpperCase()}
               </span>
               {parsedPreview && (
@@ -446,21 +426,13 @@ export function ImportBlueprintDialog({
 }`}
             rows={14}
             spellCheck={false}
-            className={`w-full resize-y rounded-md border px-4 py-3 font-mono text-sm leading-relaxed ${
-              isDarkMode
-                ? 'border-gray-600 bg-gray-900 text-gray-200 placeholder-gray-600'
-                : 'border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400'
-            } ${error ? (isDarkMode ? 'border-red-700' : 'border-red-300') : ''}`}
+            className={`w-full resize-y rounded-md border px-4 py-3 font-mono text-sm leading-relaxed ${'border-input bg-secondary text-primary placeholder:text-muted-foreground'} ${error ? 'border-danger' : ''}`}
           />
 
           {/* Validation error display */}
           {error && (
             <div
-              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 ${
-                isDarkMode
-                  ? 'border-red-800 bg-red-900/20 text-red-400'
-                  : 'border-red-200 bg-red-50 text-red-700'
-              }`}
+              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 ${'border-danger bg-danger text-danger'}`}
             >
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <span className="text-sm">{error}</span>
@@ -470,11 +442,7 @@ export function ImportBlueprintDialog({
           {/* API error display */}
           {apiError && !error && (
             <div
-              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 ${
-                isDarkMode
-                  ? 'border-red-800 bg-red-900/20 text-red-400'
-                  : 'border-red-200 bg-red-50 text-red-700'
-              }`}
+              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 ${'border-danger bg-danger text-danger'}`}
             >
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <div className="text-sm">
@@ -492,37 +460,23 @@ export function ImportBlueprintDialog({
           {/* Preview */}
           {parsedPreview && (
             <div
-              className={`rounded-lg border px-3 py-2.5 ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700'
-                  : 'border-gray-200 bg-gray-50'
-              }`}
+              className={`rounded-lg border px-3 py-2.5 ${'border-input bg-secondary'}`}
             >
-              <div
-                className={`mb-1.5 text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-              >
+              <div className={'mb-1.5 text-xs font-medium text-tertiary'}>
                 Preview
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                 <div>
-                  <span
-                    className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}
-                  >
-                    Name:{' '}
-                  </span>
-                  <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                    {parsedPreview.name}
-                  </span>
+                  <span className={'text-tertiary'}>Name: </span>
+                  <span className={'text-primary'}>{parsedPreview.name}</span>
                 </div>
                 <div>
-                  <span
-                    className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}
-                  >
+                  <span className={'text-tertiary'}>
                     {parsedPreview.kind === 'relationship'
                       ? 'Edge:'
                       : 'Type:'}{' '}
                   </span>
-                  <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                  <span className={'text-primary'}>
                     {parsedPreview.kind === 'relationship'
                       ? `${parsedPreview.source} → ${parsedPreview.target} (${parsedPreview.edge})`
                       : parsedPreview.type}
@@ -530,39 +484,23 @@ export function ImportBlueprintDialog({
                 </div>
                 {parsedPreview.slug && (
                   <div>
-                    <span
-                      className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}
-                    >
-                      Slug:{' '}
-                    </span>
-                    <span
-                      className={`font-mono ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                    >
+                    <span className={'text-tertiary'}>Slug: </span>
+                    <span className={'font-mono text-primary'}>
                       {parsedPreview.slug}
                     </span>
                   </div>
                 )}
                 {parsedPreview.description && (
                   <div className="col-span-2">
-                    <span
-                      className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}
-                    >
-                      Description:{' '}
-                    </span>
-                    <span
-                      className={isDarkMode ? 'text-white' : 'text-gray-900'}
-                    >
+                    <span className={'text-tertiary'}>Description: </span>
+                    <span className={'text-primary'}>
                       {parsedPreview.description}
                     </span>
                   </div>
                 )}
                 <div>
-                  <span
-                    className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}
-                  >
-                    Properties:{' '}
-                  </span>
-                  <span className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+                  <span className={'text-tertiary'}>Properties: </span>
+                  <span className={'text-primary'}>
                     {
                       Object.keys(
                         ((parsedPreview.json_schema as Record<string, unknown>)
@@ -575,16 +513,8 @@ export function ImportBlueprintDialog({
                   (parsedPreview.filter.project_type?.length > 0 ||
                     parsedPreview.filter.environment?.length > 0) && (
                     <div className="col-span-2">
-                      <span
-                        className={
-                          isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                        }
-                      >
-                        Filter:{' '}
-                      </span>
-                      <span
-                        className={isDarkMode ? 'text-white' : 'text-gray-900'}
-                      >
+                      <span className={'text-tertiary'}>Filter: </span>
+                      <span className={'text-primary'}>
                         {[
                           parsedPreview.filter.project_type?.length
                             ? `${parsedPreview.filter.project_type.length} project types`
@@ -604,18 +534,13 @@ export function ImportBlueprintDialog({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={handleClose}
-            disabled={isLoading}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
+          <Button variant="outline" onClick={handleClose} disabled={isLoading}>
             Cancel
           </Button>
           <Button
             onClick={handleValidateAndImport}
             disabled={isLoading || !rawInput.trim()}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Upload className="mr-2 h-4 w-4" />
             {isLoading ? 'Importing...' : 'Import'}

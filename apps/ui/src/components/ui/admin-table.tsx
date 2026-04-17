@@ -190,7 +190,7 @@ export function AdminTable<T>({
                       ? blockedBy[0].count === 1
                         ? ` that ${blockedBy[0].label}`
                         : ` those ${blockedBy[0].label}s`
-                      : ' them'}{' '}
+                      : 'them'}{' '}
                     before deleting this item.
                   </p>
                 )

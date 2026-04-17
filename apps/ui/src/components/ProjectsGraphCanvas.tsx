@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { useTheme } from '@/contexts/ThemeContext'
 import { Card, CardHeader, CardContent } from '@/components/ui/card'
 import {
   DropdownMenu,
@@ -86,17 +87,16 @@ function largestComponent(
 interface ProjectsGraphCanvasProps {
   projects: GraphProject[]
   edges: GraphEdge[]
-  isDarkMode: boolean
   centerId?: string
 }
 
 export function ProjectsGraphCanvas({
   projects,
   edges,
-  isDarkMode,
   centerId,
 }: ProjectsGraphCanvasProps) {
   const navigate = useNavigate()
+  const { isDarkMode } = useTheme()
   const ref = useRef<GraphCanvasRef | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [layout, setLayoutState] = useState<LayoutTypes>(() => {
@@ -200,7 +200,7 @@ export function ProjectsGraphCanvas({
           (p.project_types || [])[0]?.icon ?? null,
           iconColor,
         )
-        const fill = isCenter ? '#f59e0b' : isDarkMode ? '#94a3b8' : '#64748b'
+        const fill = isCenter ? '#f59e0b' : '#64748b'
         return {
           id: p.id,
           label: p.name,
@@ -209,7 +209,7 @@ export function ProjectsGraphCanvas({
           data: p,
         }
       }),
-    [projects, centerId, isDarkMode, nodeEdgeColor],
+    [projects, centerId, nodeEdgeColor],
   )
 
   const {
@@ -243,9 +243,7 @@ export function ProjectsGraphCanvas({
     LAYOUT_OPTIONS.find((l) => l.value === layout)?.label ??
     LAYOUT_OPTIONS[0].label
 
-  const btnClass = isDarkMode
-    ? 'border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700'
-    : ''
+  const btnClass = ''
 
   return (
     <div
@@ -255,13 +253,11 @@ export function ProjectsGraphCanvas({
       <Card
         className={`flex flex-col overflow-hidden ${
           isFullscreen ? 'h-full rounded-none border-0' : 'h-full'
-        } ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
+        } `}
       >
         {/* Toolbar */}
         <CardHeader
-          className={`flex-shrink-0 flex-row items-center gap-2 space-y-0 border-b px-4 py-3 ${
-            isDarkMode ? 'border-gray-700' : 'border-gray-200'
-          }`}
+          className={`flex-shrink-0 flex-row items-center gap-2 space-y-0 border-b px-4 py-3 ${'border-tertiary'}`}
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -347,7 +343,7 @@ export function ProjectsGraphCanvas({
           </div>
 
           <div
-            className={`ml-auto flex items-center gap-4 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+            className={'ml-auto flex items-center gap-4 text-xs text-tertiary'}
           >
             <span className="flex items-center gap-1">
               <span
@@ -392,25 +388,17 @@ export function ProjectsGraphCanvas({
         >
           {isRendering && nodes.length > 0 && (
             <div
-              className={`absolute inset-0 z-10 flex items-center justify-center ${
-                isDarkMode ? 'bg-gray-800/80' : 'bg-white/80'
-              }`}
+              className={`absolute inset-0 z-10 flex items-center justify-center ${'bg-background/80'}`}
             >
               <div className="flex flex-col items-center gap-3">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
-                <p
-                  className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
-                >
-                  Rendering graph…
-                </p>
+                <p className={'text-sm text-tertiary'}>Rendering graph…</p>
               </div>
             </div>
           )}
           {nodes.length === 0 ? (
             <div className="flex h-full items-center justify-center">
-              <p className={isDarkMode ? 'text-gray-400' : 'text-slate-500'}>
-                No projects to display
-              </p>
+              <p className={'text-tertiary'}>No projects to display</p>
             </div>
           ) : (
             <GraphCanvas

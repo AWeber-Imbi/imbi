@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 550 550" role="img" aria-label="Imbi">
+  <g fill="#FBCE39" stroke="#FBCE39" stroke-width="4" stroke-miterlimit="10">
+    
+    <polygon points="390.322 365.816 340.27 282.439 390.282 199.176 490.282 199.061 540.27 282.439 490.219 365.816"></polygon>
+    <polygon points="58.022 365.816 7.971 282.439 57.982 199.176 157.92 199.061 207.971 282.439 157.92 365.816"></polygon>
+    
+    <polygon points="223.922 453.28 173.87 369.902 223.882 286.639 323.819 286.524 373.87 369.902 323.819 453.28"></polygon>
+    <polygon points="198.583 328.608 223.878 286.726 323.922 286.551 349.169 328.566" stroke="none"></polygon>
+    <polygon points="174.193 369.902 373.869 369.931 348.467 411.825 199.013 411.896" stroke="none"></polygon>
+    
+    <polygon points="274.142 538.484 318.427 465.280 229.940 465.280" stroke-width="2.4"></polygon>
+    
+    <polygon points="223.922 273.105 173.87 189.727 223.882 106.464 323.819 106.349 373.87 189.727 323.819 273.105"></polygon>
+    
+    <path d="M 238.722 108.392 L 216.172 67.97 L 193.622 27.549" fill="none" stroke-width="5" stroke-linecap="round"></path>
+    <path d="M 311.278 108.392 L 333.828 67.972 L 356.378 27.55" fill="none" stroke-width="5" stroke-linecap="round"></path>
+    
+    <circle cx="193.208" cy="23.721" r="12.637" stroke="none"></circle>
+    <circle cx="356.792" cy="23.721" r="12.637" stroke="none"></circle>
+  </g>
+</svg>

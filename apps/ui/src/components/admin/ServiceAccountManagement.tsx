@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiError } from '@/api/client'
 import { Plus, Search, Power, Bot, AlertCircle } from 'lucide-react'
 import { Button } from '../ui/button'
+import { Badge } from '../ui/badge'
 import { Input } from '../ui/input'
 import { AdminTable } from '@/components/ui/admin-table'
 import { ServiceAccountForm } from './service-accounts/ServiceAccountForm'
@@ -21,15 +22,9 @@ import type {
   ServiceAccountUpdate,
 } from '@/types'
 
-interface ServiceAccountManagementProps {
-  isDarkMode: boolean
-}
-
 type StatusFilter = 'all' | 'active' | 'inactive'
 
-export function ServiceAccountManagement({
-  isDarkMode,
-}: ServiceAccountManagementProps) {
+export function ServiceAccountManagement() {
   const queryClient = useQueryClient()
   const {
     viewMode,
@@ -165,9 +160,7 @@ export function ServiceAccountManagement({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
+        <div className={'text-sm text-secondary'}>
           Loading service accounts...
         </div>
       </div>
@@ -178,11 +171,7 @@ export function ServiceAccountManagement({
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -202,7 +191,6 @@ export function ServiceAccountManagement({
         account={selectedAccount}
         onSave={handleSave}
         onCancel={handleCancel}
-        isDarkMode={isDarkMode}
         isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
       />
@@ -216,7 +204,6 @@ export function ServiceAccountManagement({
         account={selectedAccount}
         onEdit={() => handleEditClick(selectedAccount)}
         onBack={handleCancel}
-        isDarkMode={isDarkMode}
       />
     )
   }
@@ -229,25 +216,19 @@ export function ServiceAccountManagement({
         <div className="flex flex-1 items-center gap-3">
           <div className="relative max-w-md flex-1">
             <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
             />
             <Input
               placeholder="Search service accounts..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+              className={'pl-10'}
             />
           </div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className={`rounded-lg border px-3 py-2 text-sm ${
-              isDarkMode
-                ? 'border-gray-600 bg-gray-700 text-white'
-                : 'border-gray-300 bg-white text-gray-900'
-            }`}
+            className={`rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
@@ -256,7 +237,7 @@ export function ServiceAccountManagement({
         </div>
         <Button
           onClick={goToCreate}
-          className="bg-amber-border text-white hover:bg-amber-border-strong"
+          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Service Account
@@ -274,22 +255,20 @@ export function ServiceAccountManagement({
             render: (account) => (
               <div className="flex items-center gap-3">
                 <div
-                  className={`flex size-8 items-center justify-center rounded-full ${isDarkMode ? 'bg-purple-900/30' : 'bg-purple-100'}`}
+                  className={
+                    'flex size-8 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/30'
+                  }
                 >
                   <Bot
-                    className={`h-4 w-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
+                    className={'h-4 w-4 text-purple-600 dark:text-purple-400'}
                   />
                 </div>
                 <div>
-                  <div
-                    className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                  >
+                  <div className={'text-sm font-medium text-primary'}>
                     {account.display_name}
                   </div>
                   {account.description && (
-                    <div
-                      className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                    >
+                    <div className={'text-xs text-tertiary'}>
                       {account.description}
                     </div>
                   )}
@@ -304,7 +283,9 @@ export function ServiceAccountManagement({
             cellAlign: 'left',
             render: (account) => (
               <code
-                className={`rounded px-2 py-0.5 text-xs ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'}`}
+                className={
+                  'rounded bg-secondary px-2 py-0.5 text-xs text-secondary'
+                }
               >
                 {account.slug}
               </code>
@@ -316,20 +297,13 @@ export function ServiceAccountManagement({
             headerAlign: 'center',
             cellAlign: 'center',
             render: (account) => (
-              <span
-                className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
-                  account.is_active
-                    ? isDarkMode
-                      ? 'bg-green-900/30 text-green-400'
-                      : 'bg-green-100 text-green-700'
-                    : isDarkMode
-                      ? 'bg-gray-700 text-gray-400'
-                      : 'bg-gray-100 text-gray-600'
-                }`}
+              <Badge
+                variant={account.is_active ? 'success' : 'neutral'}
+                className="gap-1.5"
               >
                 <Power className="h-3 w-3" />
                 {account.is_active ? 'Active' : 'Inactive'}
-              </span>
+              </Badge>
             ),
           },
           {
@@ -338,9 +312,7 @@ export function ServiceAccountManagement({
             headerAlign: 'left',
             cellAlign: 'left',
             render: (account) => (
-              <span
-                className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
+              <span className={'text-xs text-secondary'}>
                 {formatDate(account.last_authenticated)}
               </span>
             ),
@@ -361,9 +333,7 @@ export function ServiceAccountManagement({
 
       {/* Summary */}
       {filteredAccounts.length > 0 && (
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
+        <div className={'text-sm text-secondary'}>
           Showing {filteredAccounts.length} of {serviceAccounts.length} service
           account(s)
         </div>

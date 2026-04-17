@@ -8,7 +8,6 @@ import type { Environment } from '@/types'
 
 interface EditEnvironmentsCardProps {
   environments: Environment[]
-  isDarkMode: boolean
   isSaving: boolean
   onSave: (envData: Record<string, Record<string, string>>) => void
 }
@@ -22,11 +21,9 @@ function toLabel(key: string): string {
 
 export function EditEnvironmentsCard({
   environments,
-  isDarkMode,
   isSaving,
   onSave,
 }: EditEnvironmentsCardProps) {
-  // Discover dynamic edge fields across all environments
   const dynamicFields = useMemo(() => {
     const fieldSet = new Set<string>()
     for (const env of environments) {
@@ -69,15 +66,11 @@ export function EditEnvironmentsCard({
     onSave(result)
   }
 
-  const inputClass = isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-  const headerClass = `mb-4 ${isDarkMode ? 'text-white' : 'text-slate-900'}`
-  const labelClass = `text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`
-
   if (dynamicFields.length === 0) return null
 
   return (
-    <Card className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
-      <h3 className={headerClass}>Environment Specific Details</h3>
+    <Card className="p-6">
+      <h3 className="mb-4 text-primary">Environment Specific Details</h3>
 
       <div className="space-y-4">
         {environments.map((env) => (
@@ -92,7 +85,7 @@ export function EditEnvironmentsCard({
             <div className="flex-1 space-y-2">
               {dynamicFields.map((field) => (
                 <div key={field}>
-                  <label className={`mb-1 block ${labelClass}`}>
+                  <label className="mb-1 block text-xs font-medium text-tertiary">
                     {toLabel(field)}
                   </label>
                   <Input
@@ -102,7 +95,7 @@ export function EditEnvironmentsCard({
                     }
                     disabled={isSaving}
                     placeholder={toLabel(field)}
-                    className={`text-sm ${inputClass}`}
+                    className="text-sm"
                   />
                 </div>
               ))}
@@ -114,7 +107,7 @@ export function EditEnvironmentsCard({
       <div className="mt-4 flex justify-end">
         <Button
           size="sm"
-          className="border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
+          className="bg-action text-action-foreground hover:bg-action-hover"
           onClick={handleSave}
           disabled={isSaving}
         >

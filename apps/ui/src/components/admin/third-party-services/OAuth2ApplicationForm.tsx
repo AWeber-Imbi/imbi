@@ -13,7 +13,6 @@ interface OAuth2ApplicationFormProps {
   application: ServiceApplication | null
   onSave: (data: ServiceApplicationCreate | ServiceApplicationUpdate) => void
   onCancel: () => void
-  isDarkMode: boolean
   isLoading: boolean
   error: Error | null
 }
@@ -35,7 +34,6 @@ export function OAuth2ApplicationForm({
   application,
   onSave,
   onCancel,
-  isDarkMode,
   isLoading,
   error,
 }: OAuth2ApplicationFormProps) {
@@ -137,35 +135,27 @@ export function OAuth2ApplicationForm({
     }
   }
 
-  const inputClass = isDarkMode
-    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400'
-    : ''
+  const inputClass = ''
 
-  const labelClass = `block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`
+  const labelClass = 'block text-sm font-medium mb-1 text-secondary'
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            onClick={onCancel}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
+          <Button variant="outline" onClick={onCancel}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <h3
-            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+          <h3 className={'text-base font-medium text-primary'}>
             {isEdit ? 'Edit Application' : 'New Application'}
           </h3>
         </div>
         <Button
           onClick={handleSubmit}
           disabled={isLoading}
-          className="bg-amber-border text-white hover:bg-amber-border-strong"
+          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           {isLoading ? 'Saving...' : isEdit ? 'Update' : 'Create'}
         </Button>
@@ -174,11 +164,7 @@ export function OAuth2ApplicationForm({
       {/* Error display */}
       {(validationError || error) && (
         <div
-          className={`flex items-center gap-3 rounded-lg border p-4 ${
-            isDarkMode
-              ? 'border-red-700 bg-red-900/20 text-red-400'
-              : 'border-red-200 bg-red-50 text-red-700'
-          }`}
+          className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
         >
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <div className="text-sm">
@@ -190,11 +176,7 @@ export function OAuth2ApplicationForm({
 
       {/* Form */}
       <div
-        className={`space-y-4 rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
+        className={`space-y-4 rounded-lg border p-6 ${'border-border bg-card'}`}
       >
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -245,11 +227,7 @@ export function OAuth2ApplicationForm({
               value={appType}
               onChange={(e) => setAppType(e.target.value)}
               disabled={isEdit}
-              className={`w-full rounded-md border px-3 py-2 text-sm ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700 text-white'
-                  : 'border-gray-300 bg-white text-gray-900'
-              }`}
+              className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
             >
               {APP_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -265,11 +243,7 @@ export function OAuth2ApplicationForm({
               onChange={(e) =>
                 setStatus(e.target.value as 'active' | 'inactive' | 'revoked')
               }
-              className={`w-full rounded-md border px-3 py-2 text-sm ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700 text-white'
-                  : 'border-gray-300 bg-white text-gray-900'
-              }`}
+              className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
             >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
@@ -301,12 +275,8 @@ export function OAuth2ApplicationForm({
         {/* Secret fields (create mode only) */}
         {!isEdit && (
           <>
-            <div
-              className={`border-t pt-4 ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}
-            >
-              <h4
-                className={`mb-3 text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+            <div className={'border-t border-secondary pt-4'}>
+              <h4 className={'mb-3 text-sm font-medium text-secondary'}>
                 Secrets
               </h4>
             </div>
@@ -343,11 +313,7 @@ export function OAuth2ApplicationForm({
                   onChange={(e) => setPrivateKey(e.target.value)}
                   placeholder={'-----BEGIN RSA PRIVATE KEY-----\n...'}
                   rows={4}
-                  className={`w-full rounded-md border px-3 py-2 font-mono text-sm ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
-                      : 'border-gray-300 bg-white text-gray-900'
-                  }`}
+                  className={`w-full rounded-md border px-3 py-2 font-mono text-sm ${'border-input bg-background text-foreground'}`}
                 />
               </div>
             )}
@@ -368,12 +334,8 @@ export function OAuth2ApplicationForm({
         )}
 
         {isEdit && (
-          <div
-            className={`border-t pt-4 ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}
-          >
-            <p
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
+          <div className={'border-t border-secondary pt-4'}>
+            <p className={'text-sm text-tertiary'}>
               Secrets are managed separately below via the Secrets panel.
             </p>
           </div>

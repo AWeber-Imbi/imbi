@@ -135,7 +135,7 @@ export function LocalLoginForm({
 
       <Button
         type="submit"
-        className="w-full bg-[#2A4DD0] text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="w-full bg-action text-action-foreground hover:bg-action-hover disabled:cursor-not-allowed disabled:opacity-50"
         disabled={!canSubmit}
       >
         {isLoading ? 'Signing in...' : 'Sign In'}

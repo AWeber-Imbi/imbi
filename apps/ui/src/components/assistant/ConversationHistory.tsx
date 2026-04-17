@@ -9,14 +9,12 @@ import {
 import type { Conversation } from '@/types/assistant'
 
 interface ConversationHistoryProps {
-  isDarkMode: boolean
   currentConversationId: string | null
   onSelectConversation: (id: string) => void
   onNewConversation: () => void
 }
 
 export function ConversationHistory({
-  isDarkMode,
   currentConversationId,
   onSelectConversation,
   onNewConversation,
@@ -60,11 +58,7 @@ export function ConversationHistory({
     return (
       <button
         onClick={() => setShowHistory(true)}
-        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-          isDarkMode
-            ? 'text-gray-400 hover:bg-gray-700 hover:text-gray-300'
-            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-        }`}
+        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${'text-secondary hover:bg-secondary hover:text-primary'}`}
       >
         <MessageSquare className="h-3 w-3" />
         History
@@ -74,9 +68,7 @@ export function ConversationHistory({
 
   return (
     <div
-      className={`absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border shadow-lg ${
-        isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
-      }`}
+      className={`absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border shadow-lg ${'border-border bg-card'}`}
     >
       <div className="p-2">
         <button
@@ -84,11 +76,7 @@ export function ConversationHistory({
             onNewConversation()
             setShowHistory(false)
           }}
-          className={`flex w-full items-center gap-2 rounded px-3 py-2 text-sm ${
-            isDarkMode
-              ? 'text-gray-300 hover:bg-gray-700'
-              : 'text-gray-700 hover:bg-gray-100'
-          }`}
+          className={`flex w-full items-center gap-2 rounded px-3 py-2 text-sm ${'text-secondary hover:bg-secondary'}`}
         >
           <Plus className="h-4 w-4" />
           New Conversation
@@ -111,12 +99,8 @@ export function ConversationHistory({
             }}
             className={`flex cursor-pointer items-center justify-between rounded px-3 py-2 text-sm ${
               conv.id === currentConversationId
-                ? isDarkMode
-                  ? 'bg-gray-700 text-white'
-                  : 'bg-blue-50 text-blue-900'
-                : isDarkMode
-                  ? 'text-gray-300 hover:bg-gray-700'
-                  : 'text-gray-700 hover:bg-gray-100'
+                ? 'bg-secondary text-primary'
+                : 'text-secondary hover:bg-secondary'
             }`}
           >
             <span className="flex-1 truncate">{conv.title ?? 'Untitled'}</span>
@@ -124,20 +108,14 @@ export function ConversationHistory({
               <button
                 onClick={(e) => handleArchive(e, conv.id)}
                 aria-label={`Archive ${conv.title ?? 'conversation'}`}
-                className={`rounded p-1 ${
-                  isDarkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'
-                }`}
+                className={`rounded p-1 ${'hover:bg-secondary'}`}
               >
                 <Archive className="h-3 w-3" />
               </button>
               <button
                 onClick={(e) => handleDelete(e, conv.id)}
                 aria-label={`Delete ${conv.title ?? 'conversation'}`}
-                className={`rounded p-1 ${
-                  isDarkMode
-                    ? 'text-red-400 hover:bg-gray-600'
-                    : 'text-red-500 hover:bg-gray-200'
-                }`}
+                className={`rounded p-1 ${'text-danger hover:bg-secondary'}`}
               >
                 <Trash2 className="h-3 w-3" />
               </button>
@@ -145,16 +123,10 @@ export function ConversationHistory({
           </div>
         ))}
       </div>
-      <div
-        className={`border-t p-1 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-      >
+      <div className={'border-t border-tertiary p-1'}>
         <button
           onClick={() => setShowHistory(false)}
-          className={`w-full rounded px-3 py-1 text-xs ${
-            isDarkMode
-              ? 'text-gray-500 hover:text-gray-400'
-              : 'text-gray-400 hover:text-gray-600'
-          }`}
+          className={`w-full rounded px-3 py-1 text-xs ${'text-tertiary hover:text-secondary'}`}
         >
           Close
         </button>

@@ -15,10 +15,9 @@ const MAX_RESULTS = 60
 interface IconPickerProps {
   value?: string
   onChange: (value: string) => void
-  isDarkMode: boolean
 }
 
-export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
+export function IconPicker({ value, onChange }: IconPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [iconSet, setIconSet] = useState('lucide')
@@ -79,25 +78,15 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
       {/* Current value display */}
       {value ? (
         <div
-          className={`flex items-center gap-3 rounded-lg border p-2.5 ${
-            isDarkMode
-              ? 'border-gray-600 bg-gray-700'
-              : 'border-gray-300 bg-white'
-          }`}
+          className={`flex items-center gap-3 rounded-lg border p-2.5 ${'border-input bg-background'}`}
         >
           <button
             type="button"
             onClick={() => setOpen(!open)}
-            className={`flex flex-1 items-center gap-3 text-left text-sm ${
-              isDarkMode ? 'text-gray-200' : 'text-gray-900'
-            }`}
+            className={`flex flex-1 items-center gap-3 text-left text-sm ${'text-primary'}`}
           >
             {SelectedIcon && <SelectedIcon className="h-5 w-5 flex-shrink-0" />}
-            <code
-              className={`rounded px-1.5 py-0.5 text-xs ${
-                isDarkMode ? 'bg-gray-600' : 'bg-gray-100'
-              }`}
-            >
+            <code className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary'}`}>
               {value}
             </code>
           </button>
@@ -107,11 +96,7 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
             size="sm"
             onClick={handleClear}
             aria-label="Remove icon"
-            className={`h-7 w-7 p-0 ${
-              isDarkMode
-                ? 'text-gray-400 hover:text-red-400'
-                : 'text-gray-500 hover:text-red-600'
-            }`}
+            className={`h-7 w-7 p-0 ${'text-tertiary hover:text-danger'}`}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -120,11 +105,7 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-            isDarkMode
-              ? 'border-gray-600 bg-gray-700 text-gray-400 hover:border-gray-500'
-              : 'border-gray-300 bg-white text-gray-500 hover:border-gray-400'
-          }`}
+          className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-tertiary hover:border-secondary'}`}
         >
           <Search className="h-4 w-4" />
           Pick an icon...
@@ -134,11 +115,7 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
       {/* Dropdown */}
       {open && (
         <div
-          className={`absolute z-50 mt-1 w-full rounded-lg border shadow-lg ${
-            isDarkMode
-              ? 'border-gray-600 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
+          className={`absolute z-50 mt-1 w-full rounded-lg border shadow-lg ${'border-border bg-card'}`}
         >
           <div className="p-2">
             <div className="mb-2 flex flex-wrap gap-1">
@@ -151,12 +128,8 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
                   }}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     iconSet === set.id
-                      ? isDarkMode
-                        ? 'bg-blue-600/30 text-blue-300'
-                        : 'bg-blue-50 text-blue-700'
-                      : isDarkMode
-                        ? 'text-gray-400 hover:text-gray-200'
-                        : 'text-gray-500 hover:text-gray-700'
+                      ? 'bg-info text-info'
+                      : 'text-tertiary hover:text-secondary'
                   }`}
                 >
                   {set.label}
@@ -165,28 +138,20 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
             </div>
             <div className="relative">
               <Search
-                className={`absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                }`}
+                className={`absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
               />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search icons..."
                 autoFocus
-                className={`pl-9 ${
-                  isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                }`}
+                className={`pl-9 ${''}`}
               />
             </div>
           </div>
           <div className="max-h-64 overflow-y-auto px-2 pb-2">
             {filtered.length === 0 ? (
-              <div
-                className={`py-6 text-center text-sm ${
-                  isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                }`}
-              >
+              <div className={`py-6 text-center text-sm ${'text-tertiary'}`}>
                 No icons found
               </div>
             ) : (
@@ -207,26 +172,16 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
                           onClick={() => handleSelect(icon.value)}
                           className={`flex h-10 w-full items-center justify-center rounded-md transition-colors ${
                             isSelected
-                              ? isDarkMode
-                                ? 'bg-blue-600/30 ring-1 ring-blue-500'
-                                : 'bg-blue-50 ring-1 ring-blue-400'
-                              : isDarkMode
-                                ? 'hover:bg-gray-700'
-                                : 'hover:bg-gray-100'
+                              ? 'bg-info ring-1 ring-info'
+                              : 'hover:bg-secondary'
                           }`}
                         >
-                          <Icon
-                            className={`h-5 w-5 ${
-                              isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                            }`}
-                          />
+                          <Icon className={`h-5 w-5 ${'text-secondary'}`} />
                         </button>
                       </HoverCardTrigger>
                       <HoverCardContent className="w-auto p-4" side="top">
                         <div className="flex flex-col items-center gap-3">
-                          <Icon
-                            className={`h-20 w-20 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}
-                          />
+                          <Icon className={'h-20 w-20 text-primary'} />
                           <span className="max-w-[180px] break-all text-center text-sm text-muted-foreground">
                             {icon.label}
                           </span>
@@ -238,11 +193,7 @@ export function IconPicker({ value, onChange, isDarkMode }: IconPickerProps) {
               </div>
             )}
             {filtered.length === MAX_RESULTS && (
-              <p
-                className={`mt-2 text-center text-xs ${
-                  isDarkMode ? 'text-gray-500' : 'text-gray-400'
-                }`}
-              >
+              <p className={`mt-2 text-center text-xs ${'text-tertiary'}`}>
                 Type to narrow results
               </p>
             )}

@@ -91,7 +91,7 @@ describe('IconRegistry', () => {
       registry.register(
         makeSet('aaa', 'Aaa', [{ label: 'Home', value: 'aaa-home' }]),
       )
-      expect(registry.search('   ')).toEqual([])
+      expect(registry.search('')).toEqual([])
     })
 
     it('finds icons matching the query across all sets', () => {

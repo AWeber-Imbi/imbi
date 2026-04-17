@@ -41,35 +41,25 @@ const integrations: Integration[] = [
   },
 ]
 
-interface SettingsIntegrationsProps {
-  isDarkMode: boolean
-}
-
-export function SettingsIntegrations({
-  isDarkMode,
-}: SettingsIntegrationsProps) {
+export function SettingsIntegrations() {
   return (
     <div className="space-y-4">
       {integrations.map((integration) => (
         <Card
           key={integration.name}
-          className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
+          className={'p-6'}
           style={{ borderWidth: '0.5px' }}
         >
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
               <div
-                className={`flex h-12 w-12 items-center justify-center rounded-lg text-xl ${
-                  isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
-                }`}
+                className={`flex h-12 w-12 items-center justify-center rounded-lg text-xl ${'bg-secondary'}`}
               >
                 {integration.icon}
               </div>
               <div>
                 <div className="mb-1 flex items-center gap-2">
-                  <h3
-                    className={`text-[14px] font-medium ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}
-                  >
+                  <h3 className={'text-[14px] font-medium text-primary'}>
                     {integration.name}
                   </h3>
                   {integration.connected && (
@@ -82,15 +72,11 @@ export function SettingsIntegrations({
                     </Badge>
                   )}
                 </div>
-                <p
-                  className={`mb-2 text-[12px] ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                >
+                <p className={'mb-2 text-[12px] text-tertiary'}>
                   {integration.description}
                 </p>
                 {integration.connected && integration.account && (
-                  <p
-                    className={`font-mono text-[12px] ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                  >
+                  <p className={'font-mono text-[12px] text-secondary'}>
                     {integration.account}
                   </p>
                 )}
@@ -102,11 +88,7 @@ export function SettingsIntegrations({
                   <Button
                     variant="outline"
                     size="sm"
-                    className={
-                      isDarkMode
-                        ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                        : ''
-                    }
+                    className={''}
                     style={{ borderWidth: '0.5px' }}
                   >
                     Configure

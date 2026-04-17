@@ -62,6 +62,9 @@ export function EditRelationshipsDialog({
     if (!isOpen) {
       setHasInitialized(false)
     }
+    // mutation.reset is called at most once per open; excluding `mutation` avoids
+    // re-running this effect on every render (useMutation returns a new object).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, existingIds, hasInitialized])
 
   // Focus search on open
@@ -240,7 +243,7 @@ export function EditRelationshipsDialog({
             </Button>
             <Button
               size="sm"
-              className="border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
+              className="bg-action text-action-foreground hover:bg-action-hover"
               onClick={handleSave}
               disabled={mutation.isPending}
             >

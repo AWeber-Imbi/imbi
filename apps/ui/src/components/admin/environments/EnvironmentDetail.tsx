@@ -13,14 +13,12 @@ interface EnvironmentDetailProps {
   environment: Environment
   onEdit: () => void
   onBack: () => void
-  isDarkMode: boolean
 }
 
 export function EnvironmentDetail({
   environment,
   onEdit,
   onBack,
-  isDarkMode,
 }: EnvironmentDetailProps) {
   const { data: envSchema } = useQuery({
     queryKey: ['environmentSchema'],
@@ -32,18 +30,14 @@ export function EnvironmentDetail({
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button
-          variant="outline"
-          onClick={onBack}
-          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-        >
+        <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
       </div>
 
       {/* Environment info card */}
-      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <Card>
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div>
             <div className="flex items-center gap-3">
@@ -56,16 +50,14 @@ export function EnvironmentDetail({
               <CardTitle>{environment.name}</CardTitle>
             </div>
             {environment.description && (
-              <p
-                className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
+              <p className={'mt-1 text-sm text-secondary'}>
                 {environment.description}
               </p>
             )}
           </div>
           <Button
             onClick={onEdit}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit Environment
@@ -75,55 +67,29 @@ export function EnvironmentDetail({
         <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Slug
-              </div>
-              <div
-                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
+              <div className={'text-sm text-secondary'}>Slug</div>
+              <div className={'mt-1 text-primary'}>
                 <code
-                  className={`rounded px-2 py-1 text-sm ${
-                    isDarkMode
-                      ? 'bg-gray-700 text-gray-300'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
+                  className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
                 >
                   {environment.slug}
                 </code>
               </div>
             </div>
             <div>
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Organization
-              </div>
-              <div
-                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
+              <div className={'text-sm text-secondary'}>Organization</div>
+              <div className={'mt-1 text-primary'}>
                 {environment.organization.name}
               </div>
             </div>
             <div>
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Sort Order
-              </div>
-              <div
-                className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
+              <div className={'text-sm text-secondary'}>Sort Order</div>
+              <div className={'mt-1 text-primary'}>
                 {environment.sort_order ?? 0}
               </div>
             </div>
             <div>
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Label Color
-              </div>
+              <div className={'text-sm text-secondary'}>Label Color</div>
               <div className="mt-1 flex items-center gap-2">
                 {environment.label_color ? (
                   <>
@@ -131,18 +97,12 @@ export function EnvironmentDetail({
                       className="h-6 w-6 rounded border"
                       style={{ backgroundColor: environment.label_color }}
                     />
-                    <span
-                      className={isDarkMode ? 'text-white' : 'text-gray-900'}
-                    >
+                    <span className={'text-primary'}>
                       {environment.label_color}
                     </span>
                   </>
                 ) : (
-                  <span
-                    className={isDarkMode ? 'text-gray-500' : 'text-gray-400'}
-                  >
-                    Not set
-                  </span>
+                  <span className={'text-tertiary'}>Not set</span>
                 )}
               </div>
             </div>
@@ -153,7 +113,6 @@ export function EnvironmentDetail({
                   environment,
                   ENVIRONMENT_BASE_FIELDS_SET,
                 )}
-                isDarkMode={isDarkMode}
               />
             )}
           </div>

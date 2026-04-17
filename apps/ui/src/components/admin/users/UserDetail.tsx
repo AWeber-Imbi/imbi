@@ -36,15 +36,9 @@ interface UserDetailProps {
   user: AdminUser
   onEdit: () => void
   onBack: () => void
-  isDarkMode: boolean
 }
 
-export function UserDetail({
-  user,
-  onEdit,
-  onBack,
-  isDarkMode,
-}: UserDetailProps) {
+export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
   const queryClient = useQueryClient()
   const { organizations: allOrgs } = useOrganization()
   const [showAddOrg, setShowAddOrg] = useState(false)
@@ -126,18 +120,14 @@ export function UserDetail({
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button
-          variant="outline"
-          onClick={onBack}
-          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-        >
+        <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
       </div>
 
       {/* User info card */}
-      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <Card>
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div className="flex items-center gap-3">
             <Gravatar
@@ -148,16 +138,12 @@ export function UserDetail({
             />
             <div>
               <CardTitle>{user.display_name}</CardTitle>
-              <p
-                className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                {user.email}
-              </p>
+              <p className={'mt-1 text-secondary'}>{user.email}</p>
             </div>
           </div>
           <Button
             onClick={onEdit}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Edit2 className="mr-2 h-4 w-4" />
             Edit User
@@ -165,19 +151,13 @@ export function UserDetail({
         </CardHeader>
 
         {/* Account Status */}
-        <div
-          className={`border-b px-6 py-5 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
+        <div className={'border-b border-tertiary px-6 py-5'}>
           <div className="flex items-center gap-6">
             <div
               className={`flex items-center gap-2 rounded px-3 py-1.5 ${
                 user.is_active
-                  ? isDarkMode
-                    ? 'bg-green-900/30 text-green-400'
-                    : 'bg-green-100 text-green-700'
-                  : isDarkMode
-                    ? 'bg-gray-700 text-gray-400'
-                    : 'bg-gray-100 text-gray-600'
+                  ? 'bg-success text-success'
+                  : 'bg-secondary text-secondary'
               }`}
             >
               <Power className="h-4 w-4" />
@@ -185,11 +165,7 @@ export function UserDetail({
             </div>
             {user.is_admin && (
               <div
-                className={`flex items-center gap-2 rounded px-3 py-1.5 ${
-                  isDarkMode
-                    ? 'bg-red-900/30 text-red-400'
-                    : 'bg-red-100 text-red-700'
-                }`}
+                className={`flex items-center gap-2 rounded px-3 py-1.5 ${'bg-danger text-danger'}`}
               >
                 <Shield className="h-4 w-4" />
                 Administrator
@@ -197,11 +173,7 @@ export function UserDetail({
             )}
             {user.is_service_account && (
               <div
-                className={`flex items-center gap-2 rounded px-3 py-1.5 ${
-                  isDarkMode
-                    ? 'bg-purple-900/30 text-purple-400'
-                    : 'bg-purple-100 text-purple-700'
-                }`}
+                className={`flex items-center gap-2 rounded px-3 py-1.5 ${'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'}`}
               >
                 Service Account
               </div>
@@ -214,48 +186,52 @@ export function UserDetail({
           <div className="grid grid-cols-2 gap-6">
             <div>
               <div
-                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                className={
+                  'mb-1 flex items-center gap-2 text-sm text-secondary'
+                }
               >
                 <Mail className="h-4 w-4" />
                 Email
               </div>
-              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                {user.email}
-              </div>
+              <div className={'text-primary'}>{user.email}</div>
             </div>
 
             <div>
               <div
-                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                className={
+                  'mb-1 flex items-center gap-2 text-sm text-secondary'
+                }
               >
                 <User className="h-4 w-4" />
                 Display Name
               </div>
-              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                {user.display_name}
-              </div>
+              <div className={'text-primary'}>{user.display_name}</div>
             </div>
 
             <div>
               <div
-                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                className={
+                  'mb-1 flex items-center gap-2 text-sm text-secondary'
+                }
               >
                 <Calendar className="h-4 w-4" />
                 Created
               </div>
-              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+              <div className={'text-primary'}>
                 {formatDate(user.created_at)}
               </div>
             </div>
 
             <div>
               <div
-                className={`mb-1 flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                className={
+                  'mb-1 flex items-center gap-2 text-sm text-secondary'
+                }
               >
                 <Clock className="h-4 w-4" />
                 Last Login
               </div>
-              <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+              <div className={'text-primary'}>
                 {formatDate(user.last_login)}
               </div>
             </div>
@@ -264,12 +240,10 @@ export function UserDetail({
       </Card>
 
       {/* Organization Memberships */}
-      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
-            <Building2
-              className={`h-5 w-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            />
+            <Building2 className={'h-5 w-5 text-secondary'} />
             <CardTitle>Organization Memberships</CardTitle>
           </div>
           {availableOrgs.length > 0 && (
@@ -277,11 +251,7 @@ export function UserDetail({
               onClick={() => setShowAddOrg(!showAddOrg)}
               variant="outline"
               size="sm"
-              className={
-                isDarkMode
-                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                  : ''
-              }
+              className={''}
             >
               <Plus className="mr-2 h-4 w-4" />
               Add to Organization
@@ -292,27 +262,17 @@ export function UserDetail({
           {/* Add to Organization Form */}
           {showAddOrg && (
             <div
-              className={`mb-4 rounded-lg border p-4 ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700'
-                  : 'border-gray-200 bg-gray-50'
-              }`}
+              className={`mb-4 rounded-lg border p-4 ${'border-input bg-secondary'}`}
             >
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label
-                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                  >
+                  <label className={'mb-1.5 block text-sm text-secondary'}>
                     Organization
                   </label>
                   <select
                     value={newOrgSlug}
                     onChange={(e) => setNewOrgSlug(e.target.value)}
-                    className={`w-full rounded-md border px-3 py-2 text-sm ${
-                      isDarkMode
-                        ? 'border-gray-600 bg-gray-700 text-white'
-                        : 'border-gray-300 bg-white text-gray-900'
-                    }`}
+                    className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
                   >
                     <option value="">Select...</option>
                     {availableOrgs.map((org) => (
@@ -323,19 +283,13 @@ export function UserDetail({
                   </select>
                 </div>
                 <div>
-                  <label
-                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                  >
+                  <label className={'mb-1.5 block text-sm text-secondary'}>
                     Role
                   </label>
                   <select
                     value={newRoleSlug}
                     onChange={(e) => setNewRoleSlug(e.target.value)}
-                    className={`w-full rounded-md border px-3 py-2 text-sm ${
-                      isDarkMode
-                        ? 'border-gray-600 bg-gray-700 text-white'
-                        : 'border-gray-300 bg-white text-gray-900'
-                    }`}
+                    className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
                   >
                     <option value="">Select...</option>
                     {availableRoles.map((role) => (
@@ -357,7 +311,7 @@ export function UserDetail({
                   disabled={
                     !newOrgSlug || !newRoleSlug || addOrgMutation.isPending
                   }
-                  className="bg-amber-border text-white hover:bg-amber-border-strong"
+                  className="bg-action text-action-foreground hover:bg-action-hover"
                   size="sm"
                 >
                   {addOrgMutation.isPending ? 'Adding...' : 'Add'}
@@ -370,7 +324,6 @@ export function UserDetail({
                     setNewOrgSlug('')
                     setNewRoleSlug('')
                   }}
-                  className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
                 >
                   Cancel
                 </Button>
@@ -384,21 +337,13 @@ export function UserDetail({
               {(user.organizations ?? []).map((membership: OrgMembership) => (
                 <div
                   key={membership.organization_slug}
-                  className={`flex items-center justify-between rounded-lg border p-3 ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700'
-                      : 'border-gray-200 bg-gray-50'
-                  }`}
+                  className={`flex items-center justify-between rounded-lg border p-3 ${'border-input bg-secondary'}`}
                 >
                   <div className="flex-1">
-                    <div
-                      className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                    >
+                    <div className={'text-sm font-medium text-primary'}>
                       {membership.organization_name}
                     </div>
-                    <div
-                      className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}
-                    >
+                    <div className={'text-xs text-tertiary'}>
                       {membership.organization_slug}
                     </div>
                   </div>
@@ -412,11 +357,7 @@ export function UserDetail({
                         })
                       }
                       disabled={updateRoleMutation.isPending}
-                      className={`rounded border px-2 py-1 text-xs ${
-                        isDarkMode
-                          ? 'border-gray-600 bg-gray-700 text-white'
-                          : 'border-gray-300 bg-white text-gray-900'
-                      }`}
+                      className={`rounded border px-2 py-1 text-xs ${'border-input bg-background text-foreground'}`}
                     >
                       {availableRoles.map((role) => (
                         <option key={role.slug} value={role.slug}>
@@ -440,11 +381,7 @@ export function UserDetail({
                               }
                             }}
                             disabled={removeOrgMutation.isPending}
-                            className={`rounded p-1.5 ${
-                              isDarkMode
-                                ? 'text-red-400 hover:bg-gray-700 hover:text-red-300'
-                                : 'text-red-600 hover:bg-gray-100 hover:text-red-700'
-                            }`}
+                            className={`rounded p-1.5 ${'text-danger hover:bg-secondary'}`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -459,12 +396,8 @@ export function UserDetail({
               ))}
             </div>
           ) : (
-            <div
-              className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
-              <Building2
-                className={`mx-auto mb-2 h-8 w-8 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}
-              />
+            <div className={'py-8 text-center text-tertiary'}>
+              <Building2 className={'mx-auto mb-2 h-8 w-8 text-tertiary'} />
               <div>Not a member of any organization</div>
               <div className="mt-1 text-sm">
                 This user has no permissions until added to an organization
@@ -475,14 +408,12 @@ export function UserDetail({
       </Card>
 
       {/* Active Sessions */}
-      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <Card>
         <CardHeader className="pb-4">
           <CardTitle>Active Sessions</CardTitle>
         </CardHeader>
         <CardContent>
-          <div
-            className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          >
+          <div className={'py-8 text-center text-tertiary'}>
             <div>0 active sessions</div>
             <div className="mt-1 text-sm">
               No JWT tokens currently active for this user

@@ -25,11 +25,7 @@ const tabs: { id: SettingsTab; label: string; icon: typeof User }[] = [
   { id: 'project-types', label: 'Project Types', icon: Book },
 ]
 
-interface SettingsProps {
-  isDarkMode: boolean
-}
-
-export function Settings({ isDarkMode }: SettingsProps) {
+export function Settings() {
   const navigate = useNavigate()
   const { tab } = useParams<{ tab?: string }>()
   const activeTab: SettingsTab = (tab as SettingsTab) || 'account'
@@ -44,7 +40,7 @@ export function Settings({ isDarkMode }: SettingsProps) {
       <Button
         variant="ghost"
         onClick={() => navigate(-1)}
-        className={`mb-6 gap-2 ${isDarkMode ? 'text-gray-300 hover:bg-gray-800' : 'text-gray-600 hover:bg-gray-100'}`}
+        className={'mb-6 gap-2 text-secondary hover:bg-secondary'}
       >
         <ArrowLeft className="h-4 w-4" />
         Back
@@ -52,14 +48,8 @@ export function Settings({ isDarkMode }: SettingsProps) {
 
       {/* Header */}
       <div className="mb-8">
-        <h1
-          className={`text-[22px] font-medium ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}
-        >
-          Settings
-        </h1>
-        <p
-          className={`mt-1 text-[13px] ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-        >
+        <h1 className={'text-[22px] font-medium text-primary'}>Settings</h1>
+        <p className={'mt-1 text-[13px] text-tertiary'}>
           Manage your account preferences and integrations
         </p>
       </div>
@@ -67,10 +57,7 @@ export function Settings({ isDarkMode }: SettingsProps) {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
         {/* Sidebar navigation */}
         <div className="lg:col-span-1">
-          <Card
-            className={`p-2 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-            style={{ borderWidth: '0.5px' }}
-          >
+          <Card className={'p-2'} style={{ borderWidth: '0.5px' }}>
             <nav className="space-y-1">
               {tabs.map((t) => {
                 const Icon = t.icon
@@ -80,12 +67,8 @@ export function Settings({ isDarkMode }: SettingsProps) {
                     onClick={() => handleTabChange(t.id)}
                     className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-[13.5px] transition-colors ${
                       activeTab === t.id
-                        ? isDarkMode
-                          ? 'bg-amber-900/30 text-amber-400'
-                          : 'bg-amber-50 text-amber-800'
-                        : isDarkMode
-                          ? 'text-gray-400 hover:bg-gray-700'
-                          : 'text-gray-600 hover:bg-gray-50'
+                        ? 'bg-warning text-warning'
+                        : 'text-secondary hover:bg-secondary'
                     }`}
                   >
                     <Icon className="h-[18px] w-[18px]" />
@@ -99,29 +82,14 @@ export function Settings({ isDarkMode }: SettingsProps) {
 
         {/* Content area */}
         <div className="lg:col-span-3">
-          {activeTab === 'account' && (
-            <SettingsAccount isDarkMode={isDarkMode} />
-          )}
-          {activeTab === 'integrations' && (
-            <SettingsIntegrations isDarkMode={isDarkMode} />
-          )}
-          {activeTab === 'notifications' && (
-            <SettingsNotifications isDarkMode={isDarkMode} />
-          )}
-          {activeTab === 'api-keys' && (
-            <SettingsApiKeys isDarkMode={isDarkMode} />
-          )}
-          {activeTab === 'security' && (
-            <SettingsSecurity isDarkMode={isDarkMode} />
-          )}
+          {activeTab === 'account' && <SettingsAccount />}
+          {activeTab === 'integrations' && <SettingsIntegrations />}
+          {activeTab === 'notifications' && <SettingsNotifications />}
+          {activeTab === 'api-keys' && <SettingsApiKeys />}
+          {activeTab === 'security' && <SettingsSecurity />}
           {activeTab === 'project-types' && (
-            <Card
-              className={`p-8 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-              style={{ borderWidth: '0.5px' }}
-            >
-              <p
-                className={`text-[13.5px] ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-              >
+            <Card className={'p-8'} style={{ borderWidth: '0.5px' }}>
+              <p className={'text-[13.5px] text-tertiary'}>
                 Project type definitions will be available here.
               </p>
             </Card>

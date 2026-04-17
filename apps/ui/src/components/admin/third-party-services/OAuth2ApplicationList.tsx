@@ -22,44 +22,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { statusBadgeVariant } from '@/lib/status-colors'
+import { Badge } from '@/components/ui/badge'
 
 type ViewMode = 'list' | 'create' | 'edit'
 
 interface OAuth2ApplicationListProps {
   orgSlug: string
   serviceSlug: string
-  isDarkMode: boolean
   onViewModeChange?: (mode: ViewMode) => void
-}
-
-const STATUS_COLORS: Record<
-  string,
-  { bg: string; text: string; darkBg: string; darkText: string }
-> = {
-  active: {
-    bg: 'bg-green-100',
-    text: 'text-green-700',
-    darkBg: 'bg-green-900/30',
-    darkText: 'text-green-400',
-  },
-  inactive: {
-    bg: 'bg-gray-100',
-    text: 'text-gray-700',
-    darkBg: 'bg-gray-700',
-    darkText: 'text-gray-400',
-  },
-  revoked: {
-    bg: 'bg-red-100',
-    text: 'text-red-700',
-    darkBg: 'bg-red-900/30',
-    darkText: 'text-red-400',
-  },
 }
 
 export function OAuth2ApplicationList({
   orgSlug,
   serviceSlug,
-  isDarkMode,
   onViewModeChange,
 }: OAuth2ApplicationListProps) {
   const queryClient = useQueryClient()
@@ -151,7 +127,6 @@ export function OAuth2ApplicationList({
           setViewMode('list')
           setEditingApp(null)
         }}
-        isDarkMode={isDarkMode}
         isLoading={createMutation.isPending}
         error={createMutation.error}
       />
@@ -168,7 +143,6 @@ export function OAuth2ApplicationList({
             setViewMode('list')
             setEditingApp(null)
           }}
-          isDarkMode={isDarkMode}
           isLoading={updateMutation.isPending}
           error={updateMutation.error}
         />
@@ -177,7 +151,6 @@ export function OAuth2ApplicationList({
           serviceSlug={serviceSlug}
           appSlug={editingApp.slug}
           appType={editingApp.app_type}
-          isDarkMode={isDarkMode}
         />
       </div>
     )
@@ -186,11 +159,7 @@ export function OAuth2ApplicationList({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          Loading applications...
-        </div>
+        <div className={'text-sm text-secondary'}>Loading applications...</div>
       </div>
     )
   }
@@ -198,11 +167,7 @@ export function OAuth2ApplicationList({
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -219,9 +184,7 @@ export function OAuth2ApplicationList({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
+        <div className={'text-sm text-secondary'}>
           {applications.length} application
           {applications.length !== 1 ? 's' : ''}
         </div>
@@ -231,7 +194,7 @@ export function OAuth2ApplicationList({
             setViewMode('create')
           }}
           size="sm"
-          className="bg-amber-border text-white hover:bg-amber-border-strong"
+          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           <Plus className="mr-2 h-4 w-4" />
           Add Application
@@ -240,9 +203,7 @@ export function OAuth2ApplicationList({
 
       {/* Table */}
       {applications.length === 0 ? (
-        <div
-          className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-        >
+        <div className={'py-8 text-center text-tertiary'}>
           <Key className="mx-auto mb-2 h-8 w-8 opacity-50" />
           <div>No applications registered</div>
           <div className="mt-1 text-sm">
@@ -251,105 +212,70 @@ export function OAuth2ApplicationList({
         </div>
       ) : (
         <div
-          className={`overflow-hidden rounded-lg border ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
+          className={`overflow-hidden rounded-lg border ${'border-border bg-card'}`}
         >
           <table className="w-full">
             <thead className="border-b border-tertiary bg-secondary">
               <tr>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
                 >
                   Application
                 </th>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
                 >
                   Type
                 </th>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
                 >
                   Client ID
                 </th>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
                 >
                   Status
                 </th>
                 <th
-                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                  }`}
+                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${'text-tertiary'}`}
                 >
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody
-              className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
-            >
+            <tbody className={'divide-y divide-tertiary'}>
               {applications.map((app) => {
-                const statusColor =
-                  STATUS_COLORS[app.status] || STATUS_COLORS.inactive
+                const statusVariant = statusBadgeVariant(app.status)
                 return (
                   <tr
                     key={app.slug}
-                    className={`cursor-pointer ${isDarkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'}`}
+                    className={'hover:bg-secondary/50 cursor-pointer'}
                     onClick={() => {
                       setEditingApp(app)
                       setViewMode('edit')
                     }}
                   >
                     <td className="px-6 py-4">
-                      <div
-                        className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                      >
+                      <div className={'font-medium text-primary'}>
                         {app.name}
                       </div>
-                      <div
-                        className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                      >
-                        {app.slug}
-                      </div>
+                      <div className={'text-sm text-tertiary'}>{app.slug}</div>
                     </td>
                     <td className="px-6 py-4">
                       <code
-                        className={`rounded px-2 py-1 text-xs ${
-                          isDarkMode
-                            ? 'bg-gray-700 text-gray-300'
-                            : 'bg-gray-100 text-gray-700'
-                        }`}
+                        className={`rounded px-2 py-1 text-xs ${'bg-secondary text-primary'}`}
                       >
                         {app.app_type}
                       </code>
                     </td>
                     <td
-                      className={`px-6 py-4 font-mono text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
+                      className={'px-6 py-4 font-mono text-sm text-secondary'}
                     >
                       {app.client_id}
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          isDarkMode
-                            ? `${statusColor.darkBg} ${statusColor.darkText}`
-                            : `${statusColor.bg} ${statusColor.text}`
-                        }`}
-                      >
-                        {app.status}
-                      </span>
+                      <Badge variant={statusVariant}>{app.status}</Badge>
                     </td>
                     <td
                       className="px-6 py-4 text-right"
@@ -366,11 +292,7 @@ export function OAuth2ApplicationList({
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   aria-label={`Open ${app.name} application`}
-                                  className={`inline-flex items-center rounded p-1.5 ${
-                                    isDarkMode
-                                      ? 'text-blue-400 hover:bg-blue-900/20 hover:text-blue-300'
-                                      : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700'
-                                  }`}
+                                  className={`inline-flex items-center rounded p-1.5 ${'text-info hover:bg-info'}`}
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                 </a>
@@ -387,11 +309,7 @@ export function OAuth2ApplicationList({
                           aria-label={`Delete application ${app.name}`}
                           onClick={() => handleDelete(app)}
                           disabled={deleteMutation.isPending}
-                          className={
-                            isDarkMode
-                              ? 'text-red-400 hover:bg-red-900/20 hover:text-red-300'
-                              : 'text-red-600 hover:bg-red-50 hover:text-red-700'
-                          }
+                          className={'text-danger hover:bg-danger'}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

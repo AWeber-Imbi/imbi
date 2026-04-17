@@ -19,9 +19,11 @@ import {
   Braces,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { CardTitle } from '@/components/ui/card'
 import { getBlueprint } from '@/api/endpoints'
-import { getTypeBadgeClasses } from '../BlueprintManagement'
+import { getTypeSwatch } from '../BlueprintManagement'
+import { LabelChip } from '@/components/ui/label-chip'
 import { parseFilterFromBlueprint } from '@/lib/utils'
 import type { SchemaProperty } from '@/types'
 
@@ -30,7 +32,6 @@ interface BlueprintDetailProps {
   blueprintTypes: string[]
   onEdit: () => void
   onBack: () => void
-  isDarkMode: boolean
 }
 
 const TYPE_ICONS: Record<string, typeof Type> = {
@@ -106,7 +107,6 @@ export function BlueprintDetail({
   blueprintTypes,
   onEdit,
   onBack,
-  isDarkMode,
 }: BlueprintDetailProps) {
   const [rawSchemaOpen, setRawSchemaOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -123,11 +123,7 @@ export function BlueprintDetail({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          Loading blueprint...
-        </div>
+        <div className={'text-sm text-secondary'}>Loading blueprint...</div>
       </div>
     )
   }
@@ -135,11 +131,7 @@ export function BlueprintDetail({
   if (error || !blueprint) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -204,62 +196,45 @@ export function BlueprintDetail({
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button
-          variant="outline"
-          onClick={onBack}
-          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-        >
+        <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
       </div>
 
       {/* Blueprint info card */}
-      <div
-        className={`rounded-lg border ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
+      <div className={`rounded-lg border ${'border-border bg-card'}`}>
         {/* Title row */}
         <div
-          className={`flex items-start justify-between border-b px-6 py-5 ${
-            isDarkMode ? 'border-gray-700' : 'border-gray-200'
-          }`}
+          className={`flex items-start justify-between border-b px-6 py-5 ${'border-tertiary'}`}
         >
           <div className="flex items-center gap-3">
-            <div
-              className={`rounded-lg p-2 ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100'}`}
-            >
-              <FileJson
-                className={`h-6 w-6 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
-              />
+            <div className={'rounded-lg bg-info p-2'}>
+              <FileJson className={'h-6 w-6 text-info'} />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <CardTitle>{blueprint.name}</CardTitle>
-                <span
-                  className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${getTypeBadgeClasses(blueprint.kind === 'relationship' ? 'relationship' : blueprint.type || '', blueprintTypes, isDarkMode)}`}
+                <LabelChip
+                  hex={getTypeSwatch(
+                    blueprint.kind === 'relationship'
+                      ? 'relationship'
+                      : blueprint.type || '',
+                    blueprintTypes,
+                  )}
                 >
                   {blueprint.kind === 'relationship'
                     ? `${blueprint.source ?? '?'} → ${blueprint.target ?? '?'} (${blueprint.edge ?? '?'})`
                     : blueprint.type}
-                </span>
+                </LabelChip>
               </div>
-              <p
-                className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
+              <p className={'mt-1 text-secondary'}>
                 {blueprint.description || 'No description'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={handleCopy}
-              className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-            >
+            <Button variant="outline" onClick={handleCopy}>
               {copied ? (
                 <Check className="mr-2 h-4 w-4 text-green-500" />
               ) : (
@@ -269,7 +244,7 @@ export function BlueprintDetail({
             </Button>
             <Button
               onClick={onEdit}
-              className="bg-amber-border text-white hover:bg-amber-border-strong"
+              className="bg-action text-action-foreground hover:bg-action-hover"
             >
               <Edit2 className="mr-2 h-4 w-4" />
               Edit Blueprint
@@ -280,120 +255,54 @@ export function BlueprintDetail({
         {/* Metadata row */}
         <div className="flex flex-wrap items-center gap-6 px-6 py-4">
           <div>
-            <div
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Slug
-            </div>
-            <div
-              className={`font-mono text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-            >
+            <div className={'text-xs text-secondary'}>Slug</div>
+            <div className={'font-mono text-sm text-primary'}>
               {blueprint.slug}
             </div>
           </div>
-          <div
-            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-          />
+          <div className={'h-8 border-l border-tertiary'} />
           <div>
-            <div
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Enabled
-            </div>
+            <div className={'text-xs text-secondary'}>Enabled</div>
             <div className="flex items-center gap-1.5">
               {blueprint.enabled ? (
                 <>
                   <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span
-                    className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                  >
-                    Yes
-                  </span>
+                  <span className={'text-sm text-primary'}>Yes</span>
                 </>
               ) : (
                 <>
                   <XCircle className="h-4 w-4 text-gray-400" />
-                  <span
-                    className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                  >
-                    No
-                  </span>
+                  <span className={'text-sm text-primary'}>No</span>
                 </>
               )}
             </div>
           </div>
-          <div
-            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-          />
+          <div className={'h-8 border-l border-tertiary'} />
           <div>
-            <div
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Priority
-            </div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-            >
-              {blueprint.priority}
-            </div>
+            <div className={'text-xs text-secondary'}>Priority</div>
+            <div className={'text-sm text-primary'}>{blueprint.priority}</div>
           </div>
-          <div
-            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-          />
+          <div className={'h-8 border-l border-tertiary'} />
           <div>
-            <div
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Version
-            </div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-            >
-              v{blueprint.version}
-            </div>
+            <div className={'text-xs text-secondary'}>Version</div>
+            <div className={'text-sm text-primary'}>v{blueprint.version}</div>
           </div>
-          <div
-            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-          />
+          <div className={'h-8 border-l border-tertiary'} />
           <div>
-            <div
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Properties
-            </div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-            >
-              {properties.length}
-            </div>
+            <div className={'text-xs text-secondary'}>Properties</div>
+            <div className={'text-sm text-primary'}>{properties.length}</div>
           </div>
-          <div
-            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-          />
+          <div className={'h-8 border-l border-tertiary'} />
           <div>
-            <div
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Filter
-            </div>
+            <div className={'text-xs text-secondary'}>Filter</div>
             <div className="flex items-center gap-1.5">
               {hasFilter ? (
                 <>
-                  <Filter
-                    className={`h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
-                  />
-                  <span
-                    className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                  >
-                    Active
-                  </span>
+                  <Filter className={'h-4 w-4 text-warning'} />
+                  <span className={'text-sm text-primary'}>Active</span>
                 </>
               ) : (
-                <span
-                  className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                >
-                  None
-                </span>
+                <span className={'text-sm text-tertiary'}>None</span>
               )}
             </div>
           </div>
@@ -402,28 +311,14 @@ export function BlueprintDetail({
 
       {/* Conditional Filter detail */}
       {hasFilter && parsedFilter && (
-        <div
-          className={`rounded-lg border ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <div
-            className={`border-b px-6 py-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-          >
+        <div className={`rounded-lg border ${'border-border bg-card'}`}>
+          <div className={'border-b border-tertiary px-6 py-4'}>
             <div className="flex items-center gap-2">
-              <Filter
-                className={`h-4 w-4 ${isDarkMode ? 'text-amber-400' : 'text-amber-600'}`}
-              />
-              <h3
-                className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-              >
+              <Filter className={'h-4 w-4 text-warning'} />
+              <h3 className={'text-sm font-medium text-primary'}>
                 Conditional Filter
               </h3>
-              <span
-                className={`ml-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-              >
+              <span className={'ml-1 text-xs text-tertiary'}>
                 Only applies to matching entities
               </span>
             </div>
@@ -432,22 +327,21 @@ export function BlueprintDetail({
             {(parsedFilter.project_type?.length ?? 0) > 0 && (
               <div>
                 <div
-                  className={`mb-2 text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  className={
+                    'mb-2 text-xs font-medium uppercase tracking-wider text-tertiary'
+                  }
                 >
                   Project Types
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {parsedFilter.project_type.map((pt) => (
-                    <span
+                    <Badge
                       key={pt}
-                      className={`inline-flex items-center rounded-md border px-2.5 py-1 text-sm ${
-                        isDarkMode
-                          ? 'border-blue-800/50 bg-blue-900/20 text-blue-400'
-                          : 'border-blue-200 bg-blue-50 text-blue-700'
-                      }`}
+                      variant="info"
+                      className="rounded-md border-info px-2.5 py-1 text-sm"
                     >
                       {pt}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -455,22 +349,21 @@ export function BlueprintDetail({
             {(parsedFilter.environment?.length ?? 0) > 0 && (
               <div>
                 <div
-                  className={`mb-2 text-xs font-medium uppercase tracking-wider ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                  className={
+                    'mb-2 text-xs font-medium uppercase tracking-wider text-tertiary'
+                  }
                 >
                   Environments
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {parsedFilter.environment.map((env) => (
-                    <span
+                    <Badge
                       key={env}
-                      className={`inline-flex items-center rounded-md border px-2.5 py-1 text-sm ${
-                        isDarkMode
-                          ? 'border-green-800/50 bg-green-900/20 text-green-400'
-                          : 'border-green-200 bg-green-50 text-green-700'
-                      }`}
+                      variant="success"
+                      className="rounded-md border-success px-2.5 py-1 text-sm"
                     >
                       {env}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -480,78 +373,42 @@ export function BlueprintDetail({
       )}
 
       {/* Schema Properties */}
-      <div
-        className={`rounded-lg border ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <div
-          className={`border-b px-6 py-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
-          <h3
-            className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+      <div className={`rounded-lg border ${'border-border bg-card'}`}>
+        <div className={'border-b border-tertiary px-6 py-4'}>
+          <h3 className={'text-sm font-medium text-primary'}>
             Schema Properties
           </h3>
         </div>
 
         {properties.length === 0 ? (
-          <div
-            className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          >
+          <div className={'py-8 text-center text-tertiary'}>
             <FileJson className="mx-auto mb-2 h-8 w-8 opacity-50" />
             <div>No properties defined</div>
           </div>
         ) : (
-          <div
-            className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-200'}`}
-          >
+          <div className={'divide-y divide-tertiary'}>
             {properties.map((prop) => {
               const IconComponent = TYPE_ICONS[prop.type] || Type
               return (
                 <div key={prop.name} className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     <IconComponent
-                      className={`h-4 w-4 flex-shrink-0 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
+                      className={'h-4 w-4 flex-shrink-0 text-tertiary'}
                     />
                     <code
-                      className={`rounded px-2 py-1 text-sm font-medium ${
-                        isDarkMode
-                          ? 'bg-gray-700 text-blue-400'
-                          : 'bg-gray-100 text-[#2A4DD0]'
-                      }`}
+                      className={`rounded px-2 py-1 text-sm font-medium ${'bg-secondary text-info'}`}
                     >
                       {prop.name}
                     </code>
-                    <span
-                      className={`rounded px-2 py-0.5 text-xs ${
-                        isDarkMode
-                          ? 'bg-gray-700 text-gray-300'
-                          : 'bg-gray-200 text-gray-700'
-                      }`}
-                    >
+                    <Badge variant="secondary">
                       {prop.type}
                       {prop.format ? ` / ${prop.format}` : ''}
-                    </span>
-                    {prop.required && (
-                      <span
-                        className={`rounded px-2 py-0.5 text-xs font-medium ${
-                          isDarkMode
-                            ? 'bg-red-900/30 text-red-400'
-                            : 'bg-red-100 text-red-700'
-                        }`}
-                      >
-                        Required
-                      </span>
-                    )}
+                    </Badge>
+                    {prop.required && <Badge variant="danger">Required</Badge>}
                   </div>
 
                   {prop.description && (
-                    <p
-                      className={`ml-7 mt-1.5 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                    >
+                    <p className={'ml-7 mt-1.5 text-sm text-secondary'}>
                       {prop.description}
                     </p>
                   )}
@@ -560,16 +417,13 @@ export function BlueprintDetail({
                   {prop.enumValues && prop.enumValues.length > 0 && (
                     <div className="ml-7 mt-2 flex flex-wrap gap-1.5">
                       {prop.enumValues.map((val) => (
-                        <span
+                        <Badge
                           key={val}
-                          className={`inline-flex items-center rounded border px-2 py-0.5 font-mono text-xs ${
-                            isDarkMode
-                              ? 'border-gray-600 bg-gray-700 text-gray-300'
-                              : 'border-gray-200 bg-gray-50 text-gray-700'
-                          }`}
+                          variant="secondary"
+                          className="border border-input font-mono text-secondary"
                         >
                           {val}
-                        </span>
+                        </Badge>
                       ))}
                     </div>
                   )}
@@ -593,23 +447,19 @@ export function BlueprintDetail({
                     if (activeMaps.length === 0) return null
                     const isColorType = (name: string) =>
                       name.startsWith('color-')
-                    const chipClass = isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-gray-300'
-                      : 'border-gray-200 bg-gray-50 text-gray-700'
                     return (
                       <div className="ml-7 mt-2 flex flex-wrap gap-4">
                         {activeMaps.map(([name, map]) => (
                           <div key={name}>
-                            <span
-                              className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                            >
+                            <span className={'text-xs text-tertiary'}>
                               {name}
                             </span>
                             <div className="mt-1 flex flex-wrap gap-1.5">
                               {Object.entries(map!).map(([key, val]) => (
-                                <span
+                                <Badge
                                   key={key}
-                                  className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-xs ${chipClass}`}
+                                  variant="secondary"
+                                  className="gap-1.5 border border-input font-mono text-secondary"
                                 >
                                   {isColorType(name) ? (
                                     <>
@@ -624,7 +474,7 @@ export function BlueprintDetail({
                                       {key} → {val}
                                     </>
                                   )}
-                                </span>
+                                </Badge>
                               ))}
                             </div>
                           </div>
@@ -638,17 +488,11 @@ export function BlueprintDetail({
                     <div className="ml-7 mt-2 flex flex-wrap gap-4">
                       {prop.defaultValue !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                          >
+                          <span className={'text-xs text-tertiary'}>
                             Default
                           </span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${
-                              isDarkMode
-                                ? 'bg-gray-700 text-gray-300'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
+                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
                           >
                             {prop.defaultValue}
                           </code>
@@ -656,17 +500,9 @@ export function BlueprintDetail({
                       )}
                       {prop.minimum !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                          >
-                            Min
-                          </span>
+                          <span className={'text-xs text-tertiary'}>Min</span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${
-                              isDarkMode
-                                ? 'bg-gray-700 text-gray-300'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
+                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
                           >
                             {prop.minimum}
                           </code>
@@ -674,17 +510,9 @@ export function BlueprintDetail({
                       )}
                       {prop.maximum !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                          >
-                            Max
-                          </span>
+                          <span className={'text-xs text-tertiary'}>Max</span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${
-                              isDarkMode
-                                ? 'bg-gray-700 text-gray-300'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
+                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
                           >
                             {prop.maximum}
                           </code>
@@ -692,17 +520,11 @@ export function BlueprintDetail({
                       )}
                       {prop.minLength !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                          >
+                          <span className={'text-xs text-tertiary'}>
                             Min length
                           </span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${
-                              isDarkMode
-                                ? 'bg-gray-700 text-gray-300'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
+                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
                           >
                             {prop.minLength}
                           </code>
@@ -710,17 +532,11 @@ export function BlueprintDetail({
                       )}
                       {prop.maxLength !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                          >
+                          <span className={'text-xs text-tertiary'}>
                             Max length
                           </span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${
-                              isDarkMode
-                                ? 'bg-gray-700 text-gray-300'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
+                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
                           >
                             {prop.maxLength}
                           </code>
@@ -736,44 +552,26 @@ export function BlueprintDetail({
       </div>
 
       {/* Raw JSON Schema (collapsible) */}
-      <div
-        className={`rounded-lg border ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
+      <div className={`rounded-lg border ${'border-border bg-card'}`}>
         <button
           onClick={() => setRawSchemaOpen(!rawSchemaOpen)}
-          className={`flex w-full items-center gap-2 px-6 py-4 text-left ${
-            isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'
-          } ${rawSchemaOpen ? (isDarkMode ? 'border-b border-gray-700' : 'border-b border-gray-200') : ''}`}
+          className={`flex w-full items-center gap-2 px-6 py-4 text-left ${'hover:bg-secondary'} ${rawSchemaOpen ? 'border-b border-tertiary' : ''}`}
         >
           {rawSchemaOpen ? (
-            <ChevronDown
-              className={`h-4 w-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            />
+            <ChevronDown className={'h-4 w-4 text-tertiary'} />
           ) : (
-            <ChevronRight
-              className={`h-4 w-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            />
+            <ChevronRight className={'h-4 w-4 text-tertiary'} />
           )}
-          <h3
-            className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+          <h3 className={'text-sm font-medium text-primary'}>
             Raw JSON Schema
           </h3>
-          <span
-            className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-          >
+          <span className={'text-xs text-tertiary'}>
             {raw.split('\n').length} lines
           </span>
         </button>
         {rawSchemaOpen && (
           <pre
-            className={`overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed ${
-              isDarkMode ? 'text-gray-300' : 'text-gray-800'
-            }`}
+            className={`overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed ${'text-primary'}`}
           >
             {raw}
           </pre>

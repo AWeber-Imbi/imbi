@@ -10,7 +10,6 @@ interface OrganizationFormProps {
   organization: Organization | null
   onSave: (org: OrganizationCreate) => void
   onCancel: () => void
-  isDarkMode: boolean
   isLoading?: boolean
   error?: { response?: { data?: { detail?: string } }; message?: string } | null
 }
@@ -19,7 +18,6 @@ export function OrganizationForm({
   organization,
   onSave,
   onCancel,
-  isDarkMode,
   isLoading = false,
   error,
 }: OrganizationFormProps) {
@@ -76,33 +74,24 @@ export function OrganizationForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2
-            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+          <h2 className={'text-base font-medium text-primary'}>
             {isEditing ? 'Edit Organization' : 'Create New Organization'}
           </h2>
-          <p
-            className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
+          <p className={'mt-1 text-sm text-secondary'}>
             {isEditing
               ? 'Update organization information and settings'
               : 'Create a new organization to group projects and control access'}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={onCancel}
-            disabled={isLoading}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
+          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -116,26 +105,14 @@ export function OrganizationForm({
 
       {/* API Error */}
       {error && (
-        <div
-          className={`rounded-lg border p-4 ${
-            isDarkMode
-              ? 'border-red-700 bg-red-900/20'
-              : 'border-red-200 bg-red-50'
-          }`}
-        >
+        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
           <div className="flex items-start gap-3">
-            <AlertCircle
-              className={`h-5 w-5 flex-shrink-0 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-            />
+            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
             <div>
-              <div
-                className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}
-              >
+              <div className={'font-medium text-danger'}>
                 Failed to save organization
               </div>
-              <div
-                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
-              >
+              <div className={'mt-1 text-sm text-danger'}>
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -147,15 +124,13 @@ export function OrganizationForm({
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="space-y-4 pt-6">
             <div
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Organization Name <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -163,15 +138,11 @@ export function OrganizationForm({
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., Engineering"
                   disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.name ? 'border-red-500' : ''
-                  }`}
+                  className={` ${errors.name ? 'border-red-500' : ''}`}
                 />
                 {errors.name && (
                   <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${
-                      isDarkMode ? 'text-red-400' : 'text-red-600'
-                    }`}
+                    className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
                   >
                     <AlertCircle className="h-3 w-3" />
                     {errors.name}
@@ -181,9 +152,7 @@ export function OrganizationForm({
 
               {!isEditing && (
                 <div>
-                  <label
-                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                  >
+                  <label className={'mb-1.5 block text-sm text-secondary'}>
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -191,15 +160,11 @@ export function OrganizationForm({
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., engineering"
                     disabled={isLoading}
-                    className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                      errors.slug ? 'border-red-500' : ''
-                    }`}
+                    className={` ${errors.slug ? 'border-red-500' : ''}`}
                   />
                   {errors.slug && (
                     <div
-                      className={`mt-1 flex items-center gap-1 text-xs ${
-                        isDarkMode ? 'text-red-400' : 'text-red-600'
-                      }`}
+                      className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
                     >
                       <AlertCircle className="h-3 w-3" />
                       {errors.slug}
@@ -210,9 +175,7 @@ export function OrganizationForm({
             </div>
 
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Description
               </label>
               <textarea
@@ -221,25 +184,15 @@ export function OrganizationForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of the organization's purpose"
-                className={`w-full resize-none rounded-lg border px-3 py-2 ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
-                    : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
-                }`}
+                className={`w-full resize-none rounded-lg border px-3 py-2 ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
               />
             </div>
 
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Icon
               </label>
-              <IconUpload
-                value={icon}
-                onChange={setIcon}
-                isDarkMode={isDarkMode}
-              />
+              <IconUpload value={icon} onChange={setIcon} />
             </div>
           </CardContent>
         </Card>

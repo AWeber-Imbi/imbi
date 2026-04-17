@@ -38,7 +38,6 @@ interface DashboardProps {
   onViewChange?: (view: ViewChangeEvent) => void
   onUserSelect?: (userName: string) => void
   onProjectSelect?: (projectId: string) => void
-  isDarkMode: boolean
 }
 
 const WIDGET_STORAGE_KEY = 'imbi-dashboard-widgets-v3'
@@ -122,10 +121,9 @@ const defaultWidgets = [
 interface SortableWidgetProps {
   id: string
   children: React.ReactNode
-  isDarkMode: boolean
 }
 
-function SortableWidget({ id, children, isDarkMode }: SortableWidgetProps) {
+function SortableWidget({ id, children }: SortableWidgetProps) {
   const {
     attributes,
     listeners,
@@ -151,11 +149,7 @@ function SortableWidget({ id, children, isDarkMode }: SortableWidgetProps) {
       <div
         {...attributes}
         {...listeners}
-        className={`absolute left-2 top-2 z-20 cursor-grab rounded p-1 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100 ${
-          isDarkMode
-            ? 'bg-gray-700/80 text-gray-400 hover:text-gray-200'
-            : 'bg-white/80 text-gray-400 hover:text-gray-600'
-        }`}
+        className={`absolute left-2 top-2 z-20 cursor-grab rounded p-1 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100 ${'bg-secondary/80 text-tertiary hover:text-primary'}`}
       >
         <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
@@ -170,7 +164,6 @@ export function Dashboard({
   onViewChange,
   onUserSelect,
   onProjectSelect,
-  isDarkMode,
 }: DashboardProps) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
@@ -244,63 +237,33 @@ export function Dashboard({
             title="Total Projects"
             value={projectCount.toLocaleString()}
             icon="📁"
-            isDarkMode={isDarkMode}
           />
         )
       case 'stat-active-deployments':
-        return (
-          <StatWidget
-            title="Active Deployments"
-            value="1,429"
-            icon="🚀"
-            isDarkMode={isDarkMode}
-          />
-        )
+        return <StatWidget title="Active Deployments" value="1,429" icon="🚀" />
       case 'stat-teams':
         return (
           <StatWidget
             title="Teams"
             value={teamCount.toLocaleString()}
             icon="👥"
-            isDarkMode={isDarkMode}
           />
         )
       case 'team-activity':
-        return (
-          <TeamActivityWidget
-            isDarkMode={isDarkMode}
-            onViewChange={onViewChange}
-          />
-        )
+        return <TeamActivityWidget onViewChange={onViewChange} />
       case 'recent-activity':
         return (
           <RecentActivityWidget
-            isDarkMode={isDarkMode}
             onUserSelect={onUserSelect}
             onProjectSelect={onProjectSelect}
           />
         )
       case 'recent-deployments':
-        return (
-          <RecentDeploymentsWidget
-            isDarkMode={isDarkMode}
-            onProjectSelect={onProjectSelect}
-          />
-        )
+        return <RecentDeploymentsWidget onProjectSelect={onProjectSelect} />
       case 'my-pull-requests':
-        return (
-          <MyPullRequestsWidget
-            isDarkMode={isDarkMode}
-            onUserSelect={onUserSelect}
-          />
-        )
+        return <MyPullRequestsWidget onUserSelect={onUserSelect} />
       case 'outdated-components':
-        return (
-          <OutdatedComponentsWidget
-            isDarkMode={isDarkMode}
-            onProjectSelect={onProjectSelect}
-          />
-        )
+        return <OutdatedComponentsWidget onProjectSelect={onProjectSelect} />
       default:
         return null
     }
@@ -315,21 +278,15 @@ export function Dashboard({
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1
-            className={`text-3xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Dashboard
-          </h1>
-          <p
-            className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
+          <h1 className={'text-3xl font-semibold text-primary'}>Dashboard</h1>
+          <p className={'mt-1 text-secondary'}>
             Welcome back! Here's what's happening across your projects.
           </p>
         </div>
         <Button
           onClick={() => setShowWidgetSelector(true)}
           variant="outline"
-          className={`gap-2 ${isDarkMode ? 'border-gray-600 text-gray-300' : ''}`}
+          className={'gap-2'}
         >
           <Settings className="h-4 w-4" />
           Customize
@@ -339,30 +296,18 @@ export function Dashboard({
       {/* Widgets */}
       {selectedWidgets.length === 0 ? (
         <div
-          className={`rounded-lg border p-12 text-center ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
+          className={`rounded-lg border p-12 text-center ${'border-border bg-card'}`}
         >
-          <div
-            className={`mb-4 text-6xl ${isDarkMode ? 'text-gray-600' : 'text-gray-300'}`}
-          >
-            📊
-          </div>
-          <h3
-            className={`mb-2 text-xl font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+          <div className={'mb-4 text-6xl text-secondary'}>📊</div>
+          <h3 className={'mb-2 text-xl font-medium text-primary'}>
             No Widgets Selected
           </h3>
-          <p
-            className={`mx-auto mb-4 max-w-md ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
+          <p className={'mx-auto mb-4 max-w-md text-secondary'}>
             Customize your dashboard by selecting widgets to display
           </p>
           <Button
             onClick={() => setShowWidgetSelector(true)}
-            className="bg-[#2A4DD0] text-white hover:bg-blue-700"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             Add Widgets
           </Button>
@@ -382,11 +327,7 @@ export function Dashboard({
               >
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                   {statWidgets.map((widgetId) => (
-                    <SortableWidget
-                      key={widgetId}
-                      id={widgetId}
-                      isDarkMode={isDarkMode}
-                    >
+                    <SortableWidget key={widgetId} id={widgetId}>
                       {renderWidget(widgetId)}
                     </SortableWidget>
                   ))}
@@ -405,11 +346,7 @@ export function Dashboard({
                   style={{ columnFill: 'balance' }}
                 >
                   {otherWidgets.map((widgetId) => (
-                    <SortableWidget
-                      key={widgetId}
-                      id={widgetId}
-                      isDarkMode={isDarkMode}
-                    >
+                    <SortableWidget key={widgetId} id={widgetId}>
                       {renderWidget(widgetId)}
                     </SortableWidget>
                   ))}
@@ -427,7 +364,6 @@ export function Dashboard({
           selectedWidgets={selectedWidgets}
           onToggleWidget={handleToggleWidget}
           onClose={() => setShowWidgetSelector(false)}
-          isDarkMode={isDarkMode}
         />
       )}
     </div>

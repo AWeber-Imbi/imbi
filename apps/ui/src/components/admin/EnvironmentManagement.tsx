@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { AdminTable } from '@/components/ui/admin-table'
 import type { CanDeleteResult } from '@/components/ui/admin-table'
+import { LabelChip } from '@/components/ui/label-chip'
 import { EnvironmentForm } from './environments/EnvironmentForm'
 import { EnvironmentDetail } from './environments/EnvironmentDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -20,13 +21,7 @@ import {
 } from '@/api/endpoints'
 import type { EnvironmentCreate } from '@/types'
 
-interface EnvironmentManagementProps {
-  isDarkMode: boolean
-}
-
-export function EnvironmentManagement({
-  isDarkMode,
-}: EnvironmentManagementProps) {
+export function EnvironmentManagement() {
   const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
@@ -143,11 +138,7 @@ export function EnvironmentManagement({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          Loading environments...
-        </div>
+        <div className={'text-sm text-secondary'}>Loading environments...</div>
       </div>
     )
   }
@@ -155,11 +146,7 @@ export function EnvironmentManagement({
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -174,9 +161,7 @@ export function EnvironmentManagement({
 
   if (!orgSlug) {
     return (
-      <div
-        className={`py-12 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-      >
+      <div className={'py-12 text-center text-tertiary'}>
         Select an organization to manage environments.
       </div>
     )
@@ -188,7 +173,6 @@ export function EnvironmentManagement({
         environment={selectedEnvironment}
         onSave={handleSave}
         onCancel={handleCancel}
-        isDarkMode={isDarkMode}
         isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
       />
@@ -201,7 +185,6 @@ export function EnvironmentManagement({
         environment={selectedEnvironment}
         onEdit={() => goToEdit(selectedEnvironment.slug)}
         onBack={handleCancel}
-        isDarkMode={isDarkMode}
       />
     )
   }
@@ -213,21 +196,19 @@ export function EnvironmentManagement({
         <div className="flex-1">
           <div className="relative max-w-md">
             <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
             />
             <Input
               placeholder="Search environments..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+              className={'pl-10'}
             />
           </div>
         </div>
         <Button
           onClick={goToCreate}
-          className="bg-amber-border text-white hover:bg-amber-border-strong"
+          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Environment
@@ -244,7 +225,9 @@ export function EnvironmentManagement({
             render: (env) => (
               <div className="flex items-center gap-3">
                 <div
-                  className={`flex size-8 flex-shrink-0 items-center justify-center rounded-lg ${isDarkMode ? 'bg-green-900/30' : 'bg-green-50'}`}
+                  className={
+                    'flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-success'
+                  }
                 >
                   {env.icon ? (
                     <EntityIcon
@@ -252,19 +235,13 @@ export function EnvironmentManagement({
                       className="size-5 rounded object-cover"
                     />
                   ) : (
-                    <Globe
-                      className={`h-4 w-4 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}
-                    />
+                    <Globe className={'h-4 w-4 text-success'} />
                   )}
                 </div>
                 <div>
-                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                    {env.name}
-                  </div>
+                  <div className={'text-primary'}>{env.name}</div>
                   {env.description && (
-                    <div
-                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                    >
+                    <div className={'text-sm text-tertiary'}>
                       {env.description}
                     </div>
                   )}
@@ -279,19 +256,14 @@ export function EnvironmentManagement({
             cellAlign: 'center',
             render: (env) =>
               env.label_color ? (
-                <span
-                  className="whitespace-nowrap rounded px-2 py-1 text-xs font-medium"
-                  style={{
-                    backgroundColor: env.label_color + '20',
-                    color: env.label_color,
-                    border: `1px solid ${env.label_color}40`,
-                  }}
-                >
+                <LabelChip hex={env.label_color} className="font-mono">
                   {env.slug}
-                </span>
+                </LabelChip>
               ) : (
                 <code
-                  className={`whitespace-nowrap rounded px-2 py-1 ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}
+                  className={
+                    'whitespace-nowrap rounded bg-secondary px-2 py-1 text-primary'
+                  }
                 >
                   {env.slug}
                 </code>
@@ -303,9 +275,7 @@ export function EnvironmentManagement({
             headerAlign: 'center',
             cellAlign: 'center',
             render: (env) => (
-              <span className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>
-                {env.sort_order ?? 0}
-              </span>
+              <span className={'text-secondary'}>{env.sort_order ?? 0}</span>
             ),
           },
           {
@@ -317,12 +287,8 @@ export function EnvironmentManagement({
               <span
                 className={
                   (env.relationships?.projects?.count ?? 0) === 0
-                    ? isDarkMode
-                      ? 'text-gray-600'
-                      : 'text-gray-400'
-                    : isDarkMode
-                      ? 'text-gray-300'
-                      : 'text-gray-600'
+                    ? 'text-tertiary'
+                    : 'text-secondary'
                 }
               >
                 {env.relationships?.projects?.count ?? 0}

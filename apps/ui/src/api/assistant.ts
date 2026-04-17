@@ -90,8 +90,7 @@ export async function sendMessageSSE(
   signal?: AbortSignal,
 ): Promise<void> {
   const token = useAuthStore.getState().accessToken
-  const url =
-    `${ASSISTANT_BASE_URL}/conversations/` + `${conversationId}/messages`
+  const url = `${ASSISTANT_BASE_URL}/conversations/${conversationId}/messages`
 
   const response = await fetch(url, {
     method: 'POST',

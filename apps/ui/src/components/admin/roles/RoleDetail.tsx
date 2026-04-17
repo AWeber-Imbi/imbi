@@ -15,6 +15,7 @@ import {
   Bot,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Gravatar } from '@/components/ui/gravatar'
 import {
@@ -38,17 +39,11 @@ interface RoleDetailProps {
   slug: string
   onEdit: () => void
   onBack: () => void
-  isDarkMode: boolean
 }
 
 type DetailTab = 'permissions' | 'users' | 'service-accounts' | 'groups'
 
-export function RoleDetail({
-  slug,
-  onEdit,
-  onBack,
-  isDarkMode,
-}: RoleDetailProps) {
+export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<DetailTab>('permissions')
   const [showAddPermission, setShowAddPermission] = useState(false)
@@ -162,11 +157,7 @@ export function RoleDetail({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          Loading role...
-        </div>
+        <div className={'text-sm text-secondary'}>Loading role...</div>
       </div>
     )
   }
@@ -174,11 +165,7 @@ export function RoleDetail({
   if (error || !role) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -202,46 +189,30 @@ export function RoleDetail({
     <div className="space-y-6">
       {/* Back button */}
       <div>
-        <Button
-          variant="outline"
-          onClick={onBack}
-          className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-        >
+        <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
       </div>
 
       {/* Role info card */}
-      <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+      <Card>
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div className="flex items-center gap-3">
-            <div
-              className={`rounded-lg p-2 ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-100'}`}
-            >
-              <Shield
-                className={`h-6 w-6 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
-              />
+            <div className={'rounded-lg bg-info p-2'}>
+              <Shield className={'h-6 w-6 text-info'} />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <CardTitle>{role.name}</CardTitle>
                 {role.is_system && (
-                  <span
-                    className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${
-                      isDarkMode
-                        ? 'bg-amber-900/30 text-amber-400'
-                        : 'bg-amber-100 text-amber-700'
-                    }`}
-                  >
+                  <Badge variant="warning" className="gap-1">
                     <Lock className="h-3 w-3" />
                     System
-                  </span>
+                  </Badge>
                 )}
               </div>
-              <p
-                className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
+              <p className={'mt-1 text-secondary'}>
                 {role.description || 'No description'}
               </p>
             </div>
@@ -249,7 +220,7 @@ export function RoleDetail({
           {!role.is_system && (
             <Button
               onClick={onEdit}
-              className="bg-amber-border text-white hover:bg-amber-border-strong"
+              className="bg-action text-action-foreground hover:bg-action-hover"
             >
               <Edit2 className="mr-2 h-4 w-4" />
               Edit Role
@@ -259,64 +230,32 @@ export function RoleDetail({
 
         {/* Stats Bar */}
         <div
-          className={`flex items-center gap-6 border-b px-6 py-4 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
+          className={
+            'flex items-center gap-6 border-b border-tertiary px-6 py-4'
+          }
         >
           <div>
-            <div
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Slug
-            </div>
-            <div
-              className={`font-mono text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-            >
-              {role.slug}
-            </div>
+            <div className={'text-xs text-secondary'}>Slug</div>
+            <div className={'font-mono text-sm text-primary'}>{role.slug}</div>
           </div>
-          <div
-            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-          />
+          <div className={'h-8 border-l border-tertiary'} />
           <div>
-            <div
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Priority
-            </div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-            >
-              {role.priority}
-            </div>
+            <div className={'text-xs text-secondary'}>Priority</div>
+            <div className={'text-sm text-primary'}>{role.priority}</div>
           </div>
-          <div
-            className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-          />
+          <div className={'h-8 border-l border-tertiary'} />
           <div>
-            <div
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              Permissions
-            </div>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-            >
+            <div className={'text-xs text-secondary'}>Permissions</div>
+            <div className={'text-sm text-primary'}>
               {role.permissions?.length || 0}
             </div>
           </div>
           {role.parent_role && (
             <>
-              <div
-                className={`h-8 border-l ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-              />
+              <div className={'h-8 border-l border-tertiary'} />
               <div>
-                <div
-                  className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                >
-                  Inherits From
-                </div>
-                <div
-                  className={`text-sm ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
-                >
+                <div className={'text-xs text-secondary'}>Inherits From</div>
+                <div className={'text-sm text-primary'}>
                   {role.parent_role.name}
                 </div>
               </div>
@@ -325,9 +264,7 @@ export function RoleDetail({
         </div>
 
         {/* Tabs */}
-        <div
-          className={`border-b ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}
-        >
+        <div className={'border-b border-tertiary'}>
           <div className="flex gap-0 px-6">
             {tabs.map((tab) => {
               const Icon = tab.icon
@@ -338,12 +275,8 @@ export function RoleDetail({
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                     isActive
-                      ? isDarkMode
-                        ? 'border-blue-400 text-blue-400'
-                        : 'border-[#2A4DD0] text-[#2A4DD0]'
-                      : isDarkMode
-                        ? 'border-transparent text-gray-400 hover:text-gray-200'
-                        : 'border-transparent text-gray-600 hover:text-gray-900'
+                      ? 'border-info text-info'
+                      : 'border-transparent text-secondary hover:text-primary'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -360,22 +293,14 @@ export function RoleDetail({
         <div className="space-y-4">
           {/* Add Permission Section */}
           {!role.is_system && (
-            <div
-              className={`rounded-lg border p-4 ${
-                isDarkMode
-                  ? 'border-gray-700 bg-gray-800'
-                  : 'border-gray-200 bg-white'
-              }`}
-            >
+            <div className={`rounded-lg border p-4 ${'border-border bg-card'}`}>
               <div className="mb-3 flex items-center justify-between">
-                <h3
-                  className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                >
+                <h3 className={'text-sm font-medium text-primary'}>
                   Assign Permission
                 </h3>
                 <button
                   onClick={() => setShowAddPermission(!showAddPermission)}
-                  className={`text-sm ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-[#2A4DD0] hover:text-blue-700'}`}
+                  className={'hover:text-info/80 text-sm text-info'}
                 >
                   {showAddPermission ? 'Cancel' : 'Add Permission'}
                 </button>
@@ -386,11 +311,7 @@ export function RoleDetail({
                   <select
                     value={selectedPermission}
                     onChange={(e) => setSelectedPermission(e.target.value)}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
-                      isDarkMode
-                        ? 'border-gray-600 bg-gray-700 text-white'
-                        : 'border-gray-300 bg-white text-gray-900'
-                    }`}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
                   >
                     <option value="">Select a permission...</option>
                     {availablePermissions.map((perm) => (
@@ -402,7 +323,7 @@ export function RoleDetail({
                   <Button
                     onClick={handleGrantPermission}
                     disabled={!selectedPermission || grantMutation.isPending}
-                    className="bg-amber-border text-white hover:bg-amber-border-strong"
+                    className="bg-action text-action-foreground hover:bg-action-hover"
                     size="sm"
                   >
                     <Plus className="mr-2 h-4 w-4" />
@@ -412,11 +333,7 @@ export function RoleDetail({
               )}
 
               <div
-                className={`mt-3 flex items-start gap-2 rounded p-2 text-xs ${
-                  isDarkMode
-                    ? 'bg-blue-900/20 text-blue-400'
-                    : 'bg-blue-50 text-blue-700'
-                }`}
+                className={`mt-3 flex items-start gap-2 rounded p-2 text-xs ${'bg-info text-info'}`}
               >
                 <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
                 <span>
@@ -429,9 +346,7 @@ export function RoleDetail({
 
           {/* Permissions Table */}
           {Object.keys(groupedPermissions).length === 0 ? (
-            <div
-              className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
+            <div className={'py-8 text-center text-tertiary'}>
               <Shield className="mx-auto mb-2 h-8 w-8 opacity-50" />
               <div>No permissions assigned</div>
               {!role.is_system && (
@@ -441,72 +356,43 @@ export function RoleDetail({
               )}
             </div>
           ) : (
-            <Card
-              className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-            >
+            <Card className={'overflow-hidden'}>
               <CardContent className="p-0">
                 <table className="w-full">
                   <thead className="border-b border-tertiary bg-secondary">
                     <tr>
                       <th
-                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                          isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                        }`}
+                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
                       >
                         Permission
                       </th>
                       <th
-                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${
-                          isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                        }`}
+                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
                       >
                         Description
                       </th>
                       {!role.is_system && (
                         <th
-                          className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${
-                            isDarkMode ? 'text-gray-400' : 'text-gray-500'
-                          }`}
+                          className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${'text-tertiary'}`}
                         >
                           Actions
                         </th>
                       )}
                     </tr>
                   </thead>
-                  <tbody
-                    className={
-                      isDarkMode
-                        ? 'divide-y divide-gray-700'
-                        : 'divide-y divide-gray-200'
-                    }
-                  >
+                  <tbody className={'divide-y divide-tertiary'}>
                     {(role.permissions || [])
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((perm) => (
-                        <tr
-                          key={perm.name}
-                          className={
-                            isDarkMode
-                              ? 'hover:bg-gray-700'
-                              : 'hover:bg-gray-50'
-                          }
-                        >
-                          <td
-                            className={`px-6 py-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-                          >
+                        <tr key={perm.name} className={'hover:bg-secondary'}>
+                          <td className={'px-6 py-4 text-primary'}>
                             <code
-                              className={`rounded px-2 py-1 text-sm ${
-                                isDarkMode
-                                  ? 'bg-gray-700 text-blue-400'
-                                  : 'bg-gray-100 text-[#2A4DD0]'
-                              }`}
+                              className={`rounded px-2 py-1 text-sm ${'bg-secondary text-info'}`}
                             >
                               {perm.name}
                             </code>
                           </td>
-                          <td
-                            className={`px-6 py-4 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                          >
+                          <td className={'px-6 py-4 text-sm text-secondary'}>
                             {perm.description || perm.action}
                           </td>
                           {!role.is_system && (
@@ -519,11 +405,7 @@ export function RoleDetail({
                                         handleRevokePermission(perm.name)
                                       }
                                       disabled={revokeMutation.isPending}
-                                      className={`rounded p-1.5 ${
-                                        isDarkMode
-                                          ? 'text-red-400 hover:bg-red-900/20'
-                                          : 'text-red-600 hover:bg-red-50'
-                                      }`}
+                                      className={`rounded p-1.5 ${'text-danger hover:bg-danger'}`}
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </button>
@@ -550,20 +432,10 @@ export function RoleDetail({
         <div className="space-y-4">
           {/* Info banner */}
           <div
-            className={`flex items-start gap-3 rounded-lg border p-4 ${
-              isDarkMode
-                ? 'border-gray-700 bg-gray-800'
-                : 'border-blue-200 bg-blue-50'
-            }`}
+            className={`flex items-start gap-3 rounded-lg border p-4 ${'border-tertiary bg-card dark:border-border dark:bg-card'}`}
           >
-            <Info
-              className={`mt-0.5 h-5 w-5 flex-shrink-0 ${
-                isDarkMode ? 'text-blue-400' : 'text-blue-600'
-              }`}
-            />
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-blue-700'}`}
-            >
+            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-info'}`} />
+            <div className={'text-sm text-info'}>
               Role assignments are managed via User Management. This list shows
               users directly assigned this role.
             </div>
@@ -572,19 +444,11 @@ export function RoleDetail({
           {/* User list */}
           {usersLoading ? (
             <div className="flex items-center justify-center py-8">
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Loading users...
-              </div>
+              <div className={'text-sm text-secondary'}>Loading users...</div>
             </div>
           ) : usersError ? (
             <div
-              className={`flex items-center gap-3 rounded-lg border p-4 ${
-                isDarkMode
-                  ? 'border-red-700 bg-red-900/20 text-red-400'
-                  : 'border-red-200 bg-red-50 text-red-700'
-              }`}
+              className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
             >
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
@@ -597,9 +461,7 @@ export function RoleDetail({
               </div>
             </div>
           ) : !roleUsers || roleUsers.length === 0 ? (
-            <div
-              className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
+            <div className={'py-8 text-center text-tertiary'}>
               <Users className="mx-auto mb-2 h-8 w-8 opacity-50" />
               <div>No users directly assigned this role</div>
               <div className="mt-1 text-sm">
@@ -607,24 +469,16 @@ export function RoleDetail({
               </div>
             </div>
           ) : (
-            <Card
-              className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-            >
+            <Card className={'overflow-hidden'}>
               <CardContent className="p-0">
                 <div
-                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${
-                    isDarkMode
-                      ? 'border-gray-700 bg-gray-800 text-gray-400'
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
-                  }`}
+                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${'border-border bg-secondary text-tertiary'}`}
                 >
                   <div>User</div>
                   <div>Status</div>
                   <div>Last Login</div>
                 </div>
-                <div
-                  className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}
-                >
+                <div className={'divide-y divide-tertiary'}>
                   {roleUsers.map((user: RoleUser) => (
                     <div
                       key={user.email}
@@ -638,54 +492,28 @@ export function RoleDetail({
                         />
                         <div className="min-w-0">
                           <div
-                            className={`truncate text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                            className={
+                              'truncate text-sm font-medium text-primary'
+                            }
                           >
                             {user.display_name}
                           </div>
-                          <div
-                            className={`truncate text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                          >
+                          <div className={'truncate text-xs text-tertiary'}>
                             {user.email}
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         {user.is_active ? (
-                          <span
-                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                              isDarkMode
-                                ? 'bg-green-900/30 text-green-400'
-                                : 'bg-green-100 text-green-700'
-                            }`}
-                          >
-                            Active
-                          </span>
+                          <Badge variant="success">Active</Badge>
                         ) : (
-                          <span
-                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                              isDarkMode
-                                ? 'bg-gray-700 text-gray-400'
-                                : 'bg-gray-100 text-gray-500'
-                            }`}
-                          >
-                            Inactive
-                          </span>
+                          <Badge variant="neutral">Inactive</Badge>
                         )}
                         {user.is_service_account && (
-                          <span
-                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                              isDarkMode
-                                ? 'bg-purple-900/30 text-purple-400'
-                                : 'bg-purple-100 text-purple-700'
-                            }`}
-                          >
-                            Service
-                          </span>
+                          <Badge variant="accent">Service</Badge>
                         )}
                       </div>
-                      <div
-                        className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                      >
+                      <div className={'text-sm text-tertiary'}>
                         {user.last_login
                           ? new Date(user.last_login).toLocaleDateString()
                           : 'Never'}
@@ -704,20 +532,10 @@ export function RoleDetail({
         <div className="space-y-4">
           {/* Info banner */}
           <div
-            className={`flex items-start gap-3 rounded-lg border p-4 ${
-              isDarkMode
-                ? 'border-gray-700 bg-gray-800'
-                : 'border-blue-200 bg-blue-50'
-            }`}
+            className={`flex items-start gap-3 rounded-lg border p-4 ${'border-tertiary bg-card dark:border-border dark:bg-card'}`}
           >
-            <Info
-              className={`mt-0.5 h-5 w-5 flex-shrink-0 ${
-                isDarkMode ? 'text-blue-400' : 'text-blue-600'
-              }`}
-            />
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-blue-700'}`}
-            >
+            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-info'}`} />
+            <div className={'text-sm text-info'}>
               Role assignments are managed via Service Account Management. This
               list shows service accounts assigned this role via organization
               membership.
@@ -727,19 +545,13 @@ export function RoleDetail({
           {/* Service account list */}
           {saLoading ? (
             <div className="flex items-center justify-center py-8">
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
+              <div className={'text-sm text-secondary'}>
                 Loading service accounts...
               </div>
             </div>
           ) : saError ? (
             <div
-              className={`flex items-center gap-3 rounded-lg border p-4 ${
-                isDarkMode
-                  ? 'border-red-700 bg-red-900/20 text-red-400'
-                  : 'border-red-200 bg-red-50 text-red-700'
-              }`}
+              className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
             >
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
@@ -754,9 +566,7 @@ export function RoleDetail({
               </div>
             </div>
           ) : !roleServiceAccounts || roleServiceAccounts.length === 0 ? (
-            <div
-              className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
+            <div className={'py-8 text-center text-tertiary'}>
               <Bot className="mx-auto mb-2 h-8 w-8 opacity-50" />
               <div>No service accounts assigned this role</div>
               <div className="mt-1 text-sm">
@@ -765,24 +575,16 @@ export function RoleDetail({
               </div>
             </div>
           ) : (
-            <Card
-              className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-            >
+            <Card className={'overflow-hidden'}>
               <CardContent className="p-0">
                 <div
-                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${
-                    isDarkMode
-                      ? 'border-gray-700 bg-gray-800 text-gray-400'
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
-                  }`}
+                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${'border-border bg-secondary text-tertiary'}`}
                 >
                   <div>Service Account</div>
                   <div>Status</div>
                   <div>Last Authenticated</div>
                 </div>
-                <div
-                  className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}
-                >
+                <div className={'divide-y divide-tertiary'}>
                   {roleServiceAccounts.map((sa: ServiceAccount) => (
                     <div
                       key={sa.slug}
@@ -790,20 +592,28 @@ export function RoleDetail({
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <div
-                          className={`rounded-full p-1.5 ${isDarkMode ? 'bg-purple-900/30' : 'bg-purple-100'}`}
+                          className={
+                            'rounded-full bg-purple-100 p-1.5 dark:bg-purple-900/30'
+                          }
                         >
                           <Bot
-                            className={`h-4 w-4 ${isDarkMode ? 'text-purple-400' : 'text-purple-600'}`}
+                            className={
+                              'h-4 w-4 text-purple-600 dark:text-purple-400'
+                            }
                           />
                         </div>
                         <div className="min-w-0">
                           <div
-                            className={`truncate text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                            className={
+                              'truncate text-sm font-medium text-primary'
+                            }
                           >
                             {sa.display_name}
                           </div>
                           <div
-                            className={`truncate font-mono text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                            className={
+                              'truncate font-mono text-xs text-tertiary'
+                            }
                           >
                             {sa.slug}
                           </div>
@@ -811,30 +621,12 @@ export function RoleDetail({
                       </div>
                       <div>
                         {sa.is_active ? (
-                          <span
-                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                              isDarkMode
-                                ? 'bg-green-900/30 text-green-400'
-                                : 'bg-green-100 text-green-700'
-                            }`}
-                          >
-                            Active
-                          </span>
+                          <Badge variant="success">Active</Badge>
                         ) : (
-                          <span
-                            className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                              isDarkMode
-                                ? 'bg-gray-700 text-gray-400'
-                                : 'bg-gray-100 text-gray-500'
-                            }`}
-                          >
-                            Inactive
-                          </span>
+                          <Badge variant="neutral">Inactive</Badge>
                         )}
                       </div>
-                      <div
-                        className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                      >
+                      <div className={'text-sm text-tertiary'}>
                         {sa.last_authenticated
                           ? new Date(sa.last_authenticated).toLocaleDateString()
                           : 'Never'}
@@ -853,20 +645,10 @@ export function RoleDetail({
         <div className="space-y-4">
           {/* Info banner */}
           <div
-            className={`flex items-start gap-3 rounded-lg border p-4 ${
-              isDarkMode
-                ? 'border-gray-700 bg-gray-800'
-                : 'border-blue-200 bg-blue-50'
-            }`}
+            className={`flex items-start gap-3 rounded-lg border p-4 ${'border-tertiary bg-card dark:border-border dark:bg-card'}`}
           >
-            <Info
-              className={`mt-0.5 h-5 w-5 flex-shrink-0 ${
-                isDarkMode ? 'text-blue-400' : 'text-blue-600'
-              }`}
-            />
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-blue-700'}`}
-            >
+            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-info'}`} />
+            <div className={'text-sm text-info'}>
               Role assignments to teams are managed via Team Management. All
               members of a team inherit the team's roles.
             </div>
@@ -875,19 +657,11 @@ export function RoleDetail({
           {/* Group list */}
           {groupsLoading ? (
             <div className="flex items-center justify-center py-8">
-              <div
-                className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-              >
-                Loading groups...
-              </div>
+              <div className={'text-sm text-secondary'}>Loading groups...</div>
             </div>
           ) : groupsError ? (
             <div
-              className={`flex items-center gap-3 rounded-lg border p-4 ${
-                isDarkMode
-                  ? 'border-red-700 bg-red-900/20 text-red-400'
-                  : 'border-red-200 bg-red-50 text-red-700'
-              }`}
+              className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
             >
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
@@ -900,9 +674,7 @@ export function RoleDetail({
               </div>
             </div>
           ) : !roleGroups || roleGroups.length === 0 ? (
-            <div
-              className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
+            <div className={'py-8 text-center text-tertiary'}>
               <UsersRound className="mx-auto mb-2 h-8 w-8 opacity-50" />
               <div>No groups assigned this role</div>
               <div className="mt-1 text-sm">
@@ -910,23 +682,15 @@ export function RoleDetail({
               </div>
             </div>
           ) : (
-            <Card
-              className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-            >
+            <Card className={'overflow-hidden'}>
               <CardContent className="p-0">
                 <div
-                  className={`grid grid-cols-[1fr_1fr] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${
-                    isDarkMode
-                      ? 'border-gray-700 bg-gray-800 text-gray-400'
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
-                  }`}
+                  className={`grid grid-cols-[1fr_1fr] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${'border-border bg-secondary text-tertiary'}`}
                 >
                   <div>Group</div>
                   <div>Description</div>
                 </div>
-                <div
-                  className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-gray-100'}`}
-                >
+                <div className={'divide-y divide-tertiary'}>
                   {roleGroups.map(
                     (group: {
                       name: string
@@ -938,29 +702,27 @@ export function RoleDetail({
                         className="grid grid-cols-[1fr_1fr] items-center gap-4 px-4 py-3"
                       >
                         <div className="flex min-w-0 items-center gap-3">
-                          <div
-                            className={`rounded p-1.5 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
-                          >
-                            <UsersRound
-                              className={`h-4 w-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-                            />
+                          <div className={'rounded bg-secondary p-1.5'}>
+                            <UsersRound className={'h-4 w-4 text-secondary'} />
                           </div>
                           <div className="min-w-0">
                             <div
-                              className={`truncate text-sm font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-900'}`}
+                              className={
+                                'truncate text-sm font-medium text-primary'
+                              }
                             >
                               {group.name}
                             </div>
                             <div
-                              className={`truncate font-mono text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
+                              className={
+                                'truncate font-mono text-xs text-tertiary'
+                              }
                             >
                               {group.slug}
                             </div>
                           </div>
                         </div>
-                        <div
-                          className={`truncate text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                        >
+                        <div className={'truncate text-sm text-tertiary'}>
                           {group.description || 'No description'}
                         </div>
                       </div>

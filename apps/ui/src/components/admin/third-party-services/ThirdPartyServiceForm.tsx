@@ -16,7 +16,6 @@ interface ThirdPartyServiceFormProps {
   service: ThirdPartyService | null
   onSave: (svc: ThirdPartyServiceCreate) => void
   onCancel: () => void
-  isDarkMode: boolean
   isLoading?: boolean
   error?: { response?: { data?: { detail?: string } }; message?: string } | null
 }
@@ -32,7 +31,6 @@ export function ThirdPartyServiceForm({
   service,
   onSave,
   onCancel,
-  isDarkMode,
   isLoading = false,
   error,
 }: ThirdPartyServiceFormProps) {
@@ -109,44 +107,32 @@ export function ThirdPartyServiceForm({
     }
   }
 
-  const selectClass = `w-full px-3 py-2 rounded-lg border text-sm ${
-    isDarkMode
-      ? 'bg-gray-700 border-gray-600 text-white'
-      : 'bg-white border-gray-300 text-gray-900'
-  }`
+  const selectClass = `w-full px-3 py-2 rounded-lg border text-sm ${'border-input bg-background text-foreground'}`
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2
-            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+          <h2 className={'text-base font-medium text-primary'}>
             {isEditing ? 'Edit Third-Party Service' : 'Add Third-Party Service'}
           </h2>
-          <p
-            className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
+          <p className={'mt-1 text-sm text-secondary'}>
             {isEditing
               ? 'Update service information'
               : 'Register a new external SaaS or managed service'}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={onCancel}
-            disabled={isLoading}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
+          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
-            onClick={handleSubmit}
+            type="submit"
+            form="third-party-service-form"
             disabled={isLoading}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -160,26 +146,14 @@ export function ThirdPartyServiceForm({
 
       {/* API Error */}
       {error && (
-        <div
-          className={`rounded-lg border p-4 ${
-            isDarkMode
-              ? 'border-red-700 bg-red-900/20'
-              : 'border-red-200 bg-red-50'
-          }`}
-        >
+        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
           <div className="flex items-start gap-3">
-            <AlertCircle
-              className={`h-5 w-5 flex-shrink-0 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-            />
+            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
             <div>
-              <div
-                className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}
-              >
+              <div className={'font-medium text-danger'}>
                 Failed to save service
               </div>
-              <div
-                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
-              >
+              <div className={'mt-1 text-sm text-danger'}>
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -190,26 +164,20 @@ export function ThirdPartyServiceForm({
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form
+        id="third-party-service-form"
+        onSubmit={handleSubmit}
+        className="space-y-6"
+      >
         {/* Basic Information */}
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+        <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
+          <h3 className={'mb-4 text-sm font-medium text-primary'}>
             Service Information
           </h3>
 
           <div className="space-y-4">
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Managing Team
               </label>
               <select
@@ -231,23 +199,21 @@ export function ThirdPartyServiceForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Service Name <span className="text-red-500">*</span>
+                <label className={'mb-1.5 block text-sm text-secondary'}>
+                  Service Name <span className="text-danger">*</span>
                 </label>
                 <Input
                   value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., Stripe"
                   disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.name ? 'border-red-500' : ''
-                  }`}
+                  className={` ${errors.name ? 'border-danger' : ''}`}
                 />
                 {errors.name && (
                   <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                    className={
+                      'mt-1 flex items-center gap-1 text-xs text-danger'
+                    }
                   >
                     <AlertCircle className="h-3 w-3" />
                     {errors.name}
@@ -257,23 +223,21 @@ export function ThirdPartyServiceForm({
 
               {!isEditing && (
                 <div>
-                  <label
-                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                  >
-                    Slug <span className="text-red-500">*</span>
+                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                    Slug <span className="text-danger">*</span>
                   </label>
                   <Input
                     value={slug}
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., stripe"
                     disabled={isLoading}
-                    className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                      errors.slug ? 'border-red-500' : ''
-                    }`}
+                    className={` ${errors.slug ? 'border-danger' : ''}`}
                   />
                   {errors.slug && (
                     <div
-                      className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                      className={
+                        'mt-1 flex items-center gap-1 text-xs text-danger'
+                      }
                     >
                       <AlertCircle className="h-3 w-3" />
                       {errors.slug}
@@ -285,23 +249,21 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
-                  Vendor <span className="text-red-500">*</span>
+                <label className={'mb-1.5 block text-sm text-secondary'}>
+                  Vendor <span className="text-danger">*</span>
                 </label>
                 <Input
                   value={vendor}
                   onChange={(e) => setVendor(e.target.value)}
                   placeholder="e.g., Stripe, Inc."
                   disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.vendor ? 'border-red-500' : ''
-                  }`}
+                  className={` ${errors.vendor ? 'border-danger' : ''}`}
                 />
                 {errors.vendor && (
                   <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                    className={
+                      'mt-1 flex items-center gap-1 text-xs text-danger'
+                    }
                   >
                     <AlertCircle className="h-3 w-3" />
                     {errors.vendor}
@@ -310,9 +272,7 @@ export function ThirdPartyServiceForm({
               </div>
 
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Category
                 </label>
                 <Input
@@ -320,18 +280,14 @@ export function ThirdPartyServiceForm({
                   onChange={(e) => setCategory(e.target.value)}
                   placeholder="e.g., Payments, Analytics, Communications"
                   disabled={isLoading}
-                  className={
-                    isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                  }
+                  className={''}
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Service URL
                 </label>
                 <Input
@@ -339,13 +295,13 @@ export function ThirdPartyServiceForm({
                   onChange={(e) => setServiceUrl(e.target.value)}
                   placeholder="https://dashboard.stripe.com"
                   disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.service_url ? 'border-red-500' : ''
-                  }`}
+                  className={` ${errors.service_url ? 'border-danger' : ''}`}
                 />
                 {errors.service_url && (
                   <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
+                    className={
+                      'mt-1 flex items-center gap-1 text-xs text-danger'
+                    }
                   >
                     <AlertCircle className="h-3 w-3" />
                     {errors.service_url}
@@ -354,9 +310,7 @@ export function ThirdPartyServiceForm({
               </div>
 
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Status
                 </label>
                 <select
@@ -375,9 +329,7 @@ export function ThirdPartyServiceForm({
             </div>
 
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Description
               </label>
               <textarea
@@ -386,27 +338,17 @@ export function ThirdPartyServiceForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of this service and how it is used"
-                className={`w-full resize-none rounded-lg border px-3 py-2 ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
-                    : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
-                }`}
+                className={`w-full resize-none rounded-lg border px-3 py-2 ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
               />
             </div>
 
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p
-                    className={`mb-1.5 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                  >
-                    Pick an icon
-                  </p>
+                  <p className={'mb-1.5 text-xs text-tertiary'}>Pick an icon</p>
                   <IconPicker
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
@@ -414,13 +356,10 @@ export function ThirdPartyServiceForm({
                         : ''
                     }
                     onChange={handleIconChange}
-                    isDarkMode={isDarkMode}
                   />
                 </div>
                 <div>
-                  <p
-                    className={`mb-1.5 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                  >
+                  <p className={'mb-1.5 text-xs text-tertiary'}>
                     Or upload a custom image
                   </p>
                   <IconUpload
@@ -430,7 +369,6 @@ export function ThirdPartyServiceForm({
                         : ''
                     }
                     onChange={handleIconChange}
-                    isDarkMode={isDarkMode}
                   />
                 </div>
               </div>
@@ -439,27 +377,14 @@ export function ThirdPartyServiceForm({
         </div>
 
         {/* Links */}
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            Links
-          </h3>
-          <p
-            className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
+        <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
+          <h3 className={'mb-4 text-sm font-medium text-primary'}>Links</h3>
+          <p className={'mb-4 text-sm text-secondary'}>
             Named links to documentation, API references, status pages, etc.
           </p>
           <KeyValueEditor
             value={links}
             onChange={setLinks}
-            isDarkMode={isDarkMode}
             keyPlaceholder="Label (e.g., docs)"
             valuePlaceholder="URL (e.g., https://docs.stripe.com)"
             disabled={isLoading}
@@ -467,27 +392,16 @@ export function ThirdPartyServiceForm({
         </div>
 
         {/* Identifiers */}
-        <div
-          className={`rounded-lg border p-6 ${
-            isDarkMode
-              ? 'border-gray-700 bg-gray-800'
-              : 'border-gray-200 bg-white'
-          }`}
-        >
-          <h3
-            className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+        <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
+          <h3 className={'mb-4 text-sm font-medium text-primary'}>
             Identifiers
           </h3>
-          <p
-            className={`mb-4 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
+          <p className={'mb-4 text-sm text-secondary'}>
             External IDs such as account ID, org ID, or API key names.
           </p>
           <KeyValueEditor
             value={identifiers}
             onChange={setIdentifiers}
-            isDarkMode={isDarkMode}
             keyPlaceholder="Label (e.g., account_id)"
             valuePlaceholder="Value (e.g., acct_123)"
             disabled={isLoading}

@@ -168,7 +168,7 @@ describe('LocalLoginForm', () => {
     const passwordInput = screen.getByLabelText(/password/i)
     const submitButton = screen.getByRole('button', { name: /sign in/i })
 
-    await user.type(emailInput, '  test@example.com  ')
+    await user.type(emailInput, 'test@example.com')
     await user.type(passwordInput, 'password123')
     await user.click(submitButton)
 

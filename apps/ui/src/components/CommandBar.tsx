@@ -23,10 +23,6 @@ import { SessionEntry } from './assistant/MessageBubble'
 import { ToolUseIndicator } from './assistant/ToolUseIndicator'
 import { ConversationHistory } from './assistant/ConversationHistory'
 
-interface CommandBarProps {
-  isDarkMode: boolean
-}
-
 function buildUserContext(
   user: {
     display_name: string
@@ -47,7 +43,7 @@ function buildUserContext(
   return `<context>\n${parts.join('\n')}\n</context>\n\n`
 }
 
-export function CommandBar({ isDarkMode }: CommandBarProps) {
+export function CommandBar() {
   const { user } = useAuth()
   const { selectedOrganization } = useOrganization()
   const navigate = useNavigate()
@@ -319,11 +315,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
       <div
         className={`fixed bottom-16 left-0 right-0 transition-transform duration-300 ease-out ${
           isExpanded ? 'translate-y-0' : 'translate-y-full'
-        } ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-900'
-            : 'border-gray-200 bg-gray-50'
-        } border-t shadow-2xl`}
+        } ${'border-border bg-secondary'} border-t shadow-2xl`}
         style={{ height: `${panelHeight}px` }}
       >
         {/* Resize Handle */}
@@ -331,45 +323,23 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
           onPointerDown={handleDragStart}
           onPointerMove={handleDragMove}
           onPointerUp={handleDragEnd}
-          className={`group flex h-1.5 cursor-ns-resize items-center justify-center ${
-            isDarkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-200'
-          } transition-colors`}
+          className={`group flex h-1.5 cursor-ns-resize items-center justify-center ${'hover:bg-secondary'} transition-colors`}
         >
           <div
-            className={`h-0.5 w-8 rounded-full ${
-              isDarkMode
-                ? 'bg-gray-700 group-hover:bg-gray-500'
-                : 'bg-gray-300 group-hover:bg-gray-400'
-            } transition-colors`}
+            className={`h-0.5 w-8 rounded-full ${'bg-secondary group-hover:bg-muted-foreground/40'} transition-colors`}
           />
         </div>
         {/* Panel Header */}
         <div
-          className={`flex items-center justify-between border-b px-4 py-2 ${
-            isDarkMode
-              ? 'border-gray-800 bg-gray-900'
-              : 'border-gray-200 bg-gray-100'
-          }`}
+          className={`flex items-center justify-between border-b px-4 py-2 ${'border-border bg-secondary'}`}
         >
           <div className="flex items-center gap-2">
-            <Terminal
-              className={`h-3.5 w-3.5 ${
-                isDarkMode ? 'text-gray-500' : 'text-gray-400'
-              }`}
-            />
-            <span
-              className={`font-mono text-xs ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}
-            >
+            <Terminal className={`h-3.5 w-3.5 ${'text-tertiary'}`} />
+            <span className={`font-mono text-xs ${'text-tertiary'}`}>
               imbi-assistant
             </span>
             {messages.length > 0 && (
-              <span
-                className={`font-mono text-xs ${
-                  isDarkMode ? 'text-gray-600' : 'text-gray-400'
-                }`}
-              >
+              <span className={`font-mono text-xs ${'text-tertiary'}`}>
                 ({Math.floor(messages.length / 2) || 1} exchange
                 {Math.floor(messages.length / 2) !== 1 ? 's' : ''})
               </span>
@@ -383,16 +353,11 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
               }}
               aria-label="Help"
               type="button"
-              className={`rounded p-1 ${
-                isDarkMode
-                  ? 'text-gray-500 hover:bg-gray-800 hover:text-gray-400'
-                  : 'text-gray-400 hover:bg-gray-200 hover:text-gray-600'
-              }`}
+              className={`rounded p-1 ${'text-tertiary hover:bg-secondary hover:text-secondary'}`}
             >
               <HelpCircle className="h-3.5 w-3.5" />
             </button>
             <ConversationHistory
-              isDarkMode={isDarkMode}
               currentConversationId={currentConversationId}
               onSelectConversation={handleSelectConversation}
               onNewConversation={handleNewConversation}
@@ -400,11 +365,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
             {messages.length > 0 && (
               <button
                 onClick={handleClearHistory}
-                className={`rounded px-2 py-0.5 font-mono text-xs ${
-                  isDarkMode
-                    ? 'text-gray-500 hover:bg-gray-800 hover:text-gray-400'
-                    : 'text-gray-400 hover:bg-gray-200 hover:text-gray-600'
-                }`}
+                className={`rounded px-2 py-0.5 font-mono text-xs ${'text-tertiary hover:bg-secondary hover:text-secondary'}`}
               >
                 clear
               </button>
@@ -413,11 +374,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
               onClick={() => setExpanded(false)}
               aria-label="Close assistant"
               type="button"
-              className={`rounded p-1 ${
-                isDarkMode
-                  ? 'text-gray-500 hover:bg-gray-800 hover:text-gray-400'
-                  : 'text-gray-400 hover:bg-gray-200 hover:text-gray-600'
-              }`}
+              className={`rounded p-1 ${'text-tertiary hover:bg-secondary hover:text-secondary'}`}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -427,9 +384,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
         {/* Session Output */}
         <div
           ref={scrollRef}
-          className={`space-y-3 overflow-y-auto px-6 py-4 ${
-            isDarkMode ? 'bg-gray-900' : 'bg-gray-50'
-          }`}
+          className={`space-y-3 overflow-y-auto px-6 py-4 ${'bg-tertiary'}`}
           style={{ height: 'calc(100% - 43px)' }}
         >
           {messages.length === 0 && !isStreaming ? (
@@ -441,29 +396,19 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
                   key={message.id}
                   role={message.role}
                   content={message.content}
-                  isDarkMode={isDarkMode}
                 />
               ))}
               {isStreaming && (
                 <>
                   {activeToolUse && (
-                    <ToolUseIndicator
-                      toolName={activeToolUse.name}
-                      isDarkMode={isDarkMode}
-                    />
+                    <ToolUseIndicator toolName={activeToolUse.name} />
                   )}
                   {streamingContent && (
-                    <SessionEntry
-                      role="assistant"
-                      content={streamingContent}
-                      isDarkMode={isDarkMode}
-                    />
+                    <SessionEntry role="assistant" content={streamingContent} />
                   )}
                   {!streamingContent && !activeToolUse && (
                     <div
-                      className={`pl-4 font-mono text-sm ${
-                        isDarkMode ? 'text-gray-600' : 'text-gray-400'
-                      }`}
+                      className={`pl-4 font-mono text-sm ${'text-tertiary'}`}
                     >
                       <span className="animate-pulse">...</span>
                     </div>
@@ -477,11 +422,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
 
       {/* Command Input Bar */}
       <div
-        className={`fixed bottom-0 left-0 right-0 z-50 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-900'
-            : 'border-gray-200 bg-white'
-        } border-t`}
+        className={`fixed bottom-0 left-0 right-0 z-50 ${'border-border bg-card'} border-t`}
       >
         {/* Tray Toggle */}
         <div className="flex justify-center">
@@ -489,11 +430,7 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
             onClick={() => setExpanded(!isExpanded)}
             aria-label={isExpanded ? 'Collapse assistant' : 'Expand assistant'}
             type="button"
-            className={`-mt-3 rounded-t-md border border-b-0 px-4 py-0.5 font-mono text-xs transition-all ${
-              isDarkMode
-                ? 'border-gray-700 bg-gray-800 text-gray-500 hover:text-gray-400'
-                : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
-            } ${isExpanded ? 'shadow-lg' : ''}`}
+            className={`-mt-3 rounded-t-md border border-b-0 px-4 py-0.5 font-mono text-xs transition-all ${'border-tertiary bg-card text-tertiary hover:text-secondary'} ${isExpanded ? 'shadow-lg' : ''}`}
           >
             {isExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -511,17 +448,9 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
         {/* Input */}
         <form onSubmit={handleSubmit} className="px-3 pb-1.5 pt-2">
           <div
-            className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-              isDarkMode
-                ? 'border-gray-700 bg-tertiary focus-within:border-gray-600'
-                : 'border-tertiary bg-tertiary focus-within:border-secondary'
-            } transition-colors`}
+            className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${'border-tertiary bg-tertiary focus-within:border-secondary'} transition-colors`}
           >
-            <span
-              className={`select-none text-sm ${
-                isDarkMode ? 'text-gray-500' : 'text-gray-500'
-              }`}
-            >
+            <span className={`select-none text-sm ${'text-tertiary'}`}>
               &gt;
             </span>
             <input
@@ -535,37 +464,23 @@ export function CommandBar({ isDarkMode }: CommandBarProps) {
                   : "Search projects, ask about deployments, or type 'help'..."
               }
               disabled={isStreaming}
-              className={`flex-1 bg-transparent text-sm outline-none ${
-                isDarkMode
-                  ? 'text-gray-200 placeholder:text-gray-500'
-                  : 'text-gray-800 placeholder:text-gray-400'
-              } disabled:opacity-50`}
+              className={`flex-1 bg-transparent text-sm outline-none ${'text-primary placeholder:text-muted-foreground'} disabled:opacity-50`}
             />
             {input.trim() && !isStreaming && (
               <button
                 type="submit"
-                className={`rounded p-1 transition-colors ${
-                  isDarkMode
-                    ? 'text-gray-400 hover:text-gray-300'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
+                className={`rounded p-1 transition-colors ${'text-tertiary hover:text-secondary'}`}
               >
                 <Send className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
           <div className="flex items-center justify-between px-1 pt-1">
-            <span
-              className={`text-[11px] ${
-                isDarkMode ? 'text-gray-500' : 'text-secondary'
-              }`}
-            >
+            <span className={`text-[11px] ${'text-secondary'}`}>
               Press Enter to send
             </span>
             <span
-              className={`flex items-center gap-1 text-[11px] ${
-                isDarkMode ? 'text-gray-500' : 'text-secondary'
-              }`}
+              className={`flex items-center gap-1 text-[11px] ${'text-secondary'}`}
             >
               <Sparkles className="h-3 w-3" />
               AI-powered

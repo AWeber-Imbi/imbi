@@ -2,13 +2,11 @@ import { RecentActivity } from '../../RecentActivity'
 import { useInfiniteActivityFeed } from '@/hooks/useInfiniteActivityFeed'
 
 interface RecentActivityWidgetProps {
-  isDarkMode: boolean
   onUserSelect?: (userName: string) => void
   onProjectSelect?: (projectId: string) => void
 }
 
 export function RecentActivityWidget({
-  isDarkMode,
   onUserSelect,
   onProjectSelect,
 }: RecentActivityWidgetProps) {
@@ -28,7 +26,6 @@ export function RecentActivityWidget({
         activities={activityFeed}
         onUserSelect={onUserSelect}
         onProjectSelect={onProjectSelect}
-        isDarkMode={isDarkMode}
         hideHeading={false}
         isLoading={isLoading}
         onLoadMore={hasNextPage ? () => fetchNextPage() : undefined}

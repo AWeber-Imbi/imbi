@@ -12,11 +12,7 @@ import { useOrganization } from '@/contexts/OrganizationContext'
 import { NewProjectDialog } from './NewProjectDialog'
 import { ProjectGraphView } from './ProjectGraphView'
 
-interface ProjectsViewProps {
-  isDarkMode: boolean
-}
-
-export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
+export function ProjectsView() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { selectedOrganization } = useOrganization()
@@ -59,17 +55,15 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
   })
 
   const getHealthColor = (health: number) => {
-    if (health >= 90) return 'text-green-600 bg-green-100'
-    if (health >= 80) return 'text-emerald-600 bg-emerald-100'
-    if (health >= 70) return 'text-amber-600 bg-amber-100'
-    return 'text-red-600 bg-red-100'
+    if (health >= 80) return 'text-success bg-success'
+    if (health >= 70) return 'text-warning bg-warning'
+    return 'text-danger bg-danger'
   }
 
   const getHealthRingColor = (health: number) => {
-    if (health >= 90) return 'ring-green-200'
-    if (health >= 80) return 'ring-emerald-200'
-    if (health >= 70) return 'ring-amber-200'
-    return 'ring-red-200'
+    if (health >= 80) return 'ring-success'
+    if (health >= 70) return 'ring-warning'
+    return 'ring-danger'
   }
 
   const sortedEnvironments = (envs?: Environment[]) => {
@@ -124,14 +118,10 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
         <div className="mb-4 flex items-center justify-between">
-          <h1
-            className={`text-2xl font-semibold ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
-          >
-            Projects
-          </h1>
+          <h1 className={'text-2xl font-semibold text-primary'}>Projects</h1>
           <Button
             size="sm"
-            className="border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
+            className="bg-action text-action-foreground hover:bg-action-hover"
             onClick={() => setNewProjectDialogOpen(true)}
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -140,33 +130,23 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
         </div>
 
         {/* Search and Filters */}
-        <Card
-          className={`p-4 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-        >
+        <Card className={'p-4'}>
           <div className="flex items-center gap-3">
             <div className="relative max-w-md flex-1">
               <Search
-                className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
-                  isDarkMode ? 'text-gray-400' : 'text-slate-400'
-                }`}
+                className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
               />
               <Input
                 type="text"
                 placeholder="Search projects..."
-                className={`pl-9 ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
-                    : ''
-                }`}
+                className={`pl-9 ${''}`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
 
             <div
-              className={`flex items-center rounded-lg border ${
-                isDarkMode ? 'border-gray-600' : 'border-slate-200'
-              }`}
+              className={`flex items-center rounded-lg border ${'border-secondary'}`}
             >
               <Button
                 variant="ghost"
@@ -202,7 +182,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
 
       {/* Projects Graph/Grid/List */}
       {viewMode === 'graph' ? (
-        <ProjectGraphView projects={filteredProjects} isDarkMode={isDarkMode} />
+        <ProjectGraphView projects={filteredProjects} />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProjects.map((project) => {
@@ -210,23 +190,17 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
             return (
               <Card
                 key={`card-${project.id}`}
-                className={`cursor-pointer p-5 transition-shadow hover:shadow-md ${
-                  isDarkMode ? 'border-gray-700 bg-gray-800' : ''
-                }`}
+                className={`cursor-pointer p-5 transition-shadow hover:shadow-md ${''}`}
                 onClick={() => handleProjectSelect(project.id)}
               >
                 <div className="mb-3 flex items-start justify-between">
                   <div className="min-w-0 flex-1">
                     <h3
-                      className={`mb-1 truncate font-medium ${
-                        isDarkMode ? 'text-white' : 'text-slate-900'
-                      }`}
+                      className={`mb-1 truncate font-medium ${'text-primary'}`}
                     >
                       {project.name}
                     </h3>
-                    <p
-                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`}
-                    >
+                    <p className={'text-sm text-tertiary'}>
                       {(project.project_types || [])
                         .map((pt) => pt.name)
                         .join(', ')}
@@ -243,20 +217,14 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
 
                 {project.description && (
                   <p
-                    className={`mb-3 line-clamp-2 text-sm ${
-                      isDarkMode ? 'text-gray-300' : 'text-slate-600'
-                    }`}
+                    className={`mb-3 line-clamp-2 text-sm ${'text-secondary'}`}
                   >
                     {project.description}
                   </p>
                 )}
 
                 <div className="mb-3">
-                  <p
-                    className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-slate-500'}`}
-                  >
-                    {project.team.name}
-                  </p>
+                  <p className={'text-xs text-tertiary'}>{project.team.name}</p>
                 </div>
 
                 {project.environments && project.environments.length > 0 && (
@@ -276,74 +244,66 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
           })}
         </div>
       ) : (
-        <Card
-          className={`overflow-hidden ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}
-        >
+        <Card className={'overflow-hidden'}>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead
-                className={`border-b ${
-                  isDarkMode
-                    ? 'border-gray-700 bg-gray-700'
-                    : 'border-slate-200 bg-slate-50'
-                }`}
-              >
+              <thead className={`border-b ${'border-tertiary bg-secondary'}`}>
                 <tr>
                   <th
-                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                    className={
+                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                    }
                   >
                     Project
                   </th>
                   <th
-                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                    className={
+                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                    }
                   >
                     Type
                   </th>
                   <th
-                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                    className={
+                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                    }
                   >
                     Team
                   </th>
                   <th
-                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                    className={
+                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                    }
                   >
                     Environments
                   </th>
                   <th
-                    className={`px-6 py-3 text-left text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
+                    className={
+                      'px-6 py-3 text-left text-sm font-medium text-secondary'
+                    }
                   >
                     Health
                   </th>
                 </tr>
               </thead>
-              <tbody
-                className={`divide-y ${isDarkMode ? 'divide-gray-700' : 'divide-slate-200'}`}
-              >
+              <tbody className={'divide-y divide-tertiary'}>
                 {filteredProjects.map((project) => {
                   const health = getMockHealth(project.slug)
                   return (
                     <tr
                       key={`table-${project.id}`}
-                      className={`cursor-pointer transition-colors ${
-                        isDarkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-50'
-                      }`}
+                      className={`cursor-pointer transition-colors ${'hover:bg-secondary'}`}
                       onClick={() => handleProjectSelect(project.id)}
                     >
-                      <td
-                        className={`px-6 py-4 font-medium ${isDarkMode ? 'text-white' : 'text-slate-900'}`}
-                      >
+                      <td className={'px-6 py-4 font-medium text-primary'}>
                         {project.name}
                       </td>
-                      <td
-                        className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-slate-600'}`}
-                      >
+                      <td className={'px-6 py-4 text-secondary'}>
                         {(project.project_types || [])
                           .map((pt) => pt.name)
                           .join(', ')}
                       </td>
-                      <td
-                        className={`px-6 py-4 ${isDarkMode ? 'text-gray-300' : 'text-slate-600'}`}
-                      >
+                      <td className={'px-6 py-4 text-secondary'}>
                         {project.team.name}
                       </td>
                       <td className="px-6 py-4">
@@ -383,7 +343,7 @@ export function ProjectsView({ isDarkMode }: ProjectsViewProps) {
 
       {filteredProjects.length === 0 && viewMode !== 'graph' && (
         <div className="py-12 text-center">
-          <p className={isDarkMode ? 'text-gray-400' : 'text-slate-500'}>
+          <p className={'text-tertiary'}>
             No projects found matching your criteria
           </p>
         </div>

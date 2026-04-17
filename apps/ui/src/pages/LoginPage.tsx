@@ -6,13 +6,16 @@ import { getAuthProviders } from '@/api/endpoints'
 import { OAuthButton } from '@/components/auth/OAuthButton'
 import { LocalLoginForm } from '@/components/auth/LocalLoginForm'
 import { AuthDivider } from '@/components/auth/AuthDivider'
-import imbiLogo from '@/assets/logo.svg'
+import { useTheme } from '@/contexts/ThemeContext'
+import logoLight from '@/assets/logo-light.svg'
+import logoDark from '@/assets/logo-dark.svg'
 
 const REMEMBERED_EMAIL_KEY = 'imbi_remembered_email'
 
 export function LoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const { isDarkMode } = useTheme()
   const {
     isAuthenticated,
     isLoading: authLoading,
@@ -116,8 +119,12 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-tertiary">
       <div className="w-full max-w-md rounded-xl border border-tertiary bg-primary p-8">
         <div className="mb-8 flex flex-col items-center">
-          <img src={imbiLogo} alt="Imbi" className="mb-4 h-16 w-16" />
-          <h1 className="mb-2 text-2xl text-gray-900">Imbi</h1>
+          <img
+            src={isDarkMode ? logoDark : logoLight}
+            alt="Imbi"
+            className="mb-4 h-16 w-16"
+          />
+          <h1 className="mb-2 text-2xl text-primary">Imbi</h1>
         </div>
 
         {oauthProviders.length > 0 && (

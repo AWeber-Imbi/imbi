@@ -54,7 +54,6 @@ interface DynamicFormFieldsProps {
   data: Record<string, unknown>
   errors: Record<string, string>
   onChange: (key: string, value: unknown) => void
-  isDarkMode: boolean
   isLoading?: boolean
 }
 
@@ -63,7 +62,6 @@ export function DynamicFormFields({
   data,
   errors,
   onChange,
-  isDarkMode,
   isLoading = false,
 }: DynamicFormFieldsProps) {
   const fields = Object.entries(schema.properties)
@@ -80,9 +78,7 @@ export function DynamicFormFields({
         if (field.enum) {
           return (
             <div key={key}>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 {label}
                 {isRequired && <span className="text-red-500"> *</span>}
               </label>
@@ -90,11 +86,7 @@ export function DynamicFormFields({
                 value={value}
                 onChange={(e) => onChange(key, e.target.value || undefined)}
                 disabled={isLoading}
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700 text-white'
-                    : 'border-gray-300 bg-white text-gray-900'
-                } ${fieldError ? 'border-red-500' : ''}`}
+                className={`w-full rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${fieldError ? 'border-red-500' : ''}`}
               >
                 <option value="">Select {label.toLowerCase()}...</option>
                 {field.enum.map((opt) => (
@@ -104,17 +96,13 @@ export function DynamicFormFields({
                 ))}
               </select>
               {field.description && (
-                <p
-                  className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                >
+                <p className={'mt-1 text-xs text-tertiary'}>
                   {field.description}
                 </p>
               )}
               {fieldError && (
                 <div
-                  className={`mt-1 flex items-center gap-1 text-xs ${
-                    isDarkMode ? 'text-red-400' : 'text-red-600'
-                  }`}
+                  className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
                 >
                   <AlertCircle className="h-3 w-3" />
                   {fieldError}
@@ -137,14 +125,12 @@ export function DynamicFormFields({
               />
               <label
                 htmlFor={`dynamic-${key}`}
-                className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                className={'text-sm text-secondary'}
               >
                 {label}
               </label>
               {field.description && (
-                <span
-                  className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                >
+                <span className={'text-xs text-tertiary'}>
                   — {field.description}
                 </span>
               )}
@@ -154,9 +140,7 @@ export function DynamicFormFields({
 
         return (
           <div key={key}>
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
+            <label className={'mb-1.5 block text-sm text-secondary'}>
               {label}
               {isRequired && <span className="text-red-500"> *</span>}
             </label>
@@ -177,22 +161,16 @@ export function DynamicFormFields({
               max={field.maximum}
               minLength={field.minLength}
               maxLength={field.maxLength}
-              className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                fieldError ? 'border-red-500' : ''
-              }`}
+              className={` ${fieldError ? 'border-red-500' : ''}`}
             />
             {field.description && (
-              <p
-                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-              >
+              <p className={'mt-1 text-xs text-tertiary'}>
                 {field.description}
               </p>
             )}
             {fieldError && (
               <div
-                className={`mt-1 flex items-center gap-1 text-xs ${
-                  isDarkMode ? 'text-red-400' : 'text-red-600'
-                }`}
+                className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
               >
                 <AlertCircle className="h-3 w-3" />
                 {fieldError}
@@ -210,13 +188,11 @@ export function DynamicFormFields({
 interface DynamicDetailFieldsProps {
   schema: DynamicSchema
   data: Record<string, unknown>
-  isDarkMode: boolean
 }
 
 export function DynamicDetailFields({
   schema,
   data,
-  isDarkMode,
 }: DynamicDetailFieldsProps) {
   const fields = Object.entries(schema.properties)
   if (fields.length === 0) return null
@@ -230,14 +206,8 @@ export function DynamicDetailFields({
 
         return (
           <div key={key}>
-            <div
-              className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-            >
-              {label}
-            </div>
-            <div
-              className={`mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
+            <div className={'text-sm text-secondary'}>{label}</div>
+            <div className={'mt-1 text-primary'}>
               {typeof value === 'boolean'
                 ? value
                   ? 'Yes'

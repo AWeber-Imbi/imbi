@@ -4,24 +4,13 @@ import remarkGfm from 'remark-gfm'
 interface SessionEntryProps {
   role: 'user' | 'assistant'
   content: string
-  isDarkMode: boolean
 }
 
-export function SessionEntry({ role, content, isDarkMode }: SessionEntryProps) {
+export function SessionEntry({ role, content }: SessionEntryProps) {
   if (role === 'user') {
     return (
-      <div
-        className={`font-mono text-sm ${
-          isDarkMode ? 'text-blue-400' : 'text-[#2A4DD0]'
-        }`}
-      >
-        <span
-          className={`select-none ${
-            isDarkMode ? 'text-gray-500' : 'text-gray-400'
-          }`}
-        >
-          {'> '}
-        </span>
+      <div className={`font-mono text-sm ${'text-info'}`}>
+        <span className={`select-none ${'text-tertiary'}`}>{'> '}</span>
         {content}
       </div>
     )
@@ -29,11 +18,7 @@ export function SessionEntry({ role, content, isDarkMode }: SessionEntryProps) {
 
   return (
     <div
-      className={`border-l-2 pl-4 text-sm ${
-        isDarkMode
-          ? 'border-gray-700 text-gray-300'
-          : 'border-gray-200 text-gray-800'
-      }`}
+      className={`border-l-2 pl-4 text-sm ${'border-tertiary text-primary'}`}
     >
       <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
         <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>

@@ -2,7 +2,6 @@ import { Loader2 } from 'lucide-react'
 
 interface ToolUseIndicatorProps {
   toolName: string
-  isDarkMode: boolean
 }
 
 const TOOL_FRIENDLY_NAMES: Record<string, string> = {
@@ -15,17 +14,12 @@ const TOOL_FRIENDLY_NAMES: Record<string, string> = {
   refresh_data: 'Refreshing data',
 }
 
-export function ToolUseIndicator({
-  toolName,
-  isDarkMode,
-}: ToolUseIndicatorProps) {
+export function ToolUseIndicator({ toolName }: ToolUseIndicatorProps) {
   const friendlyName = TOOL_FRIENDLY_NAMES[toolName] ?? `Running ${toolName}`
 
   return (
     <div
-      className={`flex items-center gap-2 py-1 pl-4 font-mono text-xs ${
-        isDarkMode ? 'text-yellow-500/70' : 'text-amber-600/70'
-      }`}
+      className={`flex items-center gap-2 py-1 pl-4 font-mono text-xs ${'text-warning/70'}`}
     >
       <Loader2 className="h-3 w-3 animate-spin" />
       <span>{friendlyName}...</span>

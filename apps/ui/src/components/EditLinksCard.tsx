@@ -8,7 +8,6 @@ import type { LinkDefinition } from '@/types'
 interface EditLinksCardProps {
   linkDefs: LinkDefinition[]
   links: Record<string, string>
-  isDarkMode: boolean
   isSaving: boolean
   onSave: (links: Record<string, string>) => void
 }
@@ -16,7 +15,6 @@ interface EditLinksCardProps {
 export function EditLinksCard({
   linkDefs,
   links,
-  isDarkMode,
   isSaving,
   onSave,
 }: EditLinksCardProps) {
@@ -39,26 +37,21 @@ export function EditLinksCard({
     onSave(result)
   }
 
-  const inputClass = isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-  const headerClass = `mb-4 ${isDarkMode ? 'text-white' : 'text-slate-900'}`
-
   const sorted = useMemo(
     () => [...linkDefs].sort((a, b) => a.name.localeCompare(b.name)),
     [linkDefs],
   )
 
   return (
-    <Card className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
-      <h3 className={headerClass}>Links</h3>
+    <Card className="p-6">
+      <h3 className="mb-4 text-primary">Links</h3>
 
       <div className="space-y-3">
         {sorted.map((def) => {
           const Icon = getIcon(def.icon)
           return (
             <div key={def.slug} className="flex items-center gap-3">
-              <div
-                className={`flex w-[15%] flex-shrink-0 items-center gap-2 ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
-              >
+              <div className="flex w-[15%] flex-shrink-0 items-center gap-2 text-secondary">
                 <Icon className="h-4 w-4 flex-shrink-0" />
                 <span className="truncate text-sm">{def.name}</span>
               </div>
@@ -70,7 +63,7 @@ export function EditLinksCard({
                 disabled={isSaving}
                 placeholder={def.url_template || 'https://...'}
                 type="url"
-                className={`flex-1 text-sm ${inputClass}`}
+                className="flex-1 text-sm"
               />
             </div>
           )
@@ -80,7 +73,7 @@ export function EditLinksCard({
       <div className="mt-4 flex justify-end">
         <Button
           size="sm"
-          className="border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
+          className="bg-action text-action-foreground hover:bg-action-hover"
           onClick={handleSave}
           disabled={isSaving}
         >

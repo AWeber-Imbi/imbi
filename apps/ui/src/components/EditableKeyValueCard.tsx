@@ -7,7 +7,6 @@ import { Card } from '@/components/ui/card'
 interface EditableKeyValueCardProps {
   title: string
   entries: Record<string, string | number>
-  isDarkMode: boolean
   isSaving: boolean
   keyLabel?: string
   valueLabel?: string
@@ -21,7 +20,6 @@ interface EditableKeyValueCardProps {
 export function EditableKeyValueCard({
   title,
   entries,
-  isDarkMode,
   isSaving,
   keyLabel = 'Key',
   valueLabel = 'Value',
@@ -67,18 +65,18 @@ export function EditableKeyValueCard({
     onSave(result)
   }
 
-  const inputClass = isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-  const headerClass = `mb-4 ${isDarkMode ? 'text-white' : 'text-slate-900'}`
-  const labelClass = `text-xs font-medium ${isDarkMode ? 'text-gray-400' : 'text-slate-500'}`
-
   return (
-    <Card className={`p-6 ${isDarkMode ? 'border-gray-700 bg-gray-800' : ''}`}>
-      <h3 className={headerClass}>{title}</h3>
+    <Card className="p-6">
+      {showHeader && <h3 className="mb-4 text-primary">{title}</h3>}
 
       {showHeader && rows.length > 0 && (
         <div className="mb-2 flex items-center gap-2 px-1">
-          <span className={`flex-1 ${labelClass}`}>{keyLabel}</span>
-          <span className={`flex-1 ${labelClass}`}>{valueLabel}</span>
+          <span className="flex-1 text-xs font-medium text-tertiary">
+            {keyLabel}
+          </span>
+          <span className="flex-1 text-xs font-medium text-tertiary">
+            {valueLabel}
+          </span>
           <div className="w-8" />
         </div>
       )}
@@ -87,9 +85,7 @@ export function EditableKeyValueCard({
         {rows.map(([key, val], index) => (
           <div key={`${index}-${key}`} className="flex items-center gap-2">
             {readOnlyKeys ? (
-              <span
-                className={`w-[15%] flex-shrink-0 text-sm ${isDarkMode ? 'text-gray-300' : 'text-slate-700'}`}
-              >
+              <span className="w-[15%] flex-shrink-0 text-sm text-secondary">
                 {key}
               </span>
             ) : (
@@ -98,7 +94,7 @@ export function EditableKeyValueCard({
                 onChange={(e) => updateRow(index, 0, e.target.value)}
                 disabled={isSaving}
                 placeholder={keyPlaceholder}
-                className={`flex-1 font-mono text-sm ${inputClass}`}
+                className="flex-1 font-mono text-sm"
               />
             )}
             <Input
@@ -106,18 +102,14 @@ export function EditableKeyValueCard({
               onChange={(e) => updateRow(index, 1, e.target.value)}
               disabled={isSaving}
               placeholder={valuePlaceholder}
-              className={`flex-1 text-sm ${inputClass}`}
+              className="flex-1 text-sm"
             />
             <button
               type="button"
               aria-label={`Remove ${title.toLowerCase()} row ${index + 1}`}
               onClick={() => removeRow(index)}
               disabled={isSaving}
-              className={`rounded p-1.5 ${
-                isDarkMode
-                  ? 'text-red-400 hover:bg-red-900/20'
-                  : 'text-red-600 hover:bg-red-50'
-              }`}
+              className="rounded p-1.5 text-danger hover:bg-danger"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -132,11 +124,6 @@ export function EditableKeyValueCard({
             size="sm"
             onClick={addRow}
             disabled={isSaving}
-            className={
-              isDarkMode
-                ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
-                : ''
-            }
           >
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             Add
@@ -146,7 +133,7 @@ export function EditableKeyValueCard({
         )}
         <Button
           size="sm"
-          className="border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
+          className="bg-action text-action-foreground hover:bg-action-hover"
           onClick={handleSave}
           disabled={isSaving}
         >

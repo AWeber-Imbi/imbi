@@ -19,13 +19,7 @@ import {
 } from '@/api/endpoints'
 import type { OrganizationCreate } from '@/types'
 
-interface OrganizationManagementProps {
-  isDarkMode: boolean
-}
-
-export function OrganizationManagement({
-  isDarkMode,
-}: OrganizationManagementProps) {
+export function OrganizationManagement() {
   const queryClient = useQueryClient()
   const {
     viewMode,
@@ -126,11 +120,7 @@ export function OrganizationManagement({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          Loading organizations...
-        </div>
+        <div className={'text-sm text-secondary'}>Loading organizations...</div>
       </div>
     )
   }
@@ -138,11 +128,7 @@ export function OrganizationManagement({
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -162,9 +148,7 @@ export function OrganizationManagement({
     !selectedOrg
   ) {
     return (
-      <div
-        className={`rounded-lg border p-4 ${isDarkMode ? 'border-gray-700 text-gray-300' : 'border-gray-200 text-gray-700'}`}
-      >
+      <div className={'rounded-lg border border-tertiary p-4 text-secondary'}>
         Organization not found. It may have been deleted.
       </div>
     )
@@ -176,7 +160,6 @@ export function OrganizationManagement({
         organization={selectedOrg}
         onSave={handleSave}
         onCancel={handleCancel}
-        isDarkMode={isDarkMode}
         isLoading={createMutation.isPending || updateMutation.isPending}
         error={createMutation.error || updateMutation.error}
       />
@@ -189,7 +172,6 @@ export function OrganizationManagement({
         organization={selectedOrg}
         onEdit={() => goToEdit(selectedOrg.slug)}
         onBack={handleCancel}
-        isDarkMode={isDarkMode}
       />
     )
   }
@@ -201,21 +183,19 @@ export function OrganizationManagement({
         <div className="flex-1">
           <div className="relative max-w-md">
             <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${
-                isDarkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}
+              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
             />
             <Input
               placeholder="Search organizations..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className={`pl-10 ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+              className={'pl-10'}
             />
           </div>
         </div>
         <Button
           onClick={goToCreate}
-          className="bg-amber-border text-white hover:bg-amber-border-strong"
+          className="bg-action text-action-foreground hover:bg-action-hover"
         >
           <Plus className="mr-2 h-4 w-4" />
           New Organization
@@ -232,7 +212,9 @@ export function OrganizationManagement({
             render: (org) => (
               <div className="flex items-center gap-3">
                 <div
-                  className={`flex size-8 flex-shrink-0 items-center justify-center rounded-lg ${isDarkMode ? 'bg-blue-900/30' : 'bg-blue-50'}`}
+                  className={
+                    'flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-info'
+                  }
                 >
                   {org.icon ? (
                     <EntityIcon
@@ -240,19 +222,13 @@ export function OrganizationManagement({
                       className="size-5 rounded object-cover"
                     />
                   ) : (
-                    <Building2
-                      className={`h-4 w-4 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}
-                    />
+                    <Building2 className={'h-4 w-4 text-info'} />
                   )}
                 </div>
                 <div>
-                  <div className={isDarkMode ? 'text-white' : 'text-gray-900'}>
-                    {org.name}
-                  </div>
+                  <div className={'text-primary'}>{org.name}</div>
                   {org.description && (
-                    <div
-                      className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-                    >
+                    <div className={'text-sm text-tertiary'}>
                       {org.description}
                     </div>
                   )}
@@ -266,9 +242,7 @@ export function OrganizationManagement({
             headerAlign: 'center',
             cellAlign: 'center',
             render: (org) => (
-              <code
-                className={`rounded px-2 py-1 ${isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}
-              >
+              <code className={'rounded bg-secondary px-2 py-1 text-primary'}>
                 {org.slug}
               </code>
             ),
@@ -282,12 +256,8 @@ export function OrganizationManagement({
               <span
                 className={
                   (org.relationships?.teams?.count ?? 0) === 0
-                    ? isDarkMode
-                      ? 'text-gray-600'
-                      : 'text-gray-400'
-                    : isDarkMode
-                      ? 'text-gray-300'
-                      : 'text-gray-600'
+                    ? 'text-tertiary'
+                    : 'text-secondary'
                 }
               >
                 {org.relationships?.teams?.count ?? 0}
@@ -303,12 +273,8 @@ export function OrganizationManagement({
               <span
                 className={
                   (org.relationships?.members?.count ?? 0) === 0
-                    ? isDarkMode
-                      ? 'text-gray-600'
-                      : 'text-gray-400'
-                    : isDarkMode
-                      ? 'text-gray-300'
-                      : 'text-gray-600'
+                    ? 'text-tertiary'
+                    : 'text-secondary'
                 }
               >
                 {org.relationships?.members?.count ?? 0}
@@ -324,12 +290,8 @@ export function OrganizationManagement({
               <span
                 className={
                   (org.relationships?.projects?.count ?? 0) === 0
-                    ? isDarkMode
-                      ? 'text-gray-600'
-                      : 'text-gray-400'
-                    : isDarkMode
-                      ? 'text-gray-300'
-                      : 'text-gray-600'
+                    ? 'text-tertiary'
+                    : 'text-secondary'
                 }
               >
                 {org.relationships?.projects?.count ?? 0}

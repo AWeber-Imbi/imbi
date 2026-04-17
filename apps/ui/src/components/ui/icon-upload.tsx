@@ -11,14 +11,12 @@ import {
 interface IconUploadProps {
   value?: string
   onChange: (value: string) => void
-  isDarkMode: boolean
   maxSizeKB?: number
 }
 
 export function IconUpload({
   value,
   onChange,
-  isDarkMode,
   maxSizeKB = 500,
 }: IconUploadProps) {
   const [error, setError] = useState<string>('')
@@ -100,11 +98,7 @@ export function IconUpload({
     <div className="space-y-3">
       {isImageUrl && value && (
         <div
-          className={`inline-flex items-center gap-3 rounded-lg border p-3 ${
-            isDarkMode
-              ? 'border-gray-600 bg-gray-700'
-              : 'border-gray-200 bg-gray-50'
-          }`}
+          className={`inline-flex items-center gap-3 rounded-lg border p-3 ${'border-input bg-secondary'}`}
         >
           <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg bg-white">
             <img
@@ -113,22 +107,14 @@ export function IconUpload({
               className="h-full w-full object-cover"
             />
           </div>
-          <div
-            className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}
-          >
-            Uploaded icon
-          </div>
+          <div className={'text-sm text-secondary'}>Uploaded icon</div>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={handleRemove}
             aria-label="Remove uploaded icon"
-            className={
-              isDarkMode
-                ? 'text-red-400 hover:bg-red-900/20 hover:text-red-300'
-                : 'text-red-600'
-            }
+            className={'text-danger hover:bg-danger'}
           >
             <X className="h-4 w-4" />
           </Button>
@@ -149,7 +135,7 @@ export function IconUpload({
             variant="outline"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadMutation.isPending}
-            className={`w-full ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
+            className={'w-full'}
           >
             {uploadMutation.isPending ? (
               <>
@@ -163,9 +149,7 @@ export function IconUpload({
               </>
             )}
           </Button>
-          <p
-            className={`mt-1.5 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-          >
+          <p className={'mt-1.5 text-xs text-tertiary'}>
             PNG, JPG, or SVG - Max {maxSizeKB}KB
           </p>
         </div>
@@ -173,11 +157,7 @@ export function IconUpload({
 
       {error && (
         <div
-          className={`flex items-start gap-2 rounded-lg p-3 ${
-            isDarkMode
-              ? 'border border-red-700 bg-red-900/20 text-red-400'
-              : 'border border-red-200 bg-red-50 text-red-600'
-          }`}
+          className={`flex items-start gap-2 rounded-lg p-3 ${'border border-danger bg-danger text-danger'}`}
         >
           <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div className="text-xs">{error}</div>

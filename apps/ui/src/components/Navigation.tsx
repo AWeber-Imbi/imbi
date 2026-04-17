@@ -25,8 +25,10 @@ import {
 import { Gravatar } from './ui/gravatar'
 import { useAuth } from '@/hooks/useAuth'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useTheme } from '@/contexts/ThemeContext'
 import { UserResponse } from '@/types'
-import imbiLogo from '@/assets/logo.svg'
+import logoLight from '@/assets/logo-light.svg'
+import logoDark from '@/assets/logo-dark.svg'
 import { useMemo } from 'react'
 
 interface NavigationProps {
@@ -35,8 +37,6 @@ interface NavigationProps {
   onNewOpsEntry?: () => void
   onNewProject?: () => void
   onNewDeployment?: () => void
-  isDarkMode: boolean
-  onThemeToggle: () => void
 }
 
 export function Navigation({
@@ -45,9 +45,8 @@ export function Navigation({
   onNewOpsEntry,
   onNewDeployment,
   onNewProject,
-  isDarkMode,
-  onThemeToggle,
 }: NavigationProps) {
+  const { isDarkMode, toggleTheme } = useTheme()
   const { user, logout } = useAuth()
   const { organizations, selectedOrganization, setSelectedOrganization } =
     useOrganization()
@@ -109,7 +108,11 @@ export function Navigation({
             onClick={() => navigate('/dashboard')}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all hover:bg-secondary"
           >
-            <img src={imbiLogo} alt="Imbi" className="h-8 w-8" />
+            <img
+              src={isDarkMode ? logoDark : logoLight}
+              alt="Imbi"
+              className="h-8 w-8"
+            />
             <span className="text-primary" style={{ fontWeight: 800 }}>
               Imbi
             </span>
@@ -293,7 +296,7 @@ export function Navigation({
             variant="ghost"
             size="icon"
             className="rounded-full text-secondary hover:bg-secondary"
-            onClick={onThemeToggle}
+            onClick={toggleTheme}
           >
             {isDarkMode ? (
               <Sun className="h-4 w-4" />

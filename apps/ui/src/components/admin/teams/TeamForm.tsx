@@ -21,7 +21,6 @@ interface TeamFormProps {
   team: Team | null
   onSave: (orgSlug: string, team: TeamCreate) => void
   onCancel: () => void
-  isDarkMode: boolean
   isLoading?: boolean
   error?: { response?: { data?: { detail?: string } }; message?: string } | null
 }
@@ -30,7 +29,6 @@ export function TeamForm({
   team,
   onSave,
   onCancel,
-  isDarkMode,
   isLoading = false,
   error,
 }: TeamFormProps) {
@@ -111,31 +109,22 @@ export function TeamForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2
-            className={`text-base font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
+          <h2 className={'text-base font-medium text-primary'}>
             {isEditing ? 'Edit Team' : 'Create New Team'}
           </h2>
-          <p
-            className={`mt-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
+          <p className={'mt-1 text-sm text-secondary'}>
             {isEditing ? 'Update team information' : 'Create a new team'}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={onCancel}
-            disabled={isLoading}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
+          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={isLoading}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -149,26 +138,14 @@ export function TeamForm({
 
       {/* API Error */}
       {error && (
-        <div
-          className={`rounded-lg border p-4 ${
-            isDarkMode
-              ? 'border-red-700 bg-red-900/20'
-              : 'border-red-200 bg-red-50'
-          }`}
-        >
+        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
           <div className="flex items-start gap-3">
-            <AlertCircle
-              className={`h-5 w-5 flex-shrink-0 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-            />
+            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
             <div>
-              <div
-                className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}
-              >
+              <div className={'font-medium text-danger'}>
                 Failed to save team
               </div>
-              <div
-                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
-              >
+              <div className={'mt-1 text-sm text-danger'}>
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -180,23 +157,17 @@ export function TeamForm({
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        <Card className={isDarkMode ? 'border-gray-700 bg-gray-800' : ''}>
+        <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
                 value={orgSlug}
                 onChange={(e) => setOrgSlug(e.target.value)}
                 disabled={isEditing || isLoading || organizations.length <= 1}
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700 text-white'
-                    : 'border-gray-300 bg-white text-gray-900'
-                } ${isEditing || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
+                className={`w-full rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
               >
@@ -209,9 +180,7 @@ export function TeamForm({
               </select>
               {errors.organization && (
                 <div
-                  className={`mt-1 flex items-center gap-1 text-xs ${
-                    isDarkMode ? 'text-red-400' : 'text-red-600'
-                  }`}
+                  className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
                 >
                   <AlertCircle className="h-3 w-3" />
                   {errors.organization}
@@ -223,9 +192,7 @@ export function TeamForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Team Name <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -233,15 +200,11 @@ export function TeamForm({
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., Platform Support Engineering"
                   disabled={isLoading}
-                  className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                    errors.name ? 'border-red-500' : ''
-                  }`}
+                  className={` ${errors.name ? 'border-red-500' : ''}`}
                 />
                 {errors.name && (
                   <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${
-                      isDarkMode ? 'text-red-400' : 'text-red-600'
-                    }`}
+                    className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
                   >
                     <AlertCircle className="h-3 w-3" />
                     {errors.name}
@@ -251,9 +214,7 @@ export function TeamForm({
 
               {!isEditing && (
                 <div>
-                  <label
-                    className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                  >
+                  <label className={'mb-1.5 block text-sm text-secondary'}>
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -261,15 +222,11 @@ export function TeamForm({
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., platform-support"
                     disabled={isLoading}
-                    className={`${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''} ${
-                      errors.slug ? 'border-red-500' : ''
-                    }`}
+                    className={` ${errors.slug ? 'border-red-500' : ''}`}
                   />
                   {errors.slug && (
                     <div
-                      className={`mt-1 flex items-center gap-1 text-xs ${
-                        isDarkMode ? 'text-red-400' : 'text-red-600'
-                      }`}
+                      className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
                     >
                       <AlertCircle className="h-3 w-3" />
                       {errors.slug}
@@ -280,9 +237,7 @@ export function TeamForm({
             </div>
 
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Description
               </label>
               <textarea
@@ -291,27 +246,17 @@ export function TeamForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of the team's purpose"
-                className={`w-full resize-none rounded-lg border px-3 py-2 ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700 text-white placeholder:text-gray-400'
-                    : 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-500'
-                }`}
+                className={`w-full resize-none rounded-lg border px-3 py-2 ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
               />
             </div>
 
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p
-                    className={`mb-1.5 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                  >
-                    Pick an icon
-                  </p>
+                  <p className={'mb-1.5 text-xs text-tertiary'}>Pick an icon</p>
                   <IconPicker
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
@@ -319,13 +264,10 @@ export function TeamForm({
                         : ''
                     }
                     onChange={handleIconChange}
-                    isDarkMode={isDarkMode}
                   />
                 </div>
                 <div>
-                  <p
-                    className={`mb-1.5 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                  >
+                  <p className={'mb-1.5 text-xs text-tertiary'}>
                     Or upload a custom image
                   </p>
                   <IconUpload
@@ -335,7 +277,6 @@ export function TeamForm({
                         : ''
                     }
                     onChange={handleIconChange}
-                    isDarkMode={isDarkMode}
                   />
                 </div>
               </div>
@@ -348,7 +289,6 @@ export function TeamForm({
                 data={dynamicFormData}
                 errors={errors}
                 onChange={handleDynamicFieldChange}
-                isDarkMode={isDarkMode}
                 isLoading={isLoading}
               />
             )}

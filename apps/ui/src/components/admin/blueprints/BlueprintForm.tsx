@@ -39,7 +39,6 @@ interface BlueprintFormProps {
   blueprintTypes: string[]
   onSave: (data: BlueprintCreate) => void
   onCancel: () => void
-  isDarkMode: boolean
   isLoading?: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   error?: any
@@ -218,7 +217,6 @@ export function BlueprintForm({
   blueprintTypes,
   onSave,
   onCancel,
-  isDarkMode,
   isLoading = false,
   error,
 }: BlueprintFormProps) {
@@ -614,11 +612,7 @@ export function BlueprintForm({
   if (isEditing && bpLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div
-          className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-        >
-          Loading blueprint...
-        </div>
+        <div className={'text-sm text-secondary'}>Loading blueprint...</div>
       </div>
     )
   }
@@ -626,11 +620,7 @@ export function BlueprintForm({
   if (isEditing && bpError) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${
-          isDarkMode
-            ? 'border-red-700 bg-red-900/20 text-red-400'
-            : 'border-red-200 bg-red-50 text-red-700'
-        }`}
+        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -651,28 +641,21 @@ export function BlueprintForm({
           <CardTitle>
             {isEditing ? 'Edit Blueprint' : 'Create Blueprint'}
           </CardTitle>
-          <p
-            className={`mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-          >
+          <p className={'mt-1 text-secondary'}>
             {isEditing
               ? 'Update blueprint configuration and schema'
               : 'Define a new metadata schema blueprint'}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={onCancel}
-            disabled={isLoading}
-            className={isDarkMode ? 'border-gray-600 text-gray-300' : ''}
-          >
+          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
           <Button
             onClick={handleSave}
             disabled={isLoading}
-            className="bg-amber-border text-white hover:bg-amber-border-strong"
+            className="bg-action text-action-foreground hover:bg-action-hover"
           >
             <Save className="mr-2 h-4 w-4" />
             {isLoading
@@ -686,26 +669,14 @@ export function BlueprintForm({
 
       {/* API Error Display */}
       {error && (
-        <div
-          className={`rounded-lg border p-4 ${
-            isDarkMode
-              ? 'border-red-700 bg-red-900/20'
-              : 'border-red-200 bg-red-50'
-          }`}
-        >
+        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
           <div className="flex items-start gap-3">
-            <AlertCircle
-              className={`h-5 w-5 flex-shrink-0 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}
-            />
+            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
             <div>
-              <div
-                className={`font-medium ${isDarkMode ? 'text-red-400' : 'text-red-800'}`}
-              >
+              <div className={'font-medium text-danger'}>
                 Failed to save blueprint
               </div>
-              <div
-                className={`mt-1 text-sm ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}
-              >
+              <div className={'mt-1 text-sm text-danger'}>
                 {(() => {
                   const detail = error?.response?.data?.detail
                   if (Array.isArray(detail)) {
@@ -735,25 +706,15 @@ export function BlueprintForm({
       )}
 
       {/* Basic Information */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
-        <h3
-          className={`mb-4 text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
+      <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
+        <h3 className={'mb-4 text-sm font-medium text-primary'}>
           Basic Information
         </h3>
 
         <div className="grid grid-cols-2 gap-4">
           {/* Name */}
           <div>
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
+            <label className={'mb-1.5 block text-sm text-secondary'}>
               Name <span className="text-red-500">*</span>
             </label>
             <Input
@@ -769,9 +730,7 @@ export function BlueprintForm({
               }}
               disabled={isLoading}
               placeholder="e.g. AWS Metadata"
-              className={
-                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-              }
+              className={''}
             />
             {touched.name && validationErrors.name && (
               <p className="mt-1 text-sm text-red-600">
@@ -783,9 +742,7 @@ export function BlueprintForm({
           {/* Slug */}
           {!isEditing && (
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Slug
               </label>
               <Input
@@ -793,12 +750,10 @@ export function BlueprintForm({
                 onChange={(e) => handleSlugChange(e.target.value)}
                 disabled={isLoading}
                 placeholder="auto-generated"
-                className={`font-mono ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                className={'font-mono'}
               />
               {!slugManuallyEdited && name && (
-                <p
-                  className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                >
+                <p className={'mt-1 text-xs text-tertiary'}>
                   Auto-generated from name
                 </p>
               )}
@@ -812,9 +767,7 @@ export function BlueprintForm({
 
           {/* Kind */}
           <div>
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
+            <label className={'mb-1.5 block text-sm text-secondary'}>
               Kind <span className="text-red-500">*</span>
             </label>
             <select
@@ -823,19 +776,13 @@ export function BlueprintForm({
                 setKind(e.target.value as 'node' | 'relationship')
               }
               disabled={isLoading || isEditing}
-              className={`w-full rounded-md border px-3 py-2 text-sm ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700 text-white'
-                  : 'border-gray-300 bg-white text-gray-900'
-              } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+              className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
             >
               <option value="node">Object</option>
               <option value="relationship">Relationship</option>
             </select>
             {isEditing && (
-              <p
-                className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-              >
+              <p className={'mt-1 text-xs text-tertiary'}>
                 Kind cannot be changed after creation
               </p>
             )}
@@ -844,9 +791,7 @@ export function BlueprintForm({
           {/* Type (node) or Source/Target/Edge (relationship) */}
           {kind === 'node' ? (
             <div>
-              <label
-                className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-              >
+              <label className={'mb-1.5 block text-sm text-secondary'}>
                 Type <span className="text-red-500">*</span>
               </label>
               <select
@@ -856,11 +801,7 @@ export function BlueprintForm({
                   handleFieldChange('type')
                 }}
                 disabled={isLoading || isEditing}
-                className={`w-full rounded-md border px-3 py-2 text-sm ${
-                  isDarkMode
-                    ? 'border-gray-600 bg-gray-700 text-white'
-                    : 'border-gray-300 bg-white text-gray-900'
-                } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
               >
                 <option value="">Select a type...</option>
                 {blueprintTypes.map((t) => (
@@ -878,9 +819,7 @@ export function BlueprintForm({
           ) : (
             <div className="col-span-2 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-end gap-2">
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Source <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -892,11 +831,7 @@ export function BlueprintForm({
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}
                   disabled={isLoading || isEditing}
-                  className={`w-full rounded-md border px-3 py-2 text-sm ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white'
-                      : 'border-gray-300 bg-white text-gray-900'
-                  } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
                   <option value="">Select source...</option>
                   {blueprintTypes.map((t) => (
@@ -911,15 +846,9 @@ export function BlueprintForm({
                   </p>
                 )}
               </div>
-              <div
-                className={`pb-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-              >
-                →
-              </div>
+              <div className={'pb-2 text-tertiary'}>→</div>
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Relationship Type <span className="text-red-500">*</span>
                 </label>
                 {source &&
@@ -935,9 +864,7 @@ export function BlueprintForm({
                     }}
                     disabled={isLoading || isEditing}
                     placeholder="Enter relationship type..."
-                    className={`w-full ${
-                      isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-                    }`}
+                    className={`w-full ${''}`}
                   />
                 ) : (
                   <select
@@ -947,11 +874,7 @@ export function BlueprintForm({
                       handleFieldChange('edge')
                     }}
                     disabled={isLoading || isEditing || !source || !target}
-                    className={`w-full rounded-md border px-3 py-2 text-sm ${
-                      isDarkMode
-                        ? 'border-gray-600 bg-gray-700 text-white'
-                        : 'border-gray-300 bg-white text-gray-900'
-                    } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                    className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     <option value="">
                       {source && target
@@ -971,15 +894,9 @@ export function BlueprintForm({
                   </p>
                 )}
               </div>
-              <div
-                className={`pb-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-              >
-                →
-              </div>
+              <div className={'pb-2 text-tertiary'}>→</div>
               <div>
-                <label
-                  className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-                >
+                <label className={'mb-1.5 block text-sm text-secondary'}>
                   Target <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -991,11 +908,7 @@ export function BlueprintForm({
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}
                   disabled={isLoading || isEditing}
-                  className={`w-full rounded-md border px-3 py-2 text-sm ${
-                    isDarkMode
-                      ? 'border-gray-600 bg-gray-700 text-white'
-                      : 'border-gray-300 bg-white text-gray-900'
-                  } ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
                   <option value="">Select target...</option>
                   {blueprintTypes.map((t) => (
@@ -1015,9 +928,7 @@ export function BlueprintForm({
 
           {/* Priority */}
           <div>
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
+            <label className={'mb-1.5 block text-sm text-secondary'}>
               Priority
             </label>
             <Input
@@ -1031,13 +942,9 @@ export function BlueprintForm({
               }}
               disabled={isLoading}
               placeholder="0"
-              className={
-                isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''
-              }
+              className={''}
             />
-            <p
-              className={`mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-            >
+            <p className={'mt-1 text-xs text-tertiary'}>
               Higher priority blueprints are applied later and can override
               lower priority ones
             </p>
@@ -1045,9 +952,7 @@ export function BlueprintForm({
 
           {/* Description */}
           <div className="col-span-2">
-            <label
-              className={`mb-1.5 block text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
-            >
+            <label className={'mb-1.5 block text-sm text-secondary'}>
               Description
             </label>
             <textarea
@@ -1056,11 +961,7 @@ export function BlueprintForm({
               disabled={isLoading}
               placeholder="Brief description of what this blueprint defines"
               rows={3}
-              className={`w-full resize-none rounded-md border px-3 py-2 text-sm ${
-                isDarkMode
-                  ? 'border-gray-600 bg-gray-700 text-white placeholder-gray-400'
-                  : 'border-gray-300 bg-white text-gray-900 placeholder-gray-500'
-              }`}
+              className={`w-full resize-none rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
             />
           </div>
 
@@ -1075,14 +976,12 @@ export function BlueprintForm({
               />
               <label
                 htmlFor="blueprint-enabled"
-                className={`cursor-pointer select-none text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                className={'cursor-pointer select-none text-sm text-secondary'}
               >
                 Enabled
               </label>
             </div>
-            <p
-              className={`ml-6 mt-1 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-            >
+            <p className={'ml-6 mt-1 text-xs text-tertiary'}>
               Disabled blueprints are not applied to entities
             </p>
           </div>
@@ -1090,21 +989,11 @@ export function BlueprintForm({
       </div>
 
       {/* Conditional Filter */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
+      <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Filter
-              className={`h-4 w-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            />
-            <h3
-              className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-            >
+            <Filter className={'h-4 w-4 text-tertiary'} />
+            <h3 className={'text-sm font-medium text-primary'}>
               Conditional Filter
             </h3>
           </div>
@@ -1123,7 +1012,7 @@ export function BlueprintForm({
             />
             <label
               htmlFor="filter-enabled"
-              className={`cursor-pointer select-none text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+              className={'cursor-pointer select-none text-sm text-secondary'}
             >
               Enable filter
             </label>
@@ -1132,9 +1021,7 @@ export function BlueprintForm({
 
         {filterEnabled ? (
           <div className="space-y-5">
-            <p
-              className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-            >
+            <p className={'text-xs text-tertiary'}>
               Select which project types and environments this blueprint applies
               to. Leave a section unchecked to apply to all.
             </p>
@@ -1142,20 +1029,16 @@ export function BlueprintForm({
             {/* Project Type filter */}
             <div>
               <label
-                className={`mb-2 block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                className={'mb-2 block text-sm font-medium text-secondary'}
               >
                 Project Types
               </label>
               {ptLoading ? (
-                <p
-                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                >
+                <p className={'text-xs italic text-tertiary'}>
                   Loading project types...
                 </p>
               ) : availableProjectTypes.length === 0 ? (
-                <p
-                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                >
+                <p className={'text-xs italic text-tertiary'}>
                   No project types available
                 </p>
               ) : (
@@ -1178,7 +1061,9 @@ export function BlueprintForm({
                       />
                       <label
                         htmlFor={`filter-pt-${pt.slug}`}
-                        className={`cursor-pointer select-none text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                        className={
+                          'cursor-pointer select-none text-sm text-secondary'
+                        }
                       >
                         {pt.name}
                       </label>
@@ -1191,20 +1076,16 @@ export function BlueprintForm({
             {/* Environment filter */}
             <div>
               <label
-                className={`mb-2 block text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                className={'mb-2 block text-sm font-medium text-secondary'}
               >
                 Environments
               </label>
               {envLoading ? (
-                <p
-                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                >
+                <p className={'text-xs italic text-tertiary'}>
                   Loading environments...
                 </p>
               ) : availableEnvironments.length === 0 ? (
-                <p
-                  className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                >
+                <p className={'text-xs italic text-tertiary'}>
                   No environments available
                 </p>
               ) : (
@@ -1227,7 +1108,9 @@ export function BlueprintForm({
                       />
                       <label
                         htmlFor={`filter-env-${env.slug}`}
-                        className={`cursor-pointer select-none text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}
+                        className={
+                          'cursor-pointer select-none text-sm text-secondary'
+                        }
                       >
                         {env.name}
                       </label>
@@ -1238,9 +1121,7 @@ export function BlueprintForm({
             </div>
           </div>
         ) : (
-          <p
-            className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-          >
+          <p className={'text-sm text-tertiary'}>
             No filter configured. This blueprint will apply to all entities of
             its type.
           </p>
@@ -1248,34 +1129,18 @@ export function BlueprintForm({
       </div>
 
       {/* JSON Schema Editor */}
-      <div
-        className={`rounded-lg border p-6 ${
-          isDarkMode
-            ? 'border-gray-700 bg-gray-800'
-            : 'border-gray-200 bg-white'
-        }`}
-      >
+      <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
         <div className="mb-4 flex items-center justify-between">
-          <h3
-            className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-          >
-            JSON Schema
-          </h3>
+          <h3 className={'text-sm font-medium text-primary'}>JSON Schema</h3>
           <div
-            className={`flex items-center rounded-lg border ${
-              isDarkMode ? 'border-gray-600' : 'border-gray-300'
-            }`}
+            className={`flex items-center rounded-lg border ${'border-input'}`}
           >
             <button
               onClick={() => handleEditorModeSwitch('visual')}
               className={`flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 text-sm transition-colors ${
                 editorMode === 'visual'
-                  ? isDarkMode
-                    ? 'bg-blue-900/40 text-blue-400'
-                    : 'bg-blue-50 text-[#2A4DD0]'
-                  : isDarkMode
-                    ? 'text-gray-400 hover:text-gray-200'
-                    : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-info text-info'
+                  : 'text-secondary hover:text-primary'
               }`}
             >
               <List className="h-3.5 w-3.5" />
@@ -1285,12 +1150,8 @@ export function BlueprintForm({
               onClick={() => handleEditorModeSwitch('code')}
               className={`flex items-center gap-1.5 rounded-r-lg px-3 py-1.5 text-sm transition-colors ${
                 editorMode === 'code'
-                  ? isDarkMode
-                    ? 'bg-blue-900/40 text-blue-400'
-                    : 'bg-blue-50 text-[#2A4DD0]'
-                  : isDarkMode
-                    ? 'text-gray-400 hover:text-gray-200'
-                    : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-info text-info'
+                  : 'text-secondary hover:text-primary'
               }`}
             >
               <Code className="h-3.5 w-3.5" />
@@ -1302,11 +1163,7 @@ export function BlueprintForm({
         {/* Schema Error */}
         {(schemaError || (touched.schema && validationErrors.schema)) && (
           <div
-            className={`mb-4 flex items-start gap-2 rounded-lg p-3 ${
-              isDarkMode
-                ? 'bg-red-900/20 text-red-400'
-                : 'bg-red-50 text-red-700'
-            }`}
+            className={`mb-4 flex items-start gap-2 rounded-lg p-3 ${'bg-danger text-danger'}`}
           >
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <div className="text-xs">
@@ -1319,9 +1176,7 @@ export function BlueprintForm({
         {editorMode === 'visual' && (
           <div className="space-y-3">
             {schemaProperties.length === 0 ? (
-              <div
-                className={`py-8 text-center ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}
-              >
+              <div className={'py-8 text-center text-tertiary'}>
                 <div>No properties defined</div>
                 <div className="mt-1 text-sm">
                   Add properties to define the schema
@@ -1333,11 +1188,7 @@ export function BlueprintForm({
                 return (
                   <div
                     key={prop.id}
-                    className={`rounded-lg border ${
-                      isDarkMode
-                        ? 'border-gray-600 bg-gray-700'
-                        : 'border-gray-200 bg-gray-50'
-                    }`}
+                    className={`rounded-lg border ${'border-input bg-secondary'}`}
                   >
                     {/* Property Row */}
                     <div className="flex items-center gap-3 p-3">
@@ -1354,9 +1205,7 @@ export function BlueprintForm({
                                   className={`rounded p-0.5 ${
                                     index === 0
                                       ? 'cursor-not-allowed opacity-30'
-                                      : isDarkMode
-                                        ? 'text-gray-400 hover:bg-gray-700'
-                                        : 'text-gray-600 hover:bg-gray-200'
+                                      : 'text-secondary hover:bg-secondary'
                                   }`}
                                 >
                                   <ChevronUp className="h-3 w-3" />
@@ -1382,9 +1231,7 @@ export function BlueprintForm({
                                   className={`rounded p-0.5 ${
                                     index === schemaProperties.length - 1
                                       ? 'cursor-not-allowed opacity-30'
-                                      : isDarkMode
-                                        ? 'text-gray-400 hover:bg-gray-700'
-                                        : 'text-gray-600 hover:bg-gray-200'
+                                      : 'text-secondary hover:bg-secondary'
                                   }`}
                                 >
                                   <ChevronDown className="h-3 w-3" />
@@ -1406,7 +1253,7 @@ export function BlueprintForm({
                           })
                         }
                         placeholder="Property name"
-                        className={`flex-1 font-mono text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                        className={'flex-1 font-mono text-sm'}
                       />
 
                       <select
@@ -1416,11 +1263,7 @@ export function BlueprintForm({
                             type: e.target.value as SchemaProperty['type'],
                           })
                         }
-                        className={`w-28 rounded-md border px-2 py-2 text-sm ${
-                          isDarkMode
-                            ? 'border-gray-600 bg-gray-700 text-white'
-                            : 'border-gray-300 bg-white text-gray-900'
-                        }`}
+                        className={`w-28 rounded-md border px-2 py-2 text-sm ${'border-input bg-background text-foreground'}`}
                       >
                         {PROPERTY_TYPES.map((t) => (
                           <option key={t} value={t}>
@@ -1441,7 +1284,9 @@ export function BlueprintForm({
                         />
                         <label
                           htmlFor={`req-${prop.id}`}
-                          className={`cursor-pointer select-none text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                          className={
+                            'cursor-pointer select-none text-xs text-secondary'
+                          }
                         >
                           Required
                         </label>
@@ -1459,7 +1304,9 @@ export function BlueprintForm({
                         />
                         <label
                           htmlFor={`editable-${prop.id}`}
-                          className={`cursor-pointer select-none text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                          className={
+                            'cursor-pointer select-none text-xs text-secondary'
+                          }
                         >
                           Editable
                         </label>
@@ -1476,11 +1323,7 @@ export function BlueprintForm({
                                   : 'Expand advanced options'
                               }
                               onClick={() => toggleExpandProp(prop.id)}
-                              className={`rounded p-1.5 text-xs ${
-                                isDarkMode
-                                  ? 'text-gray-400 hover:bg-gray-700'
-                                  : 'text-gray-600 hover:bg-gray-200'
-                              }`}
+                              className={`rounded p-1.5 text-xs ${'text-secondary hover:bg-secondary'}`}
                             >
                               {isExpanded ? (
                                 <ChevronUp className="h-3.5 w-3.5" />
@@ -1502,11 +1345,7 @@ export function BlueprintForm({
                               type="button"
                               aria-label="Remove property"
                               onClick={() => removeProperty(prop.id)}
-                              className={`rounded p-1.5 ${
-                                isDarkMode
-                                  ? 'text-red-400 hover:bg-red-900/20'
-                                  : 'text-red-600 hover:bg-red-50'
-                              }`}
+                              className={`rounded p-1.5 ${'text-danger hover:bg-danger'}`}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -1521,14 +1360,12 @@ export function BlueprintForm({
                     {/* Advanced Options */}
                     {isExpanded && (
                       <div
-                        className={`space-y-3 border-t px-3 pb-3 pt-2 ${
-                          isDarkMode ? 'border-gray-600' : 'border-gray-200'
-                        }`}
+                        className={`space-y-3 border-t px-3 pb-3 pt-2 ${'border-secondary'}`}
                       >
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <label
-                              className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                              className={'mb-1 block text-xs text-secondary'}
                             >
                               Description
                             </label>
@@ -1540,12 +1377,12 @@ export function BlueprintForm({
                                 })
                               }
                               placeholder="Property description"
-                              className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                              className={'text-sm'}
                             />
                           </div>
                           <div>
                             <label
-                              className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                              className={'mb-1 block text-xs text-secondary'}
                             >
                               Default Value
                             </label>
@@ -1557,7 +1394,7 @@ export function BlueprintForm({
                                 })
                               }
                               placeholder="Default value"
-                              className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                              className={'text-sm'}
                             />
                           </div>
                         </div>
@@ -1566,7 +1403,7 @@ export function BlueprintForm({
                           <div className="grid grid-cols-3 gap-3">
                             <div>
                               <label
-                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={'mb-1 block text-xs text-secondary'}
                               >
                                 Format
                               </label>
@@ -1577,11 +1414,7 @@ export function BlueprintForm({
                                     format: e.target.value || undefined,
                                   })
                                 }
-                                className={`w-full rounded-md border px-2 py-2 text-sm ${
-                                  isDarkMode
-                                    ? 'border-gray-600 bg-gray-700 text-white'
-                                    : 'border-gray-300 bg-white text-gray-900'
-                                }`}
+                                className={`w-full rounded-md border px-2 py-2 text-sm ${'border-input bg-background text-foreground'}`}
                               >
                                 {STRING_FORMATS.map((f) => (
                                   <option key={f} value={f}>
@@ -1592,7 +1425,7 @@ export function BlueprintForm({
                             </div>
                             <div>
                               <label
-                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={'mb-1 block text-xs text-secondary'}
                               >
                                 Min Length
                               </label>
@@ -1606,12 +1439,12 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                className={'text-sm'}
                               />
                             </div>
                             <div>
                               <label
-                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={'mb-1 block text-xs text-secondary'}
                               >
                                 Max Length
                               </label>
@@ -1625,7 +1458,7 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                className={'text-sm'}
                               />
                             </div>
                           </div>
@@ -1636,7 +1469,7 @@ export function BlueprintForm({
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <label
-                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={'mb-1 block text-xs text-secondary'}
                               >
                                 Minimum
                               </label>
@@ -1650,12 +1483,12 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                className={'text-sm'}
                               />
                             </div>
                             <div>
                               <label
-                                className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                                className={'mb-1 block text-xs text-secondary'}
                               >
                                 Maximum
                               </label>
@@ -1669,7 +1502,7 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                className={'text-sm'}
                               />
                             </div>
                           </div>
@@ -1677,7 +1510,7 @@ export function BlueprintForm({
 
                         <div>
                           <label
-                            className={`mb-1 block text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
+                            className={'mb-1 block text-xs text-secondary'}
                           >
                             Enum Values (comma-separated)
                           </label>
@@ -1714,7 +1547,7 @@ export function BlueprintForm({
                               }
                             }}
                             placeholder="e.g. small, medium, large"
-                            className={`text-sm ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                            className={'text-sm'}
                           />
                         </div>
 
@@ -1791,9 +1624,7 @@ export function BlueprintForm({
                             return (
                               <div key={mapType}>
                                 <div className="mb-1 flex items-center justify-between">
-                                  <label
-                                    className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}
-                                  >
+                                  <label className={'text-xs text-secondary'}>
                                     {mapLabel}
                                   </label>
                                   <button
@@ -1807,16 +1638,16 @@ export function BlueprintForm({
                                         ],
                                       })
                                     }}
-                                    className={`flex items-center gap-1 text-xs ${isDarkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'}`}
+                                    className={
+                                      'hover:text-info/80 flex items-center gap-1 text-xs text-info'
+                                    }
                                   >
                                     <Plus className="h-3 w-3" />
                                     Add entry
                                   </button>
                                 </div>
                                 {entries.length === 0 ? (
-                                  <p
-                                    className={`text-xs italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}
-                                  >
+                                  <p className={'text-xs italic text-tertiary'}>
                                     No {mapLabel.toLowerCase()} entries
                                   </p>
                                 ) : (
@@ -1842,7 +1673,7 @@ export function BlueprintForm({
                                           }}
                                           onBlur={() => commit(entries)}
                                           placeholder={keyPh}
-                                          className={`flex-1 text-xs ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                          className={'flex-1 text-xs'}
                                         />
                                         {isColor ? (
                                           <select
@@ -1860,11 +1691,7 @@ export function BlueprintForm({
                                               })
                                               commit(next)
                                             }}
-                                            className={`rounded-md border px-2 py-1.5 text-xs ${
-                                              isDarkMode
-                                                ? 'border-gray-600 bg-gray-700 text-white'
-                                                : 'border-gray-300 bg-white text-gray-900'
-                                            }`}
+                                            className={`rounded-md border px-2 py-1.5 text-xs ${'border-input bg-background text-foreground'}`}
                                           >
                                             {[
                                               'green',
@@ -1896,7 +1723,7 @@ export function BlueprintForm({
                                             }}
                                             onBlur={() => commit(entries)}
                                             placeholder={valPh}
-                                            className={`flex-1 text-xs ${isDarkMode ? 'border-gray-600 bg-gray-700 text-white' : ''}`}
+                                            className={'flex-1 text-xs'}
                                           />
                                         )}
                                         <button
@@ -1911,7 +1738,9 @@ export function BlueprintForm({
                                             })
                                             commit(next)
                                           }}
-                                          className={`flex-shrink-0 ${isDarkMode ? 'text-gray-500 hover:text-red-400' : 'text-gray-400 hover:text-red-500'}`}
+                                          className={
+                                            'flex-shrink-0 text-tertiary hover:text-danger'
+                                          }
                                         >
                                           <X className="h-3.5 w-3.5" />
                                         </button>
@@ -1933,7 +1762,7 @@ export function BlueprintForm({
             <Button
               onClick={addProperty}
               variant="outline"
-              className={`w-full ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
+              className={'w-full'}
             >
               <Plus className="mr-2 h-4 w-4" />
               Add Property
@@ -1952,11 +1781,7 @@ export function BlueprintForm({
             onBlur={() => syncCodeToVisual(rawSchema)}
             rows={20}
             spellCheck={false}
-            className={`w-full resize-y rounded-md border px-4 py-3 font-mono text-sm ${
-              isDarkMode
-                ? 'border-gray-600 bg-gray-900 text-gray-200'
-                : 'border-gray-300 bg-gray-50 text-gray-900'
-            }`}
+            className={`w-full resize-y rounded-md border px-4 py-3 font-mono text-sm ${'border-input bg-secondary text-primary'}`}
           />
         )}
       </div>
