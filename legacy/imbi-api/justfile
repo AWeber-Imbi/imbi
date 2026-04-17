@@ -71,7 +71,7 @@ docker:
     S3_SECRET_KEY="test"
     S3_BUCKET="imbi-uploads"
     S3_REGION="us-east-1"
-    VALKEY_URL="redis://$test_host:$(get_port valkey 6379)"
+    VALKEY_URL="valkey://$test_host:$(get_port valkey 6379)"
     EOF
 
 [doc("Run tests")]
