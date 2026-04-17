@@ -32,7 +32,7 @@ license-file = "LICENSE"
 
 [project.optional-dependencies]
 databases = [
-  "clickhouse-connect",
+  "clickhouse-connect[async]>=0.15",
   "fastembed>=0.6",
   "pgvector>=0.3",
   "psycopg[binary,pool]>=3.3",
@@ -99,7 +99,7 @@ strict = true
 show_error_codes = true
 
 [[tool.mypy.overrides]]
-module = ["nanoid", "pgvector.*"]
+module = ["clickhouse_connect.*", "nanoid", "pgvector.*"]
 ignore_missing_imports = true
 
 [tool.pyright]

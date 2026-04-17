@@ -31,7 +31,7 @@ from imbi_common import helpers, settings
 try:
     import sentry_sdk
 except ImportError:
-    sentry_sdk = None  # type: ignore[assignment,unused-ignore]
+    sentry_sdk = None  # type: ignore[assignment]
 
 LOGGER = logging.getLogger(__name__)
 
@@ -90,8 +90,7 @@ class Clickhouse:
         """Close any open connections to Clickhouse."""
         async with self._lock:
             if self._clickhouse is not None:
-                # https://github.com/ClickHouse/clickhouse-connect/issues/567
-                await self._clickhouse.close()  # type: ignore[no-untyped-call]
+                await self._clickhouse.close()
             self._clickhouse = None
 
     async def insert(
