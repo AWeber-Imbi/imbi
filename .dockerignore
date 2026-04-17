@@ -8,3 +8,13 @@ LICENSE
 .gitignore
 .gitmodules
 .dockerignore
+# Python artifacts
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.venv
+**/venv
+**/.tox
+**/*.egg-info
+**/dist
+**/build
