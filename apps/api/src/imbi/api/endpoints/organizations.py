@@ -15,6 +15,7 @@ from imbi_api.relationships import relationship_link
 
 from .environments import environments_router
 from .link_definitions import link_definitions_router
+from .operations_log import operations_log_project_router
 from .project_types import project_types_router
 from .projects import projects_router
 from .teams import teams_router
@@ -54,6 +55,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     webhooks_router,
     prefix='/{org_slug}/webhooks',
+)
+organizations_router.include_router(
+    operations_log_project_router,
+    prefix='/{org_slug}/projects/{project_id}/operations-log',
 )
 organizations_router.include_router(
     project_services_router,

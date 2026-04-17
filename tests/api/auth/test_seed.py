@@ -330,3 +330,13 @@ class CheckIfSeededTestCase(unittest.IsolatedAsyncioTestCase):
         is_seeded = await seed.check_if_seeded(mock_db)
 
         self.assertFalse(is_seeded)
+
+
+class StandardPermissionsTests(unittest.TestCase):
+    """Tests for the STANDARD_PERMISSIONS catalogue."""
+
+    def test_operations_log_permissions_present(self) -> None:
+        slugs = {perm[0] for perm in seed.STANDARD_PERMISSIONS}
+        for action in ('create', 'read', 'update', 'delete'):
+            with self.subTest(action=action):
+                self.assertIn(f'operations_log:{action}', slugs)
