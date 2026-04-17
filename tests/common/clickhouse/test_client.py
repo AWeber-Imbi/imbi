@@ -542,6 +542,8 @@ class OperationsLogSchemaTestCase(unittest.TestCase):
             'notes',
             'ticket_slug',
             'version',
+            '_row_version',
+            'is_deleted',
         ]
         for col in expected_columns:
             self.assertIn(col, ddl, f'Column {col!r} missing from DDL')
@@ -549,6 +551,10 @@ class OperationsLogSchemaTestCase(unittest.TestCase):
     def test_operations_log_engine(self) -> None:
         schemata = self._load_schemata()
         ddl = schemata['operations_log']['query']
-        self.assertIn('MergeTree()', ddl)
+        self.assertIn('ReplacingMergeTree(_row_version)', ddl)
         self.assertIn('PARTITION BY toYYYYMM(occurred_at)', ddl)
-        self.assertIn('ORDER BY (occurred_at, project_slug)', ddl)
+        self.assertIn('ORDER BY (project_id, id)', ddl)
+        self.assertIn(
+            'INDEX idx_id id TYPE bloom_filter GRANULARITY 4',
+            ddl,
+        )

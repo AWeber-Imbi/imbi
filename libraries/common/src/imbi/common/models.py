@@ -366,6 +366,8 @@ _OPSLOG_ENTRY_TYPES = typing.Literal[
 class OperationLog(pydantic.BaseModel):
     """An operational event recorded in ClickHouse."""
 
+    model_config = pydantic.ConfigDict(populate_by_name=True)
+
     id: str = pydantic.Field(default_factory=nanoid.generate)
     occurred_at: datetime.datetime = pydantic.Field(
         default_factory=lambda: datetime.datetime.now(datetime.UTC),
@@ -385,3 +387,10 @@ class OperationLog(pydantic.BaseModel):
     notes: str | None = None
     ticket_slug: str | None = None
     version: str | None = None
+    row_version: int = pydantic.Field(
+        default=1,
+        alias='_row_version',
+        ge=0,
+        lt=2**64,
+    )
+    is_deleted: bool = False

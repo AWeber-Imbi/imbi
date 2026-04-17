@@ -479,9 +479,9 @@ class OperationLogTestCase(unittest.TestCase):
                 self.assertEqual(entry.entry_type, entry_type)
 
     def test_model_dump_column_order_matches_ddl(self) -> None:
-        """key order from model_dump() must mirror schemata.toml DDL."""
+        """key order from model_dump(by_alias=True) must mirror DDL."""
         entry = self._make()
-        keys = list(entry.model_dump().keys())
+        keys = list(entry.model_dump(by_alias=True).keys())
         expected = [
             'id',
             'occurred_at',
@@ -498,8 +498,61 @@ class OperationLogTestCase(unittest.TestCase):
             'notes',
             'ticket_slug',
             'version',
+            '_row_version',
+            'is_deleted',
         ]
         self.assertEqual(keys, expected)
 
     def test_operation_log_in_all(self) -> None:
         self.assertIn('OperationLog', models.__all__)
+
+
+class OperationLogFieldsTests(unittest.TestCase):
+    """Tests for OperationLog schema/API fields."""
+
+    def _minimum_kwargs(self) -> dict:
+        return {
+            'recorded_by': 'alice@example.com',
+            'project_id': 'abc123',
+            'project_slug': 'imbi-api',
+            'environment_slug': 'production',
+            'entry_type': 'Deployed',
+            'description': 'Rolled out v1',
+        }
+
+    def test_defaults_row_version_to_one(self) -> None:
+        entry = models.OperationLog(**self._minimum_kwargs())
+        self.assertEqual(entry.row_version, 1)
+
+    def test_defaults_is_deleted_to_false(self) -> None:
+        entry = models.OperationLog(**self._minimum_kwargs())
+        self.assertFalse(entry.is_deleted)
+
+    def test_row_version_accepts_alias(self) -> None:
+        entry = models.OperationLog(
+            **self._minimum_kwargs(),
+            _row_version=7,
+        )
+        self.assertEqual(entry.row_version, 7)
+
+    def test_row_version_accepts_field_name(self) -> None:
+        entry = models.OperationLog(
+            **self._minimum_kwargs(),
+            row_version=7,
+        )
+        self.assertEqual(entry.row_version, 7)
+
+    def test_is_deleted_can_be_set(self) -> None:
+        entry = models.OperationLog(
+            **self._minimum_kwargs(),
+            is_deleted=True,
+        )
+        self.assertTrue(entry.is_deleted)
+
+    def test_model_dump_by_alias_emits_underscore_name(self) -> None:
+        entry = models.OperationLog(**self._minimum_kwargs())
+        dumped = entry.model_dump(by_alias=True)
+        self.assertIn('_row_version', dumped)
+        self.assertNotIn('row_version', dumped)
+        self.assertEqual(dumped['_row_version'], 1)
+        self.assertFalse(dumped['is_deleted'])

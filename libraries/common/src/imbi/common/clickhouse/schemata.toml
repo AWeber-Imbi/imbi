@@ -39,24 +39,27 @@ enabled = false
 [operations_log]
 query = """
 CREATE TABLE IF NOT EXISTS operations_log (
-    id               String,
-    occurred_at      DateTime64(3, 'UTC'),
-    recorded_at      DateTime64(3, 'UTC'),
-    recorded_by      LowCardinality(String),
-    performed_by     Nullable(String),
-    completed_at     Nullable(DateTime64(3, 'UTC')),
-    project_id       LowCardinality(String),
-    project_slug     LowCardinality(String),
-    environment_slug LowCardinality(String),
-    entry_type       LowCardinality(String),
-    description      String,
-    link             Nullable(String),
-    notes            Nullable(String),
-    ticket_slug      Nullable(String),
-    version          Nullable(String)
-) ENGINE = MergeTree()
+    id                String,
+    occurred_at       DateTime64(3, 'UTC'),
+    recorded_at       DateTime64(3, 'UTC'),
+    recorded_by       LowCardinality(String),
+    performed_by      Nullable(String),
+    completed_at      Nullable(DateTime64(3, 'UTC')),
+    project_id        LowCardinality(String),
+    project_slug      LowCardinality(String),
+    environment_slug  LowCardinality(String),
+    entry_type        LowCardinality(String),
+    description       String,
+    link              Nullable(String),
+    notes             Nullable(String),
+    ticket_slug       Nullable(String),
+    version           Nullable(String),
+    _row_version      UInt64 DEFAULT 1,
+    is_deleted        UInt8  DEFAULT 0,
+    INDEX idx_id id TYPE bloom_filter GRANULARITY 4
+) ENGINE = ReplacingMergeTree(_row_version)
 PARTITION BY toYYYYMM(occurred_at)
-ORDER BY (occurred_at, project_slug)
+ORDER BY (project_id, id)
 ;
 """
 enabled = true
