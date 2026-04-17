@@ -33,7 +33,7 @@ dependencies = [
   "fastapi",
   "filetype",
   "httpx>=0.28.1",
-  "imbi-common",
+  "imbi-common[databases,server]",
   "jinja2",
   "jsonpatch>=1.33",
   "nanoid>=2.0.0",
@@ -219,4 +219,4 @@ url = "https://pypi.org/simple"
 default = true
 
 [tool.uv.sources]
-imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "feature/relationship-blueprints" }
+imbi-common = { git = "https://github.com/AWeber-Imbi/imbi-common.git", rev = "main" }
