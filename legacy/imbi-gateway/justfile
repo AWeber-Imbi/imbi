@@ -30,7 +30,7 @@ docker:
     test_host="${TEST_HOST:-127.0.0.1}"
     cat>".env"<<-EOF
     POSTGRES_URL="postgresql://postgres:secret@$test_host:$pg_port"
-    VALKEY_URL="redis://$test_host:$valkey_port"
+    VALKEY_URL="valkey://$test_host:$valkey_port"
     EOF
 
 [doc("Run tests")]
