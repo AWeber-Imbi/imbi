@@ -26,6 +26,7 @@ test-coverage:
 
 # Run TypeScript type checking and build for production
 build:
+    [ -e ./node_modules/.bin/browserslist ] || npm ci
     npm run build
 
 # Preview production build

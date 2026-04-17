@@ -161,22 +161,17 @@ export const createProject = (
 
 export const updateProject = (
   orgSlug: string,
-  projectTypeSlug: string,
-  slug: string,
+  projectId: string,
   project: Partial<ProjectCreate>,
 ) =>
   apiClient.put<Project>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
     project,
   )
 
-export const deleteProject = (
-  orgSlug: string,
-  projectTypeSlug: string,
-  slug: string,
-) =>
+export const deleteProject = (orgSlug: string, projectId: string) =>
   apiClient.delete<void>(
-    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectTypeSlug)}/${encodeURIComponent(slug)}`,
+    `/organizations/${encodeURIComponent(orgSlug)}/projects/${encodeURIComponent(projectId)}`,
   )
 
 // Link Definitions (org-scoped)

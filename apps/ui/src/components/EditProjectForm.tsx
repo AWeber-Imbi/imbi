@@ -89,12 +89,9 @@ export function EditProjectForm({ project, isDarkMode }: EditProjectFormProps) {
     setDynamicData(initial)
   }, [editableSchema, project])
 
-  const projectTypeSlug =
-    project.project_type?.slug ?? project.project_types?.[0]?.slug ?? ''
-
   const mutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
-      updateProject(orgSlug, projectTypeSlug, project.slug, payload),
+      updateProject(orgSlug, project.id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ['project', orgSlug, project.id],
@@ -107,10 +104,6 @@ export function EditProjectForm({ project, isDarkMode }: EditProjectFormProps) {
 
   const handleSave = () => {
     const newErrors: Record<string, string> = {}
-
-    if (!projectTypeSlug) {
-      newErrors.projectType = 'Project type is missing'
-    }
 
     if (!name.trim()) {
       newErrors.name = 'Name is required'
@@ -246,7 +239,7 @@ export function EditProjectForm({ project, isDarkMode }: EditProjectFormProps) {
           size="sm"
           className="border-amber-border bg-amber-bg text-amber-text hover:bg-amber-bg/80"
           onClick={handleSave}
-          disabled={mutation.isPending || !projectTypeSlug}
+          disabled={mutation.isPending}
         >
           {mutation.isPending ? 'Saving...' : 'Save'}
         </Button>

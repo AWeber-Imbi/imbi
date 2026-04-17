@@ -1110,8 +1110,6 @@ function SettingsTab({
   const orgSlug = selectedOrganization?.slug || ''
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const projectTypeSlug =
-    project.project_type?.slug ?? project.project_types?.[0]?.slug ?? ''
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -1132,45 +1130,28 @@ function SettingsTab({
   }
 
   const linksMutation = useMutation({
-    mutationFn: (links: Record<string, string>) => {
-      if (!orgSlug || !projectTypeSlug)
-        return Promise.reject(new Error('Missing project type'))
-      return updateProject(orgSlug, projectTypeSlug, project.slug, { links })
-    },
+    mutationFn: (links: Record<string, string>) =>
+      updateProject(orgSlug, project.id, { links }),
     onSuccess: invalidateProject,
     onError: mutationErrorHandler('save links'),
   })
 
   const identifiersMutation = useMutation({
-    mutationFn: (identifiers: Record<string, string>) => {
-      if (!orgSlug || !projectTypeSlug)
-        return Promise.reject(new Error('Missing project type'))
-      return updateProject(orgSlug, projectTypeSlug, project.slug, {
-        identifiers,
-      })
-    },
+    mutationFn: (identifiers: Record<string, string>) =>
+      updateProject(orgSlug, project.id, { identifiers }),
     onSuccess: invalidateProject,
     onError: mutationErrorHandler('save identifiers'),
   })
 
   const envMutation = useMutation({
-    mutationFn: (environments: Record<string, Record<string, string>>) => {
-      if (!orgSlug || !projectTypeSlug)
-        return Promise.reject(new Error('Missing project type'))
-      return updateProject(orgSlug, projectTypeSlug, project.slug, {
-        environments,
-      })
-    },
+    mutationFn: (environments: Record<string, Record<string, string>>) =>
+      updateProject(orgSlug, project.id, { environments }),
     onSuccess: invalidateProject,
     onError: mutationErrorHandler('save environments'),
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => {
-      if (!orgSlug || !projectTypeSlug)
-        return Promise.reject(new Error('Missing project type'))
-      return deleteProject(orgSlug, projectTypeSlug, project.slug)
-    },
+    mutationFn: () => deleteProject(orgSlug, project.id),
     onSuccess: () => navigate('/'),
     onError: mutationErrorHandler('delete project'),
   })
@@ -1290,7 +1271,7 @@ function SettingsTab({
               size="sm"
               className={`bg-red-700 text-white hover:bg-red-800 ${isDarkMode ? 'border-red-700' : 'border-red-300'}`}
               onClick={() => setShowDeleteConfirm(true)}
-              disabled={!projectTypeSlug}
+              disabled={!project.id}
             >
               Delete Project
             </Button>
@@ -1324,8 +1305,7 @@ function SettingsTab({
                   onClick={() => deleteMutation.mutate()}
                   disabled={
                     deleteConfirmSlug !== project.slug ||
-                    deleteMutation.isPending ||
-                    !projectTypeSlug
+                    deleteMutation.isPending
                   }
                 >
                   {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
