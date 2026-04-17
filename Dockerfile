@@ -11,6 +11,7 @@ WORKDIR /tmp/build
 COPY imbi-ui/package.json imbi-ui/package-lock.json ./
 RUN npm ci
 COPY imbi-ui/ ./
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 # ---------------------------------------------------------------------------
@@ -40,7 +41,7 @@ done
 # Install all services into a venv, then clean up source
 ENV UV_LINK_MODE=copy UV_PROJECT_DIRECTORY=/app VIRTUAL_ENV=/app
 RUN uv venv --python $(which python3) $UV_PROJECT_DIRECTORY \
- && uv pip install /tmp/wheels/*.whl \
+ && uv pip install --prerelease=allow /tmp/wheels/*.whl \
  && chmod -R a+rX /app
 
 # ---------------------------------------------------------------------------

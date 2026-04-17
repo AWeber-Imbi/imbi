@@ -19,7 +19,7 @@ release tag:
 [doc("Update all submodules to what is currently checked in")]
 [group("Submodules")]
 checkout-submodules:
-    git submodule update --remote --checkout
+    git submodule update --checkout
 
 [doc("Update all submodules to the latest commit on their tracking branch")]
 [group("Submodules")]
