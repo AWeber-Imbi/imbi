@@ -82,7 +82,10 @@ source = ["src/imbi_common"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/imbi_common"]
-include = ["src/imbi_common/log-config.toml"]
+include = [
+  "src/imbi_common/log-config.toml",
+  "src/imbi_common/clickhouse/schemata.toml",
+]
 
 [tool.hatch.metadata]
 allow-direct-references = true

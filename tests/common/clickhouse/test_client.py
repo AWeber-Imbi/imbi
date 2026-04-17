@@ -1,3 +1,5 @@
+import importlib.resources
+import tomllib
 import unittest
 from unittest import mock
 
@@ -503,3 +505,50 @@ class ClickhouseClientTestCase(unittest.IsolatedAsyncioTestCase):
                 await ch._execute_schemata_queries()
 
                 mock_query.assert_not_called()
+
+
+class OperationsLogSchemaTestCase(unittest.TestCase):
+    """Verify the operations_log entry exists in schemata.toml."""
+
+    def _load_schemata(self) -> dict:
+        pkg = importlib.resources.files('imbi_common.clickhouse')
+        toml_bytes = (pkg / 'schemata.toml').read_bytes()
+        return tomllib.loads(toml_bytes.decode())
+
+    def test_operations_log_table_present(self) -> None:
+        schemata = self._load_schemata()
+        self.assertIn('operations_log', schemata)
+
+    def test_operations_log_enabled(self) -> None:
+        schemata = self._load_schemata()
+        self.assertTrue(schemata['operations_log']['enabled'])
+
+    def test_operations_log_ddl_columns(self) -> None:
+        schemata = self._load_schemata()
+        ddl = schemata['operations_log']['query']
+        expected_columns = [
+            'id',
+            'occurred_at',
+            'recorded_at',
+            'recorded_by',
+            'performed_by',
+            'completed_at',
+            'project_id',
+            'project_slug',
+            'environment_slug',
+            'entry_type',
+            'description',
+            'link',
+            'notes',
+            'ticket_slug',
+            'version',
+        ]
+        for col in expected_columns:
+            self.assertIn(col, ddl, f'Column {col!r} missing from DDL')
+
+    def test_operations_log_engine(self) -> None:
+        schemata = self._load_schemata()
+        ddl = schemata['operations_log']['query']
+        self.assertIn('MergeTree()', ddl)
+        self.assertIn('PARTITION BY toYYYYMM(occurred_at)', ddl)
+        self.assertIn('ORDER BY (occurred_at, project_slug)', ddl)

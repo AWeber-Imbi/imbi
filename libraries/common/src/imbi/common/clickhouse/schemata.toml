@@ -35,3 +35,28 @@ PARTITION BY toYYYYMM(timestamp)
 TTL timestamp + INTERVAL 90 DAY;
 """
 enabled = false
+
+[operations_log]
+query = """
+CREATE TABLE IF NOT EXISTS operations_log (
+    id               String,
+    occurred_at      DateTime64(3, 'UTC'),
+    recorded_at      DateTime64(3, 'UTC'),
+    recorded_by      LowCardinality(String),
+    performed_by     Nullable(String),
+    completed_at     Nullable(DateTime64(3, 'UTC')),
+    project_id       LowCardinality(String),
+    project_slug     LowCardinality(String),
+    environment_slug LowCardinality(String),
+    entry_type       LowCardinality(String),
+    description      String,
+    link             Nullable(String),
+    notes            Nullable(String),
+    ticket_slug      Nullable(String),
+    version          Nullable(String)
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(occurred_at)
+ORDER BY (occurred_at, project_slug)
+;
+"""
+enabled = true

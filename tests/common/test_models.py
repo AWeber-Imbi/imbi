@@ -1,5 +1,6 @@
 import datetime
 import json
+import typing
 import unittest
 
 import pydantic
@@ -402,3 +403,103 @@ class ProjectModelTestCase(unittest.TestCase):
                 urls={},
                 identifiers={},
             )
+
+
+class OperationLogTestCase(unittest.TestCase):
+    """Tests for the OperationLog model."""
+
+    def _make(self, **overrides) -> models.OperationLog:
+        defaults = {
+            'recorded_by': 'github',
+            'project_id': 'abc123',
+            'project_slug': 'my-service',
+            'environment_slug': 'production',
+            'entry_type': 'Deployed',
+            'description': 'Deploy v1.2.3',
+        }
+        defaults.update(overrides)
+        return models.OperationLog(**defaults)
+
+    def test_id_auto_generated(self) -> None:
+        entry = self._make()
+        self.assertIsInstance(entry.id, str)
+        self.assertTrue(len(entry.id) > 0)
+
+    def test_ids_are_unique(self) -> None:
+        a = self._make()
+        b = self._make()
+        self.assertNotEqual(a.id, b.id)
+
+    def test_occurred_at_defaults_to_utc_now(self) -> None:
+        entry = self._make()
+        self.assertIsNotNone(entry.occurred_at)
+        self.assertEqual(entry.occurred_at.tzinfo, datetime.UTC)
+
+    def test_recorded_at_defaults_to_utc_now(self) -> None:
+        entry = self._make()
+        self.assertIsNotNone(entry.recorded_at)
+        self.assertEqual(entry.recorded_at.tzinfo, datetime.UTC)
+
+    def test_nullable_fields_default_to_none(self) -> None:
+        entry = self._make()
+        self.assertIsNone(entry.performed_by)
+        self.assertIsNone(entry.completed_at)
+        self.assertIsNone(entry.link)
+        self.assertIsNone(entry.notes)
+        self.assertIsNone(entry.ticket_slug)
+        self.assertIsNone(entry.version)
+
+    def test_optional_fields_can_be_set(self) -> None:
+        now = datetime.datetime.now(datetime.UTC)
+        entry = self._make(
+            performed_by='user@example.com',
+            completed_at=now,
+            link='https://github.com/org/repo/actions/runs/123',
+            notes='Some notes',
+            ticket_slug='PROJ-42',
+            version='v1.2.3',
+        )
+        self.assertEqual(entry.performed_by, 'user@example.com')
+        self.assertEqual(entry.completed_at, now)
+        self.assertEqual(
+            entry.link, 'https://github.com/org/repo/actions/runs/123'
+        )
+        self.assertEqual(entry.notes, 'Some notes')
+        self.assertEqual(entry.ticket_slug, 'PROJ-42')
+        self.assertEqual(entry.version, 'v1.2.3')
+
+    def test_invalid_entry_type_raises(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            self._make(entry_type='NotAType')
+
+    def test_all_valid_entry_types(self) -> None:
+        for entry_type in typing.get_args(models._OPSLOG_ENTRY_TYPES):
+            with self.subTest(entry_type=entry_type):
+                entry = self._make(entry_type=entry_type)
+                self.assertEqual(entry.entry_type, entry_type)
+
+    def test_model_dump_column_order_matches_ddl(self) -> None:
+        """key order from model_dump() must mirror schemata.toml DDL."""
+        entry = self._make()
+        keys = list(entry.model_dump().keys())
+        expected = [
+            'id',
+            'occurred_at',
+            'recorded_at',
+            'recorded_by',
+            'performed_by',
+            'completed_at',
+            'project_id',
+            'project_slug',
+            'environment_slug',
+            'entry_type',
+            'description',
+            'link',
+            'notes',
+            'ticket_slug',
+            'version',
+        ]
+        self.assertEqual(keys, expected)
+
+    def test_operation_log_in_all(self) -> None:
+        self.assertIn('OperationLog', models.__all__)

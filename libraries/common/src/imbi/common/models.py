@@ -19,6 +19,7 @@ __all__ = [
     'GraphModel',
     'LinkDefinition',
     'Node',
+    'OperationLog',
     'Organization',
     'Project',
     'ProjectType',
@@ -347,3 +348,40 @@ class Embedding(pydantic.BaseModel):
     model_name: str = 'text'
     chunk_text: str
     embedding: list[float]
+
+
+_OPSLOG_ENTRY_TYPES = typing.Literal[
+    'Configured',
+    'Decommissioned',
+    'Deployed',
+    'Migrated',
+    'Provisioned',
+    'Restarted',
+    'Rolled Back',
+    'Scaled',
+    'Upgraded',
+]
+
+
+class OperationLog(pydantic.BaseModel):
+    """An operational event recorded in ClickHouse."""
+
+    id: str = pydantic.Field(default_factory=nanoid.generate)
+    occurred_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    recorded_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    recorded_by: str
+    performed_by: str | None = None
+    completed_at: datetime.datetime | None = None
+    project_id: str
+    project_slug: str
+    environment_slug: str
+    entry_type: _OPSLOG_ENTRY_TYPES
+    description: str
+    link: str | None = None
+    notes: str | None = None
+    ticket_slug: str | None = None
+    version: str | None = None
