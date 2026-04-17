@@ -26,7 +26,7 @@ services:
         PORT: "8000"
     image: ghcr.io/aweber-imbi/python-uv:local
     ports:
-      - "8000:8000"
+      - 8000
     env_file: ./runtime/env-file
     volumes:
       - ./imbi-api/:/source/
@@ -51,7 +51,7 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
     ports:
-      - "8123:8123"
+      - 8123
     environment:
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: password
@@ -65,7 +65,7 @@ services:
   localstack:
     image: localstack/localstack:community-archive
     ports:
-      - "4566:4566"
+      - 4566
     environment:
       - SERVICES=s3
       - DEBUG=0
@@ -78,7 +78,7 @@ services:
   mailpit:
     image: axllent/mailpit:v1.21.5
     ports:
-      - "8025:8025"
+      - 8025
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
@@ -91,7 +91,7 @@ services:
   postgres:
     image: ghcr.io/aweber-imbi/postgres:latest
     ports:
-      - "5432:5432"
+      - 5432
     environment:
       POSTGRES_PASSWORD: secret
       POSTGRES_DB: imbi
