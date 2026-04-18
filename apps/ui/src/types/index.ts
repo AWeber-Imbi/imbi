@@ -751,3 +751,11 @@ export interface ProjectRelationship {
 export interface ProjectRelationshipsResponse {
   relationships: ProjectRelationship[]
 }
+
+// JSON Patch operation (RFC 6902)
+export type PatchOperation = {
+  op: 'add' | 'remove' | 'replace' | 'move' | 'copy' | 'test'
+  path: string
+  value?: unknown
+  from?: string
+}

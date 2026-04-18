@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
@@ -74,6 +75,7 @@ function AdminProtectedRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <ThemeProvider>
+      <Toaster richColors position="top-right" />
       <OrganizationProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

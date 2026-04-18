@@ -18,7 +18,6 @@ import {
   CardContent,
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { LabelChip } from '@/components/ui/label-chip'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -41,19 +40,35 @@ import {
   getProjectRelationships,
   updateProject,
   deleteProject,
+  listTeams,
+  listProjectTypes,
 } from '@/api/endpoints'
 import { buildRelationshipEdges } from '@/lib/relationship-edges'
-import type { ProjectSchemaSection } from '@/api/endpoints'
+import type {
+  ProjectSchemaSection,
+  ProjectSchemaSectionProperty,
+} from '@/api/endpoints'
+import {
+  isFieldEditable,
+  pickInlineComponent,
+} from '@/components/ui/inline-edit/field-policy'
+import { InlineSwitch } from '@/components/ui/inline-edit/InlineSwitch'
+import { InlineNumber } from '@/components/ui/inline-edit/InlineNumber'
+import { InlineDate } from '@/components/ui/inline-edit/InlineDate'
 import {
   ProjectsGraphCanvas,
   type GraphProject,
 } from '@/components/ProjectsGraphCanvas'
 import { EditRelationshipsDialog } from '@/components/EditRelationshipsDialog'
-import { EditProjectForm } from '@/components/EditProjectForm'
 import { EditableKeyValueCard } from '@/components/EditableKeyValueCard'
 import { EditLinksCard } from '@/components/EditLinksCard'
 import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
 import type { Project, ProjectRelationship } from '@/types'
+import { InlineText } from '@/components/ui/inline-edit/InlineText'
+import { InlineTextarea } from '@/components/ui/inline-edit/InlineTextarea'
+import { InlineSelect } from '@/components/ui/inline-edit/InlineSelect'
+import { InlineMultiSelect } from '@/components/ui/inline-edit/InlineMultiSelect'
+import { useProjectPatch } from '@/hooks/useProjectPatch'
 
 interface ProjectDetailProps {
   project: Project
@@ -191,6 +206,7 @@ function resolveFieldValue(
 export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug || ''
+  const { patch, pendingPath } = useProjectPatch(orgSlug, project.id)
   const navigate = useNavigate()
 
   const activeTab: TabType =
@@ -293,6 +309,17 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
     enabled: !!orgSlug,
   })
 
+  const { data: teams = [] } = useQuery({
+    queryKey: ['teams', orgSlug],
+    queryFn: () => listTeams(orgSlug),
+    enabled: !!orgSlug,
+  })
+  const { data: projectTypes = [] } = useQuery({
+    queryKey: ['projectTypes', orgSlug],
+    queryFn: () => listProjectTypes(orgSlug),
+    enabled: !!orgSlug,
+  })
+
   const linkDefMap = Object.fromEntries(linkDefs.map((ld) => [ld.slug, ld]))
 
   const externalLinks = Object.entries(project.links || {})
@@ -328,6 +355,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
       rawValue: unknown
       title?: string
       uiMaps: XUiMaps
+      def: ProjectSchemaSectionProperty
     }[] = []
     for (const section of projectSchema.sections) {
       for (const [key, def] of Object.entries(section.properties)) {
@@ -353,6 +381,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
             colorAge: xUi?.['color-age'] ?? undefined,
             iconAge: xUi?.['icon-age'] ?? undefined,
           },
+          def,
         })
       }
     }
@@ -382,6 +411,71 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
   const muted = 'text-tertiary'
   const divider = 'border-tertiary'
 
+  function renderInlineForField(
+    _key: string,
+    def: ProjectSchemaSectionProperty,
+    raw: unknown,
+    onCommit: (v: unknown) => Promise<void>,
+    pending: boolean,
+    display: React.ReactNode,
+  ): React.ReactNode {
+    const kind = pickInlineComponent(def)
+    switch (kind) {
+      case 'select':
+        return (
+          <InlineSelect
+            value={raw == null ? null : String(raw)}
+            options={(def.enum ?? []).map((v) => ({
+              value: String(v),
+              label: String(v),
+            }))}
+            onCommit={(v) => onCommit(v)}
+            pending={pending}
+            renderDisplay={display}
+          />
+        )
+      case 'switch':
+        return (
+          <InlineSwitch
+            value={raw === true || raw === 'true'}
+            onCommit={(v) => onCommit(v)}
+            pending={pending}
+          />
+        )
+      case 'number':
+        return (
+          <InlineNumber
+            value={raw == null || raw === '' ? null : Number(raw)}
+            integer={def.type === 'integer'}
+            min={def.minimum ?? undefined}
+            max={def.maximum ?? undefined}
+            onCommit={(v) => onCommit(v)}
+            pending={pending}
+            renderDisplay={display}
+          />
+        )
+      case 'date':
+        return (
+          <InlineDate
+            value={raw == null ? null : String(raw)}
+            mode={def.format === 'date-time' ? 'date-time' : 'date'}
+            onCommit={(v) => onCommit(v)}
+            pending={pending}
+            renderDisplay={display}
+          />
+        )
+      default:
+        return (
+          <InlineText
+            value={raw == null ? null : String(raw)}
+            onCommit={(v) => onCommit(v)}
+            pending={pending}
+            renderValue={display !== null ? () => display : undefined}
+          />
+        )
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-8">
       {/* Project Header */}
@@ -389,10 +483,15 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
         <div className="flex items-start justify-between">
           <div>
             <div className="mb-1 flex items-center gap-3">
-              <h1 className={`text-[1.75rem] ${value}`}>{project.name}</h1>
-              <Badge variant="outline">
-                {(project.project_types || []).map((pt) => pt.name).join(', ')}
-              </Badge>
+              <InlineText
+                value={project.name}
+                onCommit={(v) => patch('/name', v ?? '')}
+                pending={pendingPath === '/name'}
+                className="text-[1.75rem]"
+                renderValue={(v) => (
+                  <span className={`text-[1.75rem] ${value}`}>{v}</span>
+                )}
+              />
             </div>
           </div>
 
@@ -434,9 +533,15 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
           </div>
         </div>
 
-        {project.description && (
-          <p className={'mt-3 text-secondary'}>{project.description}</p>
-        )}
+        <div className="mt-3 text-secondary">
+          <InlineTextarea
+            value={project.description ?? null}
+            onCommit={(v) => patch('/description', v)}
+            pending={pendingPath === '/description'}
+            placeholder="Add a description…"
+            rows={2}
+          />
+        </div>
 
         {/* External Links */}
         {externalLinks.length > 0 && (
@@ -497,18 +602,48 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                       className={`flex items-center justify-between border-b py-1.5 ${divider}`}
                     >
                       <span className={`text-sm ${label}`}>Team</span>
-                      <span className={`text-sm ${value}`}>
-                        {project.team.name}
-                      </span>
+                      <InlineSelect
+                        value={project.team.slug}
+                        options={teams.map((t) => ({
+                          value: t.slug,
+                          label: t.name,
+                        }))}
+                        onCommit={(v) => patch('/team_slug', v)}
+                        pending={pendingPath === '/team_slug'}
+                      />
                     </div>
 
                     <div
                       className={`flex items-center justify-between border-b py-1.5 ${divider}`}
                     >
                       <span className={`text-sm ${label}`}>Slug</span>
-                      <span className={`font-mono text-sm ${value}`}>
-                        {project.slug}
-                      </span>
+                      <InlineText
+                        value={project.slug}
+                        onCommit={(v) => patch('/slug', v ?? '')}
+                        pending={pendingPath === '/slug'}
+                        renderValue={(v) => (
+                          <span className={`font-mono text-sm ${value}`}>
+                            {v}
+                          </span>
+                        )}
+                      />
+                    </div>
+
+                    <div
+                      className={`flex items-center justify-between border-b py-1.5 ${divider}`}
+                    >
+                      <span className={`text-sm ${label}`}>Project types</span>
+                      <InlineMultiSelect
+                        values={(project.project_types || []).map(
+                          (pt) => pt.slug,
+                        )}
+                        options={projectTypes.map((pt) => ({
+                          value: pt.slug,
+                          label: pt.name,
+                        }))}
+                        onCommit={(v) => patch('/project_type_slugs', v)}
+                        pending={pendingPath === '/project_type_slugs'}
+                      />
                     </div>
 
                     {project.created_at && (
@@ -546,6 +681,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                         rawValue,
                         title: fieldTitle,
                         uiMaps,
+                        def,
                       }) => {
                         const mappedColor = resolveColor(uiMaps, rawValue)
                         const mappedIcon = resolveIcon(uiMaps, rawValue)
@@ -555,6 +691,37 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                         const textColorClass = mappedColor
                           ? (COLOR_TEXT[mappedColor] ?? value)
                           : value
+                        const editable = isFieldEditable(key, def)
+                        const richDisplay =
+                          fieldValue !== null ? (
+                            <span className="flex items-center gap-1.5">
+                              {FieldIcon && (
+                                <FieldIcon
+                                  className={`h-3.5 w-3.5 flex-shrink-0 ${textColorClass}`}
+                                />
+                              )}
+                              {fieldTitle ? (
+                                <TooltipProvider delayDuration={200}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span
+                                        className={`text-sm ${textColorClass} cursor-help underline decoration-dotted`}
+                                      >
+                                        {fieldValue}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>{fieldTitle}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className={`text-sm ${textColorClass}`}>
+                                  {fieldValue}
+                                </span>
+                              )}
+                            </span>
+                          ) : null
                         return (
                           <div
                             key={key}
@@ -563,34 +730,17 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                             <span className={`text-sm ${label}`}>
                               {fieldLabel}
                             </span>
-                            {fieldValue !== null ? (
-                              <span className="flex items-center gap-1.5">
-                                {FieldIcon && (
-                                  <FieldIcon
-                                    className={`h-3.5 w-3.5 flex-shrink-0 ${textColorClass}`}
-                                  />
-                                )}
-                                {fieldTitle ? (
-                                  <TooltipProvider delayDuration={200}>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <span
-                                          className={`text-sm ${textColorClass} cursor-help underline decoration-dotted`}
-                                        >
-                                          {fieldValue}
-                                        </span>
-                                      </TooltipTrigger>
-                                      <TooltipContent>
-                                        <p>{fieldTitle}</p>
-                                      </TooltipContent>
-                                    </Tooltip>
-                                  </TooltipProvider>
-                                ) : (
-                                  <span className={`text-sm ${textColorClass}`}>
-                                    {fieldValue}
-                                  </span>
-                                )}
-                              </span>
+                            {editable ? (
+                              renderInlineForField(
+                                key,
+                                def,
+                                rawValue,
+                                (v) => patch(`/${key}`, v),
+                                pendingPath === `/${key}`,
+                                richDisplay,
+                              )
+                            ) : richDisplay !== null ? (
+                              richDisplay
                             ) : (
                               <span className={`text-sm italic ${muted}`}>
                                 Not set
@@ -1127,8 +1277,6 @@ function SettingsTab({ project }: { project: Project }) {
 
   return (
     <div className="space-y-6">
-      <EditProjectForm project={project} />
-
       {linkDefsLoading && (
         <Card>
           <CardContent>
