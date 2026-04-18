@@ -262,7 +262,7 @@ async def _validate_env_slugs(
         env_check,
         {
             'org_slug': org_slug,
-            'env_slugs': json.dumps(env_slugs),
+            'env_slugs': env_slugs,
         },
         ['env_slug', 'found'],
     )
@@ -480,7 +480,7 @@ async def create_project(
         validate_query,
         {
             'org_slug': org_slug,
-            'pt_slugs': json.dumps(data.project_type_slugs),
+            'pt_slugs': data.project_type_slugs,
         },
         ['pt_slug', 'found'],
     )
@@ -552,9 +552,7 @@ async def create_project(
             {
                 'org_slug': org_slug,
                 'team_slug': data.team_slug,
-                'pt_slugs': json.dumps(
-                    data.project_type_slugs,
-                ),
+                'pt_slugs': data.project_type_slugs,
                 **props,
                 **env_params,
             },
@@ -1099,7 +1097,7 @@ async def _validate_update_refs(
             pt_check,
             {
                 'org_slug': org_slug,
-                'pt_slugs': json.dumps(data.project_type_slugs),
+                'pt_slugs': data.project_type_slugs,
             },
             ['pt_slug', 'found'],
         )
@@ -1166,16 +1164,15 @@ def _build_update_clauses(
             ' OPTIONAL MATCH'
             ' (p)-[old_env:DEPLOYED_IN]->(:Environment)'
             ' DELETE old_env'
-            ' WITH DISTINCT p, o'
-            f' UNWIND CASE WHEN size({new_env_tpl}) = 0'
-            f' THEN [null] ELSE {new_env_tpl}'
-            ' END AS entry'
-            ' OPTIONAL MATCH (e:Environment'
-            ' {{slug: entry.slug}})-[:BELONGS_TO]->(o)'
-            ' FOREACH (_ IN CASE WHEN e IS NOT NULL'
-            ' THEN [1] ELSE [] END |'
-            ' CREATE (p)-[:DEPLOYED_IN' + new_edge_props_tpl + ']->(e))'
         )
+        if new_env_entries:
+            rel_clauses += (
+                ' WITH DISTINCT p, o'
+                f' UNWIND {new_env_tpl} AS entry'
+                ' MATCH (e:Environment'
+                ' {{slug: entry.slug}})-[:BELONGS_TO]->(o)'
+                ' CREATE (p)-[:DEPLOYED_IN' + new_edge_props_tpl + ']->(e)'
+            )
 
     return rel_clauses, new_env_params
 
@@ -1343,9 +1340,7 @@ async def _execute_project_update(
                 'org_slug': org_slug,
                 **props,
                 'new_team_slug': data.team_slug or '',
-                'new_type_slugs': json.dumps(
-                    data.project_type_slugs or [],
-                ),
+                'new_type_slugs': data.project_type_slugs or [],
                 **new_env_params,
             },
             ['project', 'outbound_count', 'inbound_count'],
@@ -1519,6 +1514,12 @@ async def patch_project(
             }
             current_environments[env_slug] = edge_props
 
+    base_fields = set(ProjectUpdate.model_fields)
+    extras = {
+        k: v
+        for k, v in project_data.items()
+        if k not in base_fields and k not in _RESERVED_FIELDS
+    }
     patchable: dict[str, typing.Any] = {
         'name': project_data.get('name', ''),
         'slug': project_data.get('slug', ''),
@@ -1529,6 +1530,7 @@ async def patch_project(
         'environments': current_environments,
         'links': parsed_links,
         'identifiers': parsed_identifiers,
+        **extras,
     }
 
     patched = json_patch.apply_patch(patchable, operations)
