@@ -586,3 +586,125 @@ class ExistsInModelTestCase(unittest.TestCase):
         )
         self.assertEqual(obj.third_party_service_name, 'GitHub')
         self.assertIsNone(obj.canonical_link)
+
+
+class WebhookResponseFromGraphRecordTestCase(unittest.TestCase):
+    """Tests for WebhookResponse.from_graph_record.
+
+    Apache AGE returns [{}] (a list containing one empty map) instead
+    of [] when collect() is used with a map projection on a node that
+    was NULL due to an OPTIONAL MATCH with no results.  This is an AGE
+    quirk: standard Cypher map projection on a NULL node returns NULL
+    (which collect() skips), but AGE returns {}.
+
+    These tests verify that from_graph_record produces an empty rules
+    list in all the forms the database can return "no rules".
+    """
+
+    def _minimal_record(
+        self,
+        **overrides: object,
+    ) -> dict[str, object]:
+        record: dict[str, object] = {
+            'webhook': {
+                'name': 'Test Webhook',
+                'slug': 'test-webhook',
+                'notification_path': '/webhooks/test',
+            },
+            'tps': None,
+            'identifier_selector': None,
+            'rules': '[]',
+        }
+        record.update(overrides)
+        return record
+
+    def test_age_empty_map_projection_gives_no_rules(self) -> None:
+        """AGE bug: collect(r{...}) with no rows returns '[{}]' not '[]'."""
+        record = self._minimal_record(rules='[{}]')
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(response.rules, [])
+
+    def test_age_multiple_empty_maps_gives_no_rules(self) -> None:
+        """Defensive: multiple empty maps are all filtered out."""
+        record = self._minimal_record(rules='[{}, {}]')
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(response.rules, [])
+
+    def test_empty_rules_json_string(self) -> None:
+        record = self._minimal_record(rules='[]')
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(response.rules, [])
+
+    def test_none_rules(self) -> None:
+        record = self._minimal_record(rules=None)
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(response.rules, [])
+
+    def test_missing_rules_key(self) -> None:
+        record = self._minimal_record()
+        del record['rules']  # type: ignore[arg-type]
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(response.rules, [])
+
+    def test_empty_python_list(self) -> None:
+        """parse_agtype passes lists through unchanged."""
+        record = self._minimal_record(rules=[])
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(response.rules, [])
+
+    def test_python_list_with_empty_dict(self) -> None:
+        """parse_agtype passes [{}] through; from_graph_record filters it."""
+        record = self._minimal_record(rules=[{}])
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(response.rules, [])
+
+    def test_with_one_rule(self) -> None:
+        record = self._minimal_record(
+            rules=[
+                {
+                    'filter_expression': '$.action == "push"',
+                    'handler': 'my.module.handle_push',
+                    'handler_config': '{"branch": "main"}',
+                },
+            ],
+        )
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(len(response.rules), 1)
+        self.assertEqual(response.rules[0].handler, 'my.module.handle_push')
+        self.assertEqual(
+            response.rules[0].handler_config,
+            {'branch': 'main'},
+        )
+
+    def test_rule_with_missing_handler_config(self) -> None:
+        """handler_config absent in rule defaults to {}."""
+        record = self._minimal_record(
+            rules=[
+                {
+                    'filter_expression': '$.action',
+                    'handler': 'my.handler',
+                },
+            ],
+        )
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertEqual(response.rules[0].handler_config, {})
+
+    def test_with_tps_and_identifier_selector(self) -> None:
+        record = self._minimal_record(
+            tps={'name': 'GitHub', 'slug': 'github'},
+            identifier_selector='$.repository.full_name',
+        )
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertIsNotNone(response.third_party_service)
+        assert response.third_party_service is not None
+        self.assertEqual(response.third_party_service['slug'], 'github')
+        self.assertEqual(
+            response.identifier_selector,
+            '$.repository.full_name',
+        )
+
+    def test_without_tps(self) -> None:
+        record = self._minimal_record(tps=None, identifier_selector=None)
+        response = domain_models.WebhookResponse.from_graph_record(record)
+        self.assertIsNone(response.third_party_service)
+        self.assertIsNone(response.identifier_selector)

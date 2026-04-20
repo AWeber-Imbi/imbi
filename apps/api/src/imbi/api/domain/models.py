@@ -890,11 +890,13 @@ class WebhookResponse(pydantic.BaseModel):
         """Build a WebhookResponse from a graph query record."""
         webhook = graph.parse_agtype(record['webhook'])
 
-        raw_rules = record.get('rules', [])
+        raw_rules: list[dict[str, typing.Any] | None] = (
+            graph.parse_agtype(record.get('rules')) or []
+        )
         rules: list[WebhookRuleResponse] = []
         for r in raw_rules:
-            if r is not None:
-                raw_config = r.get('handler_config', '{}')
+            if r:
+                raw_config: str = r.get('handler_config', '{}')
                 config: dict[str, typing.Any] | list[typing.Any]
                 try:
                     config = json.loads(raw_config) if raw_config else {}
@@ -902,8 +904,8 @@ class WebhookResponse(pydantic.BaseModel):
                     config = {}
                 rules.append(
                     WebhookRuleResponse(
-                        filter_expression=r['filter_expression'],
-                        handler=r['handler'],
+                        filter_expression=str(r['filter_expression']),
+                        handler=str(r['handler']),
                         handler_config=config,
                     )
                 )

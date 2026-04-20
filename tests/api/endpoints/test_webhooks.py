@@ -363,6 +363,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute.side_effect = [
             fetch_result,
             update_result,
+            [updated],
         ]
 
         payload = dict(self.webhook_update_json)
@@ -497,6 +498,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute.side_effect = [
             [existing_record],
             [updated_record],
+            [updated_record],
         ]
 
         with (
@@ -560,6 +562,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
         self.mock_db.execute.side_effect = [
             [existing_record],
             [updated_record],
+            [updated_record],
         ]
 
         with (
@@ -600,6 +603,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
         self.mock_db.execute.side_effect = [
             [existing_record],
+            [updated_record],
             [updated_record],
         ]
 
@@ -649,6 +653,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
         self.mock_db.execute.side_effect = [
             [existing_record],
+            [updated_record],
             [updated_record],
         ]
 
@@ -704,6 +709,7 @@ class WebhookEndpointsTestCase(unittest.TestCase):
 
         self.mock_db.execute.side_effect = [
             [existing_record],
+            [updated_record],
             [updated_record],
         ]
 

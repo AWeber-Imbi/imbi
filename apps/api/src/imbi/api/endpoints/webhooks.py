@@ -48,81 +48,58 @@ def _set_clause(
     return f'SET {assignments}'
 
 
-def _rules_template(
+def _rules_create_clauses(
     rules: list[dict[str, str | int]],
 ) -> tuple[str, dict[str, typing.Any]]:
-    """Build an inline Cypher list of maps for webhook rules.
+    """Build CREATE clauses for webhook rules.
 
-    Returns a tuple of (template_fragment, params_dict) where
-    the template uses indexed placeholders and the params dict
-    maps those keys to scalar values.
-
+    Returns (cypher_fragment, params_dict). The fragment
+    contains one CREATE pair per rule using unique variable
+    names (rule_0, rule_1, …) so AGE never sees UNWIND-
+    driven row multiplication or WITH DISTINCT after CREATE.
     """
     if not rules:
-        return '[]', {}
-    maps: list[str] = []
+        return '', {}
+    clauses: list[str] = []
     params: dict[str, typing.Any] = {}
     for i, rule in enumerate(rules):
-        maps.append(
-            f'{{{{filter_expression: {{rule_{i}_fe}},'
-            f' handler: {{rule_{i}_handler}},'
-            f' handler_config: {{rule_{i}_hc}},'
-            f' ordinal: {{rule_{i}_ord}}}}}}'
+        n = str(i)
+        clauses.append(
+            ' CREATE (rule_' + n + ':WebhookRule'
+            ' {{filter_expression: {rule_' + n + '_fe},'
+            ' handler: {rule_' + n + '_handler},'
+            ' handler_config: {rule_' + n + '_hc},'
+            ' ordinal: {rule_' + n + '_ord}}})'
+            ' CREATE (rule_' + n + ')-[:ACTIONS]->(w)'
         )
-        params[f'rule_{i}_fe'] = rule['filter_expression']
-        params[f'rule_{i}_handler'] = rule['handler']
-        params[f'rule_{i}_hc'] = rule['handler_config']
-        params[f'rule_{i}_ord'] = rule['ordinal']
-    return '[' + ', '.join(maps) + ']', params
+        params['rule_' + n + '_fe'] = rule['filter_expression']
+        params['rule_' + n + '_handler'] = rule['handler']
+        params['rule_' + n + '_hc'] = rule['handler_config']
+        params['rule_' + n + '_ord'] = rule['ordinal']
+    return ''.join(clauses), params
 
 
-def _rule_unwind(rules_tpl: str) -> str:
-    """Build the UNWIND + FOREACH clause for rule creation."""
-    return (
-        f' UNWIND CASE WHEN size({rules_tpl}) = 0'
-        f' THEN [null] ELSE {rules_tpl}'
-        ' END AS rule_data'
-        ' FOREACH (_ IN CASE WHEN rule_data IS NOT NULL'
-        ' THEN [1] ELSE [] END |'
-        ' CREATE (r:WebhookRule'
-        ' {{{{filter_expression:'
-        ' rule_data.filter_expression,'
-        ' handler: rule_data.handler,'
-        ' handler_config: rule_data.handler_config,'
-        ' ordinal: rule_data.ordinal}}}})'
-        ' CREATE (r)-[:ACTIONS]->(w))'
-    )
-
-
-_RULE_RETURN_TPS: typing.LiteralString = (
-    ' WITH DISTINCT w, tps, impl'
-    ' OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)'
-    ' WITH w, tps, impl, r'
-    ' ORDER BY r.ordinal'
-    ' WITH w, tps, impl,'
-    ' collect(r{{.filter_expression, .handler,'
-    ' .handler_config, .ordinal}}) AS rules'
-    ' RETURN w{{.*}} AS webhook,'
-    ' tps{{.*}} AS tps,'
-    ' impl.identifier_selector AS identifier_selector,'
-    ' [x IN rules | x {{.filter_expression,'
-    ' .handler, .handler_config}}] AS rules'
-)
-
-_RULE_RETURN_NO_TPS: typing.LiteralString = (
-    ' WITH DISTINCT w'
-    ' OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)'
-    ' WITH w, r'
-    ' ORDER BY r.ordinal'
-    ' WITH w,'
-    ' collect(r{{.filter_expression, .handler,'
-    ' .handler_config, .ordinal}}) AS rules'
-    ' RETURN w{{.*}} AS webhook,'
-    ' null AS tps,'
-    ' null AS identifier_selector,'
-    ' [x IN rules | x {{.filter_expression,'
-    ' .handler, .handler_config}}] AS rules'
-)
+_FETCH_WEBHOOK_QUERY: typing.LiteralString = """
+MATCH (w:Webhook {{slug: {slug}}})
+      -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
+OPTIONAL MATCH (w)-[impl:IMPLEMENTED_BY]->(tps:ThirdPartyService)
+OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
+WITH w, tps, impl, r
+ORDER BY r.ordinal
+WITH w, tps, impl,
+     collect(CASE WHEN r IS NOT NULL
+             THEN r{{.filter_expression, .handler,
+                    .handler_config, .ordinal}}
+             END)
+        AS all_rules
+RETURN w{{.*}} AS webhook,
+       tps{{.*}} AS tps,
+       impl.identifier_selector AS identifier_selector,
+       [x IN all_rules
+        | x {{.filter_expression, .handler,
+              .handler_config}}]
+           AS rules
+"""
 
 
 webhooks_router = fastapi.APIRouter(tags=['Webhooks'])
@@ -168,11 +145,10 @@ async def create_webhook(
                 'ordinal': idx,
             }
         )
-    rules_tpl, rules_params = _rules_template(rule_dicts)
-    unwind = _rule_unwind(rules_tpl)
+    rule_clauses, rules_params = _rules_create_clauses(rule_dicts)
 
     if data.third_party_service_slug:
-        query: str = (
+        write_query: str = (
             'MATCH (o:Organization {{slug: {org_slug}}})'
             ' MATCH (tps:ThirdPartyService'
             ' {{slug: {tps_slug}}})-[:BELONGS_TO]->(o)'
@@ -181,9 +157,10 @@ async def create_webhook(
             ' CREATE (w)-[impl:IMPLEMENTED_BY]->(tps)'
             ' SET impl.identifier_selector'
             ' = {identifier_selector}'
-            ' WITH w, tps, o, impl' + unwind + _RULE_RETURN_TPS
+            + rule_clauses
+            + ' RETURN w.slug AS slug'
         )
-        params: dict[str, typing.Any] = {
+        write_params: dict[str, typing.Any] = {
             'org_slug': org_slug,
             'tps_slug': data.third_party_service_slug,
             **props,
@@ -191,23 +168,24 @@ async def create_webhook(
             **rules_params,
         }
     else:
-        query = (
+        write_query = (
             'MATCH (o:Organization {{slug: {org_slug}}})'
             f' CREATE (w:Webhook {create_tpl})'
             ' CREATE (w)-[:BELONGS_TO]->(o)'
-            ' WITH w, o' + unwind + _RULE_RETURN_NO_TPS
+            + rule_clauses
+            + ' RETURN w.slug AS slug'
         )
-        params = {
+        write_params = {
             'org_slug': org_slug,
             **props,
             **rules_params,
         }
 
     try:
-        records = await db.execute(
-            query,
-            params,
-            ['webhook', 'tps', 'identifier_selector', 'rules'],
+        write_records = await db.execute(
+            write_query,
+            write_params,
+            ['slug'],
         )
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
@@ -219,12 +197,17 @@ async def create_webhook(
             ),
         ) from e
 
-    if not records:
+    if not write_records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Organization {org_slug!r} not found',
         )
 
+    records = await db.execute(
+        _FETCH_WEBHOOK_QUERY,
+        {'slug': data.slug, 'org_slug': org_slug},
+        ['webhook', 'tps', 'identifier_selector', 'rules'],
+    )
     return models.WebhookResponse.from_graph_record(records[0])
 
 
@@ -249,9 +232,10 @@ async def list_webhooks(
     WITH w, tps, impl, r
     ORDER BY r.ordinal
     WITH w, tps, impl,
-         collect(r{{
-                .filter_expression, .handler,
-                .handler_config, .ordinal}})
+         collect(CASE WHEN r IS NOT NULL
+                 THEN r{{.filter_expression, .handler,
+                        .handler_config, .ordinal}}
+                 END)
             AS all_rules
     RETURN w{{.*}} AS webhook,
            tps{{.*}} AS tps,
@@ -292,9 +276,10 @@ async def get_webhook(
     WITH w, tps, impl, r
     ORDER BY r.ordinal
     WITH w, tps, impl,
-         collect(r{{
-                .filter_expression, .handler,
-                .handler_config, .ordinal}})
+         collect(CASE WHEN r IS NOT NULL
+                 THEN r{{.filter_expression, .handler,
+                        .handler_config, .ordinal}}
+                 END)
             AS all_rules
     RETURN w{{.*}} AS webhook,
            tps{{.*}} AS tps,
@@ -386,12 +371,11 @@ async def update_webhook(
                 'ordinal': idx,
             }
         )
-    rules_tpl, rules_params = _rules_template(rule_dicts)
-    unwind = _rule_unwind(rules_tpl)
+    rule_clauses, rules_params = _rules_create_clauses(rule_dicts)
 
     # Delete old rules and IMPLEMENTED_BY, then recreate
     if data.third_party_service_slug:
-        query: str = (
+        write_query: str = (
             'MATCH (w:Webhook {{slug: {old_slug}}})'
             ' -[:BELONGS_TO]->(o:Organization'
             ' {{slug: {org_slug}}})'
@@ -409,7 +393,8 @@ async def update_webhook(
             ' CREATE (w)-[impl:IMPLEMENTED_BY]->(tps)'
             ' SET impl.identifier_selector'
             ' = {identifier_selector}'
-            ' WITH w, tps, impl' + unwind + _RULE_RETURN_TPS
+            + rule_clauses
+            + ' RETURN w.slug AS slug'
         )
         params: dict[str, typing.Any] = {
             'old_slug': slug,
@@ -420,7 +405,7 @@ async def update_webhook(
             **rules_params,
         }
     else:
-        query = (
+        write_query = (
             'MATCH (w:Webhook {{slug: {old_slug}}})'
             ' -[:BELONGS_TO]->(o:Organization'
             ' {{slug: {org_slug}}})'
@@ -432,8 +417,7 @@ async def update_webhook(
             ' (w)-[old_impl:IMPLEMENTED_BY]->()'
             ' DELETE old_impl'
             ' WITH DISTINCT w'
-            f' {set_clause}'
-            ' WITH w' + unwind + _RULE_RETURN_NO_TPS
+            f' {set_clause}' + rule_clauses + ' RETURN w.slug AS slug'
         )
         params = {
             'old_slug': slug,
@@ -443,10 +427,10 @@ async def update_webhook(
         }
 
     try:
-        records = await db.execute(
-            query,
+        write_records = await db.execute(
+            write_query,
             params,
-            ['webhook', 'tps', 'identifier_selector', 'rules'],
+            ['slug'],
         )
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
@@ -458,12 +442,17 @@ async def update_webhook(
             ),
         ) from e
 
-    if not records:
+    if not write_records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Webhook with slug {slug!r} not found',
         )
 
+    records = await db.execute(
+        _FETCH_WEBHOOK_QUERY,
+        {'slug': data.slug, 'org_slug': org_slug},
+        ['webhook', 'tps', 'identifier_selector', 'rules'],
+    )
     return models.WebhookResponse.from_graph_record(records[0])
 
 
@@ -481,29 +470,8 @@ async def patch_webhook(
     ],
 ) -> models.WebhookResponse:
     """Partially update a webhook using JSON Patch (RFC 6902)."""
-    check_query: typing.LiteralString = """
-    MATCH (w:Webhook {{slug: {slug}}})
-          -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
-    OPTIONAL MATCH (w)-[impl:IMPLEMENTED_BY]->
-                   (tps:ThirdPartyService)
-    OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
-    WITH w, tps, impl, r
-    ORDER BY r.ordinal
-    WITH w, tps, impl,
-         collect(r{{
-                .filter_expression, .handler,
-                .handler_config, .ordinal}})
-            AS all_rules
-    RETURN w{{.*}} AS webhook,
-           tps{{.*}} AS tps,
-           impl.identifier_selector AS identifier_selector,
-           [x IN all_rules
-            | x {{.filter_expression, .handler,
-                  .handler_config}}]
-               AS rules
-    """
     existing = await db.execute(
-        check_query,
+        _FETCH_WEBHOOK_QUERY,
         {'slug': slug, 'org_slug': org_slug},
         ['webhook', 'tps', 'identifier_selector', 'rules'],
     )
@@ -597,11 +565,10 @@ async def patch_webhook(
                 'ordinal': idx,
             }
         )
-    rules_tpl, rules_params = _rules_template(rule_dicts)
-    unwind = _rule_unwind(rules_tpl)
+    rule_clauses, rules_params = _rules_create_clauses(rule_dicts)
 
     if data.third_party_service_slug:
-        query: str = (
+        write_query: str = (
             'MATCH (w:Webhook {{slug: {old_slug}}})'
             ' -[:BELONGS_TO]->(o:Organization'
             ' {{slug: {org_slug}}})'
@@ -619,7 +586,8 @@ async def patch_webhook(
             ' CREATE (w)-[impl:IMPLEMENTED_BY]->(tps)'
             ' SET impl.identifier_selector'
             ' = {identifier_selector}'
-            ' WITH w, tps, impl' + unwind + _RULE_RETURN_TPS
+            + rule_clauses
+            + ' RETURN w.slug AS slug'
         )
         params: dict[str, typing.Any] = {
             'old_slug': slug,
@@ -630,7 +598,7 @@ async def patch_webhook(
             **rules_params,
         }
     else:
-        query = (
+        write_query = (
             'MATCH (w:Webhook {{slug: {old_slug}}})'
             ' -[:BELONGS_TO]->(o:Organization'
             ' {{slug: {org_slug}}})'
@@ -642,8 +610,7 @@ async def patch_webhook(
             ' (w)-[old_impl:IMPLEMENTED_BY]->()'
             ' DELETE old_impl'
             ' WITH DISTINCT w'
-            f' {set_clause}'
-            ' WITH w' + unwind + _RULE_RETURN_NO_TPS
+            f' {set_clause}' + rule_clauses + ' RETURN w.slug AS slug'
         )
         params = {
             'old_slug': slug,
@@ -653,10 +620,10 @@ async def patch_webhook(
         }
 
     try:
-        records = await db.execute(
-            query,
+        write_records = await db.execute(
+            write_query,
             params,
-            ['webhook', 'tps', 'identifier_selector', 'rules'],
+            ['slug'],
         )
     except psycopg.errors.UniqueViolation as e:
         raise fastapi.HTTPException(
@@ -668,12 +635,17 @@ async def patch_webhook(
             ),
         ) from e
 
-    if not records:
+    if not write_records:
         raise fastapi.HTTPException(
             status_code=404,
             detail=f'Webhook with slug {slug!r} not found',
         )
 
+    records = await db.execute(
+        _FETCH_WEBHOOK_QUERY,
+        {'slug': data.slug, 'org_slug': org_slug},
+        ['webhook', 'tps', 'identifier_selector', 'rules'],
+    )
     return models.WebhookResponse.from_graph_record(records[0])
 
 

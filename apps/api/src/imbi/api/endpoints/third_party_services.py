@@ -524,10 +524,13 @@ async def list_service_webhooks(
           -[:BELONGS_TO]->(o:Organization {{slug: {org_slug}}})
     MATCH (w)-[:BELONGS_TO]->(o)
     OPTIONAL MATCH (r:WebhookRule)-[:ACTIONS]->(w)
-    With w, tps, impl,
-         collect(r{{
-                .filter_expression, .handler,
-                .handler_config, .ordinal}})
+    WITH w, tps, impl, r
+    ORDER BY r.ordinal
+    WITH w, tps, impl,
+         collect(CASE WHEN r IS NOT NULL
+                 THEN r{{.filter_expression, .handler,
+                        .handler_config, .ordinal}}
+                 END)
             AS all_rules
     RETURN w{{.*}} AS webhook,
            tps{{.*}} AS tps,
