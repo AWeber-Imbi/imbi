@@ -21,6 +21,7 @@ name = [
   "Permission",
   "Project",
   "ProjectType",
+  "Release",
   "Role",
   "ServiceAccount",
   "ServiceApplication",
@@ -103,6 +104,13 @@ attributes = ["name"]
 [[vlabel_indexes]]
 vlabel = "Project"
 attributes = ["slug"]
+
+# Per-project uniqueness of `Release.version` is enforced at the
+# application layer — two projects may share e.g. "1.0.0" so a
+# graph-wide UNIQUE index is not possible.
+[[vlabel_indexes]]
+vlabel = "Release"
+attributes = ["version"]
 
 [[vlabel_indexes]]
 vlabel = "Role"

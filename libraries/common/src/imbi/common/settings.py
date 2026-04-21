@@ -7,6 +7,8 @@ import typing
 import pydantic
 import pydantic_settings
 
+from imbi_common.versioning import VersionFormat
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -129,6 +131,22 @@ class Postgres(pydantic_settings.BaseSettings):
     max_pool_size: int = 10
 
 
+class Releases(pydantic_settings.BaseSettings):
+    """Release settings.
+
+    Controls the active ``version_format`` used when validating
+    ``Release.version`` at the endpoint boundary.  The value is
+    a runtime setting rather than a model field validator so the
+    same model can be reused across services with different
+    policies.
+
+    """
+
+    model_config = base_settings_config(env_prefix='IMBI_RELEASES_')
+
+    version_format: VersionFormat = 'semver'
+
+
 class ValkeyDSN(pydantic.AnyUrl):
     """Valkey DSN settings."""
 
@@ -193,6 +211,7 @@ class Configuration(pydantic.BaseModel):
             'clickhouse': Clickhouse,
             'embeddings': Embeddings,
             'postgres': Postgres,
+            'releases': Releases,
             'valkey': Valkey,
         }
         for field, settings_cls in settings_fields.items():
@@ -212,6 +231,9 @@ class Configuration(pydantic.BaseModel):
     )
     postgres: Postgres = pydantic.Field(
         default_factory=Postgres,
+    )
+    releases: Releases = pydantic.Field(
+        default_factory=Releases,
     )
     valkey: Valkey = pydantic.Field(
         default_factory=Valkey,

@@ -12,6 +12,7 @@ __all__ = [
     'BlueprintAssignment',
     'BlueprintEdge',
     'BlueprintFilter',
+    'DeploymentEvent',
     'Edge',
     'Embeddable',
     'Embedding',
@@ -25,6 +26,9 @@ __all__ = [
     'ProjectType',
     'RelationshipEdge',
     'RelationshipLink',
+    'Release',
+    'ReleaseDeploymentEdge',
+    'ReleaseLink',
     'Schema',
     'Team',
     'ThirdPartyService',
@@ -337,6 +341,80 @@ class Project(Node):
     ] = []
     links: dict[str, pydantic.AnyUrl] = {}
     identifiers: dict[str, int | str | pydantic.AnyUrl] = {}
+
+
+class DeploymentEvent(pydantic.BaseModel):
+    """A single status transition for a release deployment.
+
+    A release accumulates a list of these on the ``DEPLOYED_TO``
+    edge to a given ``Environment`` — one per status transition.
+
+    """
+
+    timestamp: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    status: typing.Literal[
+        'pending',
+        'in_progress',
+        'success',
+        'failed',
+        'rolled_back',
+    ]
+    note: str | None = None
+
+
+class ReleaseLink(pydantic.BaseModel):
+    """A typed external link attached to a ``Release``.
+
+    ``type`` is a free-form discriminator (e.g. ``github_release``
+    or ``jira_version``); ``label`` is an optional display string.
+
+    """
+
+    type: str
+    url: pydantic.HttpUrl
+    label: str | None = None
+
+
+class Release(GraphModel):
+    """A versioned release of a ``Project``.
+
+    The version string is the business identity, but per-project
+    uniqueness is enforced at the application layer (two projects
+    may legitimately share a version like ``1.0.0``).  The active
+    version format is a runtime setting — see
+    ``imbi_common.versioning.validate_version``.
+
+    """
+
+    project: typing.Annotated[
+        Project,
+        Edge(rel_type='HAS_RELEASE', direction='INCOMING'),
+    ]
+    environments: typing.Annotated[
+        list[Environment],
+        Edge(rel_type='DEPLOYED_TO', direction='OUTGOING'),
+    ] = []
+    version: str
+    title: str
+    description: typing.Annotated[
+        str | None,
+        Embeddable(chunk=True, mimetype='text/markdown'),
+    ] = None
+    links: list[ReleaseLink] = []
+    created_by: str
+
+
+class ReleaseDeploymentEdge(RelationshipEdge):
+    """Edge properties for ``Release -[:DEPLOYED_TO]-> Environment``.
+
+    Carries the append-only history of status transitions for the
+    release within the target environment.
+
+    """
+
+    deployments: list[DeploymentEvent] = []
 
 
 class Embedding(pydantic.BaseModel):

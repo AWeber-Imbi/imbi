@@ -556,3 +556,216 @@ class OperationLogFieldsTests(unittest.TestCase):
         self.assertNotIn('row_version', dumped)
         self.assertEqual(dumped['_row_version'], 1)
         self.assertFalse(dumped['is_deleted'])
+
+
+def _make_project() -> models.Project:
+    org = models.Organization(name='Org', slug='org')
+    team = models.Team(name='Team', slug='team', organization=org)
+    return models.Project(
+        name='Service',
+        slug='service',
+        team=team,
+    )
+
+
+class DeploymentEventTestCase(unittest.TestCase):
+    """Tests for the DeploymentEvent model."""
+
+    def test_timestamp_defaults_to_utc_now(self) -> None:
+        event = models.DeploymentEvent(status='pending')
+        self.assertIsNotNone(event.timestamp)
+        self.assertEqual(event.timestamp.tzinfo, datetime.UTC)
+
+    def test_note_defaults_to_none(self) -> None:
+        event = models.DeploymentEvent(status='pending')
+        self.assertIsNone(event.note)
+
+    def test_all_statuses_accepted(self) -> None:
+        for status in (
+            'pending',
+            'in_progress',
+            'success',
+            'failed',
+            'rolled_back',
+        ):
+            with self.subTest(status=status):
+                event = models.DeploymentEvent(status=status)
+                self.assertEqual(event.status, status)
+
+    def test_invalid_status_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.DeploymentEvent(status='bogus')
+
+    def test_round_trip_json(self) -> None:
+        original = models.DeploymentEvent(
+            status='success',
+            note='shipped',
+        )
+        roundtrip = models.DeploymentEvent.model_validate_json(
+            original.model_dump_json(),
+        )
+        self.assertEqual(roundtrip.status, 'success')
+        self.assertEqual(roundtrip.note, 'shipped')
+        self.assertEqual(roundtrip.timestamp, original.timestamp)
+
+
+class ReleaseLinkTestCase(unittest.TestCase):
+    """Tests for the ReleaseLink model."""
+
+    def test_minimal(self) -> None:
+        link = models.ReleaseLink(
+            type='github_release',
+            url='https://github.com/org/repo/releases/tag/v1',
+        )
+        self.assertEqual(link.type, 'github_release')
+        self.assertIsNone(link.label)
+
+    def test_with_label(self) -> None:
+        link = models.ReleaseLink(
+            type='jira_version',
+            url='https://example.atlassian.net/versions/1',
+            label='JIRA version',
+        )
+        self.assertEqual(link.label, 'JIRA version')
+
+    def test_invalid_url_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.ReleaseLink(type='github_release', url='not-a-url')
+
+
+class ReleaseModelTestCase(unittest.TestCase):
+    """Tests for the Release model."""
+
+    def _make(self, **overrides: typing.Any) -> models.Release:
+        defaults: dict[str, typing.Any] = {
+            'project': _make_project(),
+            'version': '1.0.0',
+            'title': 'Initial release',
+            'created_by': 'alice@example.com',
+        }
+        defaults.update(overrides)
+        return models.Release(**defaults)
+
+    def test_release_is_graph_model(self) -> None:
+        release = self._make()
+        self.assertIsInstance(release, models.GraphModel)
+
+    def test_release_not_a_node(self) -> None:
+        # Release intentionally extends GraphModel, not Node — no
+        # name/slug/icon.
+        self.assertFalse(issubclass(models.Release, models.Node))
+
+    def test_identity_fields(self) -> None:
+        release = self._make()
+        self.assertIsInstance(release.id, str)
+        self.assertTrue(len(release.id) > 0)
+        self.assertIsNotNone(release.created_at)
+        self.assertEqual(release.created_at.tzinfo, datetime.UTC)
+        self.assertIsNone(release.updated_at)
+
+    def test_defaults(self) -> None:
+        release = self._make()
+        self.assertIsNone(release.description)
+        self.assertEqual(release.links, [])
+
+    def test_version_is_plain_string(self) -> None:
+        # Model must accept any string — format validation is a
+        # runtime concern at the endpoint boundary.
+        release = self._make(version='deadbeef')
+        self.assertEqual(release.version, 'deadbeef')
+
+    def test_release_with_links(self) -> None:
+        release = self._make(
+            links=[
+                models.ReleaseLink(
+                    type='github_release',
+                    url='https://github.com/org/repo/releases/tag/v1',
+                ),
+            ],
+        )
+        self.assertEqual(len(release.links), 1)
+        self.assertEqual(release.links[0].type, 'github_release')
+
+    def test_release_round_trip_json(self) -> None:
+        release = self._make(
+            description='# Initial',
+            links=[
+                models.ReleaseLink(
+                    type='github_release',
+                    url='https://github.com/org/repo/releases/tag/v1',
+                    label='GitHub',
+                ),
+            ],
+        )
+        dumped = release.model_dump_json()
+        parsed = json.loads(dumped)
+        self.assertEqual(parsed['version'], '1.0.0')
+        self.assertEqual(parsed['title'], 'Initial release')
+        self.assertEqual(parsed['description'], '# Initial')
+        self.assertEqual(len(parsed['links']), 1)
+        self.assertEqual(parsed['links'][0]['type'], 'github_release')
+        self.assertEqual(parsed['links'][0]['label'], 'GitHub')
+
+        roundtrip = models.Release.model_validate_json(dumped)
+        self.assertEqual(roundtrip.version, release.version)
+        self.assertEqual(roundtrip.title, release.title)
+        self.assertEqual(len(roundtrip.links), 1)
+        self.assertEqual(roundtrip.links[0].type, 'github_release')
+
+    def test_release_missing_project_rejected(self) -> None:
+        with self.assertRaises(pydantic.ValidationError):
+            models.Release(
+                version='1.0.0',
+                title='x',
+                created_by='alice@example.com',
+            )
+
+    def test_release_in_all(self) -> None:
+        self.assertIn('Release', models.__all__)
+        self.assertIn('ReleaseLink', models.__all__)
+        self.assertIn('ReleaseDeploymentEdge', models.__all__)
+        self.assertIn('DeploymentEvent', models.__all__)
+
+
+class ReleaseDeploymentEdgeTestCase(unittest.TestCase):
+    """Tests for the ReleaseDeploymentEdge relationship model."""
+
+    def test_is_relationship_edge(self) -> None:
+        edge = models.ReleaseDeploymentEdge()
+        self.assertIsInstance(edge, models.RelationshipEdge)
+
+    def test_default_deployments_empty(self) -> None:
+        edge = models.ReleaseDeploymentEdge()
+        self.assertEqual(edge.deployments, [])
+
+    def test_deployment_events_round_trip(self) -> None:
+        edge = models.ReleaseDeploymentEdge(
+            deployments=[
+                models.DeploymentEvent(
+                    status='pending',
+                    note='queued',
+                ),
+                models.DeploymentEvent(
+                    status='success',
+                    note='ok',
+                ),
+            ],
+        )
+        roundtrip = models.ReleaseDeploymentEdge.model_validate_json(
+            edge.model_dump_json(),
+        )
+        self.assertEqual(len(roundtrip.deployments), 2)
+        self.assertEqual(roundtrip.deployments[0].status, 'pending')
+        self.assertEqual(roundtrip.deployments[0].note, 'queued')
+        self.assertEqual(roundtrip.deployments[1].status, 'success')
+
+    def test_deployment_events_serialize_as_list(self) -> None:
+        edge = models.ReleaseDeploymentEdge(
+            deployments=[
+                models.DeploymentEvent(status='pending'),
+            ],
+        )
+        dumped = json.loads(edge.model_dump_json())
+        self.assertIsInstance(dumped['deployments'], list)
+        self.assertEqual(len(dumped['deployments']), 1)
+        self.assertEqual(dumped['deployments'][0]['status'], 'pending')

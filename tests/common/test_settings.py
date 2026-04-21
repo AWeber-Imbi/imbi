@@ -6,6 +6,8 @@ import tempfile
 import unittest
 import unittest.mock
 
+import pydantic
+
 from imbi_common import settings
 
 
@@ -109,6 +111,36 @@ class AuthSettingsTestCase(unittest.TestCase):
         self.assertGreater(len(config.encryption_key), 0)
 
 
+class ReleasesSettingsTestCase(unittest.TestCase):
+    """Test cases for Releases settings."""
+
+    def test_default_version_format(self) -> None:
+        """Default version_format is semver."""
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            releases = settings.Releases(_env_file=None)
+        self.assertEqual(releases.version_format, 'semver')
+
+    def test_env_override(self) -> None:
+        """IMBI_RELEASES_VERSION_FORMAT overrides the default."""
+        with unittest.mock.patch.dict(
+            os.environ,
+            {'IMBI_RELEASES_VERSION_FORMAT': 'commitish'},
+            clear=True,
+        ):
+            releases = settings.Releases(_env_file=None)
+        self.assertEqual(releases.version_format, 'commitish')
+
+    def test_invalid_value_rejected(self) -> None:
+        """An unknown format raises."""
+        with unittest.mock.patch.dict(
+            os.environ,
+            {'IMBI_RELEASES_VERSION_FORMAT': 'calver'},
+            clear=True,
+        ):
+            with self.assertRaises(pydantic.ValidationError):
+                settings.Releases(_env_file=None)
+
+
 class ConfigurationTestCase(unittest.TestCase):
     """Test cases for Configuration class."""
 
@@ -119,6 +151,14 @@ class ConfigurationTestCase(unittest.TestCase):
         self.assertIsInstance(config.clickhouse, settings.Clickhouse)
         self.assertIsInstance(config.postgres, settings.Postgres)
         self.assertIsInstance(config.auth, settings.Auth)
+        self.assertIsInstance(config.releases, settings.Releases)
+
+    def test_releases_from_dict(self) -> None:
+        """Test Releases is constructed from config dict."""
+        config = settings.Configuration.model_validate(
+            {'releases': {'version_format': 'commitish'}},
+        )
+        self.assertEqual(config.releases.version_format, 'commitish')
 
     def test_configuration_from_dict(self) -> None:
         """Test Configuration from dictionary data."""
