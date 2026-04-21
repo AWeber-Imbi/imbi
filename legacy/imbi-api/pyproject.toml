@@ -7,7 +7,7 @@ name = "imbi-api"
 version = "2.0.0-alpha"
 description = "Imbi is a DevOps Service Management Platform designed to provide an efficient way to manage a large environment that contains many services and applications."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = { text = "BSD-3-Clause" }
 authors = [
   { name = "Alex Campbell", email = "alexc@aweber.com" },
@@ -20,8 +20,6 @@ classifiers = [
   "Natural Language :: English",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
@@ -81,7 +79,7 @@ output = "build/coverage.xml"
 src-layout = true
 
 [tool.hatch.envs.default]
-python = "python3.12"
+python = "python3.14"
 features = ["dev"]
 
 [tool.hatch.metadata]
@@ -149,7 +147,7 @@ addopts = [
 
 [tool.ruff]
 line-length = 79
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.format]
 quote-style = "single"

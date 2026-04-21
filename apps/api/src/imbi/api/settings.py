@@ -140,7 +140,7 @@ class Email(pydantic_settings.BaseSettings):
     retry_backoff_factor: float = 2.0
 
     @pydantic.model_validator(mode='after')
-    def configure_mailpit_defaults(self) -> 'Email':
+    def configure_mailpit_defaults(self) -> Email:
         """Auto-configure for Mailpit in development."""
         if os.getenv('IMBI_API_ENVIRONMENT', 'development') != 'development':
             return self

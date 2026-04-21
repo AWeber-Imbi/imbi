@@ -45,7 +45,7 @@ class AuthContext(pydantic.BaseModel):
         return self.user.is_admin if self.user else False
 
     @property
-    def require_user(self) -> 'models.User':
+    def require_user(self) -> models.User:
         """Return the authenticated user, raising 403 if absent.
 
         Use this in endpoints that require a human user (not a

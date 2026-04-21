@@ -93,7 +93,7 @@ class PasswordResetToken(common_models.GraphModel):
         username: str,
         email: str,
         expiry_hours: int = 24,
-    ) -> 'PasswordResetToken':
+    ) -> PasswordResetToken:
         """Create a new password reset token.
 
         Args:

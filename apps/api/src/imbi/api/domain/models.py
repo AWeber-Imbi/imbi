@@ -74,7 +74,7 @@ class User(models.GraphModel):
     avatar_url: pydantic.HttpUrl | None = None
 
     organizations: typing.Annotated[
-        list['OrganizationEdge'],
+        list[OrganizationEdge],
         models.Edge(rel_type='MEMBER_OF', direction='OUTGOING'),
     ] = []  # noqa: RUF012
 
@@ -191,11 +191,11 @@ class Role(models.Node):  # type: ignore[misc]
     is_system: bool = False
 
     permissions: typing.Annotated[
-        list['Permission'],
+        list[Permission],
         models.Edge(rel_type='GRANTS', direction='OUTGOING'),
     ] = []  # noqa: RUF012
     parent_role: typing.Annotated[
-        'Role | None',
+        Role | None,
         models.Edge(rel_type='INHERITS_FROM', direction='OUTGOING'),
     ] = None
 
@@ -442,7 +442,7 @@ class ServiceAccount(models.GraphModel):
     last_authenticated: datetime.datetime | None = None
 
     organizations: typing.Annotated[
-        list['OrganizationEdge'],
+        list[OrganizationEdge],
         models.Edge(rel_type='MEMBER_OF', direction='OUTGOING'),
     ] = []  # noqa: RUF012
 
@@ -886,7 +886,7 @@ class WebhookResponse(pydantic.BaseModel):
     def from_graph_record(
         cls,
         record: dict[str, typing.Any],
-    ) -> 'WebhookResponse':
+    ) -> WebhookResponse:
         """Build a WebhookResponse from a graph query record."""
         webhook = graph.parse_agtype(record['webhook'])
 

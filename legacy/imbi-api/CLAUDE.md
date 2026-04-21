@@ -144,7 +144,7 @@ Coverage target: 90% (`pyproject.toml` `tool.coverage.report.fail_under`). Curre
 
 - **Line length**: 79 characters
 - **Quote style**: Single quotes
-- **Python version**: 3.12+
+- **Python version**: 3.14+
 - **Formatter/Linter**: Ruff (configured in `pyproject.toml`)
 - **Type checking**: basedpyright (strict, `src/` + `tests/`) and mypy (strict, `mypy.ini`, `src/imbi_api` only)
 - **Pre-commit hooks**: trailing whitespace, EOF fixer, YAML/TOML checks, debug statements, Ruff lint+format, tombi-format (TOML), mypy
@@ -162,7 +162,7 @@ Coverage target: 90% (`pyproject.toml` `tool.coverage.report.fail_under`). Curre
 ## CI/CD
 
 **GitHub Actions** (`.github/workflows/`):
-- `testing.yaml`: Lint (`just lint`) + tests (`just test`) across Python 3.12-3.14 on every push/PR to `main`. Coverage uploaded to Codecov.
+- `testing.yaml`: Lint (`just lint`) + tests (`just test`) on Python 3.14 on every push/PR to `main`. Coverage uploaded to Codecov.
 - `docs.yaml`: MkDocs build/deploy to GitHub Pages on doc changes.
 - `deploy.yaml`: On release — `uv build`, multi-platform Docker image to `ghcr.io`, provenance attestation.
 
