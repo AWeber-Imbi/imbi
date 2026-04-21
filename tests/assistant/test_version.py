@@ -1,9 +1,12 @@
 import importlib
 import importlib.metadata
 import sys
-import types
 import unittest
+from typing import TYPE_CHECKING
 from unittest import mock
+
+if TYPE_CHECKING:
+    import types
 
 
 class VersionTests(unittest.TestCase):

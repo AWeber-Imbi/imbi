@@ -1,6 +1,6 @@
 import contextlib
 import datetime
-from collections import abc
+from typing import TYPE_CHECKING
 
 import fastapi
 import typer
@@ -8,6 +8,9 @@ from imbi_common import graph, lifespan, server
 
 import imbi_assistant
 from imbi_assistant import app_status, client, endpoints, mcp
+
+if TYPE_CHECKING:
+    from collections import abc
 
 
 @contextlib.asynccontextmanager

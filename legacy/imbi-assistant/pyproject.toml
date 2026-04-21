@@ -141,6 +141,16 @@ ignore = [
 ]
 flake8-quotes = { inline-quotes = "single" }
 
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = ["pydantic.BaseModel"]
+runtime-evaluated-decorators = [
+  "fastapi.APIRouter.get",
+  "fastapi.APIRouter.post",
+  "fastapi.APIRouter.put",
+  "fastapi.APIRouter.patch",
+  "fastapi.APIRouter.delete",
+]
+
 [tool.ruff.lint.mccabe]
 max-complexity = 15
 

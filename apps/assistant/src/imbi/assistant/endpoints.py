@@ -1,6 +1,5 @@
 """FastAPI endpoints for the AI assistant."""
 
-import collections.abc
 import json
 import logging
 import typing
@@ -21,6 +20,9 @@ from imbi_assistant import (
     settings,
     system_prompt,
 )
+
+if typing.TYPE_CHECKING:
+    import collections.abc
 
 LOGGER = logging.getLogger(__name__)
 
