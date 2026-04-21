@@ -52,6 +52,56 @@ DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 500
 
 
+# Aggregate counts for the list-endpoint envelope. Computed once for
+# the full filter universe (not paged) so the UI summary tiles stay
+# accurate even when the client only loads a single page.
+class OperationLogMetrics(pydantic.BaseModel):
+    event_count: int
+    deploys: int
+    projects: int
+    environments: int
+    team_members: int
+    deploys_by_environment: dict[str, int]
+
+
+class OperationLogListResponse(pydantic.BaseModel):
+    metrics: OperationLogMetrics | None = None
+    data: list[OperationLogResponse]
+
+
+# Mirror of ``OperationLog`` without internal bookkeeping fields
+# (``row_version``, ``is_deleted``). Declared as the ``response_model``
+# so the OpenAPI schema reflects what clients actually receive.
+class OperationLogResponse(pydantic.BaseModel):
+    """Public projection of an OperationLog entry."""
+
+    id: str
+    occurred_at: datetime.datetime
+    recorded_at: datetime.datetime
+    recorded_by: str
+    performed_by: str | None = None
+    completed_at: datetime.datetime | None = None
+    project_id: str
+    project_slug: str
+    environment_slug: str
+    entry_type: typing.Literal[
+        'Configured',
+        'Decommissioned',
+        'Deployed',
+        'Migrated',
+        'Provisioned',
+        'Restarted',
+        'Rolled Back',
+        'Scaled',
+        'Upgraded',
+    ]
+    description: str
+    link: str | None = None
+    notes: str | None = None
+    ticket_slug: str | None = None
+    version: str | None = None
+
+
 def _encode_cursor(occurred_at: datetime.datetime, entry_id: str) -> str:
     """Encode a (timestamp, id) cursor as urlsafe base64."""
     payload = f'{occurred_at.isoformat()}|{entry_id}'.encode()
@@ -78,16 +128,36 @@ def _decode_cursor(
         ts = datetime.datetime.fromisoformat(ts_str)
     except ValueError:
         return None
-    return ts, entry_id
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=datetime.UTC)
+    return ts.astimezone(datetime.UTC), entry_id
+
+
+_TIMESTAMP_FIELDS: frozenset[str] = frozenset(
+    {'occurred_at', 'recorded_at', 'completed_at'}
+)
 
 
 def _row_to_response(row: dict[str, typing.Any]) -> dict[str, typing.Any]:
-    """Strip internal bookkeeping columns before returning to the client."""
-    return {
-        k: v
-        for k, v in row.items()
-        if k not in {'_row_version', 'row_version', 'is_deleted'}
-    }
+    """Strip internal bookkeeping columns before returning to the client.
+
+    ClickHouse DateTime64 values come back as naive ``datetime`` objects
+    even though they are stored as UTC. Attach ``tzinfo=UTC`` so that the
+    JSON serializer emits an offset (``...Z``/``+00:00``) and clients can
+    parse unambiguously.
+    """
+    out: dict[str, typing.Any] = {}
+    for k, v in row.items():
+        if k in {'_row_version', 'row_version', 'is_deleted'}:
+            continue
+        if (
+            k in _TIMESTAMP_FIELDS
+            and isinstance(v, datetime.datetime)
+            and v.tzinfo is None
+        ):
+            v = v.replace(tzinfo=datetime.UTC)
+        out[k] = v
+    return out
 
 
 def _model_to_row(entry: models.OperationLog) -> dict[str, typing.Any]:
@@ -116,7 +186,11 @@ async def _insert_row(row: dict[str, typing.Any]) -> None:
     )
 
 
-@operations_log_router.post('/', status_code=201)
+@operations_log_router.post(
+    '/',
+    status_code=201,
+    response_model=OperationLogResponse,
+)
 async def create_operation_log(
     data: dict[str, typing.Any],
     auth: typing.Annotated[
@@ -160,7 +234,7 @@ async def create_operation_log(
 
     row = _model_to_row(entry)
     await _insert_row(row)
-    return _row_to_response(fastapi.encoders.jsonable_encoder(row))
+    return _row_to_response(row)
 
 
 _SINGLE_ENTRY_SQL: typing.Final[str] = (
@@ -247,6 +321,48 @@ def _build_link_header(
     return ', '.join(links)
 
 
+async def _compute_metrics(
+    filter_sql: str, filter_params: dict[str, typing.Any]
+) -> OperationLogMetrics:
+    """Run aggregate queries for the summary tiles.
+
+    `filter_sql` is the WHERE-clause body (without `WHERE`) shared with the
+    list query; `filter_params` supplies its placeholders.
+    """
+    totals_sql: str = (
+        'SELECT '
+        'count() AS event_count, '
+        "countIf(entry_type = 'Deployed') AS deploys, "
+        'uniqExact(project_slug) AS projects, '
+        'uniqExact(environment_slug) AS environments, '
+        'uniqExact(performed_by) AS team_members '
+        'FROM operations_log FINAL WHERE '
+    ) + filter_sql
+    env_sql: str = (
+        'SELECT environment_slug, count() AS c '
+        'FROM operations_log FINAL WHERE '
+        + filter_sql
+        + " AND entry_type = 'Deployed' "
+        'GROUP BY environment_slug'
+    )
+    totals_rows = await clickhouse.query(totals_sql, filter_params)
+    env_rows = await clickhouse.query(env_sql, filter_params)
+    totals = totals_rows[0] if totals_rows else {}
+    deploys_by_env = {
+        str(row['environment_slug']): int(row['c'])
+        for row in env_rows
+        if row.get('environment_slug')
+    }
+    return OperationLogMetrics(
+        event_count=int(totals.get('event_count', 0) or 0),
+        deploys=int(totals.get('deploys', 0) or 0),
+        projects=int(totals.get('projects', 0) or 0),
+        environments=int(totals.get('environments', 0) or 0),
+        team_members=int(totals.get('team_members', 0) or 0),
+        deploys_by_environment=deploys_by_env,
+    )
+
+
 async def _list_impl(
     *,
     request: fastapi.Request,
@@ -290,6 +406,11 @@ async def _list_impl(
         params['until'] = _parse_iso(until, 'until')
         clauses.append('occurred_at < {until:DateTime64(3)}')
 
+    # Pre-cursor clause set is also what feeds the /metrics aggregate so
+    # the summary reflects the full filter universe, not the current page.
+    metrics_clauses = list(clauses)
+    metrics_params = dict(params)
+
     if cursor is not None:
         decoded = _decode_cursor(cursor)
         if decoded is None:
@@ -305,10 +426,11 @@ async def _list_impl(
         )
 
     where = ' AND '.join(clauses)
+    params['row_limit'] = limit + 1
     sql: str = (
         'SELECT * FROM operations_log FINAL WHERE '  # noqa: S608
         + where
-        + f' ORDER BY occurred_at DESC, id DESC LIMIT {limit + 1}'
+        + ' ORDER BY occurred_at DESC, id DESC LIMIT {row_limit:UInt32}'
     )
 
     rows = await clickhouse.query(sql, params)
@@ -318,7 +440,20 @@ async def _list_impl(
         last = rows[-1]
         next_cursor = _encode_cursor(last['occurred_at'], last['id'])
 
-    body = [_row_to_response(r) for r in rows]
+    # Only compute metrics on the first page (no cursor) — the client
+    # stores them once and paginates through ``data`` afterward.
+    metrics: OperationLogMetrics | None = None
+    if cursor is None:
+        metrics = await _compute_metrics(
+            ' AND '.join(metrics_clauses), metrics_params
+        )
+
+    body = {
+        'metrics': (
+            metrics.model_dump(mode='json') if metrics is not None else None
+        ),
+        'data': [_row_to_response(r) for r in rows],
+    }
     response = fastapi.responses.JSONResponse(
         fastapi.encoders.jsonable_encoder(body)
     )
@@ -326,7 +461,10 @@ async def _list_impl(
     return response
 
 
-@operations_log_router.get('/')
+@operations_log_router.get(
+    '/',
+    response_model=OperationLogListResponse,
+)
 async def list_operation_logs(
     request: fastapi.Request,
     auth: typing.Annotated[
@@ -364,7 +502,10 @@ async def list_operation_logs(
     )
 
 
-@operations_log_project_router.get('/')
+@operations_log_project_router.get(
+    '/',
+    response_model=OperationLogListResponse,
+)
 async def list_project_operation_logs(
     request: fastapi.Request,
     org_slug: str,
@@ -402,7 +543,10 @@ async def list_project_operation_logs(
     )
 
 
-@operations_log_router.get('/{entry_id}')
+@operations_log_router.get(
+    '/{entry_id}',
+    response_model=OperationLogResponse,
+)
 async def get_operation_log(
     entry_id: str,
     auth: typing.Annotated[
@@ -422,7 +566,10 @@ async def get_operation_log(
     return _row_to_response(row)
 
 
-@operations_log_router.patch('/{entry_id}')
+@operations_log_router.patch(
+    '/{entry_id}',
+    response_model=OperationLogResponse,
+)
 async def patch_operation_log(
     entry_id: str,
     operations: list[json_patch.PatchOperation],
@@ -469,7 +616,7 @@ async def patch_operation_log(
 
     row = _model_to_row(entry)
     await _insert_row(row)
-    return _row_to_response(fastapi.encoders.jsonable_encoder(row))
+    return _row_to_response(row)
 
 
 @operations_log_router.delete('/{entry_id}', status_code=204)

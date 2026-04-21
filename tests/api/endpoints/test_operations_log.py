@@ -103,6 +103,30 @@ class _OpsLogTestBase(unittest.TestCase):
         self.addCleanup(self.insert_patcher.stop)
         self.addCleanup(self.query_patcher.stop)
 
+    def _stub_list(
+        self,
+        rows: list[dict[str, typing.Any]],
+        *,
+        with_metrics: bool = True,
+    ) -> None:
+        """Wire `mock_query` for a list-endpoint call.
+
+        The list handler issues 3 ClickHouse queries on the first page
+        (list + totals + per-env deploys) and just 1 on paginated pages.
+        """
+        empty_totals = [
+            {
+                'event_count': 0,
+                'deploys': 0,
+                'projects': 0,
+                'environments': 0,
+                'team_members': 0,
+            }
+        ]
+        self.mock_query.side_effect = (
+            [rows, empty_totals, []] if with_metrics else [rows]
+        )
+
     def _revoke_permissions(self) -> None:
         """Swap the auth context to a non-admin user with no permissions.
 
@@ -245,11 +269,12 @@ class ListEntriesTests(_OpsLogTestBase):
         ]
 
     def test_list_default_limit(self) -> None:
-        self.mock_query.return_value = self._rows(3)
+        self._stub_list(self._rows(3))
         response = self.client.get('/operations-log/')
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(len(body), 3)
+        self.assertEqual(len(body['data']), 3)
+        self.assertIsNotNone(body['metrics'])
         link = response.headers['Link']
         self.assertIn('rel="first"', link)
         # Only 3 rows returned, no next page
@@ -257,11 +282,11 @@ class ListEntriesTests(_OpsLogTestBase):
 
     def test_list_has_next_link_when_more_results(self) -> None:
         # Endpoint requests limit+1 rows; we return 3 for limit=2.
-        self.mock_query.return_value = self._rows(3)
+        self._stub_list(self._rows(3))
         response = self.client.get('/operations-log/?limit=2')
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(len(body), 2)  # extra row popped
+        self.assertEqual(len(body['data']), 2)  # extra row popped
         link = response.headers['Link']
         self.assertIn('rel="first"', link)
         self.assertIn('rel="next"', link)
@@ -271,7 +296,7 @@ class ListEntriesTests(_OpsLogTestBase):
         import re
 
         rows = self._rows(3)
-        self.mock_query.return_value = rows
+        self._stub_list(rows)
         response = self.client.get('/operations-log/?limit=2')
         link = response.headers['Link']
         match = re.search(r'<[^>]*cursor=([^&>]+)[^>]*>;\s*rel="next"', link)
@@ -296,22 +321,22 @@ class ListEntriesTests(_OpsLogTestBase):
         self.assertEqual(response.status_code, 400)
 
     def test_list_project_slug_filter(self) -> None:
-        self.mock_query.return_value = self._rows(1)
+        self._stub_list(self._rows(1))
         response = self.client.get('/operations-log/?project_slug=imbi-api')
         self.assertEqual(response.status_code, 200)
-        sent_sql, sent_params = self.mock_query.await_args.args
+        sent_sql, sent_params = self.mock_query.await_args_list[0].args
         self.assertIn('project_slug = {project_slug:String}', sent_sql)
         self.assertEqual(sent_params['project_slug'], 'imbi-api')
 
     def test_list_since_until(self) -> None:
-        self.mock_query.return_value = []
+        self._stub_list([])
         since = '2026-04-01T00:00:00Z'
         until = '2026-05-01T00:00:00Z'
         response = self.client.get(
             f'/operations-log/?since={since}&until={until}'
         )
         self.assertEqual(response.status_code, 200)
-        sent_sql, sent_params = self.mock_query.await_args.args
+        sent_sql, sent_params = self.mock_query.await_args_list[0].args
         self.assertIn('occurred_at >= {since:DateTime64(3)}', sent_sql)
         self.assertIn('occurred_at < {until:DateTime64(3)}', sent_sql)
         self.assertIn('since', sent_params)
@@ -436,18 +461,18 @@ class PatchOperationLogTests(_OpsLogTestBase):
 class ProjectScopedListTests(_OpsLogTestBase):
     def test_project_scoped_forces_project_id(self) -> None:
         row = _sample_row(project_id='proj-xyz')
-        self.mock_query.return_value = [row]
+        self._stub_list([row])
         # Client-supplied ?project_id= is ignored; path wins.
         response = self.client.get(
             '/organizations/engineering/projects/proj-xyz/operations-log/'
             '?project_id=hacker-attempt'
         )
         self.assertEqual(response.status_code, 200)
-        _sql, params = self.mock_query.await_args.args
+        _sql, params = self.mock_query.await_args_list[0].args
         self.assertEqual(params['project_id'], 'proj-xyz')
 
     def test_project_scoped_has_link_headers(self) -> None:
-        self.mock_query.return_value = [_sample_row()]
+        self._stub_list([_sample_row()])
         response = self.client.get(
             '/organizations/engineering/projects/proj-xyz/operations-log/'
         )
