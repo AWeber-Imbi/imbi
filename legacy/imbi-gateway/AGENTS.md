@@ -204,7 +204,7 @@ GitHub Actions workflows:
 
 - **`.github/workflows/test.yml`**: Runs on push/PR
     - Static analysis (pre-commit, basedpyright, mypy)
-    - Tests across Python 3.12, 3.13, 3.14
+    - Tests on Python 3.14
 - **`.github/workflows/docker.yml`**: Runs on release
     - Builds Python wheel
     - Publishes multi-arch Docker image to ghcr.io

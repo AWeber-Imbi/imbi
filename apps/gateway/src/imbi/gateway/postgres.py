@@ -36,7 +36,6 @@ See Also:
 
 import contextlib
 import typing as t
-from collections import abc
 
 import fastapi
 import psycopg.rows
@@ -44,9 +43,14 @@ import psycopg_pool
 import pydantic
 import pydantic_settings
 import yarl
-from imbi_common import lifespan
+from imbi_common import (
+    lifespan,  # noqa: TC002  # runtime-evaluated by FastAPI Depends
+)
 
 from imbi_gateway import helpers
+
+if t.TYPE_CHECKING:
+    from collections import abc
 
 type RowType = psycopg.rows.DictRow
 type ConnectionType = psycopg.AsyncConnection[RowType]
@@ -97,7 +101,7 @@ class Status(pydantic.BaseModel):
 
 
 @contextlib.asynccontextmanager
-async def postgres_lifespan() -> abc.AsyncIterator[PoolType]:
+async def postgres_lifespan() -> 'abc.AsyncIterator[PoolType]':
     """Set up PostgreSQL connection pool for application lifespan.
 
     Creates an AsyncConnectionPool from the POSTGRES_URL environment

@@ -1,10 +1,13 @@
 import contextlib
 import os
 import pathlib
+import typing
 import unittest
-from collections import abc
 
 import dotenv
+
+if typing.TYPE_CHECKING:
+    from collections import abc
 
 
 class TestCase(unittest.IsolatedAsyncioTestCase):
@@ -18,7 +21,7 @@ class TestCase(unittest.IsolatedAsyncioTestCase):
     @contextlib.contextmanager
     def override_environment(
         self, **overrides: str | int | None
-    ) -> abc.Iterator[None]:
+    ) -> 'abc.Iterator[None]':
         saved: dict[str, str | None] = {
             key: os.environ.get(key) for key in overrides
         }
