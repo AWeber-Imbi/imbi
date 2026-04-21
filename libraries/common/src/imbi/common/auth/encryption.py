@@ -33,7 +33,7 @@ class TokenEncryption:
         >>> assert decrypted == 'my-secret-token'
     """
 
-    _instance: typing.ClassVar['TokenEncryption | None'] = None
+    _instance: typing.ClassVar[TokenEncryption | None] = None
     _fernet: fernet.Fernet
 
     def __init__(self, encryption_key: str) -> None:
@@ -53,7 +53,7 @@ class TokenEncryption:
             raise ValueError('Invalid encryption key') from err
 
     @classmethod
-    def get_instance(cls) -> 'TokenEncryption':
+    def get_instance(cls) -> TokenEncryption:
         """Get singleton instance of TokenEncryption.
 
         Returns:

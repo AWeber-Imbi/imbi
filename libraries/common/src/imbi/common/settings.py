@@ -58,7 +58,7 @@ class Auth(pydantic_settings.BaseSettings):
     )
 
     @pydantic.model_validator(mode='after')
-    def generate_encryption_key_if_missing(self) -> 'Auth':
+    def generate_encryption_key_if_missing(self) -> Auth:
         """Generate encryption key if not provided (Phase 5).
 
         Auto-generates a Fernet encryption key if IMBI_AUTH_ENCRYPTION_KEY

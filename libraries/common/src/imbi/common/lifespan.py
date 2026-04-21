@@ -143,7 +143,7 @@ class Lifespan(dict[LifespanHook, object | None]):
 
     def __call__(
         self, _app: fastapi.FastAPI
-    ) -> contextlib.AbstractAsyncContextManager[dict[str, 'Lifespan']]:
+    ) -> contextlib.AbstractAsyncContextManager[dict[str, Lifespan]]:
         """Make Lifespan callable as a FastAPI lifespan function.
 
         This method is called automatically by FastAPI during application
@@ -169,7 +169,7 @@ class Lifespan(dict[LifespanHook, object | None]):
         """
 
         @contextlib.asynccontextmanager
-        async def cm() -> abc.AsyncIterator[dict[str, 'Lifespan']]:
+        async def cm() -> abc.AsyncIterator[dict[str, Lifespan]]:
             async with contextlib.AsyncExitStack() as stack:
                 for hook in self._hooks:
                     if hook not in self:
@@ -179,7 +179,7 @@ class Lifespan(dict[LifespanHook, object | None]):
         return cm()
 
 
-def _get_lifespan(request: fastapi.Request) -> 'Lifespan':
+def _get_lifespan(request: fastapi.Request) -> Lifespan:
     """Extract the Lifespan instance from request state.
 
     This is a FastAPI dependency function that retrieves the Lifespan

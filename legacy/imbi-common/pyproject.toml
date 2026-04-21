@@ -3,7 +3,7 @@ name = "imbi-common"
 version = "0.1.0"
 description = "Shared library for the Imbi ecosystem providing core data access, authentication primitives, and domain models"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 license = { text = "BSD-3-Clause" }
 authors = [{ name = "Gavin M. Roy", email = "gavinr@aweber.com" }]
 classifiers = [
@@ -12,8 +12,6 @@ classifiers = [
   "Natural Language :: English",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
@@ -114,7 +112,7 @@ typeCheckingMode = "strict"
 
 [tool.ruff]
 line-length = 79
-target-version = "py312"
+target-version = "py314"
 
 [tool.ruff.format]
 quote-style = "single"

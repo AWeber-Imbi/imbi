@@ -58,7 +58,7 @@ class Clickhouse:
         format.set_read_format('IPv*', 'string')
 
     @classmethod
-    def get_instance(cls) -> 'Clickhouse':
+    def get_instance(cls) -> Clickhouse:
         """Get an instance of the Clickhouse client."""
         if cls._instance is None:
             cls._instance = cls()
