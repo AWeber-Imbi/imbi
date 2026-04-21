@@ -336,6 +336,7 @@ class Project(Node):
         ),
     ] = []
     links: dict[str, pydantic.AnyUrl] = {}
+    identifiers: dict[str, int | str | pydantic.AnyUrl] = {}
 
 
 class Embedding(pydantic.BaseModel):
