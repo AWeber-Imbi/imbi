@@ -54,6 +54,7 @@
     "@react-three/fiber": "^9.5.0",
     "@tabler/icons-react": "^3.41.1",
     "@tanstack/react-query": "^5.66.1",
+    "@tanstack/react-virtual": "^3.13.24",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "aws-svg-icons": "^3.0.0-2021-07-30",

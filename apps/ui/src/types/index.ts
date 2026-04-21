@@ -221,6 +221,50 @@ export interface OperationsLogEntry {
 
 export type ActivityFeedEntry = ProjectFeedEntry | OperationsLogEntry
 
+export const OPERATIONS_LOG_ENTRY_TYPES = [
+  'Configured',
+  'Decommissioned',
+  'Deployed',
+  'Migrated',
+  'Provisioned',
+  'Restarted',
+  'Rolled Back',
+  'Scaled',
+  'Upgraded',
+] as const
+
+export type OperationsLogEntryType = (typeof OPERATIONS_LOG_ENTRY_TYPES)[number]
+
+// Raw record returned by the /operations-log/ API (distinct from the
+// activity-feed projection defined above in `OperationsLogEntry`).
+export interface OperationsLogRecord {
+  id: string
+  occurred_at: string
+  recorded_at: string
+  recorded_by: string
+  performed_by?: string | null
+  completed_at?: string | null
+  project_id: string
+  project_slug: string
+  environment_slug: string
+  entry_type: OperationsLogEntryType
+  description: string
+  link?: string | null
+  notes?: string | null
+  ticket_slug?: string | null
+  version?: string | null
+}
+
+export interface OperationsLogFilters {
+  project_slug?: string
+  environment_slug?: string
+  entry_type?: OperationsLogEntryType
+  ticket_slug?: string
+  performed_by?: string
+  since?: string
+  until?: string
+}
+
 export interface DashboardStats {
   total_projects: number
   projects_by_namespace: Record<string, number>

@@ -1,0 +1,198 @@
+import { ChevronDown } from 'lucide-react'
+import { memo } from 'react'
+import { Gravatar } from '@/components/ui/gravatar'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { useTheme } from '@/contexts/ThemeContext'
+import { deriveChipColors } from '@/lib/chip-colors'
+import { ENTRY_TYPE_ICONS } from '@/lib/ops-log-icons'
+import { cn } from '@/lib/utils'
+import type { Environment, OperationsLogRecord, Project } from '@/types'
+import { OperationsLogEntryDetails } from './OperationsLogEntryDetails'
+import { OPS_ROW_GRID, OPS_ROW_PAD } from './opsRowLayout'
+import { absTime, cleanDescription, relTime } from './opsLogHelpers'
+
+interface Props {
+  id: string
+  entry: OperationsLogRecord
+  project?: Project
+  environment?: Environment
+  isOpen: boolean
+  onToggle: (id: string) => void
+  performerDisplayNames: Map<string, string>
+}
+
+export const OperationsLogStreamRow = memo(function OperationsLogStreamRow({
+  id,
+  entry,
+  project,
+  environment,
+  isOpen,
+  onToggle,
+  performerDisplayNames,
+}: Props) {
+  const { isDarkMode } = useTheme()
+  const performer = entry.performed_by ?? entry.recorded_by
+  const displayName = performerDisplayNames.get(performer) ?? performer
+  const isDeploy = entry.entry_type === 'Deployed'
+  const isRestart = entry.entry_type === 'Restarted'
+  const Icon = ENTRY_TYPE_ICONS[entry.entry_type]
+  const desc = cleanDescription(entry.description, entry.version)
+  const projectLabel = project?.name ?? entry.project_slug
+  const envDisplay = environment?.name ?? entry.environment_slug
+  const envColors = environment?.label_color
+    ? deriveChipColors(environment.label_color, isDarkMode)
+    : null
+  const railColor = isRestart ? undefined : envColors?.border
+
+  return (
+    <div
+      className={cn(
+        'border-b border-tertiary last:border-b-0',
+        isOpen && 'bg-secondary',
+      )}
+      style={{
+        contentVisibility: 'auto',
+        containIntrinsicSize: 'auto 72px',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        aria-expanded={isOpen}
+        aria-controls={`ops-log-details-${id}`}
+        className={cn(
+          'group grid w-full cursor-pointer items-center gap-x-3 gap-y-1 text-left transition-colors',
+          OPS_ROW_PAD,
+          !isOpen && 'hover:bg-secondary',
+        )}
+        style={{
+          gridTemplateColumns: OPS_ROW_GRID,
+          gridTemplateRows: desc ? 'auto auto' : 'auto',
+        }}
+      >
+        <span
+          className={cn(
+            'self-stretch rounded-r-sm',
+            isRestart && 'bg-danger',
+            !isRestart && !railColor && 'bg-tertiary',
+          )}
+          style={{
+            ...(railColor ? { backgroundColor: railColor } : {}),
+            gridColumn: 1,
+            gridRow: '1 / -1',
+          }}
+          aria-hidden
+        />
+        <span
+          className={cn(
+            'flex h-[26px] w-[26px] items-center justify-center rounded-md',
+            isDeploy
+              ? 'bg-success text-success'
+              : isRestart
+                ? 'bg-danger text-danger'
+                : 'bg-secondary text-secondary',
+          )}
+          style={{ gridColumn: 2, gridRow: 1 }}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <span
+          className="truncate text-sm font-medium text-primary"
+          style={{ gridColumn: 3, gridRow: 1 }}
+          title={projectLabel}
+        >
+          {projectLabel}
+        </span>
+        <span
+          className="truncate font-mono text-xs text-secondary"
+          style={{ gridColumn: 4, gridRow: 1 }}
+        >
+          {entry.version || '—'}
+        </span>
+        {desc ? null : (
+          <span
+            className="min-w-0 truncate text-sm text-tertiary"
+            style={{ gridColumn: 5 }}
+          >
+            —
+          </span>
+        )}
+        <span
+          className="flex items-center justify-center"
+          style={{ gridColumn: 6, gridRow: '1 / -1' }}
+        >
+          <span
+            className="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium"
+            style={
+              envColors
+                ? {
+                    backgroundColor: envColors.bg,
+                    color: envColors.fg,
+                    borderColor: envColors.border,
+                  }
+                : undefined
+            }
+          >
+            {envDisplay}
+          </span>
+        </span>
+        <span
+          className="self-center justify-self-end"
+          style={{ gridColumn: 7, gridRow: '1 / -1' }}
+          title={displayName}
+        >
+          <Gravatar
+            email={performer}
+            size={22}
+            className="h-[22px] w-[22px] rounded-full"
+          />
+        </span>
+        <TooltipProvider delayDuration={250}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="self-center whitespace-nowrap text-right text-xs tabular-nums text-tertiary"
+                style={{ gridColumn: 8, gridRow: '1 / -1' }}
+              >
+                {relTime(entry.occurred_at)}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{absTime(entry.occurred_at)}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <span
+          className="flex items-center justify-center self-center text-tertiary"
+          style={{ gridColumn: 9, gridRow: '1 / -1' }}
+        >
+          <ChevronDown
+            className={cn(
+              'h-3.5 w-3.5 transition-transform',
+              isOpen && 'rotate-180 text-primary',
+            )}
+          />
+        </span>
+        {desc ? (
+          <span
+            className="min-w-0 truncate text-sm text-secondary"
+            style={{ gridColumn: '3 / 6', gridRow: 2 }}
+          >
+            {desc}
+          </span>
+        ) : null}
+      </button>
+      {isOpen ? (
+        <div
+          id={`ops-log-details-${id}`}
+          className="border-t border-dashed border-tertiary"
+        >
+          <OperationsLogEntryDetails entry={entry} />
+        </div>
+      ) : null}
+    </div>
+  )
+})

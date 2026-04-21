@@ -3,6 +3,7 @@ import { Toaster } from 'sonner'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
+import { OperationsLogPage } from './pages/OperationsLogPage'
 import { AdminPage } from './pages/AdminPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LoginPage } from './pages/LoginPage'
@@ -102,6 +103,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ProjectDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/opslog"
+            element={
+              <ProtectedRoute>
+                <OperationsLogPage />
               </ProtectedRoute>
             }
           />

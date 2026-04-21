@@ -479,10 +479,10 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-8">
       {/* Project Header */}
-      <div className="mb-6 pl-4">
+      <div className="mb-6">
         <div className="flex items-start justify-between">
-          <div>
-            <div className="mb-1 flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="-ml-[18px] mb-1 flex items-center gap-3">
               <InlineText
                 value={project.name}
                 onCommit={(v) => patch('/name', v ?? '')}
@@ -533,7 +533,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
           </div>
         </div>
 
-        <div className="mt-3 text-secondary">
+        <div className="-ml-[18px] mt-3 text-secondary">
           <InlineTextarea
             value={project.description ?? null}
             onCommit={(v) => patch('/description', v)}
