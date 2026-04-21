@@ -1,8 +1,10 @@
 import { Navigation } from '@/components/Navigation'
 import { Settings } from '@/components/Settings'
 import { CommandBar } from '@/components/CommandBar'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 export function SettingsPage() {
+  usePageTitle('Settings')
   return (
     <div className="min-h-screen bg-tertiary text-primary">
       <Navigation />

@@ -4,6 +4,7 @@ import { Navigation } from '@/components/Navigation'
 import { ProjectDetail } from '@/components/ProjectDetail'
 import { CommandBar } from '@/components/CommandBar'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import { getProject } from '@/api/endpoints'
 
 export function ProjectDetailPage() {
@@ -21,6 +22,8 @@ export function ProjectDetailPage() {
     queryFn: () => getProject(orgSlug, projectId!),
     enabled: !!orgSlug && !!projectId,
   })
+
+  usePageTitle(project?.name ?? 'Project')
 
   return (
     <div className="min-h-screen bg-tertiary text-primary">

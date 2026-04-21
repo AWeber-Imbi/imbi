@@ -475,7 +475,7 @@ export function OperationsLog() {
               day: 'numeric',
             })}
           </span>
-          <span className="h-px flex-1 bg-tertiary" />
+          <span className="flex-1" />
           <span className="font-mono text-[11px] text-tertiary">
             {vi.count} {vi.count === 1 ? 'event' : 'events'}
           </span>

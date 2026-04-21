@@ -7,12 +7,14 @@ import { OAuthButton } from '@/components/auth/OAuthButton'
 import { LocalLoginForm } from '@/components/auth/LocalLoginForm'
 import { AuthDivider } from '@/components/auth/AuthDivider'
 import { useTheme } from '@/contexts/ThemeContext'
+import { usePageTitle } from '@/hooks/usePageTitle'
 import logoLight from '@/assets/logo-light.svg'
 import logoDark from '@/assets/logo-dark.svg'
 
 const REMEMBERED_EMAIL_KEY = 'imbi_remembered_email'
 
 export function LoginPage() {
+  usePageTitle('Login')
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { isDarkMode } = useTheme()

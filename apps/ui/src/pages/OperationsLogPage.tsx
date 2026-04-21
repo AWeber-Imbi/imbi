@@ -1,8 +1,10 @@
 import { Navigation } from '@/components/Navigation'
 import { OperationsLog } from '@/components/OperationsLog'
 import { CommandBar } from '@/components/CommandBar'
+import { usePageTitle } from '@/hooks/usePageTitle'
 
 export function OperationsLogPage() {
+  usePageTitle('Operations Log')
   return (
     <div className="min-h-screen bg-tertiary text-primary">
       <Navigation currentView="operations" />
