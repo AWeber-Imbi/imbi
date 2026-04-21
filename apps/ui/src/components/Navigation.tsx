@@ -75,7 +75,7 @@ export function Navigation({
         id: 'operations',
         label: 'Operations Log',
         icon: Activity,
-        path: '/opslog',
+        path: '/operations-log',
       },
       { id: 'reports', label: 'Reports', icon: BarChart3, path: '/reports' },
     ]

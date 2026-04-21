@@ -1,15 +1,26 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { EnvironmentBadge } from '@/components/ui/environment-badge'
+import { Input } from '@/components/ui/input'
+import { SavedIndicator } from '@/components/ui/saved-indicator'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { useSavedFlash } from '@/hooks/useSavedFlash'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import type { Environment } from '@/types'
 
 interface EditEnvironmentsCardProps {
   environments: Environment[]
-  isSaving: boolean
-  onSave: (envData: Record<string, Record<string, string>>) => void
+  availableEnvironments: Environment[]
+  onPatch: (envData: Record<string, Record<string, string>>) => Promise<void>
 }
 
 function toLabel(key: string): string {
@@ -19,62 +30,133 @@ function toLabel(key: string): string {
     .join(' ')
 }
 
+function extractFields(env: Environment): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, val] of Object.entries(env)) {
+    if (ENVIRONMENT_BASE_FIELDS_SET.has(key)) continue
+    out[key] = val != null ? String(val) : ''
+  }
+  return out
+}
+
+function buildEnvMap(
+  envs: Environment[],
+): Record<string, Record<string, string>> {
+  const map: Record<string, Record<string, string>> = {}
+  for (const env of envs) map[env.slug] = extractFields(env)
+  return map
+}
+
 export function EditEnvironmentsCard({
   environments,
-  isSaving,
-  onSave,
+  availableEnvironments,
+  onPatch,
 }: EditEnvironmentsCardProps) {
   const dynamicFields = useMemo(() => {
     const fieldSet = new Set<string>()
     for (const env of environments) {
       for (const key of Object.keys(env)) {
-        if (!ENVIRONMENT_BASE_FIELDS_SET.has(key)) {
-          fieldSet.add(key)
-        }
+        if (!ENVIRONMENT_BASE_FIELDS_SET.has(key)) fieldSet.add(key)
       }
     }
     return [...fieldSet].sort()
   }, [environments])
 
-  const [data, setData] = useState<Record<string, Record<string, string>>>({})
+  const serverMap = useMemo(() => buildEnvMap(environments), [environments])
+  const [drafts, setDrafts] =
+    useState<Record<string, Record<string, string>>>(serverMap)
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const { saved, flash } = useSavedFlash()
 
   useEffect(() => {
-    const initial: Record<string, Record<string, string>> = {}
-    for (const env of environments) {
-      const fields: Record<string, string> = {}
-      for (const key of dynamicFields) {
-        const val = env[key]
-        fields[key] = val != null ? String(val) : ''
-      }
-      initial[env.slug] = fields
-    }
-    setData(initial)
-  }, [environments, dynamicFields])
+    setDrafts(serverMap)
+  }, [serverMap])
 
-  const updateField = (envSlug: string, field: string, value: string) => {
-    setData((prev) => ({
-      ...prev,
-      [envSlug]: { ...prev[envSlug], [field]: value },
-    }))
+  const envBySlug = useMemo(() => {
+    const m = new Map<string, Environment>()
+    for (const e of environments) m.set(e.slug, e)
+    return m
+  }, [environments])
+
+  const currentSlugs = useMemo(
+    () => new Set(environments.map((e) => e.slug)),
+    [environments],
+  )
+
+  const unassignedEnvs = useMemo(
+    () =>
+      availableEnvironments
+        .filter((e) => !currentSlugs.has(e.slug))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [availableEnvironments, currentSlugs],
+  )
+
+  const buildBaseline = (): Record<string, Record<string, string>> => {
+    const out: Record<string, Record<string, string>> = {}
+    for (const env of environments) {
+      out[env.slug] = { ...serverMap[env.slug] }
+    }
+    return out
   }
 
-  const handleSave = () => {
-    const result: Record<string, Record<string, string>> = {}
-    for (const env of environments) {
-      result[env.slug] = data[env.slug] ?? {}
+  const handleBlur = async (slug: string, field: string) => {
+    const next = (drafts[slug]?.[field] ?? '').trim()
+    const current = serverMap[slug]?.[field] ?? ''
+    if (next === current) return
+    const payload = buildBaseline()
+    payload[slug] = { ...payload[slug], [field]: next }
+    try {
+      await onPatch(payload)
+      flash(`${slug}:${field}`)
+    } catch {
+      // Parent surfaces the error; keep the draft for retry.
     }
-    onSave(result)
   }
 
-  if (dynamicFields.length === 0) return null
+  const requestDelete = (slug: string) => {
+    setPendingDelete(slug)
+  }
+
+  const cancelDelete = () => {
+    setPendingDelete(null)
+  }
+
+  const confirmDelete = async () => {
+    const slug = pendingDelete
+    if (!slug) return
+    const payload = buildBaseline()
+    delete payload[slug]
+    try {
+      await onPatch(payload)
+    } catch {
+      // Parent surfaces the error.
+    } finally {
+      setPendingDelete(null)
+    }
+  }
+
+  const handleAdd = async (slug: string) => {
+    if (!slug || currentSlugs.has(slug)) return
+    const payload = buildBaseline()
+    payload[slug] = {}
+    try {
+      await onPatch(payload)
+    } catch {
+      // Parent surfaces the error.
+    }
+  }
+
+  const pendingEnv = pendingDelete ? envBySlug.get(pendingDelete) : undefined
+
+  if (environments.length === 0 && unassignedEnvs.length === 0) return null
 
   return (
     <Card className="p-6">
-      <h3 className="mb-4 text-primary">Environment Specific Details</h3>
+      <h3 className="mb-4 text-primary">Environments</h3>
 
-      <div className="space-y-4">
+      <div className="divide-y divide-border">
         {environments.map((env) => (
-          <div key={env.slug} className="flex gap-3">
+          <div key={env.slug} className="flex gap-3 py-4 first:pt-0 last:pb-0">
             <div className="w-[15%] flex-shrink-0 pt-1">
               <EnvironmentBadge
                 name={env.name}
@@ -83,37 +165,97 @@ export function EditEnvironmentsCard({
               />
             </div>
             <div className="flex-1 space-y-2">
-              {dynamicFields.map((field) => (
-                <div key={field}>
-                  <label className="mb-1 block text-xs font-medium text-tertiary">
-                    {toLabel(field)}
-                  </label>
-                  <Input
-                    value={data[env.slug]?.[field] ?? ''}
-                    onChange={(e) =>
-                      updateField(env.slug, field, e.target.value)
-                    }
-                    disabled={isSaving}
-                    placeholder={toLabel(field)}
-                    className="text-sm"
-                  />
-                </div>
-              ))}
+              {dynamicFields.length === 0 ? (
+                <p className="text-xs text-tertiary">
+                  No blueprint fields for this environment.
+                </p>
+              ) : (
+                dynamicFields.map((field) => (
+                  <div key={field} className="flex items-center gap-3">
+                    <label
+                      htmlFor={`env-${env.slug}-${field}`}
+                      className="w-20 flex-shrink-0 text-xs font-medium text-tertiary"
+                    >
+                      {toLabel(field)}
+                    </label>
+                    <div className="relative flex-1">
+                      <Input
+                        id={`env-${env.slug}-${field}`}
+                        value={drafts[env.slug]?.[field] ?? ''}
+                        onChange={(e) =>
+                          setDrafts((prev) => ({
+                            ...prev,
+                            [env.slug]: {
+                              ...(prev[env.slug] ?? {}),
+                              [field]: e.target.value,
+                            },
+                          }))
+                        }
+                        onBlur={() => handleBlur(env.slug, field)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            e.currentTarget.blur()
+                          }
+                        }}
+                        placeholder={toLabel(field)}
+                        className="pr-8 text-sm"
+                      />
+                      <SavedIndicator show={!!saved[`${env.slug}:${field}`]} />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="flex-shrink-0 pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`Remove ${env.name} environment`}
+                className="h-8 w-8 text-secondary hover:text-danger"
+                onClick={() => requestDelete(env.slug)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         ))}
+
+        {unassignedEnvs.length > 0 && (
+          <div className="flex items-center gap-3 pt-4">
+            <div className="w-[15%] flex-shrink-0">
+              <Select value="" onValueChange={handleAdd}>
+                <SelectTrigger className="text-sm">
+                  <SelectValue placeholder="Add environment…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {unassignedEnvs.map((env) => (
+                    <SelectItem key={env.slug} value={env.slug}>
+                      {env.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1" />
+            <div className="h-8 w-8 flex-shrink-0" aria-hidden />
+          </div>
+        )}
       </div>
 
-      <div className="mt-4 flex justify-end">
-        <Button
-          size="sm"
-          className="bg-action text-action-foreground hover:bg-action-hover"
-          onClick={handleSave}
-          disabled={isSaving}
-        >
-          {isSaving ? 'Saving...' : 'Save'}
-        </Button>
-      </div>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={
+          pendingEnv
+            ? `Remove ${pendingEnv.name} environment?`
+            : 'Remove environment?'
+        }
+        description="This will remove the environment from the project along with any environment-specific field values."
+        confirmLabel="Remove"
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </Card>
   )
 }

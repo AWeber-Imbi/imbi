@@ -31,18 +31,21 @@ import { useEffect, useMemo, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { ApiError } from '@/api/client'
 import { sortEnvironments } from '@/lib/utils'
 import {
   listLinkDefinitions,
+  listEnvironments,
   getProjectSchema,
   getProjectRelationships,
-  updateProject,
+  patchProject,
   deleteProject,
   listTeams,
   listProjectTypes,
 } from '@/api/endpoints'
+import { OperationsLog } from '@/components/OperationsLog'
 import { buildRelationshipEdges } from '@/lib/relationship-edges'
 import type {
   ProjectSchemaSection,
@@ -60,7 +63,7 @@ import {
   type GraphProject,
 } from '@/components/ProjectsGraphCanvas'
 import { EditRelationshipsDialog } from '@/components/EditRelationshipsDialog'
-import { EditableKeyValueCard } from '@/components/EditableKeyValueCard'
+import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
 import { EditLinksCard } from '@/components/EditLinksCard'
 import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
 import type { Project, ProjectRelationship } from '@/types'
@@ -935,7 +938,12 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
           <PlaceholderTab name="Notes" />
         </TabsContent>
         <TabsContent value="operations-log">
-          <PlaceholderTab name="Operations Log" />
+          <OperationsLog
+            projectSlug={project.slug}
+            showSummary={false}
+            showHeader={false}
+            embedded
+          />
         </TabsContent>
         <TabsContent value="settings">
           <SettingsTab project={project} />
@@ -1214,6 +1222,7 @@ function SettingsTab({ project }: { project: Project }) {
   const orgSlug = selectedOrganization?.slug || ''
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { patch } = useProjectPatch(orgSlug, project.id)
   const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -1232,27 +1241,6 @@ function SettingsTab({ project }: { project: Project }) {
       alert(`Failed to ${label}: ${detail}`)
     }
   }
-
-  const linksMutation = useMutation({
-    mutationFn: (links: Record<string, string>) =>
-      updateProject(orgSlug, project.id, { links }),
-    onSuccess: invalidateProject,
-    onError: mutationErrorHandler('save links'),
-  })
-
-  const identifiersMutation = useMutation({
-    mutationFn: (identifiers: Record<string, string>) =>
-      updateProject(orgSlug, project.id, { identifiers }),
-    onSuccess: invalidateProject,
-    onError: mutationErrorHandler('save identifiers'),
-  })
-
-  const envMutation = useMutation({
-    mutationFn: (environments: Record<string, Record<string, string>>) =>
-      updateProject(orgSlug, project.id, { environments }),
-    onSuccess: invalidateProject,
-    onError: mutationErrorHandler('save environments'),
-  })
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteProject(orgSlug, project.id),
@@ -1274,6 +1262,12 @@ function SettingsTab({ project }: { project: Project }) {
     () => sortEnvironments(project.environments || []),
     [project.environments],
   )
+
+  const { data: availableEnvironments = [] } = useQuery({
+    queryKey: ['environments', orgSlug],
+    queryFn: () => listEnvironments(orgSlug),
+    enabled: !!orgSlug,
+  })
 
   return (
     <div className="space-y-6">
@@ -1299,27 +1293,36 @@ function SettingsTab({ project }: { project: Project }) {
         <EditLinksCard
           linkDefs={linkDefs}
           links={project.links || {}}
-          isSaving={linksMutation.isPending}
-          onSave={(entries) => linksMutation.mutate(entries)}
+          onPatch={(entries) => patch('/links', entries)}
         />
       )}
 
-      {sortedEnvironments.length > 0 && (
-        <EditEnvironmentsCard
-          environments={sortedEnvironments}
-          isSaving={envMutation.isPending}
-          onSave={(envData) => envMutation.mutate(envData)}
-        />
-      )}
+      <EditEnvironmentsCard
+        environments={sortedEnvironments}
+        availableEnvironments={availableEnvironments}
+        onPatch={async (envData) => {
+          try {
+            await patchProject(orgSlug, project.id, [
+              { op: 'replace', path: '/environments', value: envData },
+            ])
+          } catch (error) {
+            const detail =
+              error instanceof ApiError
+                ? (error.response as { data?: { detail?: string } } | undefined)
+                    ?.data?.detail || error.message
+                : error instanceof Error
+                  ? error.message
+                  : 'Failed to save'
+            toast.error(`Save failed: ${detail}`)
+            throw error
+          }
+          invalidateProject()
+        }}
+      />
 
-      <EditableKeyValueCard
-        title="Identifiers"
-        entries={project.identifiers || {}}
-        isSaving={identifiersMutation.isPending}
-        readOnlyKeys
-        showHeader={false}
-        valuePlaceholder="identifier"
-        onSave={(entries) => identifiersMutation.mutate(entries)}
+      <EditIdentifiersCard
+        identifiers={project.identifiers || {}}
+        onPatch={(entries) => patch('/identifiers', entries)}
       />
 
       <Card className={'border-amber-300'}>

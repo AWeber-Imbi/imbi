@@ -51,8 +51,11 @@ export function useProjectPatch(
           }
         }
 
-        const result = await patchProject(orgSlug, projectId, [op])
-        qc.setQueryData(key, result)
+        await patchProject(orgSlug, projectId, [op])
+        // The server PATCH response may echo fields in a different shape than
+        // GET returns (e.g. environments as a map vs. an array). Invalidate
+        // so the next read comes from the canonical GET.
+        qc.invalidateQueries({ queryKey: key })
       } catch (error) {
         // Rollback optimistic update
         if (optimisticApplied && snapshot !== undefined) {

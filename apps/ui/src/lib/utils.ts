@@ -51,6 +51,7 @@ export function extractDynamicFields(
  * nullish treated as 0) and falling back to name.localeCompare for ties.
  */
 export function sortEnvironments(environments: Environment[]): Environment[] {
+  if (!Array.isArray(environments)) return []
   return [...environments].sort((a, b) => {
     const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
     return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name)

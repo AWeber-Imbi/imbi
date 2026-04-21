@@ -107,7 +107,7 @@ function App() {
             }
           />
           <Route
-            path="/opslog"
+            path="/operations-log"
             element={
               <ProtectedRoute>
                 <OperationsLogPage />
@@ -129,6 +129,10 @@ function App() {
                 <AdminPage />
               </AdminProtectedRoute>
             }
+          />
+          <Route
+            path="/opslog"
+            element={<Navigate to="/operations-log" replace />}
           />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
