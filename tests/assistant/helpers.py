@@ -2,9 +2,12 @@ import contextlib
 import os
 import pathlib
 import unittest
-from collections import abc
+from typing import TYPE_CHECKING
 
 import dotenv
+
+if TYPE_CHECKING:
+    from collections import abc
 
 
 class TestCase(unittest.IsolatedAsyncioTestCase):
