@@ -24,10 +24,6 @@ jobs:
   test:
     name: "Automated Tests"
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: [ "3.14" ]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -37,7 +33,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          python-version: ${{ matrix.python }}
+          python-version: "3.14"
       - name: Run tests
         env:
           UV_FROZEN: "1"
