@@ -944,7 +944,7 @@ docs = [
 [[package]]
 name = "imbi-common"
 version = "0.1.0"
-source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#f54395f2b75ce4c31f7cc5c60db4ad655c73794b" }
+source = { git = "https://github.com/AWeber-Imbi/imbi-common.git?rev=main#b6ae276c61164c96b69580a40059c5e9a8916d7f" }
 dependencies = [
     { name = "cryptography" },
     { name = "jsonschema-models" },

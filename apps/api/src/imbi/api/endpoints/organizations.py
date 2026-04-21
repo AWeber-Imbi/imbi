@@ -18,6 +18,7 @@ from .link_definitions import link_definitions_router
 from .operations_log import operations_log_project_router
 from .project_types import project_types_router
 from .projects import projects_router
+from .releases import releases_router
 from .teams import teams_router
 from .third_party_services import third_party_services_router
 from .webhooks import project_services_router, webhooks_router
@@ -59,6 +60,10 @@ organizations_router.include_router(
 organizations_router.include_router(
     operations_log_project_router,
     prefix='/{org_slug}/projects/{project_id}/operations-log',
+)
+organizations_router.include_router(
+    releases_router,
+    prefix='/{org_slug}/projects/{project_id}/releases',
 )
 organizations_router.include_router(
     project_services_router,
