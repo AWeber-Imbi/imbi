@@ -1,5 +1,4 @@
 import {
-  ExternalLink,
   TrendingUp,
   TrendingDown,
   Settings as SettingsIcon,
@@ -7,8 +6,6 @@ import {
   Rocket,
 } from 'lucide-react'
 import { getIcon, useIconRegistryVersion } from '@/lib/icons'
-import { resolveColor, resolveIcon } from '@/lib/ui-maps'
-import type { XUiMaps } from '@/lib/ui-maps'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -17,8 +14,6 @@ import {
   CardDescription,
   CardContent,
 } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { EnvironmentBadge } from '@/components/ui/environment-badge'
 import { LabelChip } from '@/components/ui/label-chip'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
@@ -27,46 +22,29 @@ import {
   TooltipContent,
   TooltipProvider,
 } from '@/components/ui/tooltip'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { Link, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { extractApiErrorDetail } from '@/lib/apiError'
 import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import {
   listLinkDefinitions,
-  listEnvironments,
   getProjectSchema,
-  getProjectRelationships,
-  patchProject,
-  deleteProject,
   listTeams,
   listProjectTypes,
 } from '@/api/endpoints'
 import { OperationsLog } from '@/components/OperationsLog'
-import { buildRelationshipEdges } from '@/lib/relationship-edges'
-import type {
-  ProjectSchemaSection,
-  ProjectSchemaSectionProperty,
-} from '@/api/endpoints'
-import { isFieldEditable } from '@/components/ui/inline-edit/field-policy'
-import { InlineField } from '@/components/ui/inline-edit/InlineField'
-import {
-  LazyProjectsGraphCanvas,
-  type GraphProject,
-} from '@/components/LazyProjectsGraphCanvas'
-import { EditRelationshipsDialog } from '@/components/EditRelationshipsDialog'
-import { EditIdentifiersCard } from '@/components/EditIdentifiersCard'
-import { EditLinksCard } from '@/components/EditLinksCard'
-import { EditEnvironmentsCard } from '@/components/EditEnvironmentsCard'
-import type { Project, ProjectRelationship } from '@/types'
+import type { Project } from '@/types'
 import { InlineText } from '@/components/ui/inline-edit/InlineText'
 import { InlineTextarea } from '@/components/ui/inline-edit/InlineTextarea'
 import { InlineSelect } from '@/components/ui/inline-edit/InlineSelect'
 import { InlineMultiSelect } from '@/components/ui/inline-edit/InlineMultiSelect'
 import { useProjectPatch } from '@/hooks/useProjectPatch'
+import { ProjectRelationshipsTab } from '@/components/ProjectRelationshipsTab'
+import { ProjectEnvironmentsCard } from '@/components/ProjectEnvironmentsCard'
+import { ProjectAttributesSection } from '@/components/ProjectAttributesSection'
+import { ProjectSettingsTab } from '@/components/ProjectSettingsTab'
 
 interface ProjectDetailProps {
   project: Project
@@ -87,119 +65,6 @@ const VALID_TABS = [
 type TabType = (typeof VALID_TABS)[number]
 
 const VALID_TAB_SET: Set<string> = new Set(VALID_TABS)
-
-const COLOR_TEXT: Record<string, string> = {
-  green: 'text-green-600',
-  red: 'text-red-600',
-  amber: 'text-amber-600',
-  yellow: 'text-yellow-600',
-  blue: 'text-blue-600',
-  gray: 'text-gray-500',
-  grey: 'text-gray-500',
-}
-
-/** Format a snake_case or camelCase key as a readable label */
-const WORD_OVERRIDES: Record<string, string> = {
-  aws: 'AWS',
-  ci: 'CI',
-  github: 'GitHub',
-  gitlab: 'GitLab',
-  sonarqube: 'SonarQube',
-}
-
-function formatFieldKey(key: string): string {
-  return key
-    .replace(/_/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .split(' ')
-    .map((w) => WORD_OVERRIDES[w.toLowerCase()] ?? w)
-    .join(' ')
-}
-
-/** Render a field value as a display string using schema metadata for formatting. */
-function formatFieldValue(
-  value: unknown,
-  def?: {
-    type?: string | null
-    format?: string | null
-    minimum?: number | null
-    maximum?: number | null
-  },
-): string | null {
-  if (value === null || value === undefined || value === '') return null
-
-  const raw = String(value).trim()
-  if (raw === '') return null
-
-  const type = def?.type
-  const format = def?.format
-
-  // Booleans — stored as strings "true"/"false" from Neo4j
-  if (type === 'boolean' || raw === 'true' || raw === 'false') {
-    return raw === 'true' ? 'True' : 'False'
-  }
-
-  // Dates and datetimes — display as relative time
-  if (format === 'date-time' || format === 'date') {
-    const d = new Date(raw)
-    if (!isNaN(d.getTime())) {
-      return formatDistanceToNow(d, { addSuffix: true })
-    }
-  }
-
-  // Integers
-  if (type === 'integer') {
-    const n = parseInt(raw, 10)
-    if (!isNaN(n)) return n.toLocaleString()
-  }
-
-  // Numbers / floats
-  if (type === 'number') {
-    const n = parseFloat(raw)
-    if (!isNaN(n)) {
-      if (def?.minimum === 0 && def?.maximum === 100) {
-        return (
-          n.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }) + '%'
-        )
-      }
-      return n.toLocaleString()
-    }
-  }
-
-  if (typeof value === 'object') return JSON.stringify(value)
-  return raw
-}
-
-function resolveFieldValue(
-  key: string,
-  _section: ProjectSchemaSection,
-  project: Project,
-): unknown {
-  // Determine if this section is environment-scoped by checking if any
-  // of the project's environments has a matching value for this key.
-  // The API already filtered sections to only applicable envs, so if the
-  // project-level value is absent, check environment objects.
-  const projectValue = project[key]
-  if (
-    projectValue !== null &&
-    projectValue !== undefined &&
-    projectValue !== ''
-  ) {
-    return projectValue
-  }
-  // Fall back to environment objects (e.g. url, or any env-scoped field)
-  for (const env of project.environments || []) {
-    const envVal = env[key]
-    if (envVal !== null && envVal !== undefined && envVal !== '') {
-      return envVal
-    }
-  }
-  return undefined
-}
 
 export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
   const { selectedOrganization } = useOrganization()
@@ -361,49 +226,6 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
     () => projectTypes.map((pt) => ({ value: pt.slug, label: pt.name })),
     [projectTypes],
   )
-
-  const attributeFields = useMemo(() => {
-    if (!projectSchema) return []
-    const seen = new Set<string>()
-    const fields: {
-      key: string
-      label: string
-      value: string | null
-      rawValue: unknown
-      title?: string
-      uiMaps: XUiMaps
-      def: ProjectSchemaSectionProperty
-    }[] = []
-    for (const section of projectSchema.sections) {
-      for (const [key, def] of Object.entries(section.properties)) {
-        if (seen.has(key) || key === 'url') continue
-        seen.add(key)
-        const raw = resolveFieldValue(key, section, project)
-        const isDate = def.format === 'date-time' || def.format === 'date'
-        const xUi = def['x-ui']
-        fields.push({
-          key,
-          label: def.title || formatFieldKey(key),
-          value: formatFieldValue(raw, def),
-          rawValue: raw,
-          title:
-            isDate && raw != null
-              ? new Date(String(raw)).toLocaleString()
-              : undefined,
-          uiMaps: {
-            colorMap: xUi?.['color-map'] ?? undefined,
-            iconMap: xUi?.['icon-map'] ?? undefined,
-            colorRange: xUi?.['color-range'] ?? undefined,
-            iconRange: xUi?.['icon-range'] ?? undefined,
-            colorAge: xUi?.['color-age'] ?? undefined,
-            iconAge: xUi?.['icon-age'] ?? undefined,
-          },
-          def,
-        })
-      }
-    }
-    return fields.sort((a, b) => a.label.localeCompare(b.label))
-  }, [projectSchema, project])
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -619,142 +441,22 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                       </div>
                     )}
 
-                    {attributeFields.map(
-                      ({
-                        key,
-                        label: fieldLabel,
-                        value: fieldValue,
-                        rawValue,
-                        title: fieldTitle,
-                        uiMaps,
-                        def,
-                      }) => {
-                        const mappedColor = resolveColor(uiMaps, rawValue)
-                        const mappedIcon = resolveIcon(uiMaps, rawValue)
-                        const FieldIcon = mappedIcon
-                          ? getIcon(mappedIcon)
-                          : null
-                        const textColorClass = mappedColor
-                          ? (COLOR_TEXT[mappedColor] ?? value)
-                          : value
-                        const editable = isFieldEditable(key, def)
-                        const richDisplay =
-                          fieldValue !== null ? (
-                            <span className="flex items-center gap-1.5">
-                              {FieldIcon && (
-                                <FieldIcon
-                                  className={`h-3.5 w-3.5 flex-shrink-0 ${textColorClass}`}
-                                />
-                              )}
-                              {fieldTitle ? (
-                                <TooltipProvider delayDuration={200}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span
-                                        className={`text-sm ${textColorClass} cursor-help underline decoration-dotted`}
-                                      >
-                                        {fieldValue}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>{fieldTitle}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              ) : (
-                                <span className={`text-sm ${textColorClass}`}>
-                                  {fieldValue}
-                                </span>
-                              )}
-                            </span>
-                          ) : null
-                        return (
-                          <div
-                            key={key}
-                            className={`flex items-center justify-between border-b py-1.5 ${divider} last:border-0`}
-                          >
-                            <span className={`text-sm ${label}`}>
-                              {fieldLabel}
-                            </span>
-                            {editable ? (
-                              <InlineField
-                                def={def}
-                                raw={rawValue}
-                                onCommit={(v) => patch(`/${key}`, v)}
-                                pending={pendingPath === `/${key}`}
-                                display={richDisplay}
-                              />
-                            ) : richDisplay !== null ? (
-                              richDisplay
-                            ) : (
-                              <span className={`text-sm italic ${muted}`}>
-                                Not set
-                              </span>
-                            )}
-                          </div>
-                        )
-                      },
-                    )}
+                    <ProjectAttributesSection
+                      project={project}
+                      projectSchema={projectSchema}
+                      patch={patch}
+                      pendingPath={pendingPath}
+                    />
                   </div>
                 </CardContent>
               </Card>
 
               {/* Environments */}
               {sortedEnvironments.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Environments</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-0">
-                      {sortedEnvironments.map((env) => {
-                        const url =
-                          typeof env.url === 'string'
-                            ? sanitizeHttpUrl(env.url)
-                            : null
-                        const deployment = deploymentStatus[env.slug]
-                        return (
-                          <div
-                            key={env.slug}
-                            className={`flex items-center border-b py-2 ${divider} last:border-0`}
-                          >
-                            <div className="w-32 flex-shrink-0">
-                              <EnvironmentBadge
-                                name={env.name}
-                                slug={env.slug}
-                                label_color={env.label_color}
-                              />
-                            </div>
-                            <div className="flex-1 text-center">
-                              <span className="font-mono text-sm text-tertiary">
-                                {deployment?.version ?? ''}
-                              </span>
-                            </div>
-                            <div className="flex-1 text-right">
-                              {url ? (
-                                <a
-                                  href={url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={
-                                    'inline-flex items-center gap-1.5 text-sm text-warning hover:underline'
-                                  }
-                                >
-                                  {url}
-                                  <ExternalLink className="h-3 w-3 text-warning" />
-                                </a>
-                              ) : (
-                                <span className={`text-sm ${muted}`}>
-                                  &mdash;
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
+                <ProjectEnvironmentsCard
+                  environments={sortedEnvironments}
+                  deploymentStatus={deploymentStatus}
+                />
               )}
             </div>
 
@@ -852,7 +554,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
           <PlaceholderTab name="Configuration" />
         </TabsContent>
         <TabsContent value="relationships">
-          <RelationshipsTab
+          <ProjectRelationshipsTab
             orgSlug={project.team.organization.slug}
             projectId={project.id}
             project={project}
@@ -876,466 +578,9 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
           />
         </TabsContent>
         <TabsContent value="settings">
-          <SettingsTab project={project} />
+          <ProjectSettingsTab project={project} />
         </TabsContent>
       </Tabs>
-    </div>
-  )
-}
-
-type RelFilter = 'all' | 'uses' | 'used-by'
-
-function RelationshipsTab({
-  orgSlug,
-  projectId,
-  project,
-}: {
-  orgSlug: string
-  projectId: string
-  project: Project
-}) {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['project-relationships', orgSlug, projectId],
-    queryFn: () => getProjectRelationships(orgSlug, projectId),
-  })
-  const [filter, setFilter] = useState<RelFilter>('all')
-  const [editDialogOpen, setEditDialogOpen] = useState(false)
-
-  const sub = 'text-tertiary'
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent>
-          <p className={sub}>Loading relationships…</p>
-        </CardContent>
-      </Card>
-    )
-  }
-  if (isError && !data) {
-    return (
-      <Card>
-        <CardContent>
-          <p className={sub}>Failed to load relationships.</p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const rels = data?.relationships ?? []
-
-  const outbound = rels.filter((r) => r.direction === 'outbound')
-  const inbound = rels.filter((r) => r.direction === 'inbound')
-  const outboundVisible = filter !== 'used-by'
-  const inboundVisible = filter !== 'uses'
-  const visibleOutbound = outboundVisible ? outbound : []
-  const visibleInbound = inboundVisible ? inbound : []
-
-  // Build projects and edges for the shared canvas, filtered by visibility.
-  // Deduplicate: a related project can appear in both inbound and outbound.
-  const visibleRels = [...visibleOutbound, ...visibleInbound]
-  const projects: GraphProject[] = Array.from(
-    new Map<string, GraphProject>([
-      [
-        project.id,
-        {
-          id: project.id,
-          name: project.name,
-          project_types: project.project_types?.map((pt) => ({
-            slug: pt.slug,
-            icon: pt.icon ?? null,
-          })),
-        },
-      ],
-      ...visibleRels.map(
-        (r) =>
-          [
-            r.project.id,
-            {
-              id: r.project.id,
-              name: r.project.name,
-              project_types: r.project.project_type
-                ? [
-                    {
-                      slug: r.project.project_type,
-                      icon: r.project.project_type_icon ?? null,
-                    },
-                  ]
-                : [],
-            },
-          ] as [string, GraphProject],
-      ),
-    ]).values(),
-  )
-
-  const edges = Array.from(
-    new Map(
-      buildRelationshipEdges(projectId, visibleRels).map((edge) => [
-        edge.id,
-        edge,
-      ]),
-    ).values(),
-  )
-
-  return (
-    <>
-      {rels.length === 0 ? (
-        <Card>
-          <CardContent className="flex items-center justify-between">
-            <p className={sub}>This project has no relationships.</p>
-            <Button
-              size="sm"
-              className="gap-1 bg-action text-action-foreground hover:bg-action-hover"
-              onClick={() => setEditDialogOpen(true)}
-            >
-              Edit
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div
-          className="grid min-h-[24rem] grid-cols-1 gap-6 lg:grid-cols-[400px_1fr]"
-          style={{
-            height: 'calc(100vh - 22rem - var(--assistant-height, 4rem))',
-          }}
-        >
-          <RelationshipsSidebar
-            outbound={outbound}
-            inbound={inbound}
-            outboundVisible={outboundVisible}
-            inboundVisible={inboundVisible}
-            filter={filter}
-            onFilterChange={setFilter}
-            onAdd={() => setEditDialogOpen(true)}
-          />
-          <LazyProjectsGraphCanvas
-            projects={projects}
-            edges={edges}
-            centerId={projectId}
-          />
-        </div>
-      )}
-      <EditRelationshipsDialog
-        isOpen={editDialogOpen}
-        onClose={() => setEditDialogOpen(false)}
-        projectId={projectId}
-        projectName={project.name}
-        relationships={rels}
-      />
-    </>
-  )
-}
-
-/* ------------------------------------------------------------------ */
-/*  Sidebar                                                           */
-/* ------------------------------------------------------------------ */
-
-interface RelationshipsSidebarProps {
-  outbound: ProjectRelationship[]
-  inbound: ProjectRelationship[]
-  outboundVisible: boolean
-  inboundVisible: boolean
-  filter: RelFilter
-  onFilterChange: (f: RelFilter) => void
-  onAdd: () => void
-}
-
-function RelationshipsSidebar({
-  outbound,
-  inbound,
-  outboundVisible,
-  inboundVisible,
-  filter,
-  onFilterChange,
-  onAdd,
-}: RelationshipsSidebarProps) {
-  const sectionLabel = 'text-tertiary'
-  const sub = 'text-tertiary'
-
-  const chipBase =
-    'rounded-full px-3 py-1 text-xs font-medium transition-colors'
-  const chipSelected = 'bg-amber-500 text-white'
-  const chipUnselected =
-    'border border-input text-secondary hover:border-secondary'
-
-  return (
-    <Card
-      className={`h-full min-h-0 w-full flex-shrink-0 overflow-y-auto ${''}`}
-    >
-      <CardHeader className="p-4 pb-2">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-wrap gap-1.5">
-            {(['all', 'uses', 'used-by'] as const).map((f) => (
-              <Button
-                key={f}
-                type="button"
-                variant="ghost"
-                aria-pressed={filter === f}
-                onClick={() => onFilterChange(f)}
-                className={`h-auto ${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
-              >
-                {f === 'all' ? 'All' : f === 'uses' ? 'Uses' : 'Used by'}
-              </Button>
-            ))}
-          </div>
-          <Button variant="ghost" size="sm" onClick={onAdd}>
-            Edit
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-4 pt-2">
-        {/* Outbound (USES) section */}
-        {outboundVisible && (
-          <div className="mb-4">
-            <h4
-              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
-            >
-              Uses
-            </h4>
-            {outbound.length === 0 ? (
-              <p className={`text-xs ${sub}`}>None</p>
-            ) : (
-              <ul className="space-y-1">
-                {outbound.map((r, i) => (
-                  <SidebarProjectRow key={`out:${r.project.id}:${i}`} rel={r} />
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {/* Inbound (USED BY) section */}
-        {inboundVisible && (
-          <div>
-            <h4
-              className={`mb-2 text-[10px] font-medium uppercase tracking-[0.12em] ${sectionLabel}`}
-            >
-              Used by
-            </h4>
-            {inbound.length === 0 ? (
-              <p className={`text-xs ${sub}`}>None</p>
-            ) : (
-              <ul className="space-y-1">
-                {inbound.map((r, i) => (
-                  <SidebarProjectRow key={`in:${r.project.id}:${i}`} rel={r} />
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function SidebarProjectRow({ rel }: { rel: ProjectRelationship }) {
-  const typeSlug = rel.project.project_type ?? ''
-  const muted = 'text-tertiary'
-
-  return (
-    <li className="flex items-center gap-2 py-1">
-      <Link
-        to={`/projects/${rel.project.id}`}
-        className="truncate text-sm text-warning hover:underline"
-      >
-        {rel.project.name}
-      </Link>
-      {typeSlug && (
-        <span className={`flex-shrink-0 text-[10px] ${muted}`}>{typeSlug}</span>
-      )}
-    </li>
-  )
-}
-
-function SettingsTab({ project }: { project: Project }) {
-  const { selectedOrganization } = useOrganization()
-  const orgSlug = selectedOrganization?.slug || ''
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
-  const { patch } = useProjectPatch(orgSlug, project.id)
-  const [deleteConfirmSlug, setDeleteConfirmSlug] = useState('')
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-
-  const invalidateProject = () => {
-    queryClient.invalidateQueries({
-      queryKey: ['project', orgSlug, project.id],
-    })
-  }
-
-  const mutationErrorHandler = (label: string) => (error: unknown) => {
-    toast.error(`Failed to ${label}: ${extractApiErrorDetail(error)}`)
-  }
-
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteProject(orgSlug, project.id),
-    onSuccess: () => navigate('/'),
-    onError: mutationErrorHandler('delete project'),
-  })
-
-  const {
-    data: linkDefs = [],
-    isLoading: linkDefsLoading,
-    isError: linkDefsError,
-  } = useQuery({
-    queryKey: ['linkDefinitions', orgSlug],
-    queryFn: () => listLinkDefinitions(orgSlug),
-    enabled: !!orgSlug,
-  })
-
-  const sortedEnvironments = useMemo(
-    () => sortEnvironments(project.environments || []),
-    [project.environments],
-  )
-
-  const { data: availableEnvironments = [] } = useQuery({
-    queryKey: ['environments', orgSlug],
-    queryFn: () => listEnvironments(orgSlug),
-    enabled: !!orgSlug,
-  })
-
-  return (
-    <div className="space-y-6">
-      {linkDefsLoading && (
-        <Card>
-          <CardContent>
-            <p className="text-sm text-tertiary">Loading link definitions...</p>
-          </CardContent>
-        </Card>
-      )}
-      {linkDefsError && (
-        <Card>
-          <CardContent>
-            <p className="text-sm text-red-600 dark:text-red-400">
-              Failed to load link definitions.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-      {!linkDefsLoading && !linkDefsError && linkDefs.length > 0 && (
-        <EditLinksCard
-          linkDefs={linkDefs}
-          links={project.links || {}}
-          onPatch={(entries) => patch('/links', entries)}
-        />
-      )}
-
-      <EditEnvironmentsCard
-        environments={sortedEnvironments}
-        availableEnvironments={availableEnvironments}
-        onPatch={async (envData) => {
-          try {
-            await patchProject(orgSlug, project.id, [
-              { op: 'replace', path: '/environments', value: envData },
-            ])
-          } catch (error) {
-            toast.error(`Save failed: ${extractApiErrorDetail(error)}`)
-            throw error
-          }
-          invalidateProject()
-        }}
-      />
-
-      <EditIdentifiersCard
-        identifiers={project.identifiers || {}}
-        onPatch={(entries) => patch('/identifiers', entries)}
-      />
-
-      <Card className="border-amber-300">
-        <CardHeader>
-          <CardTitle>Archive project</CardTitle>
-          <CardDescription className="text-secondary">
-            Archiving the project will make it entirely read only. It will be
-            hidden from the dashboard, won&apos;t show up in searches, and will
-            be disabled as a dependency for any other projects that are
-            dependent upon it.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="outline" size="sm" disabled>
-            Archive project
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card className="border-red-300">
-        <CardHeader>
-          <CardTitle>Delete project</CardTitle>
-          <CardDescription className="text-secondary">
-            This action will <strong>permanently delete</strong>{' '}
-            <code
-              className={
-                'rounded bg-secondary px-1.5 py-0.5 font-mono text-sm text-primary'
-              }
-            >
-              {project.slug}
-            </code>{' '}
-            immediately, removing the project and all associated data, including
-            facts, operation logs, and notes. Are you absolutely sure?
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!showDeleteConfirm ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-danger bg-red-700 text-white hover:bg-red-800"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={!project.id}
-            >
-              Delete Project
-            </Button>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-secondary">
-                Type{' '}
-                <code
-                  className={
-                    'rounded bg-secondary px-1.5 py-0.5 font-mono text-sm text-primary'
-                  }
-                >
-                  {project.slug}
-                </code>{' '}
-                to confirm deletion:
-              </p>
-              <Input
-                value={deleteConfirmSlug}
-                onChange={(e) => setDeleteConfirmSlug(e.target.value)}
-                placeholder={project.slug}
-                disabled={deleteMutation.isPending}
-                className=""
-              />
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className={
-                    'border-danger bg-red-700 text-white hover:bg-red-800'
-                  }
-                  onClick={() => deleteMutation.mutate()}
-                  disabled={
-                    deleteConfirmSlug !== project.slug ||
-                    deleteMutation.isPending
-                  }
-                >
-                  {deleteMutation.isPending ? 'Deleting...' : 'Confirm Delete'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setShowDeleteConfirm(false)
-                    setDeleteConfirmSlug('')
-                  }}
-                  disabled={deleteMutation.isPending}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   )
 }
