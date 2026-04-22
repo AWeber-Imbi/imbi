@@ -1,11 +1,20 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import { iconRegistry } from '@/lib/icon-registry'
-import '@/lib/icon-sets/lucide'
-import '@/lib/icon-sets/simple-icons'
-import '@/lib/icon-sets/phosphor'
-import '@/lib/icon-sets/tabler'
-import '@/lib/icon-sets/devicon'
-import '@/lib/icon-sets/aws'
+import { iconSet as lucideSet } from '@/lib/icon-sets/lucide'
+import { iconSet as simpleIconsSet } from '@/lib/icon-sets/simple-icons'
+import { iconSet as phosphorSet } from '@/lib/icon-sets/phosphor'
+import { iconSet as tablerSet } from '@/lib/icon-sets/tabler'
+import { iconSet as deviconSet } from '@/lib/icon-sets/devicon'
+import { iconSet as awsSet } from '@/lib/icon-sets/aws'
+
+beforeAll(() => {
+  iconRegistry.register(lucideSet)
+  iconRegistry.register(simpleIconsSet)
+  iconRegistry.register(phosphorSet)
+  iconRegistry.register(tablerSet)
+  iconRegistry.register(deviconSet)
+  iconRegistry.register(awsSet)
+})
 
 describe('Lucide icon set', () => {
   it('registers under id "lucide" with label "Lucide"', () => {

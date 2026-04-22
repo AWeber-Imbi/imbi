@@ -1,8 +1,11 @@
 import * as TablerIcons from '@tabler/icons-react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { iconRegistry } from '@/lib/icon-registry'
-import type { IconComponent, IconEntry } from '@/lib/icon-registry'
+import type {
+  IconComponent,
+  IconEntry,
+  IconSetDefinition,
+} from '@/lib/icon-registry'
 import {
   toPascalCase,
   encodeSvgToDataUrl,
@@ -45,7 +48,7 @@ function resolveUrl(value: string, color?: string): string | null {
   }
 }
 
-iconRegistry.register({
+export const iconSet: IconSetDefinition = {
   id: 'tabler',
   label: 'Tabler',
   description: 'Clean open source SVG icons (outline and filled variants)',
@@ -53,4 +56,4 @@ iconRegistry.register({
   icons: TABLER_ICONS,
   resolve,
   resolveUrl,
-})
+}

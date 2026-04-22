@@ -20,6 +20,20 @@ export interface IconSetDefinition {
   resolveUrl: (value: string, color?: string) => string | null
 }
 
+export interface IconSetMeta {
+  id: string
+  label: string
+  description: string
+  valueFormat: string
+}
+
+export interface IconSetLoader {
+  meta: IconSetMeta
+  // Does this loader own `value`? Evaluated in insertion order; first match wins.
+  matches: (value: string) => boolean
+  load: () => Promise<IconSetDefinition>
+}
+
 export interface AgentIconManifest {
   sets: {
     id: string
@@ -31,13 +45,51 @@ export interface AgentIconManifest {
   }[]
 }
 
+type Listener = () => void
+
 export class IconRegistry {
+  private loaders: Map<string, IconSetLoader> = new Map()
   private sets: Map<string, IconSetDefinition> = new Map()
+  private loadPromises: Map<string, Promise<IconSetDefinition>> = new Map()
+  private cachedMetas: IconSetMeta[] | null = null
   private cachedSets: IconSetDefinition[] | null = null
+  private listeners: Set<Listener> = new Set()
+  private version = 0
+
+  registerLoader(loader: IconSetLoader): void {
+    this.loaders.set(loader.meta.id, loader)
+    this.cachedMetas = null
+    this.emit()
+  }
 
   register(set: IconSetDefinition): void {
     this.sets.set(set.id, set)
     this.cachedSets = null
+    this.cachedMetas = null
+    this.emit()
+  }
+
+  getSetMetas(): IconSetMeta[] {
+    if (!this.cachedMetas) {
+      const metas: IconSetMeta[] = []
+      const seen = new Set<string>()
+      for (const loader of this.loaders.values()) {
+        metas.push(loader.meta)
+        seen.add(loader.meta.id)
+      }
+      // Include directly-registered sets without a loader (e.g. test fixtures).
+      for (const set of this.sets.values()) {
+        if (seen.has(set.id)) continue
+        metas.push({
+          id: set.id,
+          label: set.label,
+          description: set.description,
+          valueFormat: set.valueFormat,
+        })
+      }
+      this.cachedMetas = metas.sort((a, b) => a.label.localeCompare(b.label))
+    }
+    return this.cachedMetas
   }
 
   getSets(): IconSetDefinition[] {
@@ -47,6 +99,43 @@ export class IconRegistry {
       )
     }
     return this.cachedSets
+  }
+
+  getLoadedSet(id: string): IconSetDefinition | null {
+    return this.sets.get(id) ?? null
+  }
+
+  isLoaded(id: string): boolean {
+    return this.sets.has(id)
+  }
+
+  loadSet(id: string): Promise<IconSetDefinition | null> {
+    const existing = this.sets.get(id)
+    if (existing) return Promise.resolve(existing)
+    const pending = this.loadPromises.get(id)
+    if (pending) return pending
+    const loader = this.loaders.get(id)
+    if (!loader) return Promise.resolve(null)
+    const promise = loader
+      .load()
+      .then((set) => {
+        this.register(set)
+        this.loadPromises.delete(id)
+        return set
+      })
+      .catch((err) => {
+        this.loadPromises.delete(id)
+        throw err
+      })
+    this.loadPromises.set(id, promise)
+    return promise
+  }
+
+  loadSetFor(value: string): Promise<IconSetDefinition | null> {
+    for (const loader of this.loaders.values()) {
+      if (loader.matches(value)) return this.loadSet(loader.meta.id)
+    }
+    return Promise.resolve(null)
   }
 
   resolve(value: string): IconComponent | null {
@@ -97,6 +186,22 @@ export class IconRegistry {
         count: set.icons.length,
       })),
     }
+  }
+
+  subscribe(listener: Listener): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  getVersion(): number {
+    return this.version
+  }
+
+  private emit(): void {
+    this.version++
+    for (const l of this.listeners) l()
   }
 }
 

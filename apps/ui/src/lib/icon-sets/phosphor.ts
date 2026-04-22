@@ -1,8 +1,11 @@
 import * as PhosphorIcons from '@phosphor-icons/react'
 import { type ComponentType, createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { iconRegistry } from '@/lib/icon-registry'
-import type { IconComponent, IconEntry } from '@/lib/icon-registry'
+import type {
+  IconComponent,
+  IconEntry,
+  IconSetDefinition,
+} from '@/lib/icon-registry'
 import {
   toPascalCase,
   encodeSvgToDataUrl,
@@ -55,7 +58,7 @@ function resolveUrl(value: string, color?: string): string | null {
   }
 }
 
-iconRegistry.register({
+export const iconSet: IconSetDefinition = {
   id: 'phosphor',
   label: 'Phosphor',
   description:
@@ -64,4 +67,4 @@ iconRegistry.register({
   icons: PHOSPHOR_ICONS,
   resolve,
   resolveUrl,
-})
+}

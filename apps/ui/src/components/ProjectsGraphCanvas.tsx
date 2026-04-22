@@ -26,7 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { getIconUrl } from '@/lib/icons'
+import { getIconUrl, useIconRegistryVersion } from '@/lib/icons'
 import {
   EDGE_COLOR_DEPENDS_ON,
   EDGE_COLOR_DEPENDED_UPON,
@@ -111,6 +111,9 @@ export function ProjectsGraphCanvas({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [currentZoom, setCurrentZoom] = useState(100)
   const [isRendering, setIsRendering] = useState(true)
+  // Re-compute nodes when an icon set finishes its dynamic import so graph
+  // icons appear once the chunk arrives.
+  const iconRegistryVersion = useIconRegistryVersion()
 
   // Stable key that forces GraphCanvas to remount when layout or node set changes.
   const graphKey = useMemo(() => {
@@ -209,7 +212,8 @@ export function ProjectsGraphCanvas({
           data: p,
         }
       }),
-    [projects, centerId, nodeEdgeColor],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects, centerId, nodeEdgeColor, iconRegistryVersion],
   )
 
   const {

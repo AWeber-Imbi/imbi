@@ -1,5 +1,8 @@
-import { iconRegistry } from '@/lib/icon-registry'
-import type { IconComponent, IconEntry } from '@/lib/icon-registry'
+import type {
+  IconComponent,
+  IconEntry,
+  IconSetDefinition,
+} from '@/lib/icon-registry'
 import { createImgComponent } from '@/lib/icon-sets/utils'
 
 const awsArchGlob = import.meta.glob<string>(
@@ -64,7 +67,7 @@ function resolveUrl(value: string): string | null {
   return resolveAwsUrl(value)
 }
 
-iconRegistry.register({
+export const iconSet: IconSetDefinition = {
   id: 'aws',
   label: 'AWS',
   description: 'Amazon Web Services architecture and resource icons',
@@ -72,4 +75,4 @@ iconRegistry.register({
   icons: AWS_ICONS,
   resolve,
   resolveUrl,
-})
+}

@@ -6,7 +6,7 @@ import {
   ArrowRight,
   Rocket,
 } from 'lucide-react'
-import { getIcon } from '@/lib/icons'
+import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { resolveColor, resolveIcon } from '@/lib/ui-maps'
 import type { XUiMaps } from '@/lib/ui-maps'
 import { Button } from '@/components/ui/button'
@@ -324,6 +324,10 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
     enabled: !!orgSlug,
   })
 
+  // Bumps when an icon-set chunk finishes loading; include in useMemo deps
+  // where icons are resolved so they refresh once available.
+  const iconRegistryVersion = useIconRegistryVersion()
+
   const linkDefMap = useMemo(
     () => Object.fromEntries(linkDefs.map((ld) => [ld.slug, ld])),
     [linkDefs],
@@ -344,7 +348,8 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
           }
         })
         .filter((link): link is NonNullable<typeof link> => link !== null),
-    [project.links, linkDefMap],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [project.links, linkDefMap, iconRegistryVersion],
   )
 
   const teamOptions = useMemo(

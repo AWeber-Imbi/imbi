@@ -7,7 +7,7 @@ import {
   HoverCardTrigger,
   HoverCardContent,
 } from '@/components/ui/hover-card'
-import { getIcon, iconRegistry } from '@/lib/icons'
+import { getIcon, iconRegistry, useIconRegistryVersion } from '@/lib/icons'
 import type { IconComponent } from '@/lib/icons'
 
 const MAX_RESULTS = 60
@@ -23,9 +23,26 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
   const [iconSet, setIconSet] = useState('lucide')
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const sets = iconRegistry.getSets()
-  const currentSet = sets.find((s) => s.id === iconSet)
-  const icons = useMemo(() => currentSet?.icons ?? [], [currentSet])
+  const version = useIconRegistryVersion()
+  // Metas are known up-front from loader registration; the set's actual
+  // icons arrive async once the chunk for `iconSet` has loaded.
+  const setMetas = useMemo(
+    () => iconRegistry.getSetMetas(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version],
+  )
+  const currentSet = iconRegistry.getLoadedSet(iconSet)
+  const icons = useMemo(
+    () => currentSet?.icons ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentSet, version],
+  )
+
+  useEffect(() => {
+    if (open && !iconRegistry.isLoaded(iconSet)) {
+      void iconRegistry.loadSet(iconSet)
+    }
+  }, [open, iconSet])
 
   const filtered = useMemo(() => {
     if (!query.trim()) return icons.slice(0, MAX_RESULTS)
@@ -115,7 +132,7 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
         <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
           <div className="p-2">
             <div className="mb-2 flex flex-wrap gap-1">
-              {sets.map((set) => (
+              {setMetas.map((set) => (
                 <button
                   key={set.id}
                   type="button"
@@ -144,7 +161,11 @@ export function IconPicker({ value, onChange }: IconPickerProps) {
             </div>
           </div>
           <div className="max-h-64 overflow-y-auto px-2 pb-2">
-            {filtered.length === 0 ? (
+            {!currentSet ? (
+              <div className="py-6 text-center text-sm text-tertiary">
+                Loading icons…
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="py-6 text-center text-sm text-tertiary">
                 No icons found
               </div>

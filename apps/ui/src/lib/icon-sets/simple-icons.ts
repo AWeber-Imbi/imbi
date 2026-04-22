@@ -1,8 +1,11 @@
 import * as simpleIcons from '@icons-pack/react-simple-icons'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { iconRegistry } from '@/lib/icon-registry'
-import type { IconComponent, IconEntry } from '@/lib/icon-registry'
+import type {
+  IconComponent,
+  IconEntry,
+  IconSetDefinition,
+} from '@/lib/icon-registry'
 import { toPascalCase, encodeSvgToDataUrl } from '@/lib/icon-sets/utils'
 
 const siLookup = simpleIcons as Record<string, unknown>
@@ -40,7 +43,7 @@ function resolveUrl(value: string, color?: string): string | null {
   }
 }
 
-iconRegistry.register({
+export const iconSet: IconSetDefinition = {
   id: 'simple-icons',
   label: 'Simple Icons',
   description: 'Brand icons for popular services, frameworks, and tools',
@@ -48,4 +51,4 @@ iconRegistry.register({
   icons: SI_ICONS,
   resolve,
   resolveUrl,
-})
+}

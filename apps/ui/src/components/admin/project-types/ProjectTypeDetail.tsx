@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
 import { getProjectTypeSchema } from '@/api/endpoints'
 import { PROJECT_TYPE_BASE_FIELDS_SET } from '@/lib/constants'
-import { getIcon } from '@/lib/icons'
+import { useIcon } from '@/lib/icons'
 import { extractDynamicFields } from '@/lib/utils'
 import type { ProjectType } from '@/types'
 
@@ -25,6 +25,8 @@ export function ProjectTypeDetail({
     queryFn: getProjectTypeSchema,
     staleTime: 5 * 60 * 1000,
   })
+
+  const HeaderIcon = useIcon(projectType.icon ?? null, null)
 
   return (
     <div className="space-y-6">
@@ -48,12 +50,9 @@ export function ProjectTypeDetail({
                     alt=""
                     className="h-8 w-8 rounded object-cover"
                   />
-                ) : (
-                  (() => {
-                    const Icon = getIcon(projectType.icon, null)
-                    return Icon ? <Icon className="h-8 w-8" /> : null
-                  })()
-                ))}
+                ) : HeaderIcon ? (
+                  <HeaderIcon className="h-8 w-8" />
+                ) : null)}
               <CardTitle>{projectType.name}</CardTitle>
             </div>
             {projectType.description && (

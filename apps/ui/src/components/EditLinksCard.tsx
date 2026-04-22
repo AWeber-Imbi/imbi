@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { getIcon } from '@/lib/icons'
+import { getIcon, useIconRegistryVersion } from '@/lib/icons'
 import { EditableKeyValueMap } from '@/components/ui/EditableKeyValueMap'
 import { useEditableKeyValueMap } from '@/hooks/useEditableKeyValueMap'
 import type { LinkDefinition } from '@/types'
@@ -24,6 +24,8 @@ export function EditLinksCard({
   links,
   onPatch,
 }: EditLinksCardProps) {
+  useIconRegistryVersion()
+
   const serverMap = useMemo(() => links ?? {}, [links])
 
   const state = useEditableKeyValueMap<string>({

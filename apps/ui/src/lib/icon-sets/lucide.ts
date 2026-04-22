@@ -1,8 +1,11 @@
 import { icons as lucideIcons } from 'lucide-react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { iconRegistry } from '@/lib/icon-registry'
-import type { IconComponent, IconEntry } from '@/lib/icon-registry'
+import type {
+  IconComponent,
+  IconEntry,
+  IconSetDefinition,
+} from '@/lib/icon-registry'
 import { toPascalCase, encodeSvgToDataUrl } from '@/lib/icon-sets/utils'
 
 export const LUCIDE_ICONS: IconEntry[] = Object.keys(lucideIcons)
@@ -36,7 +39,7 @@ function resolveUrl(value: string, color?: string): string | null {
   }
 }
 
-iconRegistry.register({
+export const iconSet: IconSetDefinition = {
   id: 'lucide',
   label: 'Lucide',
   description: 'General purpose outline icons for UI elements',
@@ -44,4 +47,4 @@ iconRegistry.register({
   icons: LUCIDE_ICONS,
   resolve,
   resolveUrl,
-})
+}

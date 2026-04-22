@@ -1,6 +1,9 @@
 import { createElement } from 'react'
-import { iconRegistry } from '@/lib/icon-registry'
-import type { IconComponent, IconEntry } from '@/lib/icon-registry'
+import type {
+  IconComponent,
+  IconEntry,
+  IconSetDefinition,
+} from '@/lib/icon-registry'
 
 const deviconGlob = import.meta.glob<string>(
   '/node_modules/devicon/icons/**/*.svg',
@@ -69,7 +72,7 @@ function resolveUrl(value: string): string | null {
   return deviconIndex[value] ?? null
 }
 
-iconRegistry.register({
+export const iconSet: IconSetDefinition = {
   id: 'devicon',
   label: 'Devicon',
   description:
@@ -78,4 +81,4 @@ iconRegistry.register({
   icons: DEVICON_ICONS,
   resolve,
   resolveUrl,
-})
+}
