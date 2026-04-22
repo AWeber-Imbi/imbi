@@ -5,6 +5,15 @@ import { extractApiErrorDetail } from '@/lib/apiError'
 import { Plus, Search, Trash2, Webhook, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { WebhookForm } from '../webhooks/WebhookForm'
 import { WebhookDetail } from '../webhooks/WebhookDetail'
 import {
@@ -31,6 +40,11 @@ export function ServiceWebhookList({
   const [viewMode, _setViewMode] = useState<ViewMode>('list')
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [confirm, setConfirm] = useState<{
+    action: 'delete'
+    slug: string
+    name: string
+  } | null>(null)
 
   const setViewMode = useCallback(
     (mode: ViewMode) => {
@@ -113,11 +127,8 @@ export function ServiceWebhookList({
 
   const handleDelete = (slug: string) => {
     const wh = webhooks.find((w) => w.slug === slug)
-    if (
-      wh &&
-      confirm(`Delete webhook "${wh.name}"? This action cannot be undone.`)
-    ) {
-      deleteMutation.mutate(slug)
+    if (wh) {
+      setConfirm({ action: 'delete', slug, name: wh.name })
     }
   }
 
@@ -242,26 +253,26 @@ export function ServiceWebhookList({
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <table className="w-full">
-            <thead className="border-b border-tertiary">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+          <Table>
+            <TableHeader className="border-b border-tertiary">
+              <TableRow>
+                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Webhook
-                </th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                </TableHead>
+                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Path
-                </th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                </TableHead>
+                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Rules
-                </th>
-                <th className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
+                </TableHead>
+                <TableHead className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
                   Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-tertiary">
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y divide-tertiary">
               {filteredWebhooks.map((wh) => (
-                <tr
+                <TableRow
                   key={wh.slug}
                   onClick={() => {
                     setSelectedSlug(wh.slug)
@@ -279,7 +290,7 @@ export function ServiceWebhookList({
                   aria-label={`View webhook ${wh.name}`}
                   className="hover:bg-secondary/50 cursor-pointer"
                 >
-                  <td className="px-6 py-4">
+                  <TableCell className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30">
                         <Webhook
@@ -301,16 +312,16 @@ export function ServiceWebhookList({
                         )}
                       </div>
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
+                  </TableCell>
+                  <TableCell className="px-6 py-4">
                     <code className="rounded bg-secondary px-2 py-1 text-xs text-primary">
                       {wh.notification_path}
                     </code>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-secondary">
+                  </TableCell>
+                  <TableCell className="px-6 py-4 text-sm text-secondary">
                     {wh.rules.length}
-                  </td>
-                  <td
+                  </TableCell>
+                  <TableCell
                     className="px-6 py-4 text-right"
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
@@ -327,13 +338,30 @@ export function ServiceWebhookList({
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
+      <ConfirmDialog
+        open={confirm?.action === 'delete'}
+        title="Delete webhook"
+        description={
+          confirm?.action === 'delete'
+            ? `Delete webhook "${confirm.name}"? This action cannot be undone.`
+            : 'This action cannot be undone.'
+        }
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (confirm?.action === 'delete') {
+            deleteMutation.mutate(confirm.slug)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

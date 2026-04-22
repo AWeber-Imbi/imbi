@@ -30,6 +30,7 @@ import { LinkDefinitionManagement } from './admin/LinkDefinitionManagement'
 import { WebhookManagement } from './admin/WebhookManagement'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useNavigate, useParams } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
 
 type AdminSection =
   | 'teams'
@@ -180,14 +181,15 @@ export function Admin() {
     const Icon = sectionDef.icon
     const isActive = currentSection === sectionDef.id
     return (
-      <button
+      <Button
         key={sectionDef.id}
+        variant="ghost"
         onClick={() => navigate(`/admin/${sectionDef.id}`)}
-        className={`flex w-full items-start gap-3 rounded-lg text-left transition-colors ${
+        className={`h-auto w-full items-start justify-start rounded-lg text-left transition-colors ${
           isCollapsed ? 'justify-center px-3 py-3' : 'px-4 py-3'
         } ${
           isActive
-            ? 'bg-amber-bg text-amber-text'
+            ? 'bg-amber-bg text-amber-text hover:bg-amber-bg hover:text-amber-text'
             : 'text-secondary hover:bg-secondary hover:text-primary'
         }`}
         title={isCollapsed ? sectionDef.label : undefined}
@@ -205,7 +207,7 @@ export function Admin() {
             )}
           </>
         )}
-      </button>
+      </Button>
     )
   }
 
@@ -223,9 +225,11 @@ export function Admin() {
             className={`absolute z-10 ${isCollapsed ? 'left-1/2 -translate-x-1/2' : 'right-2'}`}
             style={{ top: '22px' }}
           >
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="rounded-lg p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary"
+              className="h-auto w-auto rounded-lg p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary"
               title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
               {isCollapsed ? (
@@ -233,7 +237,7 @@ export function Admin() {
               ) : (
                 <ChevronLeft className="h-5 w-5" />
               )}
-            </button>
+            </Button>
           </div>
 
           <nav

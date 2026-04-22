@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import { Activity, LoaderCircle, SearchX, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { LoadingState } from '@/components/ui/loading-state'
 import { cn } from '@/lib/utils'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useInfiniteOperationsLog } from '@/hooks/useInfiniteOperationsLog'
@@ -591,18 +592,20 @@ export function OperationsLog({
                   Filters
                 </span>
                 {activeChips.map((c) => (
-                  <button
+                  <Button
                     key={c.key}
                     type="button"
+                    variant="ghost"
                     onClick={c.clear}
-                    className="inline-flex h-6 items-center gap-1 rounded bg-secondary px-2 text-[12px] text-secondary hover:text-primary"
+                    className="h-6 rounded bg-secondary px-2 text-[12px] text-secondary hover:text-primary"
                   >
                     <span className="truncate">{c.label}</span>
                     <X className="h-3 w-3" />
-                  </button>
+                  </Button>
                 ))}
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={() =>
                     setFilters({
                       range: filters.range,
@@ -612,10 +615,10 @@ export function OperationsLog({
                       project_slugs: [],
                     })
                   }
-                  className="ml-1 rounded px-2 py-0.5 text-[12px] text-tertiary hover:bg-secondary hover:text-primary"
+                  className="ml-1 h-auto rounded px-2 py-0.5 text-[12px] text-tertiary hover:bg-secondary hover:text-primary"
                 >
                   Clear all
-                </button>
+                </Button>
               </div>
             )}
 
@@ -648,11 +651,7 @@ export function OperationsLog({
               </div>
             )}
 
-            {isLoading && (
-              <div className="rounded-md border border-tertiary bg-primary px-4 py-16 text-center text-secondary">
-                Loading operations log…
-              </div>
-            )}
+            {isLoading && <LoadingState label="Loading operations log…" />}
 
             {!isLoading &&
               !isError &&

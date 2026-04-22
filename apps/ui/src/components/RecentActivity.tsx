@@ -1,5 +1,6 @@
 import md5 from 'md5'
 import { Card } from './ui/card'
+import { Button } from './ui/button'
 import type { ActivityFeedEntry } from '@/types'
 
 interface RecentActivityProps {
@@ -103,24 +104,26 @@ export function RecentActivity({
 
             <div className="min-w-0 flex-1">
               <p className="text-sm leading-relaxed text-secondary">
-                <button
+                <Button
+                  variant="link"
                   onClick={() => onUserSelect?.(activity.display_name)}
-                  className="font-medium text-primary transition-colors hover:text-info"
+                  className="h-auto p-0 font-medium text-primary transition-colors hover:text-info"
                 >
                   {activity.display_name}
-                </button>{' '}
+                </Button>{' '}
                 {activity.type === 'OperationsLogEntry'
                   ? activity.change_type.toLowerCase()
                   : activity.what === 'updated facts'
                     ? 'updated facts for the'
                     : activity.what}{' '}
                 {activity.project_name && (
-                  <button
+                  <Button
+                    variant="link"
                     onClick={() => onProjectSelect?.(activity.project_name!)}
-                    className="hover:text-info/80 font-medium text-info transition-colors"
+                    className="hover:text-info/80 h-auto p-0 font-medium text-info transition-colors"
                   >
                     {activity.project_name}
-                  </button>
+                  </Button>
                 )}
                 {activity.type === 'OperationsLogEntry' &&
                   activity.environment && (
@@ -159,13 +162,14 @@ export function RecentActivity({
       {/* Load More Button */}
       {onLoadMore && (
         <div className="pt-4 text-center">
-          <button
+          <Button
+            variant="link"
             onClick={onLoadMore}
             disabled={isLoadingMore}
-            className="hover:text-info/80 text-sm text-info transition-colors disabled:opacity-50"
+            className="hover:text-info/80 h-auto p-0 text-sm text-info transition-colors disabled:opacity-50"
           >
             {isLoadingMore ? 'Loading more...' : 'Load more activity'}
-          </button>
+          </Button>
         </div>
       )}
     </div>

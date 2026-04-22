@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import {
   listServiceAccountApiKeys,
@@ -88,6 +89,16 @@ export function ServiceAccountDetail({
   const [showAddOrg, setShowAddOrg] = useState(false)
   const [newOrgSlug, setNewOrgSlug] = useState('')
   const [newRoleSlug, setNewRoleSlug] = useState('')
+
+  // Confirm dialog state (covers 5 destructive actions)
+  const [confirm, setConfirm] = useState<
+    | { action: 'revoke-key'; keyId: string }
+    | { action: 'rotate-key'; keyId: string }
+    | { action: 'revoke-credential'; clientId: string }
+    | { action: 'rotate-credential'; clientId: string }
+    | { action: 'remove-org'; orgSlug: string; orgName: string }
+    | null
+  >(null)
 
   const {
     data: availableRoles = [],
@@ -325,23 +336,11 @@ export function ServiceAccountDetail({
   }
 
   const handleRevokeKey = (keyId: string) => {
-    if (
-      confirm(
-        'Are you sure you want to revoke this API key? This action cannot be undone.',
-      )
-    ) {
-      revokeKeyMutation.mutate(keyId)
-    }
+    setConfirm({ action: 'revoke-key', keyId })
   }
 
   const handleRotateKey = (keyId: string) => {
-    if (
-      confirm(
-        'Are you sure you want to rotate this API key? The old key will stop working immediately.',
-      )
-    ) {
-      rotateKeyMutation.mutate(keyId)
-    }
+    setConfirm({ action: 'rotate-key', keyId })
   }
 
   const handleCreateCredential = () => {
@@ -370,23 +369,11 @@ export function ServiceAccountDetail({
   }
 
   const handleRevokeCredential = (clientId: string) => {
-    if (
-      confirm(
-        'Are you sure you want to revoke this credential? This action cannot be undone.',
-      )
-    ) {
-      revokeCredentialMutation.mutate(clientId)
-    }
+    setConfirm({ action: 'revoke-credential', clientId })
   }
 
   const handleRotateCredential = (clientId: string) => {
-    if (
-      confirm(
-        'Are you sure you want to rotate this credential? The old secret will stop working immediately.',
-      )
-    ) {
-      rotateCredentialMutation.mutate(clientId)
-    }
+    setConfirm({ action: 'rotate-credential', clientId })
   }
 
   const truncateClientId = (clientId: string) => {
@@ -588,17 +575,13 @@ export function ServiceAccountDetail({
                             <button
                               type="button"
                               aria-label={`Remove from ${membership.organization_name}`}
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    `Remove ${account.display_name} from ${membership.organization_name}?`,
-                                  )
-                                ) {
-                                  removeOrgMutation.mutate(
-                                    membership.organization_slug,
-                                  )
-                                }
-                              }}
+                              onClick={() =>
+                                setConfirm({
+                                  action: 'remove-org',
+                                  orgSlug: membership.organization_slug,
+                                  orgName: membership.organization_name,
+                                })
+                              }
                               disabled={removeOrgMutation.isPending}
                               className="rounded p-1.5 text-danger hover:bg-secondary"
                             >
@@ -1183,6 +1166,75 @@ export function ServiceAccountDetail({
           </div>
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={confirm?.action === 'revoke-key'}
+        title="Revoke API key"
+        description="Are you sure you want to revoke this API key? This action cannot be undone."
+        confirmLabel="Revoke"
+        onConfirm={() => {
+          if (confirm?.action === 'revoke-key') {
+            revokeKeyMutation.mutate(confirm.keyId)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm?.action === 'rotate-key'}
+        title="Rotate API key"
+        description="Are you sure you want to rotate this API key? The old key will stop working immediately."
+        confirmLabel="Rotate"
+        onConfirm={() => {
+          if (confirm?.action === 'rotate-key') {
+            rotateKeyMutation.mutate(confirm.keyId)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm?.action === 'revoke-credential'}
+        title="Revoke credential"
+        description="Are you sure you want to revoke this credential? This action cannot be undone."
+        confirmLabel="Revoke"
+        onConfirm={() => {
+          if (confirm?.action === 'revoke-credential') {
+            revokeCredentialMutation.mutate(confirm.clientId)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm?.action === 'rotate-credential'}
+        title="Rotate credential"
+        description="Are you sure you want to rotate this credential? The old secret will stop working immediately."
+        confirmLabel="Rotate"
+        onConfirm={() => {
+          if (confirm?.action === 'rotate-credential') {
+            rotateCredentialMutation.mutate(confirm.clientId)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm?.action === 'remove-org'}
+        title="Remove from organization"
+        description={
+          confirm?.action === 'remove-org'
+            ? `Remove ${account.display_name} from ${confirm.orgName}?`
+            : 'This action cannot be undone.'
+        }
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (confirm?.action === 'remove-org') {
+            removeOrgMutation.mutate(confirm.orgSlug)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

@@ -15,8 +15,17 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Gravatar } from '@/components/ui/gravatar'
 import { DynamicDetailFields } from '@/components/ui/dynamic-fields'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import {
   getTeamMembers,
   addTeamMember,
@@ -44,6 +53,10 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
   const queryClient = useQueryClient()
   const [showAddMember, setShowAddMember] = useState(false)
   const [newMemberEmail, setNewMemberEmail] = useState('')
+  const [confirm, setConfirm] = useState<{
+    action: 'remove'
+    email: string
+  } | null>(null)
 
   const {
     data: members = [],
@@ -94,9 +107,7 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
   }
 
   const handleRemoveMember = (email: string) => {
-    if (confirm('Remove this member from the team?')) {
-      removeMemberMutation.mutate(email)
-    }
+    setConfirm({ action: 'remove', email })
   }
 
   return (
@@ -234,27 +245,27 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
               No members in this team yet. Click "Add Member" to get started.
             </div>
           ) : (
-            <table className="w-full">
-              <thead className="border-b border-tertiary bg-secondary">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary">
+            <Table>
+              <TableHeader className="border-b border-tertiary bg-secondary">
+                <TableRow>
+                  <TableHead className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary">
                     Member
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary">
+                  </TableHead>
+                  <TableHead className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary">
                     Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary">
+                  </TableHead>
+                  <TableHead className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary">
                     Status
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-tertiary">
+                  </TableHead>
+                  <TableHead className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-tertiary">
                     Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-tertiary">
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-tertiary">
                 {members.map((member) => (
-                  <tr key={member.email} className="hover:bg-secondary">
-                    <td className="px-6 py-4">
+                  <TableRow key={member.email} className="hover:bg-secondary">
+                    <TableCell className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <Gravatar
                           email={member.email}
@@ -266,16 +277,16 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
                           {member.display_name}
                         </div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-secondary">
+                    </TableCell>
+                    <TableCell className="px-6 py-4 text-sm text-secondary">
                       {member.email}
-                    </td>
-                    <td className="px-6 py-4">
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
                       <Badge variant={member.is_active ? 'success' : 'neutral'}>
                         {member.is_active ? 'Active' : 'Inactive'}
                       </Badge>
-                    </td>
-                    <td className="px-6 py-4 text-right">
+                    </TableCell>
+                    <TableCell className="px-6 py-4 text-right">
                       <TooltipProvider delayDuration={200}>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -295,14 +306,27 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={confirm?.action === 'remove'}
+        title="Remove team member"
+        description="Remove this member from the team?"
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (confirm?.action === 'remove') {
+            removeMemberMutation.mutate(confirm.email)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

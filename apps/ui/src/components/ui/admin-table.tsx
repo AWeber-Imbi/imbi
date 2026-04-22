@@ -158,8 +158,9 @@ export function AdminTable<T>({
                 const parts = blockedBy.map((b, i) => (
                   <span key={i}>
                     {b.href ? (
-                      <button
-                        className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 font-medium text-primary underline underline-offset-2 hover:opacity-80"
                         onClick={() => {
                           setBlockedTarget(null)
                           navigate(b.href!)
@@ -167,7 +168,7 @@ export function AdminTable<T>({
                       >
                         {b.count} {b.label}
                         {b.count !== 1 ? 's' : ''}
-                      </button>
+                      </Button>
                     ) : (
                       <span className="font-medium">
                         {b.count} {b.label}

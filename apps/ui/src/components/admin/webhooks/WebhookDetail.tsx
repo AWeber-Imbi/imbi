@@ -2,6 +2,14 @@ import { ArrowLeft, Edit2, Webhook } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { EntityIcon } from '@/components/ui/entity-icon'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import type { Webhook as WebhookType } from '@/types'
 
 interface WebhookDetailProps {
@@ -109,40 +117,40 @@ export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="border-b border-tertiary">
-                  <tr>
-                    <th className="w-12 px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary">
+              <Table>
+                <TableHeader className="border-b border-tertiary">
+                  <TableRow>
+                    <TableHead className="w-12 px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary">
                       #
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary">
+                    </TableHead>
+                    <TableHead className="px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary">
                       Filter Expression
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary">
+                    </TableHead>
+                    <TableHead className="px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary">
                       Handler
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary">
+                    </TableHead>
+                    <TableHead className="px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary">
                       Config
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-tertiary">
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-tertiary">
                   {webhook.rules.map((rule, index) => (
-                    <tr key={index}>
-                      <td className="px-4 py-3 text-sm text-tertiary">
+                    <TableRow key={index}>
+                      <TableCell className="px-4 py-3 text-sm text-tertiary">
                         {index + 1}
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
                           {rule.filter_expression}
                         </code>
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         <code className="rounded bg-secondary px-2 py-1 text-sm text-primary">
                           {rule.handler}
                         </code>
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
                         {rule.handler_config &&
                         (Array.isArray(rule.handler_config)
                           ? rule.handler_config.length > 0
@@ -153,11 +161,11 @@ export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
                         ) : (
                           <span className="text-tertiary">--</span>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

@@ -172,7 +172,12 @@ export function NewProjectDialog({
         if (e.key === 'Escape') handleClose()
       }}
     >
-      <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
+      <button
+        type="button"
+        aria-label="Close dialog"
+        className="fixed inset-0 bg-black/50"
+        onClick={handleClose}
+      />
       <div className="relative mx-4 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-xl">
         {/* Header */}
         <div className="border-b p-6">

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Gravatar } from '@/components/ui/gravatar'
 import {
   getRoles,
@@ -45,6 +46,11 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
   const [showAddOrg, setShowAddOrg] = useState(false)
   const [newOrgSlug, setNewOrgSlug] = useState('')
   const [newRoleSlug, setNewRoleSlug] = useState('')
+  const [confirm, setConfirm] = useState<{
+    action: 'remove-org'
+    orgSlug: string
+    orgName: string
+  } | null>(null)
 
   const { data: availableRoles = [] } = useQuery({
     queryKey: ['roles'],
@@ -358,17 +364,13 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  `Remove ${user.display_name} from ${membership.organization_name}?`,
-                                )
-                              ) {
-                                removeOrgMutation.mutate(
-                                  membership.organization_slug,
-                                )
-                              }
-                            }}
+                            onClick={() =>
+                              setConfirm({
+                                action: 'remove-org',
+                                orgSlug: membership.organization_slug,
+                                orgName: membership.organization_name,
+                              })
+                            }
                             disabled={removeOrgMutation.isPending}
                             className="rounded p-1.5 text-danger hover:bg-secondary"
                           >
@@ -410,6 +412,23 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
           </div>
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={confirm?.action === 'remove-org'}
+        title="Remove from organization"
+        description={
+          confirm?.action === 'remove-org'
+            ? `Remove ${user.display_name} from ${confirm.orgName}?`
+            : 'This action cannot be undone.'
+        }
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (confirm?.action === 'remove-org') {
+            removeOrgMutation.mutate(confirm.orgSlug)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

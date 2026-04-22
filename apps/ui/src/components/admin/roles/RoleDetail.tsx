@@ -18,7 +18,16 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Gravatar } from '@/components/ui/gravatar'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import {
   getRole,
   getAdminSettings,
@@ -49,6 +58,10 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
   const [activeTab, setActiveTab] = useState<DetailTab>('permissions')
   const [showAddPermission, setShowAddPermission] = useState(false)
   const [selectedPermission, setSelectedPermission] = useState('')
+  const [confirm, setConfirm] = useState<{
+    action: 'revoke'
+    permName: string
+  } | null>(null)
 
   // Fetch role with permissions
   const {
@@ -138,9 +151,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
   }
 
   const handleRevokePermission = (permName: string) => {
-    if (confirm(`Remove permission "${permName}" from this role?`)) {
-      revokeMutation.mutate(permName)
-    }
+    setConfirm({ action: 'revoke', permName })
   }
 
   // Group permissions by resource type
@@ -353,37 +364,40 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           ) : (
             <Card className="overflow-hidden">
               <CardContent className="p-0">
-                <table className="w-full">
-                  <thead className="border-b border-tertiary bg-secondary">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                <Table>
+                  <TableHeader className="border-b border-tertiary bg-secondary">
+                    <TableRow>
+                      <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                         Permission
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                      </TableHead>
+                      <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                         Description
-                      </th>
+                      </TableHead>
                       {!role.is_system && (
-                        <th className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
+                        <TableHead className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
                           Actions
-                        </th>
+                        </TableHead>
                       )}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-tertiary">
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="divide-y divide-tertiary">
                     {(role.permissions || [])
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((perm) => (
-                        <tr key={perm.name} className="hover:bg-secondary">
-                          <td className="px-6 py-4 text-primary">
+                        <TableRow
+                          key={perm.name}
+                          className="hover:bg-secondary"
+                        >
+                          <TableCell className="px-6 py-4 text-primary">
                             <code className="rounded bg-secondary px-2 py-1 text-sm text-info">
                               {perm.name}
                             </code>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-secondary">
+                          </TableCell>
+                          <TableCell className="px-6 py-4 text-sm text-secondary">
                             {perm.description || perm.action}
-                          </td>
+                          </TableCell>
                           {!role.is_system && (
-                            <td className="px-6 py-4 text-right">
+                            <TableCell className="px-6 py-4 text-right">
                               <TooltipProvider delayDuration={200}>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -402,12 +416,12 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                                   </TooltipContent>
                                 </Tooltip>
                               </TooltipProvider>
-                            </td>
+                            </TableCell>
                           )}
-                        </tr>
+                        </TableRow>
                       ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           )}
@@ -703,6 +717,23 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirm?.action === 'revoke'}
+        title="Remove permission"
+        description={
+          confirm?.action === 'revoke'
+            ? `Remove permission "${confirm.permName}" from this role?`
+            : 'This action cannot be undone.'
+        }
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (confirm?.action === 'revoke') {
+            revokeMutation.mutate(confirm.permName)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }

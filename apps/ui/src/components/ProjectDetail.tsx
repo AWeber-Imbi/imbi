@@ -1066,15 +1066,16 @@ function RelationshipsSidebar({
         <div className="flex items-center justify-between">
           <div className="flex flex-wrap gap-1.5">
             {(['all', 'uses', 'used-by'] as const).map((f) => (
-              <button
+              <Button
                 key={f}
                 type="button"
+                variant="ghost"
                 aria-pressed={filter === f}
                 onClick={() => onFilterChange(f)}
-                className={`${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
+                className={`h-auto ${chipBase} ${filter === f ? chipSelected : chipUnselected}`}
               >
                 {f === 'all' ? 'All' : f === 'uses' ? 'Uses' : 'Used by'}
-              </button>
+              </Button>
             ))}
           </div>
           <Button variant="ghost" size="sm" onClick={onAdd}>

@@ -2,6 +2,14 @@ import { Search, Plus, Grid3x3, List, Network } from 'lucide-react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card } from './ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './ui/table'
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -230,67 +238,67 @@ export function ProjectsView() {
       ) : (
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b border-tertiary bg-secondary">
-                <tr>
-                  <th
+            <Table>
+              <TableHeader className="border-b border-tertiary bg-secondary">
+                <TableRow>
+                  <TableHead
                     className={
                       'px-6 py-3 text-left text-sm font-medium text-secondary'
                     }
                   >
                     Project
-                  </th>
-                  <th
+                  </TableHead>
+                  <TableHead
                     className={
                       'px-6 py-3 text-left text-sm font-medium text-secondary'
                     }
                   >
                     Type
-                  </th>
-                  <th
+                  </TableHead>
+                  <TableHead
                     className={
                       'px-6 py-3 text-left text-sm font-medium text-secondary'
                     }
                   >
                     Team
-                  </th>
-                  <th
+                  </TableHead>
+                  <TableHead
                     className={
                       'px-6 py-3 text-left text-sm font-medium text-secondary'
                     }
                   >
                     Environments
-                  </th>
-                  <th
+                  </TableHead>
+                  <TableHead
                     className={
                       'px-6 py-3 text-left text-sm font-medium text-secondary'
                     }
                   >
                     Health
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-tertiary">
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-tertiary">
                 {filteredProjects.map((project) => {
                   const health = getMockHealth(project.slug)
                   return (
-                    <tr
+                    <TableRow
                       key={`table-${project.id}`}
                       className="cursor-pointer transition-colors hover:bg-secondary"
                       onClick={() => handleProjectSelect(project.id)}
                     >
-                      <td className="px-6 py-4 font-medium text-primary">
+                      <TableCell className="px-6 py-4 font-medium text-primary">
                         {project.name}
-                      </td>
-                      <td className="px-6 py-4 text-secondary">
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-secondary">
                         {(project.project_types || [])
                           .map((pt) => pt.name)
                           .join(', ')}
-                      </td>
-                      <td className="px-6 py-4 text-secondary">
+                      </TableCell>
+                      <TableCell className="px-6 py-4 text-secondary">
                         {project.team.name}
-                      </td>
-                      <td className="px-6 py-4">
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
                         {project.environments &&
                           project.environments.length > 0 && (
                             <div className="flex flex-wrap items-center gap-2">
@@ -306,8 +314,8 @@ export function ProjectsView() {
                               )}
                             </div>
                           )}
-                      </td>
-                      <td className="px-6 py-4">
+                      </TableCell>
+                      <TableCell className="px-6 py-4">
                         <div
                           className={`inline-flex h-10 w-10 items-center justify-center rounded-full ${getHealthColor(health)}`}
                         >
@@ -315,12 +323,12 @@ export function ProjectsView() {
                             {health}
                           </span>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   )
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </Card>
       )}

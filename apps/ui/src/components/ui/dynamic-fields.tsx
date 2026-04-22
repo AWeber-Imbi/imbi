@@ -3,7 +3,19 @@ import Ajv from 'ajv'
 import addFormats from 'ajv-formats'
 import { AlertCircle } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { DynamicFieldSchema, DynamicSchema } from '@/api/endpoints'
+
+// Radix SelectItem rejects empty-string values, so use a sentinel to represent
+// an unset non-required enum field (preserves the clear-via-placeholder
+// behaviour of the native <select> this component replaced).
+const UNSET_VALUE = '__unset__'
 
 const ajv = new Ajv({ allErrors: true })
 addFormats(ajv)
@@ -82,19 +94,29 @@ export function DynamicFormFields({
                 {label}
                 {isRequired && <span className="text-red-500"> *</span>}
               </label>
-              <select
-                value={value}
-                onChange={(e) => onChange(key, e.target.value || undefined)}
+              <Select
+                value={value || (!isRequired ? UNSET_VALUE : '')}
+                onValueChange={(v) =>
+                  onChange(key, v === UNSET_VALUE ? undefined : v)
+                }
                 disabled={isLoading}
-                className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${fieldError ? 'border-red-500' : ''}`}
               >
-                <option value="">Select {label.toLowerCase()}...</option>
-                {field.enum.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className={fieldError ? 'border-red-500' : ''}>
+                  <SelectValue
+                    placeholder={`Select ${label.toLowerCase()}...`}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {!isRequired && (
+                    <SelectItem value={UNSET_VALUE}>None</SelectItem>
+                  )}
+                  {field.enum.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {field.description && (
                 <p className="mt-1 text-xs text-tertiary">
                   {field.description}

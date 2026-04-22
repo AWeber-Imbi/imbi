@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { CardTitle } from '@/components/ui/card'
+import { LoadingState } from '@/components/ui/loading-state'
 import { getBlueprint } from '@/api/endpoints'
 import { getTypeSwatch } from '../BlueprintManagement'
 import { LabelChip } from '@/components/ui/label-chip'
@@ -121,11 +122,7 @@ export function BlueprintDetail({
   })
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-sm text-secondary">Loading blueprint...</div>
-      </div>
-    )
+    return <LoadingState label="Loading blueprint..." />
   }
 
   if (error || !blueprint) {

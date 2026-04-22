@@ -22,6 +22,7 @@ import { getQueryKeysForResource } from '@/lib/queryKeys'
 import { SessionEntry } from './assistant/MessageBubble'
 import { ToolUseIndicator } from './assistant/ToolUseIndicator'
 import { ConversationHistory } from './assistant/ConversationHistory'
+import { Button } from '@/components/ui/button'
 
 function buildUserContext(
   user: {
@@ -342,38 +343,43 @@ export function CommandBar() {
             )}
           </div>
           <div className="flex items-center gap-1">
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => {
                 setInput('help')
                 inputRef.current?.focus()
               }}
               aria-label="Help"
               type="button"
-              className="rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary"
+              className="h-auto w-auto rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary"
             >
               <HelpCircle className="h-3.5 w-3.5" />
-            </button>
+            </Button>
             <ConversationHistory
               currentConversationId={currentConversationId}
               onSelectConversation={handleSelectConversation}
               onNewConversation={handleNewConversation}
             />
             {messages.length > 0 && (
-              <button
+              <Button
+                variant="ghost"
                 onClick={handleClearHistory}
-                className="rounded px-2 py-0.5 font-mono text-xs text-tertiary hover:bg-secondary hover:text-secondary"
+                className="h-auto rounded px-2 py-0.5 font-mono text-xs text-tertiary hover:bg-secondary hover:text-secondary"
               >
                 clear
-              </button>
+              </Button>
             )}
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setExpanded(false)}
               aria-label="Close assistant"
               type="button"
-              className="rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary"
+              className="h-auto w-auto rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary"
             >
               <X className="h-3.5 w-3.5" />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -418,11 +424,12 @@ export function CommandBar() {
       <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card">
         {/* Tray Toggle */}
         <div className="flex justify-center">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setExpanded(!isExpanded)}
             aria-label={isExpanded ? 'Collapse assistant' : 'Expand assistant'}
             type="button"
-            className={`-mt-3 rounded-t-md border border-b-0 border-tertiary bg-card px-4 py-0.5 font-mono text-xs text-tertiary transition-all hover:text-secondary ${isExpanded ? 'shadow-lg' : ''}`}
+            className={`-mt-3 h-auto rounded-t-md border border-b-0 border-tertiary bg-card px-4 py-0.5 font-mono text-xs text-tertiary transition-all hover:text-secondary ${isExpanded ? 'shadow-lg' : ''}`}
           >
             {isExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -434,7 +441,7 @@ export function CommandBar() {
                 )}
               </div>
             )}
-          </button>
+          </Button>
         </div>
 
         {/* Input */}
@@ -455,12 +462,14 @@ export function CommandBar() {
               className="flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-muted-foreground disabled:opacity-50"
             />
             {input.trim() && !isStreaming && (
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 type="submit"
-                className="rounded p-1 text-tertiary transition-colors hover:text-secondary"
+                className="h-auto w-auto rounded p-1 text-tertiary transition-colors hover:text-secondary"
               >
                 <Send className="h-3.5 w-3.5" />
-              </button>
+              </Button>
             )}
           </div>
           <div className="flex items-center justify-between px-1 pt-1">

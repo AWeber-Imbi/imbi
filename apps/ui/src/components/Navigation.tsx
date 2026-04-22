@@ -104,9 +104,10 @@ export function Navigation({
       <div className="flex h-16 items-center justify-between px-6">
         {/* Logo and Brand */}
         <div className="flex items-center gap-8">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all hover:bg-secondary"
+            className="h-auto rounded-lg px-2 py-1.5 transition-all hover:bg-secondary"
           >
             <img
               src={isDarkMode ? logoDark : logoLight}
@@ -116,7 +117,7 @@ export function Navigation({
             <span className="text-primary" style={{ fontWeight: 800 }}>
               Imbi
             </span>
-          </button>
+          </Button>
 
           {/* Navigation Items */}
           <div className="hidden items-center gap-1 md:flex">
@@ -124,18 +125,19 @@ export function Navigation({
               const Icon = item.icon
               const isActive = activeView === item.id
               return (
-                <button
+                <Button
                   key={item.id}
+                  variant="ghost"
                   onClick={() => navigate(item.path)}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
+                  className={`h-auto rounded-lg px-4 py-2 transition-colors ${
                     isActive
-                      ? 'bg-amber-bg text-amber-text'
+                      ? 'bg-amber-bg text-amber-text hover:bg-amber-bg hover:text-amber-text'
                       : 'text-secondary hover:bg-secondary hover:text-primary'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
                   <span>{item.label}</span>
-                </button>
+                </Button>
               )
             })}
           </div>

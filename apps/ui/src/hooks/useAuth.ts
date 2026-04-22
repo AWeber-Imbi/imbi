@@ -57,7 +57,7 @@ export function useAuth(): UseAuthReturn {
     },
     enabled: !!accessToken && !isTokenExpired(),
     retry: false,
-    staleTime: Infinity,
+    staleTime: 5 * 60 * 1000,
   })
 
   const loginMutation = useMutation({

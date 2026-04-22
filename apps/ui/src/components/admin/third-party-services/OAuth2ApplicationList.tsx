@@ -4,6 +4,15 @@ import { toast } from 'sonner'
 import { extractApiErrorDetail } from '@/lib/apiError'
 import { Plus, Trash2, Key, AlertCircle, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import {
   listServiceApplications,
   deleteServiceApplication,
@@ -42,6 +51,11 @@ export function OAuth2ApplicationList({
   const queryClient = useQueryClient()
   const [viewMode, setViewModeInternal] = useState<ViewMode>('list')
   const [editingApp, setEditingApp] = useState<ServiceApplication | null>(null)
+  const [confirm, setConfirm] = useState<{
+    action: 'delete'
+    appSlug: string
+    appName: string
+  } | null>(null)
 
   const setViewMode = (mode: ViewMode) => {
     setViewModeInternal(mode)
@@ -101,9 +115,7 @@ export function OAuth2ApplicationList({
   })
 
   const handleDelete = (app: ServiceApplication) => {
-    if (confirm(`Delete application "${app.name}"? This cannot be undone.`)) {
-      deleteMutation.mutate(app.slug)
-    }
+    setConfirm({ action: 'delete', appSlug: app.slug, appName: app.name })
   }
 
   const handleSave = (
@@ -211,31 +223,31 @@ export function OAuth2ApplicationList({
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-card">
-          <table className="w-full">
-            <thead className="border-b border-tertiary bg-secondary">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+          <Table>
+            <TableHeader className="border-b border-tertiary bg-secondary">
+              <TableRow>
+                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Application
-                </th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                </TableHead>
+                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                </TableHead>
+                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Client ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
+                </TableHead>
+                <TableHead className="px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary">
                   Status
-                </th>
-                <th className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
+                </TableHead>
+                <TableHead className="px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary">
                   Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-tertiary">
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y divide-tertiary">
               {applications.map((app) => {
                 const statusVariant = statusBadgeVariant(app.status)
                 return (
-                  <tr
+                  <TableRow
                     key={app.slug}
                     className="hover:bg-secondary/50 cursor-pointer"
                     onClick={() => {
@@ -243,22 +255,22 @@ export function OAuth2ApplicationList({
                       setViewMode('edit')
                     }}
                   >
-                    <td className="px-6 py-4">
+                    <TableCell className="px-6 py-4">
                       <div className="font-medium text-primary">{app.name}</div>
                       <div className="text-sm text-tertiary">{app.slug}</div>
-                    </td>
-                    <td className="px-6 py-4">
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
                       <code className="rounded bg-secondary px-2 py-1 text-xs text-primary">
                         {app.app_type}
                       </code>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-sm text-secondary">
+                    </TableCell>
+                    <TableCell className="px-6 py-4 font-mono text-sm text-secondary">
                       {app.client_id}
-                    </td>
-                    <td className="px-6 py-4">
+                    </TableCell>
+                    <TableCell className="px-6 py-4">
                       <Badge variant={statusVariant}>{app.status}</Badge>
-                    </td>
-                    <td
+                    </TableCell>
+                    <TableCell
                       className="px-6 py-4 text-right"
                       onClick={(e) => e.stopPropagation()}
                       onKeyDown={(e) => e.stopPropagation()}
@@ -295,14 +307,31 @@ export function OAuth2ApplicationList({
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
+      <ConfirmDialog
+        open={confirm?.action === 'delete'}
+        title="Delete application"
+        description={
+          confirm?.action === 'delete'
+            ? `Delete application "${confirm.appName}"? This cannot be undone.`
+            : 'This action cannot be undone.'
+        }
+        confirmLabel="Delete"
+        onConfirm={() => {
+          if (confirm?.action === 'delete') {
+            deleteMutation.mutate(confirm.appSlug)
+          }
+          setConfirm(null)
+        }}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   )
 }
