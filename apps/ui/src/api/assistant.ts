@@ -1,4 +1,4 @@
-import { useAuthStore } from '@/stores/authStore'
+import { ApiError, withAuthRetry } from '@/api/client'
 import type {
   Conversation,
   ConversationWithMessages,
@@ -12,20 +12,24 @@ async function assistantFetch<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = useAuthStore.getState().accessToken
-  const response = await fetch(`${ASSISTANT_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  })
+  const response = await withAuthRetry(path, (token) =>
+    fetch(`${ASSISTANT_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    }),
+  )
   if (!response.ok) {
-    if (response.status === 401) {
-      window.location.assign('/login')
+    let errorData: unknown
+    try {
+      errorData = await response.json()
+    } catch {
+      /* no body */
     }
-    throw new Error(`HTTP ${response.status}`)
+    throw new ApiError(response.status, response.statusText, errorData)
   }
   if (response.status === 204) return undefined as T
   return response.json()
@@ -89,24 +93,22 @@ export async function sendMessageSSE(
   handlers: SSEEventHandler,
   signal?: AbortSignal,
 ): Promise<void> {
-  const token = useAuthStore.getState().accessToken
-  const url = `${ASSISTANT_BASE_URL}/conversations/${conversationId}/messages`
+  const path = `/conversations/${conversationId}/messages`
+  const url = `${ASSISTANT_BASE_URL}${path}`
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ content }),
-    signal,
-  })
+  const response = await withAuthRetry(path, (token) =>
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ content }),
+      signal,
+    }),
+  )
 
   if (!response.ok) {
-    if (response.status === 401) {
-      window.location.assign('/login')
-      return
-    }
     const errorText = await response.text()
     handlers.onError?.(errorText || `HTTP ${response.status}`)
     return

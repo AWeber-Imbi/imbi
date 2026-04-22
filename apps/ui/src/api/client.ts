@@ -98,71 +98,74 @@ function buildUrl(url: string, params?: Record<string, unknown>): string {
   return fullUrl
 }
 
+async function resolveAuthToken(url: string): Promise<string | null> {
+  if (shouldSkipAuth(url)) return null
+  const authStore = useAuthStore.getState()
+  if (authStore.isTokenExpired()) {
+    try {
+      return await refreshAccessToken()
+    } catch (error) {
+      // Proactive refresh failed; tokens already cleared by
+      // refreshAccessToken. Redirect to login and surface the failure
+      // rather than sending an unauthenticated request and triggering a
+      // second refresh via the 401 handler.
+      redirectToLogin()
+      throw error instanceof ApiError
+        ? error
+        : new ApiError(401, 'Token refresh failed')
+    }
+  }
+  return authStore.accessToken
+}
+
+/**
+ * Runs `fetcher` with an auth token resolved for `url`, and on a 401 response
+ * performs one reactive refresh + retry. Handles the proactive-refresh check,
+ * the `refreshPromise` lock (via `refreshAccessToken`), and the terminal
+ * behavior when the refresh endpoint itself returns 401 (clear tokens +
+ * redirect to login). URLs matching SKIP_AUTH_PATHS are passed a `null` token
+ * and never retried.
+ */
+export async function withAuthRetry(
+  url: string,
+  fetcher: (token: string | null) => Promise<Response>,
+): Promise<Response> {
+  const token = await resolveAuthToken(url)
+  const response = await fetcher(token)
+
+  if (response.status !== 401) return response
+  if (shouldSkipAuth(url)) return response
+
+  try {
+    const newToken = await refreshAccessToken()
+    return await fetcher(newToken)
+  } catch (refreshError) {
+    console.error(
+      '[API] Token refresh failed, redirecting to login',
+      refreshError,
+    )
+    // refreshAccessToken clears tokens in its catch block before rethrowing.
+    redirectToLogin()
+    return response
+  }
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let errorData: unknown
+    try {
+      errorData = await response.json()
+    } catch {
+      /* no body */
+    }
+    throw new ApiError(response.status, response.statusText, errorData)
+  }
+
+  if (response.status === 204) return undefined as T
+  return (await response.json()) as T
+}
+
 class ApiClient {
-  private async resolveAuthToken(url: string): Promise<string | null> {
-    if (shouldSkipAuth(url)) return null
-    const authStore = useAuthStore.getState()
-    if (authStore.isTokenExpired()) {
-      try {
-        return await refreshAccessToken()
-      } catch (error) {
-        // Proactive refresh failed; tokens already cleared by
-        // refreshAccessToken. Redirect to login and surface the failure
-        // rather than sending an unauthenticated request and triggering a
-        // second refresh via the 401 handler.
-        redirectToLogin()
-        throw error instanceof ApiError
-          ? error
-          : new ApiError(401, 'Token refresh failed')
-      }
-    }
-    return authStore.accessToken
-  }
-
-  private async handleResponse<T>(
-    response: Response,
-    retryRequest: () => Promise<T>,
-    isRetry: boolean,
-    url: string,
-  ): Promise<T> {
-    if (!response.ok) {
-      let errorData: unknown
-      try {
-        errorData = await response.json()
-      } catch {
-        /* no body */
-      }
-
-      if (response.status === 401 && !isRetry) {
-        if (url.includes('/auth/token/refresh')) {
-          console.error(
-            '[API] Refresh token request failed, clearing tokens and redirecting',
-          )
-          useAuthStore.getState().clearTokens()
-          redirectToLogin()
-          throw new ApiError(response.status, response.statusText, errorData)
-        }
-        try {
-          await refreshAccessToken()
-          return await retryRequest()
-        } catch (refreshError) {
-          console.error(
-            '[API] Token refresh failed, redirecting to login',
-            refreshError,
-          )
-          useAuthStore.getState().clearTokens()
-          redirectToLogin()
-          throw new ApiError(response.status, response.statusText, errorData)
-        }
-      }
-
-      throw new ApiError(response.status, response.statusText, errorData)
-    }
-
-    if (response.status === 204) return undefined as T
-    return (await response.json()) as T
-  }
-
   private async request<T>(
     method: string,
     url: string,
@@ -170,41 +173,34 @@ class ApiClient {
       params?: Record<string, unknown>
       body?: unknown
       headers?: Record<string, string>
-      isRetry?: boolean
     } = {},
   ): Promise<T> {
-    const { params, body, headers: extraHeaders, isRetry = false } = options
-
+    const { params, body, headers: extraHeaders } = options
     const fullUrl = buildUrl(url, params)
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...extraHeaders,
-    }
+    const response = await withAuthRetry(url, (token) => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...extraHeaders,
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
 
-    const token = await this.resolveAuthToken(url)
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
+      const init: RequestInit = {
+        method,
+        credentials: 'include',
+        headers,
+      }
 
-    const init: RequestInit = {
-      method,
-      credentials: 'include',
-      headers,
-    }
+      if (body !== undefined) {
+        init.body = JSON.stringify(body)
+      }
 
-    if (body !== undefined) {
-      init.body = JSON.stringify(body)
-    }
+      return fetch(fullUrl, init)
+    })
 
-    const response = await fetch(fullUrl, init)
-
-    return this.handleResponse<T>(
-      response,
-      () => this.request<T>(method, url, { ...options, isRetry: true }),
-      isRetry,
-      url,
-    )
+    return parseResponse<T>(response)
   }
 
   async get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
@@ -227,52 +223,44 @@ class ApiClient {
     return this.request<T>('DELETE', url)
   }
 
-  async postFormData<T>(
-    url: string,
-    formData: FormData,
-    isRetry = false,
-  ): Promise<T> {
-    const headers: Record<string, string> = {}
-    const token = await this.resolveAuthToken(url)
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
+  async postFormData<T>(url: string, formData: FormData): Promise<T> {
+    const response = await withAuthRetry(url, (token) => {
+      const headers: Record<string, string> = {}
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
 
-    // Don't set Content-Type — browser sets it with boundary for FormData
-    const response = await fetch(`${API_BASE_URL}${url}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-      body: formData,
+      // Don't set Content-Type — browser sets it with boundary for FormData
+      return fetch(`${API_BASE_URL}${url}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: formData,
+      })
     })
 
-    return this.handleResponse<T>(
-      response,
-      () => this.postFormData<T>(url, formData, true),
-      isRetry,
-      url,
-    )
+    return parseResponse<T>(response)
   }
 
   async getWithHeaders<T>(
     url: string,
     params?: Record<string, unknown>,
-    isRetry = false,
   ): Promise<{ data: T; headers: Headers }> {
     const fullUrl = buildUrl(url, params)
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-    const token = await this.resolveAuthToken(url)
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
+    const response = await withAuthRetry(url, (token) => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
 
-    const response = await fetch(fullUrl, {
-      method: 'GET',
-      credentials: 'include',
-      headers,
+      return fetch(fullUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers,
+      })
     })
 
     if (!response.ok) {
@@ -282,30 +270,6 @@ class ApiClient {
       } catch {
         /* no body */
       }
-
-      if (response.status === 401 && !isRetry) {
-        if (url.includes('/auth/token/refresh')) {
-          console.error(
-            '[API] Refresh token request failed, clearing tokens and redirecting',
-          )
-          useAuthStore.getState().clearTokens()
-          redirectToLogin()
-          throw new ApiError(response.status, response.statusText, errorData)
-        }
-        try {
-          await refreshAccessToken()
-          return await this.getWithHeaders<T>(url, params, true)
-        } catch (refreshError) {
-          console.error(
-            '[API] Token refresh failed, redirecting to login',
-            refreshError,
-          )
-          useAuthStore.getState().clearTokens()
-          redirectToLogin()
-          throw new ApiError(response.status, response.statusText, errorData)
-        }
-      }
-
       throw new ApiError(response.status, response.statusText, errorData)
     }
 
