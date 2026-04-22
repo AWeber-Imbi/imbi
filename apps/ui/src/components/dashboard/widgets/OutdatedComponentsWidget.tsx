@@ -73,10 +73,10 @@ export function OutdatedComponentsWidget({
   }
 
   return (
-    <Card className={'p-6'}>
+    <Card className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className={'text-lg text-primary'}>Outdated Components</h3>
-        <span className={'flex items-center gap-1 text-sm text-warning'}>
+        <h3 className="text-lg text-primary">Outdated Components</h3>
+        <span className="flex items-center gap-1 text-sm text-warning">
           <AlertTriangle className="h-4 w-4" />
           {outdatedComponents.length} need updates
         </span>
@@ -89,16 +89,16 @@ export function OutdatedComponentsWidget({
           return (
             <div
               key={item.projectId}
-              className={`rounded-lg border p-4 transition-colors ${'border-input bg-background hover:border-secondary'}`}
+              className={`rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <Package
-                    className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-tertiary'}`}
+                    className={`mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary`}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2">
-                      <code className={'text-sm font-medium text-primary'}>
+                      <code className="text-sm font-medium text-primary">
                         {item.component}
                       </code>
                       <Badge variant={config.variant} className="rounded-full">
@@ -109,23 +109,23 @@ export function OutdatedComponentsWidget({
                     <button
                       type="button"
                       onClick={() => onProjectSelect?.(item.projectId)}
-                      className={`mb-2 text-sm hover:underline ${'text-info'}`}
+                      className={`mb-2 text-sm text-info hover:underline`}
                     >
                       {item.project}
                     </button>
 
                     <div
-                      className={`flex items-center gap-3 text-xs ${'text-secondary'}`}
+                      className={`flex items-center gap-3 text-xs text-secondary`}
                     >
                       <span className="font-mono">
                         {item.currentVersion} → {item.latestVersion}
                       </span>
-                      <span className={'text-tertiary'}>•</span>
+                      <span className="text-tertiary">•</span>
                       <span>
                         {item.behindBy} version{item.behindBy !== 1 ? 's' : ''}{' '}
                         behind
                       </span>
-                      <span className={'text-tertiary'}>•</span>
+                      <span className="text-tertiary">•</span>
                       <span>{item.releaseDate}</span>
                     </div>
                   </div>
@@ -134,7 +134,7 @@ export function OutdatedComponentsWidget({
                 <button
                   type="button"
                   onClick={() => onProjectSelect?.(item.projectId)}
-                  className={`flex-shrink-0 rounded p-2 transition-colors ${'text-secondary hover:bg-secondary hover:text-primary'}`}
+                  className={`flex-shrink-0 rounded p-2 text-secondary transition-colors hover:bg-secondary hover:text-primary`}
                   aria-label={`View update details for ${item.component}`}
                 >
                   <TrendingUp className="h-4 w-4" />
@@ -145,11 +145,11 @@ export function OutdatedComponentsWidget({
         })}
       </div>
 
-      <div className={'mt-4 border-t border-tertiary pt-4'}>
+      <div className="mt-4 border-t border-tertiary pt-4">
         <button
           type="button"
           onClick={() => onProjectSelect?.('outdated-components')}
-          className={`flex items-center gap-1 text-sm ${'hover:text-info/80 text-info'}`}
+          className={`hover:text-info/80 flex items-center gap-1 text-sm text-info`}
         >
           View all outdated components
           <ExternalLink className="h-3 w-3" />

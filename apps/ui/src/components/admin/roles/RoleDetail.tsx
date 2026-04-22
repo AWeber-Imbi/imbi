@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
+import { toast } from 'sonner'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import {
   ArrowLeft,
   Edit2,
@@ -106,10 +107,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
       setShowAddPermission(false)
       setSelectedPermission('')
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to grant permission: ${error.response?.data?.detail || error.message}`,
-      )
+    onError: (error: unknown) => {
+      toast.error(`Failed to grant permission: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -119,9 +118,9 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['role', slug] })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to revoke permission: ${error.response?.data?.detail || error.message}`,
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to revoke permission: ${extractApiErrorDetail(error)}`,
       )
     },
   })
@@ -157,7 +156,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>Loading role...</div>
+        <div className="text-sm text-secondary">Loading role...</div>
       </div>
     )
   }
@@ -165,7 +164,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
   if (error || !role) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -199,8 +198,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
       <Card>
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className={'rounded-lg bg-info p-2'}>
-              <Shield className={'h-6 w-6 text-info'} />
+            <div className="rounded-lg bg-info p-2">
+              <Shield className="h-6 w-6 text-info" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -212,7 +211,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                   </Badge>
                 )}
               </div>
-              <p className={'mt-1 text-secondary'}>
+              <p className="mt-1 text-secondary">
                 {role.description || 'No description'}
               </p>
             </div>
@@ -235,27 +234,27 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           }
         >
           <div>
-            <div className={'text-xs text-secondary'}>Slug</div>
-            <div className={'font-mono text-sm text-primary'}>{role.slug}</div>
+            <div className="text-xs text-secondary">Slug</div>
+            <div className="font-mono text-sm text-primary">{role.slug}</div>
           </div>
-          <div className={'h-8 border-l border-tertiary'} />
+          <div className="h-8 border-l border-tertiary" />
           <div>
-            <div className={'text-xs text-secondary'}>Priority</div>
-            <div className={'text-sm text-primary'}>{role.priority}</div>
+            <div className="text-xs text-secondary">Priority</div>
+            <div className="text-sm text-primary">{role.priority}</div>
           </div>
-          <div className={'h-8 border-l border-tertiary'} />
+          <div className="h-8 border-l border-tertiary" />
           <div>
-            <div className={'text-xs text-secondary'}>Permissions</div>
-            <div className={'text-sm text-primary'}>
+            <div className="text-xs text-secondary">Permissions</div>
+            <div className="text-sm text-primary">
               {role.permissions?.length || 0}
             </div>
           </div>
           {role.parent_role && (
             <>
-              <div className={'h-8 border-l border-tertiary'} />
+              <div className="h-8 border-l border-tertiary" />
               <div>
-                <div className={'text-xs text-secondary'}>Inherits From</div>
-                <div className={'text-sm text-primary'}>
+                <div className="text-xs text-secondary">Inherits From</div>
+                <div className="text-sm text-primary">
                   {role.parent_role.name}
                 </div>
               </div>
@@ -264,7 +263,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
         </div>
 
         {/* Tabs */}
-        <div className={'border-b border-tertiary'}>
+        <div className="border-b border-tertiary">
           <div className="flex gap-0 px-6">
             {tabs.map((tab) => {
               const Icon = tab.icon
@@ -293,14 +292,14 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
         <div className="space-y-4">
           {/* Add Permission Section */}
           {!role.is_system && (
-            <div className={`rounded-lg border p-4 ${'border-border bg-card'}`}>
+            <div className={`rounded-lg border border-border bg-card p-4`}>
               <div className="mb-3 flex items-center justify-between">
-                <h3 className={'text-sm font-medium text-primary'}>
+                <h3 className="text-sm font-medium text-primary">
                   Assign Permission
                 </h3>
                 <button
                   onClick={() => setShowAddPermission(!showAddPermission)}
-                  className={'hover:text-info/80 text-sm text-info'}
+                  className="hover:text-info/80 text-sm text-info"
                 >
                   {showAddPermission ? 'Cancel' : 'Add Permission'}
                 </button>
@@ -311,7 +310,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                   <select
                     value={selectedPermission}
                     onChange={(e) => setSelectedPermission(e.target.value)}
-                    className={`flex-1 rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+                    className={`flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground`}
                   >
                     <option value="">Select a permission...</option>
                     {availablePermissions.map((perm) => (
@@ -333,7 +332,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               )}
 
               <div
-                className={`mt-3 flex items-start gap-2 rounded p-2 text-xs ${'bg-info text-info'}`}
+                className={`mt-3 flex items-start gap-2 rounded bg-info p-2 text-xs text-info`}
               >
                 <AlertCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />
                 <span>
@@ -346,7 +345,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
 
           {/* Permissions Table */}
           {Object.keys(groupedPermissions).length === 0 ? (
-            <div className={'py-8 text-center text-tertiary'}>
+            <div className="py-8 text-center text-tertiary">
               <Shield className="mx-auto mb-2 h-8 w-8 opacity-50" />
               <div>No permissions assigned</div>
               {!role.is_system && (
@@ -356,43 +355,43 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               )}
             </div>
           ) : (
-            <Card className={'overflow-hidden'}>
+            <Card className="overflow-hidden">
               <CardContent className="p-0">
                 <table className="w-full">
                   <thead className="border-b border-tertiary bg-secondary">
                     <tr>
                       <th
-                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
                       >
                         Permission
                       </th>
                       <th
-                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                        className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
                       >
                         Description
                       </th>
                       {!role.is_system && (
                         <th
-                          className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                          className={`px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary`}
                         >
                           Actions
                         </th>
                       )}
                     </tr>
                   </thead>
-                  <tbody className={'divide-y divide-tertiary'}>
+                  <tbody className="divide-y divide-tertiary">
                     {(role.permissions || [])
                       .sort((a, b) => a.name.localeCompare(b.name))
                       .map((perm) => (
-                        <tr key={perm.name} className={'hover:bg-secondary'}>
-                          <td className={'px-6 py-4 text-primary'}>
+                        <tr key={perm.name} className="hover:bg-secondary">
+                          <td className="px-6 py-4 text-primary">
                             <code
-                              className={`rounded px-2 py-1 text-sm ${'bg-secondary text-info'}`}
+                              className={`rounded bg-secondary px-2 py-1 text-sm text-info`}
                             >
                               {perm.name}
                             </code>
                           </td>
-                          <td className={'px-6 py-4 text-sm text-secondary'}>
+                          <td className="px-6 py-4 text-sm text-secondary">
                             {perm.description || perm.action}
                           </td>
                           {!role.is_system && (
@@ -405,7 +404,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                                         handleRevokePermission(perm.name)
                                       }
                                       disabled={revokeMutation.isPending}
-                                      className={`rounded p-1.5 ${'text-danger hover:bg-danger'}`}
+                                      className={`rounded p-1.5 text-danger hover:bg-danger`}
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </button>
@@ -432,10 +431,10 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
         <div className="space-y-4">
           {/* Info banner */}
           <div
-            className={`flex items-start gap-3 rounded-lg border p-4 ${'border-tertiary bg-card dark:border-border dark:bg-card'}`}
+            className={`flex items-start gap-3 rounded-lg border border-tertiary bg-card p-4 dark:border-border dark:bg-card`}
           >
-            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-info'}`} />
-            <div className={'text-sm text-info'}>
+            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 text-info`} />
+            <div className="text-sm text-info">
               Role assignments are managed via User Management. This list shows
               users directly assigned this role.
             </div>
@@ -444,11 +443,11 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           {/* User list */}
           {usersLoading ? (
             <div className="flex items-center justify-center py-8">
-              <div className={'text-sm text-secondary'}>Loading users...</div>
+              <div className="text-sm text-secondary">Loading users...</div>
             </div>
           ) : usersError ? (
             <div
-              className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+              className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
             >
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
@@ -461,7 +460,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               </div>
             </div>
           ) : !roleUsers || roleUsers.length === 0 ? (
-            <div className={'py-8 text-center text-tertiary'}>
+            <div className="py-8 text-center text-tertiary">
               <Users className="mx-auto mb-2 h-8 w-8 opacity-50" />
               <div>No users directly assigned this role</div>
               <div className="mt-1 text-sm">
@@ -469,16 +468,16 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               </div>
             </div>
           ) : (
-            <Card className={'overflow-hidden'}>
+            <Card className="overflow-hidden">
               <CardContent className="p-0">
                 <div
-                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${'border-border bg-secondary text-tertiary'}`}
+                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b border-border bg-secondary px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-tertiary`}
                 >
                   <div>User</div>
                   <div>Status</div>
                   <div>Last Login</div>
                 </div>
-                <div className={'divide-y divide-tertiary'}>
+                <div className="divide-y divide-tertiary">
                   {roleUsers.map((user: RoleUser) => (
                     <div
                       key={user.email}
@@ -498,7 +497,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                           >
                             {user.display_name}
                           </div>
-                          <div className={'truncate text-xs text-tertiary'}>
+                          <div className="truncate text-xs text-tertiary">
                             {user.email}
                           </div>
                         </div>
@@ -513,7 +512,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                           <Badge variant="accent">Service</Badge>
                         )}
                       </div>
-                      <div className={'text-sm text-tertiary'}>
+                      <div className="text-sm text-tertiary">
                         {user.last_login
                           ? new Date(user.last_login).toLocaleDateString()
                           : 'Never'}
@@ -532,10 +531,10 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
         <div className="space-y-4">
           {/* Info banner */}
           <div
-            className={`flex items-start gap-3 rounded-lg border p-4 ${'border-tertiary bg-card dark:border-border dark:bg-card'}`}
+            className={`flex items-start gap-3 rounded-lg border border-tertiary bg-card p-4 dark:border-border dark:bg-card`}
           >
-            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-info'}`} />
-            <div className={'text-sm text-info'}>
+            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 text-info`} />
+            <div className="text-sm text-info">
               Role assignments are managed via Service Account Management. This
               list shows service accounts assigned this role via organization
               membership.
@@ -545,13 +544,13 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           {/* Service account list */}
           {saLoading ? (
             <div className="flex items-center justify-center py-8">
-              <div className={'text-sm text-secondary'}>
+              <div className="text-sm text-secondary">
                 Loading service accounts...
               </div>
             </div>
           ) : saError ? (
             <div
-              className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+              className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
             >
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
@@ -566,7 +565,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               </div>
             </div>
           ) : !roleServiceAccounts || roleServiceAccounts.length === 0 ? (
-            <div className={'py-8 text-center text-tertiary'}>
+            <div className="py-8 text-center text-tertiary">
               <Bot className="mx-auto mb-2 h-8 w-8 opacity-50" />
               <div>No service accounts assigned this role</div>
               <div className="mt-1 text-sm">
@@ -575,16 +574,16 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               </div>
             </div>
           ) : (
-            <Card className={'overflow-hidden'}>
+            <Card className="overflow-hidden">
               <CardContent className="p-0">
                 <div
-                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${'border-border bg-secondary text-tertiary'}`}
+                  className={`grid grid-cols-[1fr_auto_auto] gap-4 border-b border-border bg-secondary px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-tertiary`}
                 >
                   <div>Service Account</div>
                   <div>Status</div>
                   <div>Last Authenticated</div>
                 </div>
-                <div className={'divide-y divide-tertiary'}>
+                <div className="divide-y divide-tertiary">
                   {roleServiceAccounts.map((sa: ServiceAccount) => (
                     <div
                       key={sa.slug}
@@ -626,7 +625,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                           <Badge variant="neutral">Inactive</Badge>
                         )}
                       </div>
-                      <div className={'text-sm text-tertiary'}>
+                      <div className="text-sm text-tertiary">
                         {sa.last_authenticated
                           ? new Date(sa.last_authenticated).toLocaleDateString()
                           : 'Never'}
@@ -645,10 +644,10 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
         <div className="space-y-4">
           {/* Info banner */}
           <div
-            className={`flex items-start gap-3 rounded-lg border p-4 ${'border-tertiary bg-card dark:border-border dark:bg-card'}`}
+            className={`flex items-start gap-3 rounded-lg border border-tertiary bg-card p-4 dark:border-border dark:bg-card`}
           >
-            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-info'}`} />
-            <div className={'text-sm text-info'}>
+            <Info className={`mt-0.5 h-5 w-5 flex-shrink-0 text-info`} />
+            <div className="text-sm text-info">
               Role assignments to teams are managed via Team Management. All
               members of a team inherit the team's roles.
             </div>
@@ -657,11 +656,11 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
           {/* Group list */}
           {groupsLoading ? (
             <div className="flex items-center justify-center py-8">
-              <div className={'text-sm text-secondary'}>Loading groups...</div>
+              <div className="text-sm text-secondary">Loading groups...</div>
             </div>
           ) : groupsError ? (
             <div
-              className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+              className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
             >
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <div>
@@ -674,7 +673,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               </div>
             </div>
           ) : !roleGroups || roleGroups.length === 0 ? (
-            <div className={'py-8 text-center text-tertiary'}>
+            <div className="py-8 text-center text-tertiary">
               <UsersRound className="mx-auto mb-2 h-8 w-8 opacity-50" />
               <div>No groups assigned this role</div>
               <div className="mt-1 text-sm">
@@ -682,15 +681,15 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
               </div>
             </div>
           ) : (
-            <Card className={'overflow-hidden'}>
+            <Card className="overflow-hidden">
               <CardContent className="p-0">
                 <div
-                  className={`grid grid-cols-[1fr_1fr] gap-4 border-b px-4 py-2.5 text-xs font-medium uppercase tracking-wider ${'border-border bg-secondary text-tertiary'}`}
+                  className={`grid grid-cols-[1fr_1fr] gap-4 border-b border-border bg-secondary px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-tertiary`}
                 >
                   <div>Group</div>
                   <div>Description</div>
                 </div>
-                <div className={'divide-y divide-tertiary'}>
+                <div className="divide-y divide-tertiary">
                   {roleGroups.map(
                     (group: {
                       name: string
@@ -702,8 +701,8 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                         className="grid grid-cols-[1fr_1fr] items-center gap-4 px-4 py-3"
                       >
                         <div className="flex min-w-0 items-center gap-3">
-                          <div className={'rounded bg-secondary p-1.5'}>
-                            <UsersRound className={'h-4 w-4 text-secondary'} />
+                          <div className="rounded bg-secondary p-1.5">
+                            <UsersRound className="h-4 w-4 text-secondary" />
                           </div>
                           <div className="min-w-0">
                             <div
@@ -722,7 +721,7 @@ export function RoleDetail({ slug, onEdit, onBack }: RoleDetailProps) {
                             </div>
                           </div>
                         </div>
-                        <div className={'truncate text-sm text-tertiary'}>
+                        <div className="truncate text-sm text-tertiary">
                           {group.description || 'No description'}
                         </div>
                       </div>

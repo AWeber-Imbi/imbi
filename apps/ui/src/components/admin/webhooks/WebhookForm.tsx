@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { useOrganization } from '@/contexts/OrganizationContext'
@@ -20,6 +21,20 @@ import { useIconWithCleanup } from '@/hooks/useIconWithCleanup'
 import { slugify } from '@/lib/utils'
 import { ApiError } from '@/api/client'
 import type { Webhook, WebhookCreate, WebhookRule } from '@/types'
+
+// Per-row client id so React preserves correct instances after reorder/remove.
+// crypto.randomUUID is available in modern browsers; fall back for older envs.
+function makeClientId(): string {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return crypto.randomUUID()
+  }
+  return `r-${Math.random().toString(36).slice(2)}-${Date.now()}`
+}
+
+type RuleDraft = WebhookRule & { _clientId: string }
 
 interface WebhookFormProps {
   webhook: Webhook | null
@@ -57,7 +72,9 @@ export function WebhookForm({
   const [identifierSelector, setIdentifierSelector] = useState(
     webhook?.identifier_selector || '',
   )
-  const [rules, setRules] = useState<WebhookRule[]>(webhook?.rules || [])
+  const [rules, setRules] = useState<RuleDraft[]>(() =>
+    (webhook?.rules || []).map((r) => ({ ...r, _clientId: makeClientId() })),
+  )
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const { data: services = [] } = useQuery({
@@ -126,7 +143,12 @@ export function WebhookForm({
   const addRule = () => {
     setRules([
       ...rules,
-      { filter_expression: '', handler: '', handler_config: {} },
+      {
+        _clientId: makeClientId(),
+        filter_expression: '',
+        handler: '',
+        handler_config: {},
+      },
     ])
   }
 
@@ -174,17 +196,17 @@ export function WebhookForm({
     setRules(newRules)
   }
 
-  const selectClass = `w-full px-3 py-2 rounded-lg border text-sm ${'border-input bg-background text-foreground'}`
+  const selectClass = `w-full px-3 py-2 rounded-lg border text-sm border-input bg-background text-foreground`
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={'text-base font-medium text-primary'}>
+          <h2 className="text-base font-medium text-primary">
             {isEditing ? 'Edit Webhook' : 'Add Webhook'}
           </h2>
-          <p className={'mt-1 text-sm text-secondary'}>
+          <p className="mt-1 text-sm text-secondary">
             {isEditing
               ? 'Update webhook configuration'
               : 'Configure a new inbound webhook'}
@@ -211,25 +233,7 @@ export function WebhookForm({
       </div>
 
       {/* API Error */}
-      {error && (
-        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
-          <div className="flex items-start gap-3">
-            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
-            <div>
-              <div className={'font-medium text-danger'}>
-                Failed to save webhook
-              </div>
-              <div className={'mt-1 text-sm text-danger'}>
-                {(error && 'response' in error
-                  ? error.response?.data?.detail
-                  : undefined) ||
-                  error?.message ||
-                  'An error occurred'}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {error && <ErrorBanner title="Failed to save webhook" error={error} />}
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -240,7 +244,7 @@ export function WebhookForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Name <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -264,7 +268,7 @@ export function WebhookForm({
 
               {!isEditing && (
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -290,7 +294,7 @@ export function WebhookForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Notification Path <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -315,10 +319,10 @@ export function WebhookForm({
               </div>
 
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Secret{' '}
                   {isEditing && (
-                    <span className={'text-xs text-tertiary'}>
+                    <span className="text-xs text-tertiary">
                       (leave blank to keep current)
                     </span>
                   )}
@@ -337,7 +341,7 @@ export function WebhookForm({
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Description
               </label>
               <textarea
@@ -346,17 +350,17 @@ export function WebhookForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of this webhook"
-                className={`w-full resize-none rounded-lg border px-3 py-2 ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
+                className={`w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground`}
               />
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className={'mb-1.5 text-xs text-tertiary'}>Pick an icon</p>
+                  <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
                   <IconPicker
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
@@ -367,7 +371,7 @@ export function WebhookForm({
                   />
                 </div>
                 <div>
-                  <p className={'mb-1.5 text-xs text-tertiary'}>
+                  <p className="mb-1.5 text-xs text-tertiary">
                     Or upload a custom image
                   </p>
                   <IconUpload
@@ -387,14 +391,14 @@ export function WebhookForm({
         {/* Third-Party Service Binding */}
         <Card>
           <CardContent className="space-y-4 pt-6">
-            <p className={'mb-4 text-sm text-secondary'}>
+            <p className="mb-4 text-sm text-secondary">
               Optionally link this webhook to a third-party service for
               automatic project resolution.
             </p>
 
             <div className="space-y-4">
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Third-Party Service
                 </label>
                 <select
@@ -417,7 +421,7 @@ export function WebhookForm({
 
               {tpsSlug && (
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Identifier Selector (JSON Path)
                   </label>
                   <Input
@@ -439,7 +443,7 @@ export function WebhookForm({
                       {errors.identifier_selector}
                     </div>
                   )}
-                  <p className={'mt-1 text-xs text-tertiary'}>
+                  <p className="mt-1 text-xs text-tertiary">
                     JSON Path expression to extract the project identifier from
                     the webhook payload.
                   </p>
@@ -454,7 +458,7 @@ export function WebhookForm({
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
             <div>
               <CardTitle>Rules</CardTitle>
-              <p className={'mt-1 text-sm text-secondary'}>
+              <p className="mt-1 text-sm text-secondary">
                 Define filter expressions and handlers. Rules are evaluated in
                 order.
               </p>
@@ -472,15 +476,15 @@ export function WebhookForm({
           </CardHeader>
           <CardContent>
             {rules.length === 0 ? (
-              <div className={'py-8 text-center text-sm text-tertiary'}>
+              <div className="py-8 text-center text-sm text-tertiary">
                 No rules defined. Click "Add Rule" to get started.
               </div>
             ) : (
               <div className="space-y-3">
                 {rules.map((rule, index) => (
                   <div
-                    key={index}
-                    className={`rounded-lg border p-4 ${'bg-secondary/50 border-input'}`}
+                    key={rule._clientId}
+                    className={`bg-secondary/50 rounded-lg border border-input p-4`}
                   >
                     <div className="flex items-start gap-3">
                       {/* Order controls */}
@@ -489,6 +493,8 @@ export function WebhookForm({
                           type="button"
                           onClick={() => moveRule(index, 'up')}
                           disabled={index === 0 || isLoading}
+                          aria-label={`Move rule ${index + 1} up`}
+                          title={`Move rule ${index + 1} up`}
                           className={`rounded p-1 transition-colors ${
                             index === 0
                               ? 'cursor-not-allowed opacity-30'
@@ -501,6 +507,8 @@ export function WebhookForm({
                           type="button"
                           onClick={() => moveRule(index, 'down')}
                           disabled={index === rules.length - 1 || isLoading}
+                          aria-label={`Move rule ${index + 1} down`}
+                          title={`Move rule ${index + 1} down`}
                           className={`rounded p-1 transition-colors ${
                             index === rules.length - 1
                               ? 'cursor-not-allowed opacity-30'
@@ -513,7 +521,7 @@ export function WebhookForm({
 
                       {/* Rule number */}
                       <div
-                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-medium ${'bg-secondary text-secondary'}`}
+                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-medium text-secondary`}
                       >
                         {index + 1}
                       </div>
@@ -522,9 +530,7 @@ export function WebhookForm({
                       <div className="flex-1 space-y-3">
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                           <div>
-                            <label
-                              className={'mb-1 block text-xs text-secondary'}
-                            >
+                            <label className="mb-1 block text-xs text-secondary">
                               Filter Expression (CEL){' '}
                               <span className="text-red-500">*</span>
                             </label>
@@ -557,9 +563,7 @@ export function WebhookForm({
                             )}
                           </div>
                           <div>
-                            <label
-                              className={'mb-1 block text-xs text-secondary'}
-                            >
+                            <label className="mb-1 block text-xs text-secondary">
                               Handler <span className="text-red-500">*</span>
                             </label>
                             <Input
@@ -592,9 +596,7 @@ export function WebhookForm({
                           </div>
                         </div>
                         <div>
-                          <label
-                            className={'mb-1 block text-xs text-secondary'}
-                          >
+                          <label className="mb-1 block text-xs text-secondary">
                             Handler Config (JSON)
                           </label>
                           <textarea
@@ -633,7 +635,9 @@ export function WebhookForm({
                         type="button"
                         onClick={() => removeRule(index)}
                         disabled={isLoading}
-                        className={`rounded p-1.5 transition-colors ${'text-danger hover:bg-danger'}`}
+                        aria-label={`Delete rule ${index + 1}`}
+                        title={`Delete rule ${index + 1}`}
+                        className={`rounded p-1.5 text-danger transition-colors hover:bg-danger`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

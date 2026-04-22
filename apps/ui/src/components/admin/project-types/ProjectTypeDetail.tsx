@@ -57,7 +57,7 @@ export function ProjectTypeDetail({
               <CardTitle>{projectType.name}</CardTitle>
             </div>
             {projectType.description && (
-              <p className={'mt-1 text-sm text-secondary'}>
+              <p className="mt-1 text-sm text-secondary">
                 {projectType.description}
               </p>
             )}
@@ -74,18 +74,18 @@ export function ProjectTypeDetail({
         <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div className={'text-sm text-secondary'}>Slug</div>
-              <div className={'mt-1 text-primary'}>
+              <div className="text-sm text-secondary">Slug</div>
+              <div className="mt-1 text-primary">
                 <code
-                  className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                  className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                 >
                   {projectType.slug}
                 </code>
               </div>
             </div>
             <div>
-              <div className={'text-sm text-secondary'}>Organization</div>
-              <div className={'mt-1 text-primary'}>
+              <div className="text-sm text-secondary">Organization</div>
+              <div className="mt-1 text-primary">
                 {projectType.organization.name}
               </div>
             </div>

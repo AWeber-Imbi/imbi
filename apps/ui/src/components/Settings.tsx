@@ -40,7 +40,7 @@ export function Settings() {
       <Button
         variant="ghost"
         onClick={() => navigate(-1)}
-        className={'mb-6 gap-2 text-secondary hover:bg-secondary'}
+        className="mb-6 gap-2 text-secondary hover:bg-secondary"
       >
         <ArrowLeft className="h-4 w-4" />
         Back
@@ -48,8 +48,8 @@ export function Settings() {
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className={'text-[22px] font-medium text-primary'}>Settings</h1>
-        <p className={'mt-1 text-[13px] text-tertiary'}>
+        <h1 className="text-[22px] font-medium text-primary">Settings</h1>
+        <p className="mt-1 text-[13px] text-tertiary">
           Manage your account preferences and integrations
         </p>
       </div>
@@ -57,7 +57,7 @@ export function Settings() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
         {/* Sidebar navigation */}
         <div className="lg:col-span-1">
-          <Card className={'p-2'} style={{ borderWidth: '0.5px' }}>
+          <Card className="p-2" style={{ borderWidth: '0.5px' }}>
             <nav className="space-y-1">
               {tabs.map((t) => {
                 const Icon = t.icon
@@ -88,8 +88,8 @@ export function Settings() {
           {activeTab === 'api-keys' && <SettingsApiKeys />}
           {activeTab === 'security' && <SettingsSecurity />}
           {activeTab === 'project-types' && (
-            <Card className={'p-8'} style={{ borderWidth: '0.5px' }}>
-              <p className={'text-[13.5px] text-tertiary'}>
+            <Card className="p-8" style={{ borderWidth: '0.5px' }}>
+              <p className="text-[13.5px] text-tertiary">
                 Project type definitions will be available here.
               </p>
             </Card>

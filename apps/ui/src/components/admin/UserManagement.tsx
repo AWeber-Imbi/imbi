@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
-import { Plus, Search, Power, Crown, AlertCircle } from 'lucide-react'
-import { Button } from '../ui/button'
+import { toast } from 'sonner'
+import { extractApiErrorDetail } from '@/lib/apiError'
+import { Power, Crown } from 'lucide-react'
 import { Badge } from '../ui/badge'
-import { Input } from '../ui/input'
 import { Gravatar } from '../ui/gravatar'
 import { AdminTable } from '@/components/ui/admin-table'
+import { ErrorBanner } from '@/components/ui/error-banner'
+import { LoadingState } from '@/components/ui/loading-state'
+import { AdminSection } from './AdminSection'
 import { UserForm } from './users/UserForm'
 import { UserDetail } from './users/UserDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listAdminUsers,
   getAdminUser,
@@ -35,76 +38,45 @@ export function UserManagement() {
   const [userFilter, setUserFilter] = useState<UserFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
-  // Fetch users from API
   const {
-    data: users = [],
+    items: users,
     isLoading,
     error,
-  } = useQuery({
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    AdminUser,
+    AdminUserCreate,
+    { email: string; user: AdminUserUpdate },
+    string
+  >({
     queryKey: ['adminUsers'],
-    queryFn: () => listAdminUsers(),
+    listFn: listAdminUsers,
+    createFn: createAdminUser,
+    updateFn: ({ email, user }) => updateAdminUser(email, user),
+    deleteFn: deleteAdminUser,
+    onMutationSuccess: goToList,
+    deleteErrorLabel: 'user',
   })
 
-  // Delete user mutation
-  const deleteMutation = useMutation({
-    mutationFn: deleteAdminUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete user: ${error.response?.data?.detail || error.message}`,
-      )
-    },
-  })
-
-  // Toggle active mutation
+  // Toggle-active is a bespoke mutation: it fires in the list view, mustn't
+  // navigate, and toasts on failure but not via useAdminCrud's update flow.
   const toggleActiveMutation = useMutation({
     mutationFn: ({ email, user }: { email: string; user: AdminUserUpdate }) =>
       updateAdminUser(email, user),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to update user: ${error.response?.data?.detail || error.message}`,
-      )
-    },
-  })
-
-  // Create user mutation
-  const createMutation = useMutation({
-    mutationFn: createAdminUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
-      goToList()
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      // Error will be displayed in the UserForm component
-      console.error('Failed to create user:', error)
-    },
-  })
-
-  // Update user mutation
-  const updateMutation = useMutation({
-    mutationFn: ({ email, user }: { email: string; user: AdminUserUpdate }) =>
-      updateAdminUser(email, user),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
-      goToList()
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      // Error will be displayed in the UserForm component
-      console.error('Failed to update user:', error)
+    onError: (error: unknown) => {
+      toast.error(`Failed to update user: ${extractApiErrorDetail(error)}`)
     },
   })
 
   // Filter users locally - exclude service accounts (managed separately)
   const filteredUsers = users.filter((user) => {
-    // Exclude service accounts - they have their own management section
     if (user.is_service_account) return false
 
-    // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       const matches =
@@ -113,11 +85,9 @@ export function UserManagement() {
       if (!matches) return false
     }
 
-    // Type filter
     if (userFilter === 'admins' && !user.is_admin) return false
     if (userFilter === 'users' && user.is_admin) return false
 
-    // Status filter
     if (statusFilter === 'active' && !user.is_active) return false
     if (statusFilter === 'inactive' && user.is_active) return false
 
@@ -158,17 +128,16 @@ export function UserManagement() {
   }
 
   // Fetch full user detail (with orgs) when viewing/editing a specific user
-  const { data: selectedUser = null } = useQuery({
+  const {
+    data: selectedUser = null,
+    isLoading: selectedUserLoading,
+    error: selectedUserError,
+  } = useQuery({
     queryKey: ['adminUser', selectedUserEmail],
     queryFn: () => getAdminUser(selectedUserEmail!),
     enabled:
       !!selectedUserEmail && (viewMode === 'detail' || viewMode === 'edit'),
   })
-
-  // View handlers
-  const handleCreateClick = () => {
-    goToCreate()
-  }
 
   const handleEditClick = (user: AdminUser) => {
     goToEdit(user.email)
@@ -192,46 +161,26 @@ export function UserManagement() {
     goToList()
   }
 
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>Loading users...</div>
-      </div>
-    )
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load users</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
+  // For deep-linked edit/detail: resolve the per-user fetch before rendering
+  // so UserForm never gets user={null} and detail doesn't flash back to list.
+  if ((viewMode === 'edit' || viewMode === 'detail') && !!selectedUserEmail) {
+    if (selectedUserLoading) {
+      return <LoadingState label="Loading user..." />
+    }
+    if (selectedUserError) {
+      return (
+        <ErrorBanner title="Failed to load user" error={selectedUserError} />
+      )
+    }
+    if (!selectedUser) {
+      return (
+        <div className="rounded-lg border border-tertiary p-4 text-secondary">
+          User not found. They may have been removed.
         </div>
-      </div>
-    )
+      )
+    }
   }
 
-  // Guard for invalid user email in URL
-  if (
-    (viewMode === 'edit' || viewMode === 'detail') &&
-    !!selectedUserEmail &&
-    !selectedUser
-  ) {
-    return (
-      <div className={'rounded-lg border border-tertiary p-4 text-secondary'}>
-        User not found. They may have been removed.
-      </div>
-    )
-  }
-
-  // View mode: Create or Edit
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <UserForm
@@ -244,7 +193,6 @@ export function UserManagement() {
     )
   }
 
-  // View mode: Detail
   if (viewMode === 'detail' && selectedUser) {
     return (
       <UserDetail
@@ -255,51 +203,42 @@ export function UserManagement() {
     )
   }
 
-  // View mode: List (default)
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex flex-1 items-center gap-3">
-          <div className="relative max-w-md flex-1">
-            <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
-            />
-            <Input
-              placeholder="Search users..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={'pl-10'}
-            />
-          </div>
+    <AdminSection
+      searchPlaceholder="Search users..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New User"
+      onCreate={goToCreate}
+      isLoading={isLoading}
+      loadingLabel="Loading users..."
+      error={error}
+      errorTitle="Failed to load users"
+      headerExtras={
+        <>
           <select
+            aria-label="Filter users by type"
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value as UserFilter)}
-            className={`rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+            className={`rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground`}
           >
             <option value="all">All Types</option>
             <option value="users">Regular Users</option>
             <option value="admins">Administrators</option>
           </select>
           <select
+            aria-label="Filter users by status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className={`rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+            className={`rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground`}
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-        </div>
-        <Button
-          onClick={handleCreateClick}
-          className="bg-action text-action-foreground hover:bg-action-hover"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New User
-        </Button>
-      </div>
-
+        </>
+      }
+    >
       <AdminTable
         columns={[
           {
@@ -316,10 +255,10 @@ export function UserManagement() {
                   className="size-8 rounded-full"
                 />
                 <div>
-                  <div className={'text-sm font-medium text-primary'}>
+                  <div className="text-sm font-medium text-primary">
                     {user.display_name}
                   </div>
-                  <div className={'text-xs text-secondary'}>
+                  <div className="text-xs text-secondary">
                     {getGroupNames(user)}
                   </div>
                 </div>
@@ -332,7 +271,7 @@ export function UserManagement() {
             headerAlign: 'left',
             cellAlign: 'left',
             render: (user) => (
-              <span className={'text-sm text-secondary'}>{user.email}</span>
+              <span className="text-sm text-secondary">{user.email}</span>
             ),
           },
           {
@@ -379,7 +318,7 @@ export function UserManagement() {
             headerAlign: 'left',
             cellAlign: 'left',
             render: (user) => (
-              <span className={'text-xs text-secondary'}>
+              <span className="text-xs text-secondary">
                 {formatDate(user.last_login)}
               </span>
             ),
@@ -397,6 +336,6 @@ export function UserManagement() {
             : 'No users created yet'
         }
       />
-    </div>
+    </AdminSection>
   )
 }

@@ -10,8 +10,8 @@ export function SettingsAccount() {
   const { user } = useAuth()
 
   return (
-    <Card className={'p-8'} style={{ borderWidth: '0.5px' }}>
-      <h2 className={'mb-6 text-[18px] font-medium text-primary'}>
+    <Card className="p-8" style={{ borderWidth: '0.5px' }}>
+      <h2 className="mb-6 text-[18px] font-medium text-primary">
         Account settings
       </h2>
 
@@ -22,7 +22,7 @@ export function SettingsAccount() {
             <Input
               id="display-name"
               defaultValue={user?.display_name || ''}
-              className={'mt-2'}
+              className="mt-2"
               style={{ borderWidth: '0.5px' }}
             />
           </div>
@@ -33,7 +33,7 @@ export function SettingsAccount() {
               type="email"
               defaultValue={user?.email || ''}
               disabled
-              className={'mt-2'}
+              className="mt-2"
               style={{ borderWidth: '0.5px' }}
             />
           </div>
@@ -42,16 +42,16 @@ export function SettingsAccount() {
         <Separator />
 
         <div>
-          <h3 className={'mb-4 text-[16px] font-medium text-primary'}>
+          <h3 className="mb-4 text-[16px] font-medium text-primary">
             Preferences
           </h3>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className={'text-[13.5px] text-primary'}>
+                <p className="text-[13.5px] text-primary">
                   Email notifications
                 </p>
-                <p className={'text-[12px] text-tertiary'}>
+                <p className="text-[12px] text-tertiary">
                   Receive email updates about your projects
                 </p>
               </div>
@@ -59,10 +59,10 @@ export function SettingsAccount() {
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className={'text-[13.5px] text-primary'}>
+                <p className="text-[13.5px] text-primary">
                   Deployment summaries
                 </p>
-                <p className={'text-[12px] text-tertiary'}>
+                <p className="text-[12px] text-tertiary">
                   Daily digest of deployment activity
                 </p>
               </div>

@@ -31,19 +31,12 @@ export const useAuthStore = create<AuthStore>()(
         try {
           const decoded = jwtDecode<JwtPayload>(accessToken)
           const tokenExpiry = decoded.exp * 1000
-          console.log('[AuthStore] Setting tokens:', {
-            username: decoded.sub,
-            expiresAt: new Date(tokenExpiry).toISOString(),
-            expiresIn: Math.round((tokenExpiry - Date.now()) / 1000) + 's',
-            now: new Date().toISOString(),
-          })
           set({
             accessToken,
             refreshToken,
             tokenExpiry,
           })
-        } catch (error) {
-          console.error('[Auth] Failed to decode JWT:', error)
+        } catch {
           set({ accessToken: null, refreshToken: null, tokenExpiry: null })
         }
       },
@@ -55,8 +48,7 @@ export const useAuthStore = create<AuthStore>()(
             accessToken: token,
             tokenExpiry: decoded.exp * 1000,
           })
-        } catch (error) {
-          console.error('[Auth] Failed to decode JWT:', error)
+        } catch {
           set({ accessToken: null, tokenExpiry: null })
         }
       },

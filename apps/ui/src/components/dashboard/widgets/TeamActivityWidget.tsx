@@ -85,9 +85,9 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
   }
 
   return (
-    <Card className={'p-6'}>
+    <Card className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className={'text-lg text-primary'}>Team Activity</h3>
+        <h3 className="text-lg text-primary">Team Activity</h3>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -96,15 +96,22 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
           const healthColor = getHealthColor(team.health)
 
           return (
-            <button
-              type="button"
+            <div
               key={team.name}
+              role="button"
+              tabIndex={0}
               onClick={() => handleTeamClick(team.name)}
-              className={`rounded-lg border p-4 text-left transition-all ${'border-input bg-background hover:border-secondary hover:shadow-sm'}`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  handleTeamClick(team.name)
+                }
+              }}
+              className={`cursor-pointer rounded-lg border border-input bg-background p-4 text-left transition-all hover:border-secondary hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
             >
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex-1">
-                  <div className={'mb-1 font-medium text-primary'}>
+                  <div className="mb-1 font-medium text-primary">
                     {team.name}
                   </div>
                   <div className="flex items-center gap-2 text-sm">
@@ -117,23 +124,23 @@ export function TeamActivityWidget({ onViewChange }: TeamActivityWidgetProps) {
                     )}
                   </div>
                 </div>
-                <ChevronRight className={'h-5 w-5 text-tertiary'} />
+                <ChevronRight className="h-5 w-5 text-tertiary" />
               </div>
 
               <div className="flex items-center gap-3">
-                <div className={'text-sm text-secondary'}>
+                <div className="text-sm text-secondary">
                   {team.projects} projects
                 </div>
-                <div className={'text-sm text-secondary'}>•</div>
+                <div className="text-sm text-secondary">•</div>
                 <button
                   type="button"
                   onClick={(e) => handleDeploymentClick(e, team.name)}
-                  className={'hover:text-info/80 text-sm text-info'}
+                  className="hover:text-info/80 text-sm text-info"
                 >
                   {team.deployments} deployments
                 </button>
               </div>
-            </button>
+            </div>
           )
         })}
       </div>

@@ -1,25 +1,22 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
-import { Plus, Search, Link2, AlertCircle } from 'lucide-react'
+import { Link2 } from 'lucide-react'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { formatRelativeDate } from '@/lib/formatDate'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { AdminTable, type CanDeleteResult } from '@/components/ui/admin-table'
+import { AdminSection } from './AdminSection'
 import { LinkDefinitionForm } from './link-definitions/LinkDefinitionForm'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listLinkDefinitions,
   deleteLinkDefinition,
   createLinkDefinition,
   updateLinkDefinition,
 } from '@/api/endpoints'
-import type { LinkDefinitionCreate } from '@/types'
+import type { LinkDefinition, LinkDefinitionCreate } from '@/types'
 
 export function LinkDefinitionManagement() {
-  const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
@@ -32,56 +29,26 @@ export function LinkDefinitionManagement() {
   const [searchQuery, setSearchQuery] = useState('')
 
   const {
-    data: linkDefinitions = [],
+    items: linkDefinitions,
     isLoading,
     error,
-  } = useQuery({
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    LinkDefinition,
+    { orgSlug: string; data: LinkDefinitionCreate },
+    { orgSlug: string; slug: string; data: LinkDefinitionCreate },
+    { orgSlug: string; slug: string }
+  >({
     queryKey: ['linkDefinitions', orgSlug],
-    queryFn: () => listLinkDefinitions(orgSlug!),
-    enabled: !!orgSlug,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: ({
-      orgSlug,
-      data,
-    }: {
-      orgSlug: string
-      data: LinkDefinitionCreate
-    }) => createLinkDefinition(orgSlug, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['linkDefinitions', orgSlug] })
-      goToList()
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({
-      orgSlug,
-      slug,
-      data,
-    }: {
-      orgSlug: string
-      slug: string
-      data: LinkDefinitionCreate
-    }) => updateLinkDefinition(orgSlug, slug, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['linkDefinitions', orgSlug] })
-      goToList()
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: ({ orgSlug, slug }: { orgSlug: string; slug: string }) =>
-      deleteLinkDefinition(orgSlug, slug),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['linkDefinitions', orgSlug] })
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete link definition: ${error.response?.data?.detail || error.message}`,
-      )
-    },
+    listFn: orgSlug ? () => listLinkDefinitions(orgSlug) : null,
+    createFn: ({ orgSlug, data }) => createLinkDefinition(orgSlug, data),
+    updateFn: ({ orgSlug, slug, data }) =>
+      updateLinkDefinition(orgSlug, slug, data),
+    deleteFn: ({ orgSlug, slug }) => deleteLinkDefinition(orgSlug, slug),
+    onMutationSuccess: goToList,
+    deleteErrorLabel: 'link definition',
   })
 
   const filteredLinkDefinitions = linkDefinitions.filter((ld) => {
@@ -101,13 +68,11 @@ export function LinkDefinitionManagement() {
     [linkDefinitions, selectedSlug],
   )
 
-  const handleDelete = (ld: (typeof linkDefinitions)[number]) => {
+  const handleDelete = (ld: LinkDefinition) => {
     deleteMutation.mutate({ orgSlug: ld.organization.slug, slug: ld.slug })
   }
 
-  const canDeleteLinkDefinition = (
-    ld: (typeof linkDefinitions)[number],
-  ): CanDeleteResult => {
+  const canDeleteLinkDefinition = (ld: LinkDefinition): CanDeleteResult => {
     const projects = ld.relationships?.projects?.count ?? 0
     if (projects === 0) return { allowed: true }
     return {
@@ -132,35 +97,9 @@ export function LinkDefinitionManagement() {
     goToList()
   }
 
-  if (isLoading) {
+  if (!orgSlug && !isLoading && !error) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>
-          Loading link definitions...
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load link definitions</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!orgSlug) {
-    return (
-      <div className={'py-12 text-center text-tertiary'}>
+      <div className="py-12 text-center text-tertiary">
         Select an organization to manage link definitions.
       </div>
     )
@@ -191,31 +130,17 @@ export function LinkDefinitionManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <div className="relative max-w-md">
-            <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
-            />
-            <Input
-              placeholder="Search link definitions..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={'pl-10'}
-            />
-          </div>
-        </div>
-        <Button
-          onClick={goToCreate}
-          className="bg-action text-action-foreground hover:bg-action-hover"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Link Definition
-        </Button>
-      </div>
-
+    <AdminSection
+      searchPlaceholder="Search link definitions..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New Link Definition"
+      onCreate={goToCreate}
+      isLoading={isLoading}
+      loadingLabel="Loading link definitions..."
+      error={error}
+      errorTitle="Failed to load link definitions"
+    >
       <AdminTable
         columns={[
           {
@@ -236,13 +161,13 @@ export function LinkDefinitionManagement() {
                       className="size-5 object-cover"
                     />
                   ) : (
-                    <Link2 className={'h-4 w-4 text-info'} />
+                    <Link2 className="h-4 w-4 text-info" />
                   )}
                 </div>
                 <div>
-                  <div className={'text-primary'}>{ld.name}</div>
+                  <div className="text-primary">{ld.name}</div>
                   {ld.description && (
-                    <div className={'text-sm text-tertiary'}>
+                    <div className="text-sm text-tertiary">
                       {ld.description}
                     </div>
                   )}
@@ -256,7 +181,7 @@ export function LinkDefinitionManagement() {
             headerAlign: 'center',
             cellAlign: 'center',
             render: (ld) => (
-              <code className={'rounded bg-secondary px-2 py-1 text-primary'}>
+              <code className="rounded bg-secondary px-2 py-1 text-primary">
                 {ld.slug}
               </code>
             ),
@@ -276,7 +201,7 @@ export function LinkDefinitionManagement() {
                   {ld.url_template}
                 </code>
               ) : (
-                <span className={'text-tertiary'}>--</span>
+                <span className="text-tertiary">--</span>
               ),
           },
           {
@@ -319,6 +244,6 @@ export function LinkDefinitionManagement() {
               : 'No link definitions created yet.'
         }
       />
-    </div>
+    </AdminSection>
   )
 }

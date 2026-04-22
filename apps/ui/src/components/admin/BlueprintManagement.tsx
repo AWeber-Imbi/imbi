@@ -1,19 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import React from 'react'
 import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-  Plus,
-  Search,
-  FileJson,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
-  Upload,
-  Filter,
-} from 'lucide-react'
+import { FileJson, CheckCircle, XCircle, Upload, Filter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { AdminTable } from '@/components/ui/admin-table'
 import { LabelChip } from '@/components/ui/label-chip'
 import { LABEL_SWATCHES, swatchForType } from '@/lib/chip-colors'
@@ -23,10 +12,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { AdminSection } from './AdminSection'
 import { BlueprintForm } from './blueprints/BlueprintForm'
 import { BlueprintDetail } from './blueprints/BlueprintDetail'
 import { ImportBlueprintDialog } from './blueprints/ImportBlueprintDialog'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listBlueprints,
   deleteBlueprint,
@@ -77,7 +68,7 @@ function renderFilterCell(filter: string | null | undefined): React.ReactNode {
       <Tooltip>
         <TooltipTrigger asChild>
           <span>
-            <Filter className={'mx-auto h-4 w-4 text-warning'} />
+            <Filter className="mx-auto h-4 w-4 text-warning" />
           </span>
         </TooltipTrigger>
         <TooltipContent>
@@ -91,7 +82,6 @@ function renderFilterCell(filter: string | null | undefined): React.ReactNode {
 }
 
 export function BlueprintManagement() {
-  const queryClient = useQueryClient()
   const {
     viewMode,
     slug: selectedSlug,
@@ -115,16 +105,6 @@ export function BlueprintManagement() {
     }
   }, [selectedSlug])
 
-  // Fetch blueprints
-  const {
-    data: blueprints = [],
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ['blueprints'],
-    queryFn: () => listBlueprints(),
-  })
-
   // Known node types for blueprint targets
   const blueprintTypes = [
     'Environment',
@@ -135,63 +115,36 @@ export function BlueprintManagement() {
     'ThirdPartyService',
   ]
 
-  // Refresh frontend queries after mutations
-  // The backend auto-refreshes its OpenAPI schema cache on blueprint CRUD
-  const invalidateAfterMutation = () => {
-    queryClient.invalidateQueries({ queryKey: ['blueprints'] })
-    queryClient.invalidateQueries({ queryKey: ['blueprint'] })
-    queryClient.invalidateQueries({ queryKey: ['openapi-spec'] })
-    queryClient.invalidateQueries({ queryKey: ['teamSchema'] })
-    queryClient.invalidateQueries({ queryKey: ['environmentSchema'] })
-    queryClient.invalidateQueries({ queryKey: ['projectTypeSchema'] })
-  }
-
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: ({ type, slug }: BlueprintKey) => deleteBlueprint(type, slug),
-    onSuccess: () => {
-      invalidateAfterMutation()
-    },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (error: any) => {
-      alert(
-        `Failed to delete blueprint: ${error.response?.data?.detail || error.message}`,
-      )
-    },
-  })
-
-  // Create mutation
-  const createMutation = useMutation({
-    mutationFn: (blueprint: BlueprintCreate) => createBlueprint(blueprint),
-    onSuccess: () => {
-      invalidateAfterMutation()
-      goToList()
-    },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (error: any) => {
-      console.error('Failed to create blueprint:', error)
-    },
-  })
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: ({
-      type,
-      slug,
-      blueprint,
-    }: {
-      type: string
-      slug: string
-      blueprint: BlueprintCreate
-    }) => updateBlueprint(type, slug, blueprint),
-    onSuccess: () => {
-      invalidateAfterMutation()
-      goToList()
-    },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onError: (error: any) => {
-      console.error('Failed to update blueprint:', error)
-    },
+  const {
+    items: blueprints,
+    isLoading,
+    error,
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    Blueprint,
+    BlueprintCreate,
+    { type: string; slug: string; blueprint: BlueprintCreate },
+    BlueprintKey
+  >({
+    queryKey: ['blueprints'],
+    listFn: listBlueprints,
+    createFn: (blueprint) => createBlueprint(blueprint),
+    updateFn: ({ type, slug, blueprint }) =>
+      updateBlueprint(type, slug, blueprint),
+    deleteFn: ({ type, slug }) => deleteBlueprint(type, slug),
+    onMutationSuccess: goToList,
+    // The backend auto-refreshes its OpenAPI schema cache on blueprint CRUD;
+    // invalidate frontend caches derived from it.
+    extraInvalidateKeys: [
+      ['blueprint'],
+      ['openapi-spec'],
+      ['teamSchema'],
+      ['environmentSchema'],
+      ['projectTypeSchema'],
+    ],
+    deleteErrorLabel: 'blueprint',
   })
 
   // Filter blueprints
@@ -209,10 +162,6 @@ export function BlueprintManagement() {
     if (enabledFilter === 'disabled' && bp.enabled) return false
     return true
   })
-
-  const handleCreateClick = () => {
-    goToCreate()
-  }
 
   const handleEditClick = (key: BlueprintKey) => {
     goToEdit(`${key.type}:${key.slug}`)
@@ -235,7 +184,25 @@ export function BlueprintManagement() {
   }
 
   const handleCancel = () => {
+    // Clear any prior create/import/update error so switching back to the
+    // list and then re-entering any flow starts clean.
+    createMutation.reset()
+    updateMutation.reset()
     goToList()
+  }
+
+  const handleCreate = () => {
+    // Drop any error from a previous failed import/edit before entering the form.
+    createMutation.reset()
+    updateMutation.reset()
+    goToCreate()
+  }
+
+  const handleOpenImport = () => {
+    // Drop any error from a previous failed create/edit before opening the dialog.
+    createMutation.reset()
+    updateMutation.reset()
+    setImportDialogOpen(true)
   }
 
   const handleImport = (data: BlueprintCreate) => {
@@ -244,32 +211,10 @@ export function BlueprintManagement() {
     })
   }
 
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-sm text-secondary">Loading blueprints...</div>
-      </div>
-    )
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div className="flex items-center gap-3 rounded-md border border-tertiary bg-danger p-4 text-danger">
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load blueprints</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   // Guard for invalid blueprint URL slugs
   if (
+    !isLoading &&
+    !error &&
     (viewMode === 'edit' || viewMode === 'detail') &&
     !!selectedSlug &&
     !selectedKey
@@ -281,7 +226,6 @@ export function BlueprintManagement() {
     )
   }
 
-  // View mode: Create or Edit
   if (viewMode === 'create' || viewMode === 'edit') {
     const isCreate = viewMode === 'create'
     return (
@@ -299,7 +243,6 @@ export function BlueprintManagement() {
     )
   }
 
-  // View mode: Detail
   if (viewMode === 'detail' && selectedKey) {
     return (
       <BlueprintDetail
@@ -312,22 +255,21 @@ export function BlueprintManagement() {
     )
   }
 
-  // View mode: List (default)
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex flex-1 items-center gap-3">
-          <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary" />
-            <Input
-              placeholder="Search blueprints..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="border-tertiary bg-primary pl-10 text-primary placeholder:text-tertiary"
-            />
-          </div>
+    <AdminSection
+      searchPlaceholder="Search blueprints..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New Blueprint"
+      onCreate={handleCreate}
+      isLoading={isLoading}
+      loadingLabel="Loading blueprints..."
+      error={error}
+      errorTitle="Failed to load blueprints"
+      headerExtras={
+        <>
           <select
+            aria-label="Filter blueprints by type"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
             className="h-10 rounded-md border border-tertiary bg-primary px-3 py-2 text-sm text-primary"
@@ -341,6 +283,7 @@ export function BlueprintManagement() {
             <option value="relationship">Relationship</option>
           </select>
           <select
+            aria-label="Filter blueprints by status"
             value={enabledFilter}
             onChange={(e) => setEnabledFilter(e.target.value)}
             className="h-10 rounded-md border border-tertiary bg-primary px-3 py-2 text-sm text-primary"
@@ -349,26 +292,19 @@ export function BlueprintManagement() {
             <option value="enabled">Enabled</option>
             <option value="disabled">Disabled</option>
           </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setImportDialogOpen(true)}
-            className="border-tertiary text-secondary hover:bg-secondary hover:text-primary"
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            Import
-          </Button>
-          <Button
-            onClick={handleCreateClick}
-            className="bg-action text-action-foreground hover:bg-action-hover"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New Blueprint
-          </Button>
-        </div>
-      </div>
-
+        </>
+      }
+      headerActions={
+        <Button
+          variant="outline"
+          onClick={handleOpenImport}
+          className="border-tertiary text-secondary hover:bg-secondary hover:text-primary"
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          Import
+        </Button>
+      }
+    >
       <AdminTable<Blueprint>
         columns={[
           {
@@ -490,6 +426,6 @@ export function BlueprintManagement() {
         isLoading={createMutation.isPending}
         apiError={importDialogOpen ? createMutation.error : null}
       />
-    </div>
+    </AdminSection>
   )
 }

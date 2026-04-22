@@ -78,7 +78,7 @@ export function DynamicFormFields({
         if (field.enum) {
           return (
             <div key={key}>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 {label}
                 {isRequired && <span className="text-red-500"> *</span>}
               </label>
@@ -86,7 +86,7 @@ export function DynamicFormFields({
                 value={value}
                 onChange={(e) => onChange(key, e.target.value || undefined)}
                 disabled={isLoading}
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${fieldError ? 'border-red-500' : ''}`}
+                className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${fieldError ? 'border-red-500' : ''}`}
               >
                 <option value="">Select {label.toLowerCase()}...</option>
                 {field.enum.map((opt) => (
@@ -96,13 +96,13 @@ export function DynamicFormFields({
                 ))}
               </select>
               {field.description && (
-                <p className={'mt-1 text-xs text-tertiary'}>
+                <p className="mt-1 text-xs text-tertiary">
                   {field.description}
                 </p>
               )}
               {fieldError && (
                 <div
-                  className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                  className={`mt-1 flex items-center gap-1 text-xs text-danger`}
                 >
                   <AlertCircle className="h-3 w-3" />
                   {fieldError}
@@ -125,12 +125,12 @@ export function DynamicFormFields({
               />
               <label
                 htmlFor={`dynamic-${key}`}
-                className={'text-sm text-secondary'}
+                className="text-sm text-secondary"
               >
                 {label}
               </label>
               {field.description && (
-                <span className={'text-xs text-tertiary'}>
+                <span className="text-xs text-tertiary">
                   — {field.description}
                 </span>
               )}
@@ -140,7 +140,7 @@ export function DynamicFormFields({
 
         return (
           <div key={key}>
-            <label className={'mb-1.5 block text-sm text-secondary'}>
+            <label className="mb-1.5 block text-sm text-secondary">
               {label}
               {isRequired && <span className="text-red-500"> *</span>}
             </label>
@@ -164,13 +164,11 @@ export function DynamicFormFields({
               className={` ${fieldError ? 'border-red-500' : ''}`}
             />
             {field.description && (
-              <p className={'mt-1 text-xs text-tertiary'}>
-                {field.description}
-              </p>
+              <p className="mt-1 text-xs text-tertiary">{field.description}</p>
             )}
             {fieldError && (
               <div
-                className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                className={`mt-1 flex items-center gap-1 text-xs text-danger`}
               >
                 <AlertCircle className="h-3 w-3" />
                 {fieldError}
@@ -206,8 +204,8 @@ export function DynamicDetailFields({
 
         return (
           <div key={key}>
-            <div className={'text-sm text-secondary'}>{label}</div>
-            <div className={'mt-1 text-primary'}>
+            <div className="text-sm text-secondary">{label}</div>
+            <div className="mt-1 text-primary">
               {typeof value === 'boolean'
                 ? value
                   ? 'Yes'

@@ -72,10 +72,10 @@ export function MyPullRequestsWidget({
   }
 
   return (
-    <Card className={'p-6'}>
+    <Card className="p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className={'text-lg text-primary'}>My Pull Requests</h3>
-        <span className={'text-sm text-secondary'}>
+        <h3 className="text-lg text-primary">My Pull Requests</h3>
+        <span className="text-sm text-secondary">
           {pullRequests.length} open
         </span>
       </div>
@@ -88,17 +88,17 @@ export function MyPullRequestsWidget({
           return (
             <div
               key={pr.id}
-              className={`rounded-lg border p-4 transition-colors ${'border-input bg-background hover:border-secondary'}`}
+              className={`rounded-lg border border-input bg-background p-4 transition-colors hover:border-secondary`}
             >
               <div className="flex items-start gap-3">
                 <GitPullRequest
-                  className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-tertiary'}`}
+                  className={`mt-0.5 h-5 w-5 flex-shrink-0 text-tertiary`}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className={'mb-1 font-medium text-primary'}>
+                  <div className="mb-1 font-medium text-primary">
                     {pr.title}
                   </div>
-                  <div className={'mb-2 text-sm text-secondary'}>
+                  <div className="mb-2 text-sm text-secondary">
                     {pr.repo} • {pr.branch}
                   </div>
 

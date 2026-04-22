@@ -67,7 +67,7 @@ export function ThirdPartyServiceDetail({
                   <Badge variant={statusVariant}>{service.status}</Badge>
                 </div>
                 {service.description && (
-                  <p className={'mt-1 text-sm text-secondary'}>
+                  <p className="mt-1 text-sm text-secondary">
                     {service.description}
                   </p>
                 )}
@@ -83,7 +83,7 @@ export function ThirdPartyServiceDetail({
           </div>
 
           {/* Tabs */}
-          <div className={'border-b border-tertiary'}>
+          <div className="border-b border-tertiary">
             <div className="flex gap-0">
               {tabs.map((tab) => {
                 const Icon = tab.icon
@@ -116,56 +116,56 @@ export function ThirdPartyServiceDetail({
             <CardContent className="p-6">
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <div className={'text-sm text-secondary'}>Slug</div>
-                  <div className={'mt-1 text-primary'}>
+                  <div className="text-sm text-secondary">Slug</div>
+                  <div className="mt-1 text-primary">
                     <code
-                      className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                      className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                     >
                       {service.slug}
                     </code>
                   </div>
                 </div>
                 <div>
-                  <div className={'text-sm text-secondary'}>Vendor</div>
-                  <div className={'mt-1 text-primary'}>{service.vendor}</div>
+                  <div className="text-sm text-secondary">Vendor</div>
+                  <div className="mt-1 text-primary">{service.vendor}</div>
                 </div>
                 <div>
-                  <div className={'text-sm text-secondary'}>Organization</div>
-                  <div className={'mt-1 text-primary'}>
+                  <div className="text-sm text-secondary">Organization</div>
+                  <div className="mt-1 text-primary">
                     {service.organization.name}
                   </div>
                 </div>
                 <div>
-                  <div className={'text-sm text-secondary'}>Managing Team</div>
-                  <div className={'mt-1 text-primary'}>
+                  <div className="text-sm text-secondary">Managing Team</div>
+                  <div className="mt-1 text-primary">
                     {service.team?.name || (
-                      <span className={'text-tertiary'}>Not assigned</span>
+                      <span className="text-tertiary">Not assigned</span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className={'text-sm text-secondary'}>Category</div>
-                  <div className={'mt-1 text-primary'}>
+                  <div className="text-sm text-secondary">Category</div>
+                  <div className="mt-1 text-primary">
                     {service.category || (
-                      <span className={'text-tertiary'}>Not set</span>
+                      <span className="text-tertiary">Not set</span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className={'text-sm text-secondary'}>Service URL</div>
+                  <div className="text-sm text-secondary">Service URL</div>
                   <div className="mt-1">
                     {service.service_url ? (
                       <a
                         href={service.service_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`inline-flex items-center gap-1 text-sm ${'hover:text-info/80 text-info'}`}
+                        className={`hover:text-info/80 inline-flex items-center gap-1 text-sm text-info`}
                       >
                         {service.service_url}
                         <ExternalLink className="h-3 w-3" />
                       </a>
                     ) : (
-                      <span className={'text-tertiary'}>Not set</span>
+                      <span className="text-tertiary">Not set</span>
                     )}
                   </div>
                 </div>
@@ -183,13 +183,13 @@ export function ThirdPartyServiceDetail({
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {linkEntries.map(([label, url]) => (
                     <div key={label}>
-                      <div className={'text-sm text-secondary'}>{label}</div>
+                      <div className="text-sm text-secondary">{label}</div>
                       <div className="mt-1">
                         <a
                           href={String(url)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`inline-flex items-center gap-1 text-sm ${'hover:text-info/80 text-info'}`}
+                          className={`hover:text-info/80 inline-flex items-center gap-1 text-sm text-info`}
                         >
                           {String(url)}
                           <ExternalLink className="h-3 w-3" />
@@ -212,10 +212,10 @@ export function ThirdPartyServiceDetail({
                 <div className="grid grid-cols-2 gap-4">
                   {identifierEntries.map(([label, val]) => (
                     <div key={label}>
-                      <div className={'text-sm text-secondary'}>{label}</div>
-                      <div className={'mt-1 text-primary'}>
+                      <div className="text-sm text-secondary">{label}</div>
+                      <div className="mt-1 text-primary">
                         <code
-                          className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                          className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                         >
                           {String(val)}
                         </code>

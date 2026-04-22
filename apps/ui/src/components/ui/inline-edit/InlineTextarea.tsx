@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { useInlineEdit } from '@/hooks/useInlineEdit'
 import { InlineDisplay } from './InlineDisplay'
@@ -24,11 +24,15 @@ export function InlineTextarea({
   rows = 3,
 }: InlineTextareaProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
-  const edit = useInlineEdit<string>({
-    initial: value ?? '',
-    onCommit: async (next) => {
+  const handleCommit = useCallback(
+    async (next: string) => {
       await onCommit(next === '' ? null : next)
     },
+    [onCommit],
+  )
+  const edit = useInlineEdit<string>({
+    initial: value ?? '',
+    onCommit: handleCommit,
   })
 
   useEffect(() => {

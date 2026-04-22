@@ -1,27 +1,24 @@
 import { useState, useMemo } from 'react'
+import { Layers } from 'lucide-react'
+import { formatRelativeDate } from '@/lib/formatDate'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { AdminTable } from '@/components/ui/admin-table'
 import type { CanDeleteResult } from '@/components/ui/admin-table'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
-import { Plus, Search, Layers, AlertCircle } from 'lucide-react'
-import { formatRelativeDate } from '@/lib/formatDate'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { EntityIcon } from '@/components/ui/entity-icon'
+import { AdminSection } from './AdminSection'
 import { ProjectTypeForm } from './project-types/ProjectTypeForm'
 import { ProjectTypeDetail } from './project-types/ProjectTypeDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listProjectTypes,
   deleteProjectType,
   createProjectType,
   updateProjectType,
 } from '@/api/endpoints'
-import type { ProjectTypeCreate } from '@/types'
+import type { ProjectType, ProjectTypeCreate } from '@/types'
 
 export function ProjectTypeManagement() {
-  const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
@@ -34,51 +31,25 @@ export function ProjectTypeManagement() {
   const [searchQuery, setSearchQuery] = useState('')
 
   const {
-    data: projectTypes = [],
+    items: projectTypes,
     isLoading,
     error,
-  } = useQuery({
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    ProjectType,
+    { orgSlug: string; pt: ProjectTypeCreate },
+    { orgSlug: string; slug: string; pt: ProjectTypeCreate },
+    { orgSlug: string; slug: string }
+  >({
     queryKey: ['projectTypes', orgSlug],
-    queryFn: () => listProjectTypes(orgSlug!),
-    enabled: !!orgSlug,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: ({ orgSlug, pt }: { orgSlug: string; pt: ProjectTypeCreate }) =>
-      createProjectType(orgSlug, pt),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projectTypes', orgSlug] })
-      goToList()
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({
-      orgSlug,
-      slug,
-      pt,
-    }: {
-      orgSlug: string
-      slug: string
-      pt: ProjectTypeCreate
-    }) => updateProjectType(orgSlug, slug, pt),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projectTypes', orgSlug] })
-      goToList()
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: ({ orgSlug, slug }: { orgSlug: string; slug: string }) =>
-      deleteProjectType(orgSlug, slug),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projectTypes', orgSlug] })
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete project type: ${error.response?.data?.detail || error.message}`,
-      )
-    },
+    listFn: orgSlug ? () => listProjectTypes(orgSlug) : null,
+    createFn: ({ orgSlug, pt }) => createProjectType(orgSlug, pt),
+    updateFn: ({ orgSlug, slug, pt }) => updateProjectType(orgSlug, slug, pt),
+    deleteFn: ({ orgSlug, slug }) => deleteProjectType(orgSlug, slug),
+    onMutationSuccess: goToList,
+    deleteErrorLabel: 'project type',
   })
 
   const filteredProjectTypes = projectTypes.filter((pt) => {
@@ -98,13 +69,11 @@ export function ProjectTypeManagement() {
     [projectTypes, selectedPtSlug],
   )
 
-  const handleDelete = (pt: (typeof projectTypes)[number]) => {
+  const handleDelete = (pt: ProjectType) => {
     deleteMutation.mutate({ orgSlug: pt.organization.slug, slug: pt.slug })
   }
 
-  const canDeleteProjectType = (
-    pt: (typeof projectTypes)[number],
-  ): CanDeleteResult => {
+  const canDeleteProjectType = (pt: ProjectType): CanDeleteResult => {
     const projects = pt.relationships?.projects?.count ?? 0
     if (projects === 0) return { allowed: true }
     return {
@@ -129,33 +98,9 @@ export function ProjectTypeManagement() {
     goToList()
   }
 
-  if (isLoading) {
+  if (!orgSlug && !isLoading && !error) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>Loading project types...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load project types</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!orgSlug) {
-    return (
-      <div className={'py-12 text-center text-tertiary'}>
+      <div className="py-12 text-center text-tertiary">
         Select an organization to manage project types.
       </div>
     )
@@ -184,31 +129,17 @@ export function ProjectTypeManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <div className="relative max-w-md">
-            <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
-            />
-            <Input
-              placeholder="Search project types..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={'pl-10'}
-            />
-          </div>
-        </div>
-        <Button
-          onClick={goToCreate}
-          className="bg-action text-action-foreground hover:bg-action-hover"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Project Type
-        </Button>
-      </div>
-
+    <AdminSection
+      searchPlaceholder="Search project types..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New Project Type"
+      onCreate={goToCreate}
+      isLoading={isLoading}
+      loadingLabel="Loading project types..."
+      error={error}
+      errorTitle="Failed to load project types"
+    >
       <AdminTable
         columns={[
           {
@@ -229,15 +160,13 @@ export function ProjectTypeManagement() {
                       className="size-5 rounded object-cover"
                     />
                   ) : (
-                    <Layers
-                      className={'h-4 w-4 text-purple-600 dark:text-purple-400'}
-                    />
+                    <Layers className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                   )}
                 </div>
                 <div>
-                  <div className={'text-primary'}>{pt.name}</div>
+                  <div className="text-primary">{pt.name}</div>
                   {pt.description && (
-                    <div className={'text-sm text-tertiary'}>
+                    <div className="text-sm text-tertiary">
                       {pt.description}
                     </div>
                   )}
@@ -251,7 +180,7 @@ export function ProjectTypeManagement() {
             headerAlign: 'center',
             cellAlign: 'center',
             render: (pt) => (
-              <code className={'rounded bg-secondary px-2 py-1 text-primary'}>
+              <code className="rounded bg-secondary px-2 py-1 text-primary">
                 {pt.slug}
               </code>
             ),
@@ -296,6 +225,6 @@ export function ProjectTypeManagement() {
               : 'No project types created yet.'
         }
       />
-    </div>
+    </AdminSection>
   )
 }

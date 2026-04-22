@@ -1,16 +1,17 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
-import { Plus, Search, Shield, AlertCircle, Lock } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { Shield, Lock } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
-import { Button } from '@/components/ui/button'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
 import { AdminTable } from '@/components/ui/admin-table'
 import type { CanDeleteResult } from '@/components/ui/admin-table'
+import { AdminSection } from './AdminSection'
 import { RoleForm } from './roles/RoleForm'
 import { RoleDetail } from './roles/RoleDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   getRoles,
   getRole,
@@ -24,100 +25,133 @@ import type { RoleDetail as RoleDetailType, RoleCreate } from '@/types'
 
 type Role = Awaited<ReturnType<typeof getRoles>>[number]
 
+function isSystemRole(
+  role: Role,
+): role is RoleDetailType & { is_system: true } {
+  return 'is_system' in role && (role as RoleDetailType).is_system === true
+}
+
+// Sync permissions: grant new ones, revoke removed ones. The API has no
+// atomic replace endpoint, so we run grants/revokes concurrently and report
+// any partial failures so the UI reflects the true post-mutation state.
+async function syncPermissions(slug: string, desired: string[]) {
+  const current = await getRole(slug)
+  const currentPerms = new Set(current.permissions?.map((p) => p.name) ?? [])
+  const desiredPerms = new Set(desired)
+
+  // Iterate the deduplicated set for grants so a duplicate entry in
+  // `desired` doesn't queue two grant calls for the same permission (the
+  // second would reject as "already granted" and trigger partial-failure).
+  const toGrant = [...desiredPerms].filter((p) => !currentPerms.has(p))
+  const toRevoke = [...currentPerms].filter((p) => !desiredPerms.has(p))
+
+  const operations: Array<{ kind: 'grant' | 'revoke'; permission: string }> = [
+    ...toGrant.map((p) => ({ kind: 'grant' as const, permission: p })),
+    ...toRevoke.map((p) => ({ kind: 'revoke' as const, permission: p })),
+  ]
+
+  const results = await Promise.allSettled(
+    operations.map((op) =>
+      op.kind === 'grant'
+        ? grantPermission(slug, op.permission)
+        : revokePermission(slug, op.permission),
+    ),
+  )
+
+  const failures = results
+    .map((r, i) => ({ result: r, op: operations[i] }))
+    .filter(({ result }) => result.status === 'rejected')
+
+  if (failures.length > 0) {
+    const detail = failures
+      .map(({ result, op }) => {
+        const reason =
+          result.status === 'rejected'
+            ? extractApiErrorDetail(result.reason, 'unknown')
+            : 'unknown'
+        return `${op.kind} ${op.permission}: ${reason}`
+      })
+      .join('; ')
+    throw new Error(
+      `Permission sync partially failed (${failures.length}/${operations.length}): ${detail}`,
+    )
+  }
+}
+
 export function RoleManagement() {
-  const queryClient = useQueryClient()
   const {
     viewMode,
     slug: selectedRoleSlug,
     goToList,
     goToCreate,
     goToEdit,
+    goToDetail,
   } = useAdminNav()
   const [searchQuery, setSearchQuery] = useState('')
+  const queryClient = useQueryClient()
 
-  // Fetch roles from API
-  const {
-    data: roles = [],
-    isLoading,
-    error,
-  } = useQuery({
-    queryKey: ['roles'],
-    queryFn: getRoles,
-  })
-
-  // Delete role mutation
-  const deleteMutation = useMutation({
-    mutationFn: deleteRole,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['roles'] })
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete role: ${error.response?.data?.detail || error.message}`,
-      )
-    },
-  })
-
-  // Sync permissions: grant new ones, revoke removed ones
-  const syncPermissions = async (slug: string, desired: string[]) => {
-    const current = await getRole(slug)
-    const currentPerms = new Set(current.permissions?.map((p) => p.name) || [])
-    const desiredPerms = new Set(desired)
-
-    const toGrant = desired.filter((p) => !currentPerms.has(p))
-    const toRevoke = [...currentPerms].filter((p) => !desiredPerms.has(p))
-
-    await Promise.all([
-      ...toGrant.map((p) => grantPermission(slug, p)),
-      ...toRevoke.map((p) => revokePermission(slug, p)),
-    ])
+  // When the role write succeeded but a subset of permission grants/revokes
+  // failed, the server state is genuinely different from both the pre-mutation
+  // and the requested post-mutation state. Invalidate the role caches so the
+  // client refetches the true state and surface the sync failure as a
+  // non-blocking toast — the role *did* commit, so we don't strand the user
+  // on the create form (for a role that now exists) or on the old slug after
+  // an edit-time rename.
+  const invalidateRoleCaches = (slug: string) => {
+    queryClient.invalidateQueries({ queryKey: ['roles'] })
+    queryClient.invalidateQueries({ queryKey: ['role', slug] })
   }
 
-  // Create role mutation with permission sync
-  const createMutation = useMutation({
-    mutationFn: async ({
-      role,
-      permissions,
-    }: {
-      role: RoleCreate
-      permissions: string[]
-    }) => {
+  const reportPermissionSyncFailure = (err: unknown) => {
+    toast.error(
+      `Role saved, but some permission changes failed: ${extractApiErrorDetail(err)}`,
+    )
+  }
+
+  const {
+    items: roles,
+    isLoading,
+    error,
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    Role,
+    { role: RoleCreate; permissions: string[] },
+    { slug: string; role: RoleCreate; permissions: string[] },
+    string
+  >({
+    queryKey: ['roles'],
+    listFn: getRoles,
+    createFn: async ({ role, permissions }) => {
       const created = await createRole(role)
       if (permissions.length > 0) {
-        await syncPermissions(created.slug, permissions)
+        try {
+          await syncPermissions(created.slug, permissions)
+        } catch (err) {
+          // The role itself committed — don't strand the user on a "new role"
+          // form for a role that already exists. Refetch and toast instead.
+          invalidateRoleCaches(created.slug)
+          reportPermissionSyncFailure(err)
+        }
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['roles'] })
-      goToList()
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      console.error('Failed to create role:', error)
-    },
-  })
-
-  // Update role mutation with permission sync
-  const updateMutation = useMutation({
-    mutationFn: async ({
-      slug,
-      role,
-      permissions,
-    }: {
-      slug: string
-      role: RoleCreate
-      permissions: string[]
-    }) => {
+    updateFn: async ({ slug, role, permissions }) => {
       const updated = await updateRole(slug, role)
-      await syncPermissions(updated.slug, permissions)
+      try {
+        await syncPermissions(updated.slug, permissions)
+      } catch (err) {
+        // The role write committed (the slug may even have changed). Let the
+        // success path navigate away and surface the partial sync failure as
+        // a non-blocking toast.
+        invalidateRoleCaches(updated.slug)
+        reportPermissionSyncFailure(err)
+      }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['roles'] })
-      queryClient.invalidateQueries({ queryKey: ['role'] })
-      goToList()
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      console.error('Failed to update role:', error)
-    },
+    deleteFn: deleteRole,
+    onMutationSuccess: goToList,
+    extraInvalidateKeys: [['role']],
+    deleteErrorLabel: 'role',
   })
 
   // Filter roles locally
@@ -138,22 +172,9 @@ export function RoleManagement() {
   }
 
   const canDeleteRole = (role: Role): CanDeleteResult => {
-    const isSystem = 'is_system' in role && (role as RoleDetailType).is_system
-    if (isSystem)
+    if (isSystemRole(role))
       return { allowed: false, reason: 'System roles cannot be deleted' }
     return { allowed: true }
-  }
-
-  const handleCreateClick = () => {
-    goToCreate()
-  }
-
-  const handleEditClick = (slug: string) => {
-    goToEdit(slug)
-  }
-
-  const handleViewClick = (slug: string) => {
-    goToEdit(slug)
   }
 
   const handleSave = (roleData: RoleCreate, permissions: string[]) => {
@@ -172,33 +193,6 @@ export function RoleManagement() {
     goToList()
   }
 
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>Loading roles...</div>
-      </div>
-    )
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load roles</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // View mode: Create or Edit
   if (viewMode === 'create' || viewMode === 'edit') {
     const isCreate = viewMode === 'create'
     return (
@@ -214,44 +208,28 @@ export function RoleManagement() {
     )
   }
 
-  // View mode: Detail
   if (viewMode === 'detail' && selectedRoleSlug) {
     return (
       <RoleDetail
         slug={selectedRoleSlug}
-        onEdit={() => handleEditClick(selectedRoleSlug)}
+        onEdit={() => goToEdit(selectedRoleSlug)}
         onBack={handleCancel}
       />
     )
   }
 
-  // View mode: List (default)
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <div className="relative max-w-md">
-            <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
-            />
-            <Input
-              placeholder="Search roles..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={'pl-10'}
-            />
-          </div>
-        </div>
-        <Button
-          onClick={handleCreateClick}
-          className="bg-action text-action-foreground hover:bg-action-hover"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Role
-        </Button>
-      </div>
-
+    <AdminSection
+      searchPlaceholder="Search roles..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New Role"
+      onCreate={goToCreate}
+      isLoading={isLoading}
+      loadingLabel="Loading roles..."
+      error={error}
+      errorTitle="Failed to load roles"
+    >
       <AdminTable
         columns={[
           {
@@ -261,8 +239,8 @@ export function RoleManagement() {
             cellAlign: 'left',
             render: (role) => (
               <div className="flex items-center gap-2">
-                <Shield className={'h-4 w-4 flex-shrink-0 text-info'} />
-                <span className={'text-sm font-medium text-primary'}>
+                <Shield className="h-4 w-4 flex-shrink-0 text-info" />
+                <span className="text-sm font-medium text-primary">
                   {role.name}
                 </span>
               </div>
@@ -274,7 +252,7 @@ export function RoleManagement() {
             headerAlign: 'center',
             cellAlign: 'center',
             render: (role) => (
-              <span className={'font-mono text-sm text-secondary'}>
+              <span className="font-mono text-sm text-secondary">
                 {role.slug}
               </span>
             ),
@@ -285,7 +263,7 @@ export function RoleManagement() {
             headerAlign: 'left',
             cellAlign: 'left',
             render: (role) => (
-              <span className={'text-sm text-secondary'}>
+              <span className="text-sm text-secondary">
                 {role.description || '-'}
               </span>
             ),
@@ -295,18 +273,15 @@ export function RoleManagement() {
             header: 'Type',
             headerAlign: 'center',
             cellAlign: 'center',
-            render: (role) => {
-              const isSystem =
-                'is_system' in role && (role as RoleDetailType).is_system
-              return isSystem ? (
+            render: (role) =>
+              isSystemRole(role) ? (
                 <Badge variant="warning" className="gap-1">
                   <Lock className="h-3 w-3" />
                   System
                 </Badge>
               ) : (
                 <Badge variant="info">Custom</Badge>
-              )
-            },
+              ),
           },
           {
             key: 'updated',
@@ -319,9 +294,8 @@ export function RoleManagement() {
         rows={filteredRoles}
         getRowKey={(role) => role.slug}
         getDeleteLabel={(role) => role.name}
-        onRowClick={(role) => handleViewClick(role.slug)}
-        isRowClickable={(role) =>
-          !('is_system' in role && (role as RoleDetailType).is_system)
+        onRowClick={(role) =>
+          isSystemRole(role) ? goToDetail(role.slug) : goToEdit(role.slug)
         }
         onDelete={handleDelete}
         canDelete={canDeleteRole}
@@ -330,6 +304,6 @@ export function RoleManagement() {
           searchQuery ? 'No roles match your search' : 'No roles created yet'
         }
       />
-    </div>
+    </AdminSection>
   )
 }

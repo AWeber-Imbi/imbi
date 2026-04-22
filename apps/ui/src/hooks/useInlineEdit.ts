@@ -24,40 +24,41 @@ export function useInlineEdit<T>(
   opts: UseInlineEditOptions<T>,
 ): UseInlineEditResult<T> {
   const equals = opts.equals ?? Object.is
+  const { initial, onCommit } = opts
   const [isEditing, setEditing] = useState(false)
-  const [draft, setDraft] = useState<T>(opts.initial)
+  const [draft, setDraft] = useState<T>(initial)
   const [error, setError] = useState<string | null>(null)
 
   // Keep draft in sync with external value when not editing.
   useEffect(() => {
-    if (!isEditing) setDraft(opts.initial)
-  }, [opts.initial, isEditing])
+    if (!isEditing) setDraft(initial)
+  }, [initial, isEditing])
 
   const enter = useCallback(() => {
-    setDraft(opts.initial)
+    setDraft(initial)
     setError(null)
     setEditing(true)
-  }, [opts.initial])
+  }, [initial])
 
   const cancel = useCallback(() => {
-    setDraft(opts.initial)
+    setDraft(initial)
     setError(null)
     setEditing(false)
-  }, [opts.initial])
+  }, [initial])
 
   const commit = useCallback(async () => {
-    if (equals(draft, opts.initial)) {
+    if (equals(draft, initial)) {
       setEditing(false)
       return
     }
     try {
-      await opts.onCommit(draft)
+      await onCommit(draft)
       setError(null)
       setEditing(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [draft, opts, equals])
+  }, [draft, initial, onCommit, equals])
 
   const handleKeyDown = useCallback(
     async (e: React.KeyboardEvent) => {
@@ -73,12 +74,12 @@ export function useInlineEdit<T>(
   )
 
   const handleBlur = useCallback(async () => {
-    if (equals(draft, opts.initial)) {
+    if (equals(draft, initial)) {
       setEditing(false)
       return
     }
     await commit()
-  }, [draft, opts.initial, equals, commit])
+  }, [draft, initial, equals, commit])
 
   return {
     isEditing,

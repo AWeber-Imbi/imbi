@@ -58,7 +58,7 @@ export function ConversationHistory({
     return (
       <button
         onClick={() => setShowHistory(true)}
-        className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${'text-secondary hover:bg-secondary hover:text-primary'}`}
+        className={`flex items-center gap-1 rounded px-2 py-1 text-xs text-secondary hover:bg-secondary hover:text-primary`}
       >
         <MessageSquare className="h-3 w-3" />
         History
@@ -68,7 +68,7 @@ export function ConversationHistory({
 
   return (
     <div
-      className={`absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border shadow-lg ${'border-border bg-card'}`}
+      className={`absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-card shadow-lg`}
     >
       <div className="p-2">
         <button
@@ -76,7 +76,7 @@ export function ConversationHistory({
             onNewConversation()
             setShowHistory(false)
           }}
-          className={`flex w-full items-center gap-2 rounded px-3 py-2 text-sm ${'text-secondary hover:bg-secondary'}`}
+          className={`flex w-full items-center gap-2 rounded px-3 py-2 text-sm text-secondary hover:bg-secondary`}
         >
           <Plus className="h-4 w-4" />
           New Conversation
@@ -108,14 +108,14 @@ export function ConversationHistory({
               <button
                 onClick={(e) => handleArchive(e, conv.id)}
                 aria-label={`Archive ${conv.title ?? 'conversation'}`}
-                className={`rounded p-1 ${'hover:bg-secondary'}`}
+                className={`rounded p-1 hover:bg-secondary`}
               >
                 <Archive className="h-3 w-3" />
               </button>
               <button
                 onClick={(e) => handleDelete(e, conv.id)}
                 aria-label={`Delete ${conv.title ?? 'conversation'}`}
-                className={`rounded p-1 ${'text-danger hover:bg-secondary'}`}
+                className={`rounded p-1 text-danger hover:bg-secondary`}
               >
                 <Trash2 className="h-3 w-3" />
               </button>
@@ -123,10 +123,10 @@ export function ConversationHistory({
           </div>
         ))}
       </div>
-      <div className={'border-t border-tertiary p-1'}>
+      <div className="border-t border-tertiary p-1">
         <button
           onClick={() => setShowHistory(false)}
-          className={`w-full rounded px-3 py-1 text-xs ${'text-tertiary hover:text-secondary'}`}
+          className={`w-full rounded px-3 py-1 text-xs text-tertiary hover:text-secondary`}
         >
           Close
         </button>

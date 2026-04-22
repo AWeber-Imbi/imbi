@@ -187,18 +187,11 @@ export function OperationsLog({
   // lookups. When any of them fail we surface a non-blocking banner so
   // the user can retry rather than silently falling back to raw slugs.
   const metadataError = projectsError || environmentsError || usersError
-  const retryMetadata = useCallback(() => {
+  const retryMetadata = () => {
     if (projectsError) refetchProjects()
     if (environmentsError) refetchEnvironments()
     if (usersError) refetchUsers()
-  }, [
-    projectsError,
-    environmentsError,
-    usersError,
-    refetchProjects,
-    refetchEnvironments,
-    refetchUsers,
-  ])
+  }
 
   // Only the time-range boundary is pushed to the server. Facet filters
   // (entry_types / environment_slugs / project_slugs) are applied

@@ -107,17 +107,17 @@ export function ThirdPartyServiceForm({
     }
   }
 
-  const selectClass = `w-full px-3 py-2 rounded-lg border text-sm ${'border-input bg-background text-foreground'}`
+  const selectClass = `w-full px-3 py-2 rounded-lg border text-sm border-input bg-background text-foreground`
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={'text-base font-medium text-primary'}>
+          <h2 className="text-base font-medium text-primary">
             {isEditing ? 'Edit Third-Party Service' : 'Add Third-Party Service'}
           </h2>
-          <p className={'mt-1 text-sm text-secondary'}>
+          <p className="mt-1 text-sm text-secondary">
             {isEditing
               ? 'Update service information'
               : 'Register a new external SaaS or managed service'}
@@ -146,14 +146,14 @@ export function ThirdPartyServiceForm({
 
       {/* API Error */}
       {error && (
-        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
+        <div className={`rounded-lg border border-danger bg-danger p-4`}>
           <div className="flex items-start gap-3">
-            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
-              <div className={'font-medium text-danger'}>
+              <div className="font-medium text-danger">
                 Failed to save service
               </div>
-              <div className={'mt-1 text-sm text-danger'}>
+              <div className="mt-1 text-sm text-danger">
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -170,14 +170,14 @@ export function ThirdPartyServiceForm({
         className="space-y-6"
       >
         {/* Basic Information */}
-        <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
-          <h3 className={'mb-4 text-sm font-medium text-primary'}>
+        <div className={`rounded-lg border border-border bg-card p-6`}>
+          <h3 className="mb-4 text-sm font-medium text-primary">
             Service Information
           </h3>
 
           <div className="space-y-4">
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Managing Team
               </label>
               <select
@@ -199,7 +199,7 @@ export function ThirdPartyServiceForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Service Name <span className="text-danger">*</span>
                 </label>
                 <Input
@@ -223,7 +223,7 @@ export function ThirdPartyServiceForm({
 
               {!isEditing && (
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Slug <span className="text-danger">*</span>
                   </label>
                   <Input
@@ -249,7 +249,7 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Vendor <span className="text-danger">*</span>
                 </label>
                 <Input
@@ -272,7 +272,7 @@ export function ThirdPartyServiceForm({
               </div>
 
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Category
                 </label>
                 <Input
@@ -287,7 +287,7 @@ export function ThirdPartyServiceForm({
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Service URL
                 </label>
                 <Input
@@ -310,7 +310,7 @@ export function ThirdPartyServiceForm({
               </div>
 
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Status
                 </label>
                 <select
@@ -329,7 +329,7 @@ export function ThirdPartyServiceForm({
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Description
               </label>
               <textarea
@@ -338,17 +338,17 @@ export function ThirdPartyServiceForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of this service and how it is used"
-                className={`w-full resize-none rounded-lg border px-3 py-2 ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
+                className={`w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground`}
               />
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className={'mb-1.5 text-xs text-tertiary'}>Pick an icon</p>
+                  <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
                   <IconPicker
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
@@ -359,7 +359,7 @@ export function ThirdPartyServiceForm({
                   />
                 </div>
                 <div>
-                  <p className={'mb-1.5 text-xs text-tertiary'}>
+                  <p className="mb-1.5 text-xs text-tertiary">
                     Or upload a custom image
                   </p>
                   <IconUpload
@@ -377,9 +377,9 @@ export function ThirdPartyServiceForm({
         </div>
 
         {/* Links */}
-        <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
-          <h3 className={'mb-4 text-sm font-medium text-primary'}>Links</h3>
-          <p className={'mb-4 text-sm text-secondary'}>
+        <div className={`rounded-lg border border-border bg-card p-6`}>
+          <h3 className="mb-4 text-sm font-medium text-primary">Links</h3>
+          <p className="mb-4 text-sm text-secondary">
             Named links to documentation, API references, status pages, etc.
           </p>
           <KeyValueEditor
@@ -392,11 +392,9 @@ export function ThirdPartyServiceForm({
         </div>
 
         {/* Identifiers */}
-        <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
-          <h3 className={'mb-4 text-sm font-medium text-primary'}>
-            Identifiers
-          </h3>
-          <p className={'mb-4 text-sm text-secondary'}>
+        <div className={`rounded-lg border border-border bg-card p-6`}>
+          <h3 className="mb-4 text-sm font-medium text-primary">Identifiers</h3>
+          <p className="mb-4 text-sm text-secondary">
             External IDs such as account ID, org ID, or API key names.
           </p>
           <KeyValueEditor

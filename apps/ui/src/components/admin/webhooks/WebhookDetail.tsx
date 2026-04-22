@@ -29,17 +29,15 @@ export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
                 />
               ) : (
                 <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg ${'bg-indigo-50 dark:bg-indigo-900/30'}`}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30`}
                 >
-                  <Webhook
-                    className={'h-5 w-5 text-indigo-600 dark:text-indigo-400'}
-                  />
+                  <Webhook className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                 </div>
               )}
               <CardTitle>{webhook.name}</CardTitle>
             </div>
             {webhook.description && (
-              <p className={'mt-1 text-sm text-secondary'}>
+              <p className="mt-1 text-sm text-secondary">
                 {webhook.description}
               </p>
             )}
@@ -62,43 +60,41 @@ export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
         <CardContent>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div className={'text-sm text-secondary'}>Slug</div>
+              <div className="text-sm text-secondary">Slug</div>
               <div className="mt-1">
                 <code
-                  className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                  className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                 >
                   {webhook.slug}
                 </code>
               </div>
             </div>
             <div>
-              <div className={'text-sm text-secondary'}>Notification Path</div>
+              <div className="text-sm text-secondary">Notification Path</div>
               <div className="mt-1">
                 <code
-                  className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                  className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                 >
                   {webhook.notification_path}
                 </code>
               </div>
             </div>
             <div>
-              <div className={'text-sm text-secondary'}>
-                Third-Party Service
-              </div>
-              <div className={'mt-1 text-primary'}>
+              <div className="text-sm text-secondary">Third-Party Service</div>
+              <div className="mt-1 text-primary">
                 {webhook.third_party_service?.name || (
-                  <span className={'text-tertiary'}>None</span>
+                  <span className="text-tertiary">None</span>
                 )}
               </div>
             </div>
             {webhook.identifier_selector && (
               <div>
-                <div className={'text-sm text-secondary'}>
+                <div className="text-sm text-secondary">
                   Identifier Selector
                 </div>
                 <div className="mt-1">
                   <code
-                    className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                    className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                   >
                     {webhook.identifier_selector}
                   </code>
@@ -116,52 +112,52 @@ export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
         </CardHeader>
         <CardContent>
           {webhook.rules.length === 0 ? (
-            <div className={'py-6 text-center text-sm text-tertiary'}>
+            <div className="py-6 text-center text-sm text-tertiary">
               No rules defined for this webhook.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className={'border-b border-tertiary'}>
+                <thead className="border-b border-tertiary">
                   <tr>
                     <th
-                      className={`w-12 px-4 py-2 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                      className={`w-12 px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary`}
                     >
                       #
                     </th>
                     <th
-                      className={`px-4 py-2 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                      className={`px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary`}
                     >
                       Filter Expression
                     </th>
                     <th
-                      className={`px-4 py-2 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                      className={`px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary`}
                     >
                       Handler
                     </th>
                     <th
-                      className={`px-4 py-2 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                      className={`px-4 py-2 text-left text-xs uppercase tracking-wider text-tertiary`}
                     >
                       Config
                     </th>
                   </tr>
                 </thead>
-                <tbody className={'divide-y divide-tertiary'}>
+                <tbody className="divide-y divide-tertiary">
                   {webhook.rules.map((rule, index) => (
                     <tr key={index}>
-                      <td className={'px-4 py-3 text-sm text-tertiary'}>
+                      <td className="px-4 py-3 text-sm text-tertiary">
                         {index + 1}
                       </td>
                       <td className="px-4 py-3">
                         <code
-                          className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                          className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                         >
                           {rule.filter_expression}
                         </code>
                       </td>
                       <td className="px-4 py-3">
                         <code
-                          className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                          className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                         >
                           {rule.handler}
                         </code>
@@ -172,12 +168,12 @@ export function WebhookDetail({ webhook, onEdit, onBack }: WebhookDetailProps) {
                           ? rule.handler_config.length > 0
                           : Object.keys(rule.handler_config).length > 0) ? (
                           <code
-                            className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                            className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                           >
                             {JSON.stringify(rule.handler_config)}
                           </code>
                         ) : (
-                          <span className={'text-tertiary'}>--</span>
+                          <span className="text-tertiary">--</span>
                         )}
                       </td>
                     </tr>

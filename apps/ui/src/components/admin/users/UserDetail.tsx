@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
+import { toast } from 'sonner'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import {
   ArrowLeft,
   Edit2,
@@ -60,9 +61,9 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
       setNewOrgSlug('')
       setNewRoleSlug('')
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to add to organization: ${error.response?.data?.detail || error.message}`,
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to add to organization: ${extractApiErrorDetail(error)}`,
       )
     },
   })
@@ -79,10 +80,8 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       queryClient.invalidateQueries({ queryKey: ['adminUser', user.email] })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to update role: ${error.response?.data?.detail || error.message}`,
-      )
+    onError: (error: unknown) => {
+      toast.error(`Failed to update role: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -92,9 +91,9 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
       queryClient.invalidateQueries({ queryKey: ['adminUsers'] })
       queryClient.invalidateQueries({ queryKey: ['adminUser', user.email] })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to remove from organization: ${error.response?.data?.detail || error.message}`,
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to remove from organization: ${extractApiErrorDetail(error)}`,
       )
     },
   })
@@ -138,7 +137,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
             />
             <div>
               <CardTitle>{user.display_name}</CardTitle>
-              <p className={'mt-1 text-secondary'}>{user.email}</p>
+              <p className="mt-1 text-secondary">{user.email}</p>
             </div>
           </div>
           <Button
@@ -151,7 +150,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
         </CardHeader>
 
         {/* Account Status */}
-        <div className={'border-b border-tertiary px-6 py-5'}>
+        <div className="border-b border-tertiary px-6 py-5">
           <div className="flex items-center gap-6">
             <div
               className={`flex items-center gap-2 rounded px-3 py-1.5 ${
@@ -165,7 +164,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
             </div>
             {user.is_admin && (
               <div
-                className={`flex items-center gap-2 rounded px-3 py-1.5 ${'bg-danger text-danger'}`}
+                className={`flex items-center gap-2 rounded bg-danger px-3 py-1.5 text-danger`}
               >
                 <Shield className="h-4 w-4" />
                 Administrator
@@ -173,7 +172,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
             )}
             {user.is_service_account && (
               <div
-                className={`flex items-center gap-2 rounded px-3 py-1.5 ${'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'}`}
+                className={`flex items-center gap-2 rounded bg-purple-100 px-3 py-1.5 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400`}
               >
                 Service Account
               </div>
@@ -193,7 +192,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                 <Mail className="h-4 w-4" />
                 Email
               </div>
-              <div className={'text-primary'}>{user.email}</div>
+              <div className="text-primary">{user.email}</div>
             </div>
 
             <div>
@@ -205,7 +204,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                 <User className="h-4 w-4" />
                 Display Name
               </div>
-              <div className={'text-primary'}>{user.display_name}</div>
+              <div className="text-primary">{user.display_name}</div>
             </div>
 
             <div>
@@ -217,9 +216,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                 <Calendar className="h-4 w-4" />
                 Created
               </div>
-              <div className={'text-primary'}>
-                {formatDate(user.created_at)}
-              </div>
+              <div className="text-primary">{formatDate(user.created_at)}</div>
             </div>
 
             <div>
@@ -231,9 +228,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                 <Clock className="h-4 w-4" />
                 Last Login
               </div>
-              <div className={'text-primary'}>
-                {formatDate(user.last_login)}
-              </div>
+              <div className="text-primary">{formatDate(user.last_login)}</div>
             </div>
           </div>
         </CardContent>
@@ -243,7 +238,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
-            <Building2 className={'h-5 w-5 text-secondary'} />
+            <Building2 className="h-5 w-5 text-secondary" />
             <CardTitle>Organization Memberships</CardTitle>
           </div>
           {availableOrgs.length > 0 && (
@@ -262,17 +257,17 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
           {/* Add to Organization Form */}
           {showAddOrg && (
             <div
-              className={`mb-4 rounded-lg border p-4 ${'border-input bg-secondary'}`}
+              className={`mb-4 rounded-lg border border-input bg-secondary p-4`}
             >
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Organization
                   </label>
                   <select
                     value={newOrgSlug}
                     onChange={(e) => setNewOrgSlug(e.target.value)}
-                    className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
                   >
                     <option value="">Select...</option>
                     {availableOrgs.map((org) => (
@@ -283,13 +278,13 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                   </select>
                 </div>
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Role
                   </label>
                   <select
                     value={newRoleSlug}
                     onChange={(e) => setNewRoleSlug(e.target.value)}
-                    className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
                   >
                     <option value="">Select...</option>
                     {availableRoles.map((role) => (
@@ -337,13 +332,13 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
               {(user.organizations ?? []).map((membership: OrgMembership) => (
                 <div
                   key={membership.organization_slug}
-                  className={`flex items-center justify-between rounded-lg border p-3 ${'border-input bg-secondary'}`}
+                  className={`flex items-center justify-between rounded-lg border border-input bg-secondary p-3`}
                 >
                   <div className="flex-1">
-                    <div className={'text-sm font-medium text-primary'}>
+                    <div className="text-sm font-medium text-primary">
                       {membership.organization_name}
                     </div>
-                    <div className={'text-xs text-tertiary'}>
+                    <div className="text-xs text-tertiary">
                       {membership.organization_slug}
                     </div>
                   </div>
@@ -357,7 +352,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                         })
                       }
                       disabled={updateRoleMutation.isPending}
-                      className={`rounded border px-2 py-1 text-xs ${'border-input bg-background text-foreground'}`}
+                      className={`rounded border border-input bg-background px-2 py-1 text-xs text-foreground`}
                     >
                       {availableRoles.map((role) => (
                         <option key={role.slug} value={role.slug}>
@@ -381,7 +376,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
                               }
                             }}
                             disabled={removeOrgMutation.isPending}
-                            className={`rounded p-1.5 ${'text-danger hover:bg-secondary'}`}
+                            className={`rounded p-1.5 text-danger hover:bg-secondary`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -396,8 +391,8 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
               ))}
             </div>
           ) : (
-            <div className={'py-8 text-center text-tertiary'}>
-              <Building2 className={'mx-auto mb-2 h-8 w-8 text-tertiary'} />
+            <div className="py-8 text-center text-tertiary">
+              <Building2 className="mx-auto mb-2 h-8 w-8 text-tertiary" />
               <div>Not a member of any organization</div>
               <div className="mt-1 text-sm">
                 This user has no permissions until added to an organization
@@ -413,7 +408,7 @@ export function UserDetail({ user, onEdit, onBack }: UserDetailProps) {
           <CardTitle>Active Sessions</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className={'py-8 text-center text-tertiary'}>
+          <div className="py-8 text-center text-tertiary">
             <div>0 active sessions</div>
             <div className="mt-1 text-sm">
               No JWT tokens currently active for this user

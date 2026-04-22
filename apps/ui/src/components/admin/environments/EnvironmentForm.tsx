@@ -4,6 +4,7 @@ import { Save, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import { ErrorBanner } from '@/components/ui/error-banner'
 import { IconUpload } from '@/components/ui/icon-upload'
 import { IconPicker } from '@/components/ui/icon-picker'
 import { ColorPicker } from '@/components/ui/color-picker'
@@ -23,7 +24,7 @@ interface EnvironmentFormProps {
   onSave: (orgSlug: string, env: EnvironmentCreate) => void
   onCancel: () => void
   isLoading?: boolean
-  error?: { response?: { data?: { detail?: string } }; message?: string } | null
+  error?: unknown
 }
 
 export function EnvironmentForm({
@@ -122,10 +123,10 @@ export function EnvironmentForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={'text-base font-medium text-primary'}>
+          <h2 className="text-base font-medium text-primary">
             {isEditing ? 'Edit Environment' : 'Create New Environment'}
           </h2>
-          <p className={'mt-1 text-sm text-secondary'}>
+          <p className="mt-1 text-sm text-secondary">
             {isEditing
               ? 'Update environment information'
               : 'Create a new environment'}
@@ -152,22 +153,8 @@ export function EnvironmentForm({
       </div>
 
       {/* API Error */}
-      {error && (
-        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
-          <div className="flex items-start gap-3">
-            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
-            <div>
-              <div className={'font-medium text-danger'}>
-                Failed to save environment
-              </div>
-              <div className={'mt-1 text-sm text-danger'}>
-                {error?.response?.data?.detail ||
-                  error?.message ||
-                  'An error occurred'}
-              </div>
-            </div>
-          </div>
-        </div>
+      {!!error && (
+        <ErrorBanner title="Failed to save environment" error={error} />
       )}
 
       {/* Form */}
@@ -175,14 +162,18 @@ export function EnvironmentForm({
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label
+                htmlFor="environment-org"
+                className="mb-1.5 block text-sm text-secondary"
+              >
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
+                id="environment-org"
                 value={orgSlug}
                 onChange={(e) => setOrgSlug(e.target.value)}
                 disabled={isEditing || isLoading || organizations.length <= 1}
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
+                className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing || isLoading || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
               >
@@ -195,7 +186,7 @@ export function EnvironmentForm({
               </select>
               {errors.organization && (
                 <div
-                  className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                  className={`mt-1 flex items-center gap-1 text-xs text-danger`}
                 >
                   <AlertCircle className="h-3 w-3" />
                   {errors.organization}
@@ -207,10 +198,14 @@ export function EnvironmentForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label
+                  htmlFor="environment-name"
+                  className="mb-1.5 block text-sm text-secondary"
+                >
                   Environment Name <span className="text-red-500">*</span>
                 </label>
                 <Input
+                  id="environment-name"
                   value={name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder="e.g., Production"
@@ -219,7 +214,7 @@ export function EnvironmentForm({
                 />
                 {errors.name && (
                   <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                    className={`mt-1 flex items-center gap-1 text-xs text-danger`}
                   >
                     <AlertCircle className="h-3 w-3" />
                     {errors.name}
@@ -229,10 +224,14 @@ export function EnvironmentForm({
 
               {!isEditing && (
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label
+                    htmlFor="environment-slug"
+                    className="mb-1.5 block text-sm text-secondary"
+                  >
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
+                    id="environment-slug"
                     value={slug}
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="e.g., production"
@@ -241,7 +240,7 @@ export function EnvironmentForm({
                   />
                   {errors.slug && (
                     <div
-                      className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                      className={`mt-1 flex items-center gap-1 text-xs text-danger`}
                     >
                       <AlertCircle className="h-3 w-3" />
                       {errors.slug}
@@ -252,43 +251,51 @@ export function EnvironmentForm({
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label
+                htmlFor="environment-sort-order"
+                className="mb-1.5 block text-sm text-secondary"
+              >
                 Sort Order
               </label>
               <Input
+                id="environment-sort-order"
                 type="number"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value)}
                 placeholder="0"
                 disabled={isLoading}
-                className={'w-32'}
+                className="w-32"
               />
-              <p className={'mt-1 text-xs text-tertiary'}>
+              <p className="mt-1 text-xs text-tertiary">
                 Controls display order (lower numbers appear first)
               </p>
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label
+                htmlFor="environment-description"
+                className="mb-1.5 block text-sm text-secondary"
+              >
                 Description
               </label>
               <textarea
+                id="environment-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of this environment"
-                className={`w-full resize-none rounded-lg border px-3 py-2 ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
+                className={`w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground`}
               />
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className={'mb-1.5 text-xs text-tertiary'}>Pick an icon</p>
+                  <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
                   <IconPicker
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
@@ -299,7 +306,7 @@ export function EnvironmentForm({
                   />
                 </div>
                 <div>
-                  <p className={'mb-1.5 text-xs text-tertiary'}>
+                  <p className="mb-1.5 text-xs text-tertiary">
                     Or upload a custom image
                   </p>
                   <IconUpload

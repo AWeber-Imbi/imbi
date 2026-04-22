@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
+import { toast } from 'sonner'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import {
   ArrowLeft,
   Edit2,
@@ -44,7 +45,11 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
   const [showAddMember, setShowAddMember] = useState(false)
   const [newMemberEmail, setNewMemberEmail] = useState('')
 
-  const { data: members = [], isLoading: membersLoading } = useQuery({
+  const {
+    data: members = [],
+    isLoading: membersLoading,
+    error: membersError,
+  } = useQuery({
     queryKey: ['teamMembers', team.organization.slug, team.slug],
     queryFn: () => getTeamMembers(team.organization.slug, team.slug),
   })
@@ -65,10 +70,8 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
       setNewMemberEmail('')
       setShowAddMember(false)
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to add member: ${error.response?.data?.detail || error.message}`,
-      )
+    onError: (error: unknown) => {
+      toast.error(`Failed to add member: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -80,10 +83,8 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
         queryKey: ['teamMembers', team.organization.slug, team.slug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to remove member: ${error.response?.data?.detail || error.message}`,
-      )
+    onError: (error: unknown) => {
+      toast.error(`Failed to remove member: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -122,9 +123,7 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
               <CardTitle>{team.name}</CardTitle>
             </div>
             {team.description && (
-              <p className={'mt-1 text-sm text-secondary'}>
-                {team.description}
-              </p>
+              <p className="mt-1 text-sm text-secondary">{team.description}</p>
             )}
           </div>
           <Button
@@ -139,20 +138,18 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
         <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div className={'text-sm text-secondary'}>Slug</div>
-              <div className={'mt-1 text-primary'}>
+              <div className="text-sm text-secondary">Slug</div>
+              <div className="mt-1 text-primary">
                 <code
-                  className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                  className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                 >
                   {team.slug}
                 </code>
               </div>
             </div>
             <div>
-              <div className={'text-sm text-secondary'}>Organization</div>
-              <div className={'mt-1 text-primary'}>
-                {team.organization.name}
-              </div>
+              <div className="text-sm text-secondary">Organization</div>
+              <div className="mt-1 text-primary">{team.organization.name}</div>
             </div>
             {teamSchema && (
               <DynamicDetailFields
@@ -169,10 +166,10 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
         <CardHeader className="space-y-0 border-b px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Users className={'h-5 w-5 text-secondary'} />
+              <Users className="h-5 w-5 text-secondary" />
               <CardTitle>Team Members</CardTitle>
               <span
-                className={`ml-2 rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                className={`ml-2 rounded bg-secondary px-2 py-1 text-sm text-primary`}
               >
                 {members.length}
               </span>
@@ -189,19 +186,19 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
           {/* Add Member Panel */}
           {showAddMember && (
             <div
-              className={`mt-4 rounded-lg border p-4 ${'border-input bg-secondary'}`}
+              className={`mt-4 rounded-lg border border-input bg-secondary p-4`}
             >
               <div className="flex items-center gap-3">
                 <div className="relative flex-1">
                   <Search
-                    className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
+                    className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary`}
                   />
                   <Input
                     placeholder="Enter user email address..."
                     value={newMemberEmail}
                     onChange={(e) => setNewMemberEmail(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
-                    className={'pl-10'}
+                    className="pl-10"
                   />
                 </div>
                 <Button
@@ -214,13 +211,15 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
                   {addMemberMutation.isPending ? 'Adding...' : 'Add'}
                 </Button>
               </div>
-              {addMemberMutation.error && (
+              {!!addMemberMutation.error && (
                 <div
-                  className={`mt-2 flex items-center gap-2 text-xs ${'text-danger'}`}
+                  className={`mt-2 flex items-center gap-2 text-xs text-danger`}
                 >
                   <AlertCircle className="h-3 w-3" />
-                  {(addMemberMutation.error as ApiError<{ detail?: string }>)
-                    ?.response?.data?.detail || 'Failed to add member'}
+                  {extractApiErrorDetail(
+                    addMemberMutation.error,
+                    'Failed to add member',
+                  )}
                 </div>
               )}
             </div>
@@ -231,10 +230,17 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
         <CardContent className="p-0">
           {membersLoading ? (
             <div className="p-8 text-center">
-              <div className={'text-sm text-secondary'}>Loading members...</div>
+              <div className="text-sm text-secondary">Loading members...</div>
+            </div>
+          ) : membersError ? (
+            <div className="p-8 text-center text-sm text-danger">
+              {extractApiErrorDetail(
+                membersError,
+                'Failed to load team members',
+              )}
             </div>
           ) : members.length === 0 ? (
-            <div className={'py-12 text-center text-tertiary'}>
+            <div className="py-12 text-center text-tertiary">
               No members in this team yet. Click "Add Member" to get started.
             </div>
           ) : (
@@ -242,30 +248,30 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
               <thead className="border-b border-tertiary bg-secondary">
                 <tr>
                   <th
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${'text-tertiary'}`}
+                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary`}
                   >
                     Member
                   </th>
                   <th
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${'text-tertiary'}`}
+                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary`}
                   >
                     Email
                   </th>
                   <th
-                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${'text-tertiary'}`}
+                    className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-tertiary`}
                   >
                     Status
                   </th>
                   <th
-                    className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider ${'text-tertiary'}`}
+                    className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-tertiary`}
                   >
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className={'divide-y divide-tertiary'}>
+              <tbody className="divide-y divide-tertiary">
                 {members.map((member) => (
-                  <tr key={member.email} className={'hover:bg-secondary'}>
+                  <tr key={member.email} className="hover:bg-secondary">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <Gravatar
@@ -274,12 +280,12 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
                           alt={member.display_name}
                           className="h-8 w-8 rounded-full"
                         />
-                        <div className={'text-primary'}>
+                        <div className="text-primary">
                           {member.display_name}
                         </div>
                       </div>
                     </td>
-                    <td className={'px-6 py-4 text-sm text-secondary'}>
+                    <td className="px-6 py-4 text-sm text-secondary">
                       {member.email}
                     </td>
                     <td className="px-6 py-4">
@@ -292,9 +298,12 @@ export function TeamDetail({ team, onEdit, onBack }: TeamDetailProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
+                              type="button"
                               onClick={() => handleRemoveMember(member.email)}
                               disabled={removeMemberMutation.isPending}
-                              className={`rounded p-1.5 ${'text-danger hover:bg-danger'}`}
+                              aria-label={`Remove ${member.display_name} from team`}
+                              title="Remove from team"
+                              className={`rounded p-1.5 text-danger hover:bg-danger`}
                             >
                               <X className="h-4 w-4" />
                             </button>

@@ -196,10 +196,10 @@ export function UserForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={'text-base font-medium text-primary'}>
+          <h2 className="text-base font-medium text-primary">
             {isEditing ? 'Edit User' : 'Create New User'}
           </h2>
-          <p className={'mt-1 text-secondary'}>
+          <p className="mt-1 text-secondary">
             {isEditing
               ? `Editing ${user?.display_name}`
               : 'Add a new user account to the system'}
@@ -227,14 +227,12 @@ export function UserForm({
 
       {/* API Error Display */}
       {error && (
-        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
+        <div className={`rounded-lg border border-danger bg-danger p-4`}>
           <div className="flex items-start gap-3">
-            <AlertCircle className={`h-5 w-5 flex-shrink-0 ${'text-danger'}`} />
+            <AlertCircle className={`h-5 w-5 flex-shrink-0 text-danger`} />
             <div>
-              <div className={'font-medium text-danger'}>
-                Failed to save user
-              </div>
-              <div className={'mt-1 text-sm text-danger'}>
+              <div className="font-medium text-danger">Failed to save user</div>
+              <div className="mt-1 text-sm text-danger">
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -251,7 +249,7 @@ export function UserForm({
             {/* Email */}
             {!isEditing && (
               <div className="col-span-2">
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Email <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -282,7 +280,7 @@ export function UserForm({
 
             {/* Display Name */}
             <div className="col-span-2">
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Display Name <span className="text-red-500">*</span>
               </label>
               <Input
@@ -315,7 +313,7 @@ export function UserForm({
             {/* Gravatar Preview */}
             {email && validateEmail(email) === '' && (
               <div className="col-span-2">
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Avatar (Gravatar)
                 </label>
                 <div className="flex items-center gap-3">
@@ -324,7 +322,7 @@ export function UserForm({
                     size={64}
                     className="h-16 w-16 rounded-full border-2 border-gray-300 dark:border-gray-600"
                   />
-                  <p className={'text-sm text-secondary'}>
+                  <p className="text-sm text-secondary">
                     Avatar will be loaded from{' '}
                     <a
                       href="https://gravatar.com"
@@ -351,7 +349,7 @@ export function UserForm({
                     disabled={isLoading}
                     className="rounded"
                   />
-                  <span className={'text-secondary'}>Change Password</span>
+                  <span className="text-secondary">Change Password</span>
                 </label>
               </div>
             )}
@@ -359,7 +357,7 @@ export function UserForm({
             {(changePassword || !isEditing) && (
               <>
                 <div className="col-span-2">
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Password <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
@@ -382,13 +380,13 @@ export function UserForm({
                       }}
                       disabled={isLoading}
                       placeholder="Minimum 12 characters"
-                      className={'pr-10'}
+                      className="pr-10"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       disabled={isLoading}
-                      className={`absolute right-3 top-1/2 -translate-y-1/2 ${'text-tertiary hover:text-secondary'}`}
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 text-tertiary hover:text-secondary`}
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -431,7 +429,7 @@ export function UserForm({
                           {passwordStrength.label}
                         </span>
                       </div>
-                      <ul className={'space-y-0.5 text-xs text-secondary'}>
+                      <ul className="space-y-0.5 text-xs text-secondary">
                         <li
                           className={`flex items-center gap-1 ${password.length >= 12 ? 'text-green-600 dark:text-green-400' : ''}`}
                         >
@@ -488,7 +486,7 @@ export function UserForm({
                 </div>
 
                 <div className="col-span-2">
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Confirm Password <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -529,7 +527,7 @@ export function UserForm({
       <Card>
         <CardContent className="space-y-4 pt-6">
           <div>
-            <label className={'mb-2 block text-sm text-secondary'}>
+            <label className="mb-2 block text-sm text-secondary">
               Account Type
             </label>
             <div className="space-y-2">
@@ -552,8 +550,8 @@ export function UserForm({
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <div className={'text-primary'}>Regular User</div>
-                  <div className={'text-sm text-secondary'}>
+                  <div className="text-primary">Regular User</div>
+                  <div className="text-sm text-secondary">
                     Standard user account with role-based permissions
                   </div>
                 </div>
@@ -578,8 +576,8 @@ export function UserForm({
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <div className={'text-primary'}>Service Account</div>
-                  <div className={'text-sm text-secondary'}>
+                  <div className="text-primary">Service Account</div>
+                  <div className="text-sm text-secondary">
                     Automated system account for API access
                   </div>
                 </div>
@@ -602,11 +600,11 @@ export function UserForm({
                   className="mt-0.5"
                 />
                 <div className="flex-1">
-                  <div className={'flex items-center gap-2 text-primary'}>
+                  <div className="flex items-center gap-2 text-primary">
                     Administrator
                     <AlertTriangle className="h-4 w-4 text-red-500" />
                   </div>
-                  <div className={'text-sm text-secondary'}>
+                  <div className="text-sm text-secondary">
                     Super-user with full system access (bypasses all permission
                     checks)
                   </div>
@@ -624,9 +622,9 @@ export function UserForm({
                 disabled={isLoading}
                 className="rounded"
               />
-              <span className={'text-secondary'}>Account Active</span>
+              <span className="text-secondary">Account Active</span>
             </label>
-            <p className={'ml-6 mt-1 text-sm text-secondary'}>
+            <p className="ml-6 mt-1 text-sm text-secondary">
               Inactive accounts cannot authenticate
             </p>
           </div>
@@ -637,7 +635,7 @@ export function UserForm({
       {!isEditing && (
         <Card>
           <CardContent className="space-y-4 pt-6">
-            <p className={'mb-4 text-sm text-secondary'}>
+            <p className="mb-4 text-sm text-secondary">
               Users must belong to at least one organization with a role to have
               any permissions.
             </p>
@@ -645,7 +643,7 @@ export function UserForm({
             <div className="grid grid-cols-2 gap-4">
               {/* Organization */}
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Organization <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -655,7 +653,7 @@ export function UserForm({
                     handleFieldChange('organization_slug')
                   }}
                   disabled={isLoading}
-                  className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
                 >
                   <option value="">Select an organization...</option>
                   {organizations.map((org) => (
@@ -674,11 +672,11 @@ export function UserForm({
 
               {/* Role */}
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Role <span className="text-red-500">*</span>
                 </label>
                 {rolesLoading ? (
-                  <p className={'text-sm text-secondary'}>Loading roles...</p>
+                  <p className="text-sm text-secondary">Loading roles...</p>
                 ) : (
                   <select
                     value={roleSlug}
@@ -687,7 +685,7 @@ export function UserForm({
                       handleFieldChange('role_slug')
                     }}
                     disabled={isLoading}
-                    className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500`}
                   >
                     <option value="">Select a role...</option>
                     {availableRoles.map((role) => (

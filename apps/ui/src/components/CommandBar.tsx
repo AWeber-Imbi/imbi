@@ -315,7 +315,7 @@ export function CommandBar() {
       <div
         className={`fixed bottom-16 left-0 right-0 transition-transform duration-300 ease-out ${
           isExpanded ? 'translate-y-0' : 'translate-y-full'
-        } ${'border-border bg-secondary'} border-t shadow-2xl`}
+        } border-t border-border bg-secondary shadow-2xl`}
         style={{ height: `${panelHeight}px` }}
       >
         {/* Resize Handle */}
@@ -323,23 +323,23 @@ export function CommandBar() {
           onPointerDown={handleDragStart}
           onPointerMove={handleDragMove}
           onPointerUp={handleDragEnd}
-          className={`group flex h-1.5 cursor-ns-resize items-center justify-center ${'hover:bg-secondary'} transition-colors`}
+          className={`group flex h-1.5 cursor-ns-resize items-center justify-center transition-colors hover:bg-secondary`}
         >
           <div
-            className={`h-0.5 w-8 rounded-full ${'bg-secondary group-hover:bg-muted-foreground/40'} transition-colors`}
+            className={`h-0.5 w-8 rounded-full bg-secondary transition-colors group-hover:bg-muted-foreground/40`}
           />
         </div>
         {/* Panel Header */}
         <div
-          className={`flex items-center justify-between border-b px-4 py-2 ${'border-border bg-secondary'}`}
+          className={`flex items-center justify-between border-b border-border bg-secondary px-4 py-2`}
         >
           <div className="flex items-center gap-2">
-            <Terminal className={`h-3.5 w-3.5 ${'text-tertiary'}`} />
-            <span className={`font-mono text-xs ${'text-tertiary'}`}>
+            <Terminal className={`h-3.5 w-3.5 text-tertiary`} />
+            <span className={`font-mono text-xs text-tertiary`}>
               imbi-assistant
             </span>
             {messages.length > 0 && (
-              <span className={`font-mono text-xs ${'text-tertiary'}`}>
+              <span className={`font-mono text-xs text-tertiary`}>
                 ({Math.floor(messages.length / 2) || 1} exchange
                 {Math.floor(messages.length / 2) !== 1 ? 's' : ''})
               </span>
@@ -353,7 +353,7 @@ export function CommandBar() {
               }}
               aria-label="Help"
               type="button"
-              className={`rounded p-1 ${'text-tertiary hover:bg-secondary hover:text-secondary'}`}
+              className={`rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary`}
             >
               <HelpCircle className="h-3.5 w-3.5" />
             </button>
@@ -365,7 +365,7 @@ export function CommandBar() {
             {messages.length > 0 && (
               <button
                 onClick={handleClearHistory}
-                className={`rounded px-2 py-0.5 font-mono text-xs ${'text-tertiary hover:bg-secondary hover:text-secondary'}`}
+                className={`rounded px-2 py-0.5 font-mono text-xs text-tertiary hover:bg-secondary hover:text-secondary`}
               >
                 clear
               </button>
@@ -374,7 +374,7 @@ export function CommandBar() {
               onClick={() => setExpanded(false)}
               aria-label="Close assistant"
               type="button"
-              className={`rounded p-1 ${'text-tertiary hover:bg-secondary hover:text-secondary'}`}
+              className={`rounded p-1 text-tertiary hover:bg-secondary hover:text-secondary`}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -384,7 +384,7 @@ export function CommandBar() {
         {/* Session Output */}
         <div
           ref={scrollRef}
-          className={`space-y-3 overflow-y-auto px-6 py-4 ${'bg-tertiary'}`}
+          className={`space-y-3 overflow-y-auto bg-tertiary px-6 py-4`}
           style={{ height: 'calc(100% - 43px)' }}
         >
           {messages.length === 0 && !isStreaming ? (
@@ -407,9 +407,7 @@ export function CommandBar() {
                     <SessionEntry role="assistant" content={streamingContent} />
                   )}
                   {!streamingContent && !activeToolUse && (
-                    <div
-                      className={`pl-4 font-mono text-sm ${'text-tertiary'}`}
-                    >
+                    <div className={`pl-4 font-mono text-sm text-tertiary`}>
                       <span className="animate-pulse">...</span>
                     </div>
                   )}
@@ -422,7 +420,7 @@ export function CommandBar() {
 
       {/* Command Input Bar */}
       <div
-        className={`fixed bottom-0 left-0 right-0 z-50 ${'border-border bg-card'} border-t`}
+        className={`fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card`}
       >
         {/* Tray Toggle */}
         <div className="flex justify-center">
@@ -430,7 +428,7 @@ export function CommandBar() {
             onClick={() => setExpanded(!isExpanded)}
             aria-label={isExpanded ? 'Collapse assistant' : 'Expand assistant'}
             type="button"
-            className={`-mt-3 rounded-t-md border border-b-0 px-4 py-0.5 font-mono text-xs transition-all ${'border-tertiary bg-card text-tertiary hover:text-secondary'} ${isExpanded ? 'shadow-lg' : ''}`}
+            className={`-mt-3 rounded-t-md border border-b-0 border-tertiary bg-card px-4 py-0.5 font-mono text-xs text-tertiary transition-all hover:text-secondary ${isExpanded ? 'shadow-lg' : ''}`}
           >
             {isExpanded ? (
               <ChevronDown className="h-3 w-3" />
@@ -448,11 +446,9 @@ export function CommandBar() {
         {/* Input */}
         <form onSubmit={handleSubmit} className="px-3 pb-1.5 pt-2">
           <div
-            className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${'border-tertiary bg-tertiary focus-within:border-secondary'} transition-colors`}
+            className={`flex items-center gap-2 rounded-md border border-tertiary bg-tertiary px-3 py-2 text-sm transition-colors focus-within:border-secondary`}
           >
-            <span className={`select-none text-sm ${'text-tertiary'}`}>
-              &gt;
-            </span>
+            <span className={`select-none text-sm text-tertiary`}>&gt;</span>
             <input
               ref={inputRef}
               type="text"
@@ -464,23 +460,23 @@ export function CommandBar() {
                   : "Search projects, ask about deployments, or type 'help'..."
               }
               disabled={isStreaming}
-              className={`flex-1 bg-transparent text-sm outline-none ${'text-primary placeholder:text-muted-foreground'} disabled:opacity-50`}
+              className={`flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-muted-foreground disabled:opacity-50`}
             />
             {input.trim() && !isStreaming && (
               <button
                 type="submit"
-                className={`rounded p-1 transition-colors ${'text-tertiary hover:text-secondary'}`}
+                className={`rounded p-1 text-tertiary transition-colors hover:text-secondary`}
               >
                 <Send className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
           <div className="flex items-center justify-between px-1 pt-1">
-            <span className={`text-[11px] ${'text-secondary'}`}>
+            <span className={`text-[11px] text-secondary`}>
               Press Enter to send
             </span>
             <span
-              className={`flex items-center gap-1 text-[11px] ${'text-secondary'}`}
+              className={`flex items-center gap-1 text-[11px] text-secondary`}
             >
               <Sparkles className="h-3 w-3" />
               AI-powered

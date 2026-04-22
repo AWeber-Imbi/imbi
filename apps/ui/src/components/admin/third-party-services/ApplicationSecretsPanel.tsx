@@ -125,11 +125,11 @@ export function ApplicationSecretsPanel({
   const is403 = error && (error as ApiError)?.response?.status === 403
 
   return (
-    <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
+    <div className={`rounded-lg border border-border bg-card p-6`}>
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Shield className={'h-5 w-5 text-warning'} />
-          <h3 className={'text-base font-medium text-primary'}>Secrets</h3>
+          <Shield className="h-5 w-5 text-warning" />
+          <h3 className="text-base font-medium text-primary">Secrets</h3>
         </div>
         <div className="flex items-center gap-2">
           {revealed && !editing && (
@@ -152,19 +152,19 @@ export function ApplicationSecretsPanel({
       </div>
 
       {!revealed && (
-        <p className={'text-sm text-tertiary'}>
+        <p className="text-sm text-tertiary">
           Secrets are hidden. Click &ldquo;Reveal Secrets&rdquo; to view or
           update them. Admin privileges required.
         </p>
       )}
 
       {revealed && isLoading && (
-        <div className={'text-sm text-secondary'}>Loading secrets...</div>
+        <div className="text-sm text-secondary">Loading secrets...</div>
       )}
 
       {revealed && is403 && (
         <div
-          className={`flex items-center gap-3 rounded-lg border p-4 ${'border-warning bg-warning text-warning'}`}
+          className={`flex items-center gap-3 rounded-lg border border-warning bg-warning p-4 text-warning`}
         >
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <div className="text-sm">Admin access required to view secrets.</div>
@@ -173,7 +173,7 @@ export function ApplicationSecretsPanel({
 
       {revealed && error && !is403 && (
         <div
-          className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+          className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
         >
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <div className="text-sm">
@@ -191,12 +191,12 @@ export function ApplicationSecretsPanel({
             if (value == null && field !== 'client_secret') return null
             return (
               <div key={field}>
-                <div className={'mb-1 text-sm text-secondary'}>
+                <div className="mb-1 text-sm text-secondary">
                   {FIELD_LABELS[field]}
                 </div>
                 <div className="flex items-center gap-2">
                   <code
-                    className={`flex-1 break-all rounded px-3 py-2 font-mono text-sm ${'bg-secondary text-primary'}`}
+                    className={`flex-1 break-all rounded bg-secondary px-3 py-2 font-mono text-sm text-primary`}
                   >
                     {field === 'private_key' ? (
                       <pre className="whitespace-pre-wrap text-xs">{value}</pre>
@@ -237,14 +237,14 @@ export function ApplicationSecretsPanel({
 
       {revealed && editing && (
         <div className="space-y-4">
-          <p className={'text-sm text-tertiary'}>
+          <p className="text-sm text-tertiary">
             Only fill in the secrets you want to change. Empty fields will be
             left unchanged.
           </p>
 
           {updateMutation.error && (
             <div
-              className={`flex items-center gap-3 rounded-lg border p-3 ${'border-danger bg-danger text-danger'}`}
+              className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-3 text-danger`}
             >
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <div className="text-sm">
@@ -257,9 +257,7 @@ export function ApplicationSecretsPanel({
 
           {visibleFields.map((field) => (
             <div key={field}>
-              <label
-                className={'mb-1 block text-sm font-medium text-secondary'}
-              >
+              <label className="mb-1 block text-sm font-medium text-secondary">
                 {FIELD_LABELS[field]}
               </label>
               {field === 'private_key' ? (
@@ -270,7 +268,7 @@ export function ApplicationSecretsPanel({
                   }
                   placeholder="Paste new value to update"
                   rows={4}
-                  className={`w-full rounded-md border px-3 py-2 font-mono text-sm ${'border-input bg-background text-foreground'}`}
+                  className={`w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground`}
                 />
               ) : (
                 <Input

@@ -31,9 +31,7 @@ export function OAuthManagement() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-tertiary'}>
-          Loading OAuth providers...
-        </div>
+        <div className="text-sm text-tertiary">Loading OAuth providers...</div>
       </div>
     )
   }
@@ -41,7 +39,7 @@ export function OAuthManagement() {
   if (error) {
     return (
       <div
-        className={`flex items-center gap-2 rounded-lg p-4 ${'bg-danger text-danger'}`}
+        className={`flex items-center gap-2 rounded-lg bg-danger p-4 text-danger`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <span>Failed to load OAuth providers. Please try again later.</span>
@@ -52,10 +50,10 @@ export function OAuthManagement() {
   return (
     <div className="space-y-4">
       <div
-        className={`flex items-start gap-3 rounded-lg p-4 ${'border border-info bg-info'}`}
+        className={`flex items-start gap-3 rounded-lg border border-info bg-info p-4`}
       >
-        <Power className={`mt-0.5 h-5 w-5 flex-shrink-0 ${'text-info'}`} />
-        <p className={'text-sm text-info'}>
+        <Power className={`mt-0.5 h-5 w-5 flex-shrink-0 text-info`} />
+        <p className="text-sm text-info">
           OAuth providers are configured in the backend. Contact an
           administrator to add or modify providers.
         </p>
@@ -63,20 +61,20 @@ export function OAuthManagement() {
 
       <div className="relative">
         <Search
-          className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
+          className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary`}
         />
         <Input
           placeholder="Search providers..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className={`pl-10 ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
+          className={`border-input bg-background pl-10 text-foreground placeholder:text-muted-foreground`}
         />
       </div>
 
       {filteredProviders.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12">
-          <Power className={'mb-3 h-12 w-12 text-secondary'} />
-          <p className={'text-sm text-tertiary'}>
+          <Power className="mb-3 h-12 w-12 text-secondary" />
+          <p className="text-sm text-tertiary">
             {searchQuery
               ? 'No providers match your search.'
               : 'No OAuth providers configured.'}
@@ -99,7 +97,7 @@ export function OAuthManagement() {
                   <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-500" />
                 ) : (
                   <AlertCircle
-                    className={`h-5 w-5 flex-shrink-0 ${'text-tertiary'}`}
+                    className={`h-5 w-5 flex-shrink-0 text-tertiary`}
                   />
                 )}
               </CardHeader>

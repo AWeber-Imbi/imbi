@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { patchProject } from '@/api/endpoints'
 import { applyJsonPatch } from '@/lib/json-patch'
-import { ApiError } from '@/api/client'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import type { PatchOperation, Project } from '@/types'
 
 export interface UseProjectPatchResult {
@@ -61,14 +61,7 @@ export function useProjectPatch(
         if (optimisticApplied && snapshot !== undefined) {
           qc.setQueryData(key, snapshot)
         }
-        const detail =
-          error instanceof ApiError
-            ? (error.response as { data?: { detail?: string } } | undefined)
-                ?.data?.detail || error.message
-            : error instanceof Error
-              ? error.message
-              : 'Failed to save'
-        toast.error(`Save failed: ${detail}`)
+        toast.error(`Save failed: ${extractApiErrorDetail(error)}`)
         throw error
       } finally {
         setPendingPath(null)

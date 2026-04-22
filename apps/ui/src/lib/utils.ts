@@ -69,3 +69,21 @@ export function slugify(value: string): string {
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '')
 }
+
+/**
+ * Parse an arbitrary value as an http(s) URL. Returns the canonical URL
+ * string if valid, else null. Guards against javascript:/data:/etc schemes
+ * in user-supplied link values.
+ */
+export function sanitizeHttpUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string' || raw === '') return null
+  try {
+    const parsed = new URL(raw)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.toString()
+    }
+  } catch {
+    // not a valid URL
+  }
+  return null
+}

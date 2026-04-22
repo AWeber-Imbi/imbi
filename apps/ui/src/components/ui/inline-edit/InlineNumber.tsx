@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { useInlineEdit } from '@/hooks/useInlineEdit'
 import { InlineDisplay } from './InlineDisplay'
@@ -30,9 +30,8 @@ export function InlineNumber({
   renderDisplay,
 }: InlineNumberProps) {
   const ref = useRef<HTMLInputElement>(null)
-  const edit = useInlineEdit<string>({
-    initial: value === null || value === undefined ? '' : String(value),
-    onCommit: async (next) => {
+  const handleCommit = useCallback(
+    async (next: string) => {
       if (next === '') {
         await onCommit(null)
         return
@@ -43,6 +42,11 @@ export function InlineNumber({
       if (max !== undefined && parsed > max) throw new Error(`Max is ${max}`)
       await onCommit(parsed)
     },
+    [onCommit, integer, min, max],
+  )
+  const edit = useInlineEdit<string>({
+    initial: value === null || value === undefined ? '' : String(value),
+    onCommit: handleCommit,
   })
 
   useEffect(() => {

@@ -356,32 +356,32 @@ export function ImportBlueprintDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={'sm:max-w-2xl'}>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className={'text-primary'}>Import Blueprint</DialogTitle>
+          <DialogTitle className="text-primary">Import Blueprint</DialogTitle>
           <DialogDescription>
             Paste a JSON or YAML blueprint definition below. Required fields:{' '}
-            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
               name
             </code>
             ,{' '}
-            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
               json_schema
             </code>
             , and either{' '}
-            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
               type
             </code>{' '}
             (node) or{' '}
-            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
               source
             </code>
             /
-            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
               target
             </code>
             /
-            <code className={'rounded bg-secondary px-1 py-0.5 text-xs'}>
+            <code className="rounded bg-secondary px-1 py-0.5 text-xs">
               edge
             </code>{' '}
             (relationship)
@@ -393,7 +393,7 @@ export function ImportBlueprintDialog({
           {detectedFormat !== 'unknown' && rawInput.trim() && (
             <div className="flex items-center gap-1.5">
               {formatIcon}
-              <span className={'text-xs text-tertiary'}>
+              <span className="text-xs text-tertiary">
                 Detected format: {detectedFormat.toUpperCase()}
               </span>
               {parsedPreview && (
@@ -426,13 +426,13 @@ export function ImportBlueprintDialog({
 }`}
             rows={14}
             spellCheck={false}
-            className={`w-full resize-y rounded-md border px-4 py-3 font-mono text-sm leading-relaxed ${'border-input bg-secondary text-primary placeholder:text-muted-foreground'} ${error ? 'border-danger' : ''}`}
+            className={`w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm leading-relaxed text-primary placeholder:text-muted-foreground ${error ? 'border-danger' : ''}`}
           />
 
           {/* Validation error display */}
           {error && (
             <div
-              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 ${'border-danger bg-danger text-danger'}`}
+              className={`flex items-start gap-2.5 rounded-lg border border-danger bg-danger px-3 py-2.5 text-danger`}
             >
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <span className="text-sm">{error}</span>
@@ -442,7 +442,7 @@ export function ImportBlueprintDialog({
           {/* API error display */}
           {apiError && !error && (
             <div
-              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 ${'border-danger bg-danger text-danger'}`}
+              className={`flex items-start gap-2.5 rounded-lg border border-danger bg-danger px-3 py-2.5 text-danger`}
             >
               <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <div className="text-sm">
@@ -460,23 +460,23 @@ export function ImportBlueprintDialog({
           {/* Preview */}
           {parsedPreview && (
             <div
-              className={`rounded-lg border px-3 py-2.5 ${'border-input bg-secondary'}`}
+              className={`rounded-lg border border-input bg-secondary px-3 py-2.5`}
             >
-              <div className={'mb-1.5 text-xs font-medium text-tertiary'}>
+              <div className="mb-1.5 text-xs font-medium text-tertiary">
                 Preview
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                 <div>
-                  <span className={'text-tertiary'}>Name: </span>
-                  <span className={'text-primary'}>{parsedPreview.name}</span>
+                  <span className="text-tertiary">Name: </span>
+                  <span className="text-primary">{parsedPreview.name}</span>
                 </div>
                 <div>
-                  <span className={'text-tertiary'}>
+                  <span className="text-tertiary">
                     {parsedPreview.kind === 'relationship'
                       ? 'Edge:'
                       : 'Type:'}{' '}
                   </span>
-                  <span className={'text-primary'}>
+                  <span className="text-primary">
                     {parsedPreview.kind === 'relationship'
                       ? `${parsedPreview.source} → ${parsedPreview.target} (${parsedPreview.edge})`
                       : parsedPreview.type}
@@ -484,23 +484,23 @@ export function ImportBlueprintDialog({
                 </div>
                 {parsedPreview.slug && (
                   <div>
-                    <span className={'text-tertiary'}>Slug: </span>
-                    <span className={'font-mono text-primary'}>
+                    <span className="text-tertiary">Slug: </span>
+                    <span className="font-mono text-primary">
                       {parsedPreview.slug}
                     </span>
                   </div>
                 )}
                 {parsedPreview.description && (
                   <div className="col-span-2">
-                    <span className={'text-tertiary'}>Description: </span>
-                    <span className={'text-primary'}>
+                    <span className="text-tertiary">Description: </span>
+                    <span className="text-primary">
                       {parsedPreview.description}
                     </span>
                   </div>
                 )}
                 <div>
-                  <span className={'text-tertiary'}>Properties: </span>
-                  <span className={'text-primary'}>
+                  <span className="text-tertiary">Properties: </span>
+                  <span className="text-primary">
                     {
                       Object.keys(
                         ((parsedPreview.json_schema as Record<string, unknown>)
@@ -513,8 +513,8 @@ export function ImportBlueprintDialog({
                   (parsedPreview.filter.project_type?.length > 0 ||
                     parsedPreview.filter.environment?.length > 0) && (
                     <div className="col-span-2">
-                      <span className={'text-tertiary'}>Filter: </span>
-                      <span className={'text-primary'}>
+                      <span className="text-tertiary">Filter: </span>
+                      <span className="text-primary">
                         {[
                           parsedPreview.filter.project_type?.length
                             ? `${parsedPreview.filter.project_type.length} project types`

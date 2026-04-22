@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
+import { toast } from 'sonner'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import { Plus, Trash2, Key, AlertCircle, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -92,9 +93,9 @@ export function OAuth2ApplicationList({
         queryKey: ['service-applications', orgSlug, serviceSlug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete application: ${error.response?.data?.detail || error.message}`,
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to delete application: ${extractApiErrorDetail(error)}`,
       )
     },
   })
@@ -159,7 +160,7 @@ export function OAuth2ApplicationList({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className={'text-sm text-secondary'}>Loading applications...</div>
+        <div className="text-sm text-secondary">Loading applications...</div>
       </div>
     )
   }
@@ -167,7 +168,7 @@ export function OAuth2ApplicationList({
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -184,7 +185,7 @@ export function OAuth2ApplicationList({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className={'text-sm text-secondary'}>
+        <div className="text-sm text-secondary">
           {applications.length} application
           {applications.length !== 1 ? 's' : ''}
         </div>
@@ -203,7 +204,7 @@ export function OAuth2ApplicationList({
 
       {/* Table */}
       {applications.length === 0 ? (
-        <div className={'py-8 text-center text-tertiary'}>
+        <div className="py-8 text-center text-tertiary">
           <Key className="mx-auto mb-2 h-8 w-8 opacity-50" />
           <div>No applications registered</div>
           <div className="mt-1 text-sm">
@@ -212,66 +213,62 @@ export function OAuth2ApplicationList({
         </div>
       ) : (
         <div
-          className={`overflow-hidden rounded-lg border ${'border-border bg-card'}`}
+          className={`overflow-hidden rounded-lg border border-border bg-card`}
         >
           <table className="w-full">
             <thead className="border-b border-tertiary bg-secondary">
               <tr>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
                 >
                   Application
                 </th>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
                 >
                   Type
                 </th>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
                 >
                   Client ID
                 </th>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
                 >
                   Status
                 </th>
                 <th
-                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary`}
                 >
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className={'divide-y divide-tertiary'}>
+            <tbody className="divide-y divide-tertiary">
               {applications.map((app) => {
                 const statusVariant = statusBadgeVariant(app.status)
                 return (
                   <tr
                     key={app.slug}
-                    className={'hover:bg-secondary/50 cursor-pointer'}
+                    className="hover:bg-secondary/50 cursor-pointer"
                     onClick={() => {
                       setEditingApp(app)
                       setViewMode('edit')
                     }}
                   >
                     <td className="px-6 py-4">
-                      <div className={'font-medium text-primary'}>
-                        {app.name}
-                      </div>
-                      <div className={'text-sm text-tertiary'}>{app.slug}</div>
+                      <div className="font-medium text-primary">{app.name}</div>
+                      <div className="text-sm text-tertiary">{app.slug}</div>
                     </td>
                     <td className="px-6 py-4">
                       <code
-                        className={`rounded px-2 py-1 text-xs ${'bg-secondary text-primary'}`}
+                        className={`rounded bg-secondary px-2 py-1 text-xs text-primary`}
                       >
                         {app.app_type}
                       </code>
                     </td>
-                    <td
-                      className={'px-6 py-4 font-mono text-sm text-secondary'}
-                    >
+                    <td className="px-6 py-4 font-mono text-sm text-secondary">
                       {app.client_id}
                     </td>
                     <td className="px-6 py-4">
@@ -292,7 +289,7 @@ export function OAuth2ApplicationList({
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   aria-label={`Open ${app.name} application`}
-                                  className={`inline-flex items-center rounded p-1.5 ${'text-info hover:bg-info'}`}
+                                  className={`inline-flex items-center rounded p-1.5 text-info hover:bg-info`}
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                 </a>
@@ -309,7 +306,7 @@ export function OAuth2ApplicationList({
                           aria-label={`Delete application ${app.name}`}
                           onClick={() => handleDelete(app)}
                           disabled={deleteMutation.isPending}
-                          className={'text-danger hover:bg-danger'}
+                          className="text-danger hover:bg-danger"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

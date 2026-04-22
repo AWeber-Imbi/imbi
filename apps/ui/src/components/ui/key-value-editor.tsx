@@ -49,8 +49,8 @@ export function KeyValueEditor({
     <div className="space-y-2">
       {entries.map(([k, v]) => (
         <div key={k} className="flex items-center gap-2">
-          <Input value={k} disabled className={'flex-1 opacity-70'} />
-          <Input value={String(v)} disabled className={'flex-1 opacity-70'} />
+          <Input value={k} disabled className="flex-1 opacity-70" />
+          <Input value={String(v)} disabled className="flex-1 opacity-70" />
           <Button
             type="button"
             variant="ghost"
@@ -58,7 +58,7 @@ export function KeyValueEditor({
             aria-label={`Remove ${k}`}
             onClick={() => handleRemove(k)}
             disabled={disabled}
-            className={'text-danger hover:bg-danger'}
+            className="text-danger hover:bg-danger"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -72,7 +72,7 @@ export function KeyValueEditor({
           onKeyDown={handleKeyDown}
           placeholder={keyPlaceholder}
           disabled={disabled}
-          className={'flex-1'}
+          className="flex-1"
         />
         <Input
           value={newValue}
@@ -80,7 +80,7 @@ export function KeyValueEditor({
           onKeyDown={handleKeyDown}
           placeholder={valuePlaceholder}
           disabled={disabled}
-          className={'flex-1'}
+          className="flex-1"
         />
         <Button
           type="button"
@@ -89,7 +89,7 @@ export function KeyValueEditor({
           aria-label="Add key value pair"
           onClick={handleAdd}
           disabled={disabled || !newKey.trim() || !newValue.trim()}
-          className={'hover:text-info/80 text-info'}
+          className="hover:text-info/80 text-info"
         >
           <Plus className="h-4 w-4" />
         </Button>

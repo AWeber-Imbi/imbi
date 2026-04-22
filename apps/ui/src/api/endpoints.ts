@@ -235,19 +235,12 @@ export const getActivityFeed = async (params?: {
   omit_user?: string
   token?: string
 }): Promise<ActivityFeedEntry[]> => {
-  try {
-    const response = await apiClient.get<ActivityFeedEntry[]>(
-      '/activity-feed',
-      params,
-    )
-    // Activity feed returns array directly, not wrapped in { data: [] }
-    console.log('[API] Activity feed response:', response)
-    console.log('[API] First activity item:', response?.[0])
-    return Array.isArray(response) ? response : []
-  } catch (error) {
-    console.error('[API] Activity feed error:', error)
-    return []
-  }
+  const response = await apiClient.get<ActivityFeedEntry[]>(
+    '/activity-feed',
+    params,
+  )
+  // Activity feed returns array directly, not wrapped in { data: [] }
+  return Array.isArray(response) ? response : []
 }
 
 // Operations Log
@@ -409,15 +402,9 @@ export const listAdminUsers = async (params?: {
   is_active?: boolean
   is_admin?: boolean
 }): Promise<AdminUser[]> => {
-  try {
-    const response = await apiClient.get<AdminUser[]>('/users/', params)
-    console.log('[API] listAdminUsers response:', response)
-    // Users endpoint returns array directly, not wrapped in { data: [] }
-    return Array.isArray(response) ? response : []
-  } catch (error) {
-    console.error('[API] listAdminUsers error:', error)
-    return []
-  }
+  const response = await apiClient.get<AdminUser[]>('/users/', params)
+  // Users endpoint returns array directly, not wrapped in { data: [] }
+  return Array.isArray(response) ? response : []
 }
 
 export const getAdminUser = (email: string) =>
@@ -455,14 +442,8 @@ export const removeUserFromOrg = (email: string, orgSlug: string) =>
 
 // Admin - Roles Management
 export const getRoles = async (): Promise<Role[]> => {
-  try {
-    const response = await apiClient.get<Role[]>('/roles/')
-    console.log('[API] getRoles response:', response)
-    return Array.isArray(response) ? response : []
-  } catch (error) {
-    console.error('[API] getRoles error:', error)
-    return []
-  }
+  const response = await apiClient.get<Role[]>('/roles/')
+  return Array.isArray(response) ? response : []
 }
 
 export const getRole = (slug: string) =>

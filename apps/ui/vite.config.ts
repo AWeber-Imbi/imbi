@@ -26,6 +26,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
   },
+  esbuild: {
+    drop: ['console'],
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,

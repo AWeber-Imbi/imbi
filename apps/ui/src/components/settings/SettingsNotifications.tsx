@@ -5,15 +5,15 @@ import { Separator } from '@/components/ui/separator'
 
 export function SettingsNotifications() {
   return (
-    <Card className={'p-8'} style={{ borderWidth: '0.5px' }}>
-      <h2 className={'mb-6 text-[18px] font-medium text-primary'}>
+    <Card className="p-8" style={{ borderWidth: '0.5px' }}>
+      <h2 className="mb-6 text-[18px] font-medium text-primary">
         Notification preferences
       </h2>
 
       <div className="space-y-6">
         {/* Deployment notifications */}
         <div>
-          <h3 className={'mb-4 text-[16px] font-medium text-primary'}>
+          <h3 className="mb-4 text-[16px] font-medium text-primary">
             Deployment notifications
           </h3>
           <div className="space-y-4">
@@ -38,7 +38,7 @@ export function SettingsNotifications() {
 
         {/* Health & monitoring */}
         <div>
-          <h3 className={'mb-4 text-[16px] font-medium text-primary'}>
+          <h3 className="mb-4 text-[16px] font-medium text-primary">
             Health & monitoring
           </h3>
           <div className="space-y-4">
@@ -59,7 +59,7 @@ export function SettingsNotifications() {
 
         {/* Operations log */}
         <div>
-          <h3 className={'mb-4 text-[16px] font-medium text-primary'}>
+          <h3 className="mb-4 text-[16px] font-medium text-primary">
             Operations log
           </h3>
           <div className="space-y-4">
@@ -99,8 +99,8 @@ function ToggleRow({
   return (
     <div className="flex items-center justify-between">
       <div>
-        <p className={'text-[13.5px] text-primary'}>{label}</p>
-        <p className={'text-[12px] text-tertiary'}>{description}</p>
+        <p className="text-[13.5px] text-primary">{label}</p>
+        <p className="text-[12px] text-tertiary">{description}</p>
       </div>
       <Switch defaultChecked={defaultChecked} />
     </div>

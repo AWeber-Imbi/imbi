@@ -1,14 +1,13 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
-import { Plus, Search, Power, Bot, AlertCircle } from 'lucide-react'
-import { Button } from '../ui/button'
+import { useQuery } from '@tanstack/react-query'
+import { Power, Bot } from 'lucide-react'
 import { Badge } from '../ui/badge'
-import { Input } from '../ui/input'
 import { AdminTable } from '@/components/ui/admin-table'
+import { AdminSection } from './AdminSection'
 import { ServiceAccountForm } from './service-accounts/ServiceAccountForm'
 import { ServiceAccountDetail } from './service-accounts/ServiceAccountDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listServiceAccounts,
   getServiceAccount,
@@ -25,7 +24,6 @@ import type {
 type StatusFilter = 'all' | 'active' | 'inactive'
 
 export function ServiceAccountManagement() {
-  const queryClient = useQueryClient()
   const {
     viewMode,
     slug: selectedAccountSlug,
@@ -36,63 +34,26 @@ export function ServiceAccountManagement() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
-  // Fetch service accounts from dedicated endpoint
   const {
-    data: serviceAccounts = [],
+    items: serviceAccounts,
     isLoading,
     error,
-  } = useQuery({
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    ServiceAccount,
+    ServiceAccountCreate,
+    { slug: string; data: ServiceAccountUpdate },
+    string
+  >({
     queryKey: ['serviceAccounts'],
-    queryFn: () => listServiceAccounts(),
-  })
-
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: deleteServiceAccount,
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['serviceAccounts'],
-      })
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete service account: ${error.response?.data?.detail || error.message}`,
-      )
-    },
-  })
-
-  // Create mutation
-  const createMutation = useMutation({
-    mutationFn: createServiceAccount,
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['serviceAccounts'],
-      })
-      goToList()
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      console.error('Failed to create service account:', error)
-    },
-  })
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: ({
-      slug,
-      data,
-    }: {
-      slug: string
-      data: ServiceAccountUpdate
-    }) => updateServiceAccount(slug, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['serviceAccounts'],
-      })
-      goToList()
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      console.error('Failed to update service account:', error)
-    },
+    listFn: listServiceAccounts,
+    createFn: createServiceAccount,
+    updateFn: ({ slug, data }) => updateServiceAccount(slug, data),
+    deleteFn: deleteServiceAccount,
+    onMutationSuccess: goToList,
+    deleteErrorLabel: 'service account',
   })
 
   // Filter service accounts
@@ -156,35 +117,6 @@ export function ServiceAccountManagement() {
     })
   }
 
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>
-          Loading service accounts...
-        </div>
-      </div>
-    )
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load service accounts</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // View mode: Create or Edit
   if (viewMode === 'create' || viewMode === 'edit') {
     return (
       <ServiceAccountForm
@@ -197,7 +129,6 @@ export function ServiceAccountManagement() {
     )
   }
 
-  // View mode: Detail
   if (viewMode === 'detail' && selectedAccount) {
     return (
       <ServiceAccountDetail
@@ -208,42 +139,29 @@ export function ServiceAccountManagement() {
     )
   }
 
-  // View mode: List (default)
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex flex-1 items-center gap-3">
-          <div className="relative max-w-md flex-1">
-            <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
-            />
-            <Input
-              placeholder="Search service accounts..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={'pl-10'}
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className={`rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-        <Button
-          onClick={goToCreate}
-          className="bg-action text-action-foreground hover:bg-action-hover"
+    <AdminSection
+      searchPlaceholder="Search service accounts..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New Service Account"
+      onCreate={goToCreate}
+      isLoading={isLoading}
+      loadingLabel="Loading service accounts..."
+      error={error}
+      errorTitle="Failed to load service accounts"
+      headerExtras={
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          className={`rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground`}
         >
-          <Plus className="mr-2 h-4 w-4" />
-          New Service Account
-        </Button>
-      </div>
-
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      }
+    >
       {/* Service Accounts Table */}
       <AdminTable
         columns={[
@@ -259,16 +177,14 @@ export function ServiceAccountManagement() {
                     'flex size-8 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/30'
                   }
                 >
-                  <Bot
-                    className={'h-4 w-4 text-purple-600 dark:text-purple-400'}
-                  />
+                  <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                 </div>
                 <div>
-                  <div className={'text-sm font-medium text-primary'}>
+                  <div className="text-sm font-medium text-primary">
                     {account.display_name}
                   </div>
                   {account.description && (
-                    <div className={'text-xs text-tertiary'}>
+                    <div className="text-xs text-tertiary">
                       {account.description}
                     </div>
                   )}
@@ -312,7 +228,7 @@ export function ServiceAccountManagement() {
             headerAlign: 'left',
             cellAlign: 'left',
             render: (account) => (
-              <span className={'text-xs text-secondary'}>
+              <span className="text-xs text-secondary">
                 {formatDate(account.last_authenticated)}
               </span>
             ),
@@ -333,11 +249,11 @@ export function ServiceAccountManagement() {
 
       {/* Summary */}
       {filteredAccounts.length > 0 && (
-        <div className={'text-sm text-secondary'}>
+        <div className="text-sm text-secondary">
           Showing {filteredAccounts.length} of {serviceAccounts.length} service
           account(s)
         </div>
       )}
-    </div>
+    </AdminSection>
   )
 }

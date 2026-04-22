@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
+import { ApiError } from '@/api/client'
 import {
   loginWithPassword,
   logoutAuth,
@@ -36,24 +37,17 @@ export function useAuth(): UseAuthReturn {
       }
       try {
         return await getUserByUsername(username)
-      } catch (error: unknown) {
+      } catch (error) {
         console.error('[Auth] Error fetching user:', error)
-        // Check if it's a "user not found or inactive" error
-        const axiosErr = error as {
-          response?: { status?: number; data?: { detail?: string } }
+        if (error instanceof ApiError && error.status === 401) {
+          const data = error.data as { detail?: string } | undefined
+          if (data?.detail?.includes('not found or inactive')) {
+            clearTokens()
+            throw new Error(
+              'Your account is not active. Please contact your administrator.',
+            )
+          }
         }
-        if (
-          axiosErr.response?.status === 401 &&
-          axiosErr.response?.data?.detail?.includes('not found or inactive')
-        ) {
-          console.log('[Auth] User not found or inactive, clearing tokens')
-          clearTokens()
-          throw new Error(
-            'Your account is not active. Please contact your administrator.',
-          )
-        }
-        // For other 401 errors, let the API client handle the redirect
-        // Don't interfere with the redirect flow
         throw error
       }
     },

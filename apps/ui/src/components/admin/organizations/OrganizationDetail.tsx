@@ -36,11 +36,11 @@ export function OrganizationDetail({
                 className="h-8 w-8 rounded object-cover"
               />
             ) : (
-              <Building2 className={'h-6 w-6 text-secondary'} />
+              <Building2 className="h-6 w-6 text-secondary" />
             )}
             <div>
               <CardTitle>{organization.name}</CardTitle>
-              <p className={'mt-1 text-sm text-secondary'}>
+              <p className="mt-1 text-sm text-secondary">
                 {organization.description || 'No description provided'}
               </p>
             </div>
@@ -57,27 +57,25 @@ export function OrganizationDetail({
         <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
             <div>
-              <div className={'mb-1 text-sm text-secondary'}>Slug</div>
+              <div className="mb-1 text-sm text-secondary">Slug</div>
               <code
-                className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
               >
                 {organization.slug}
               </code>
             </div>
 
             <div>
-              <div className={'mb-1 text-sm text-secondary'}>Created</div>
-              <div className={'text-primary'}>
+              <div className="mb-1 text-sm text-secondary">Created</div>
+              <div className="text-primary">
                 {formatDate(organization.created_at)}
               </div>
             </div>
 
             {organization.updated_at && (
               <div>
-                <div className={'mb-1 text-sm text-secondary'}>
-                  Last Modified
-                </div>
-                <div className={'text-primary'}>
+                <div className="mb-1 text-sm text-secondary">Last Modified</div>
+                <div className="text-primary">
                   {formatDate(organization.updated_at)}
                 </div>
               </div>

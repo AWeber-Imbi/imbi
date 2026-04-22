@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ApiError } from '@/api/client'
+import { toast } from 'sonner'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import { Plus, Search, Trash2, Webhook, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -87,10 +88,8 @@ export function ServiceWebhookList({
         queryKey: ['webhooks', orgSlug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete webhook: ${error.response?.data?.detail || error.message}`,
-      )
+    onError: (error: unknown) => {
+      toast.error(`Failed to delete webhook: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -173,7 +172,7 @@ export function ServiceWebhookList({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className={'text-sm text-secondary'}>Loading webhooks...</div>
+        <div className="text-sm text-secondary">Loading webhooks...</div>
       </div>
     )
   }
@@ -181,7 +180,7 @@ export function ServiceWebhookList({
   if (error) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -199,20 +198,20 @@ export function ServiceWebhookList({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className={'text-sm text-secondary'}>
+          <div className="text-sm text-secondary">
             {filteredWebhooks.length} webhook
             {filteredWebhooks.length !== 1 ? 's' : ''}
           </div>
           {webhooks.length > 0 && (
             <div className="relative max-w-xs">
               <Search
-                className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
+                className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary`}
               />
               <Input
                 placeholder="Search webhooks..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className={'pl-10'}
+                className="pl-10"
               />
             </div>
           )}
@@ -232,7 +231,7 @@ export function ServiceWebhookList({
 
       {/* Table */}
       {filteredWebhooks.length === 0 ? (
-        <div className={'py-8 text-center text-tertiary'}>
+        <div className="py-8 text-center text-tertiary">
           <Webhook className="mx-auto mb-2 h-8 w-8 opacity-50" />
           <div>
             {searchQuery
@@ -247,34 +246,34 @@ export function ServiceWebhookList({
         </div>
       ) : (
         <div
-          className={`overflow-hidden rounded-lg border ${'border-border bg-card'}`}
+          className={`overflow-hidden rounded-lg border border-border bg-card`}
         >
           <table className="w-full">
-            <thead className={'border-b border-tertiary'}>
+            <thead className="border-b border-tertiary">
               <tr>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
                 >
                   Webhook
                 </th>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
                 >
                   Path
                 </th>
                 <th
-                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                  className={`px-6 py-3 text-left text-xs uppercase tracking-wider text-tertiary`}
                 >
                   Rules
                 </th>
                 <th
-                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider ${'text-tertiary'}`}
+                  className={`px-6 py-3 text-right text-xs uppercase tracking-wider text-tertiary`}
                 >
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className={'divide-y divide-tertiary'}>
+            <tbody className="divide-y divide-tertiary">
               {filteredWebhooks.map((wh) => (
                 <tr
                   key={wh.slug}
@@ -292,12 +291,12 @@ export function ServiceWebhookList({
                   }}
                   tabIndex={0}
                   aria-label={`View webhook ${wh.name}`}
-                  className={'hover:bg-secondary/50 cursor-pointer'}
+                  className="hover:bg-secondary/50 cursor-pointer"
                 >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div
-                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${'bg-indigo-50 dark:bg-indigo-900/30'}`}
+                        className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30`}
                       >
                         <Webhook
                           className={
@@ -306,7 +305,7 @@ export function ServiceWebhookList({
                         />
                       </div>
                       <div>
-                        <div className={'text-primary'}>{wh.name}</div>
+                        <div className="text-primary">{wh.name}</div>
                         {wh.description && (
                           <div
                             className={
@@ -321,12 +320,12 @@ export function ServiceWebhookList({
                   </td>
                   <td className="px-6 py-4">
                     <code
-                      className={`rounded px-2 py-1 text-xs ${'bg-secondary text-primary'}`}
+                      className={`rounded bg-secondary px-2 py-1 text-xs text-primary`}
                     >
                       {wh.notification_path}
                     </code>
                   </td>
-                  <td className={'px-6 py-4 text-sm text-secondary'}>
+                  <td className="px-6 py-4 text-sm text-secondary">
                     {wh.rules.length}
                   </td>
                   <td
@@ -341,7 +340,7 @@ export function ServiceWebhookList({
                         aria-label={`Delete webhook ${wh.name}`}
                         onClick={() => handleDelete(wh.slug)}
                         disabled={deleteMutation.isPending}
-                        className={'text-danger hover:bg-danger'}
+                        className="text-danger hover:bg-danger"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

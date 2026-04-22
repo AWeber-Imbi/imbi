@@ -5,6 +5,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   type ReactNode,
 } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -56,15 +57,18 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     setSelectedSlug(org.slug)
   }, [])
 
+  const value = useMemo<OrganizationContextValue>(
+    () => ({
+      organizations,
+      selectedOrganization,
+      setSelectedOrganization,
+      isLoading,
+    }),
+    [organizations, selectedOrganization, setSelectedOrganization, isLoading],
+  )
+
   return (
-    <OrganizationContext.Provider
-      value={{
-        organizations,
-        selectedOrganization,
-        setSelectedOrganization,
-        isLoading,
-      }}
-    >
+    <OrganizationContext.Provider value={value}>
       {children}
     </OrganizationContext.Provider>
   )

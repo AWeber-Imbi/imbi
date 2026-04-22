@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -13,14 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useSavedFlash } from '@/hooks/useSavedFlash'
+import { useEditableKeyValueMap } from '@/hooks/useEditableKeyValueMap'
 import { ENVIRONMENT_BASE_FIELDS_SET } from '@/lib/constants'
 import type { Environment } from '@/types'
+
+type EnvFields = Record<string, string>
 
 interface EditEnvironmentsCardProps {
   environments: Environment[]
   availableEnvironments: Environment[]
-  onPatch: (envData: Record<string, Record<string, string>>) => Promise<void>
+  onPatch: (envData: Record<string, EnvFields>) => Promise<void>
 }
 
 function toLabel(key: string): string {
@@ -30,8 +32,8 @@ function toLabel(key: string): string {
     .join(' ')
 }
 
-function extractFields(env: Environment): Record<string, string> {
-  const out: Record<string, string> = {}
+function extractFields(env: Environment): EnvFields {
+  const out: EnvFields = {}
   for (const [key, val] of Object.entries(env)) {
     if (ENVIRONMENT_BASE_FIELDS_SET.has(key)) continue
     out[key] = val != null ? String(val) : ''
@@ -39,19 +41,28 @@ function extractFields(env: Environment): Record<string, string> {
   return out
 }
 
-function buildEnvMap(
-  envs: Environment[],
-): Record<string, Record<string, string>> {
-  const map: Record<string, Record<string, string>> = {}
-  for (const env of envs) map[env.slug] = extractFields(env)
-  return map
-}
-
 export function EditEnvironmentsCard({
   environments,
   availableEnvironments,
   onPatch,
 }: EditEnvironmentsCardProps) {
+  const serverMap = useMemo<Record<string, EnvFields>>(() => {
+    const map: Record<string, EnvFields> = {}
+    for (const env of environments) map[env.slug] = extractFields(env)
+    return map
+  }, [environments])
+
+  const {
+    drafts,
+    setDraft,
+    pendingDelete,
+    requestDelete,
+    cancelDelete,
+    confirmDelete,
+    saved,
+    flash,
+  } = useEditableKeyValueMap<EnvFields>({ serverMap, onPatch })
+
   const dynamicFields = useMemo(() => {
     const fieldSet = new Set<string>()
     for (const env of environments) {
@@ -61,16 +72,6 @@ export function EditEnvironmentsCard({
     }
     return [...fieldSet].sort()
   }, [environments])
-
-  const serverMap = useMemo(() => buildEnvMap(environments), [environments])
-  const [drafts, setDrafts] =
-    useState<Record<string, Record<string, string>>>(serverMap)
-  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
-  const { saved, flash } = useSavedFlash()
-
-  useEffect(() => {
-    setDrafts(serverMap)
-  }, [serverMap])
 
   const envBySlug = useMemo(() => {
     const m = new Map<string, Environment>()
@@ -91,15 +92,20 @@ export function EditEnvironmentsCard({
     [availableEnvironments, currentSlugs],
   )
 
-  const buildBaseline = (): Record<string, Record<string, string>> => {
-    const out: Record<string, Record<string, string>> = {}
+  // Merge drafts on top of serverMap so a blur that races an in-flight PATCH
+  // doesn't revive stale server values for concurrently-edited fields.
+  const buildBaseline = (): Record<string, EnvFields> => {
+    const out: Record<string, EnvFields> = {}
     for (const env of environments) {
-      out[env.slug] = { ...serverMap[env.slug] }
+      out[env.slug] = {
+        ...serverMap[env.slug],
+        ...(drafts[env.slug] ?? {}),
+      }
     }
     return out
   }
 
-  const handleBlur = async (slug: string, field: string) => {
+  const handleFieldBlur = async (slug: string, field: string) => {
     const next = (drafts[slug]?.[field] ?? '').trim()
     const current = serverMap[slug]?.[field] ?? ''
     if (next === current) return
@@ -110,28 +116,6 @@ export function EditEnvironmentsCard({
       flash(`${slug}:${field}`)
     } catch {
       // Parent surfaces the error; keep the draft for retry.
-    }
-  }
-
-  const requestDelete = (slug: string) => {
-    setPendingDelete(slug)
-  }
-
-  const cancelDelete = () => {
-    setPendingDelete(null)
-  }
-
-  const confirmDelete = async () => {
-    const slug = pendingDelete
-    if (!slug) return
-    const payload = buildBaseline()
-    delete payload[slug]
-    try {
-      await onPatch(payload)
-    } catch {
-      // Parent surfaces the error.
-    } finally {
-      setPendingDelete(null)
     }
   }
 
@@ -183,15 +167,12 @@ export function EditEnvironmentsCard({
                         id={`env-${env.slug}-${field}`}
                         value={drafts[env.slug]?.[field] ?? ''}
                         onChange={(e) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [env.slug]: {
-                              ...(prev[env.slug] ?? {}),
-                              [field]: e.target.value,
-                            },
-                          }))
+                          setDraft(env.slug, {
+                            ...(drafts[env.slug] ?? {}),
+                            [field]: e.target.value,
+                          })
                         }
-                        onBlur={() => handleBlur(env.slug, field)}
+                        onBlur={() => handleFieldBlur(env.slug, field)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault()

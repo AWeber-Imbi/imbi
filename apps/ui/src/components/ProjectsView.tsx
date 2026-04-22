@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getProjects } from '@/api/endpoints'
 import { EnvironmentBadge } from './ui/environment-badge'
-import type { Environment } from '@/types'
+import { sortEnvironments } from '@/lib/utils'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { NewProjectDialog } from './NewProjectDialog'
 import { ProjectGraphView } from './ProjectGraphView'
@@ -66,14 +66,6 @@ export function ProjectsView() {
     return 'ring-danger'
   }
 
-  const sortedEnvironments = (envs?: Environment[]) => {
-    if (!envs || envs.length === 0) return []
-    return [...envs].sort((a, b) => {
-      const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0)
-      return orderDiff !== 0 ? orderDiff : a.name.localeCompare(b.name)
-    })
-  }
-
   // Mock health score - deterministic from slug so it's stable across renders.
   // Will come from the API in the future.
   const getMockHealth = (slug: string) => {
@@ -118,7 +110,7 @@ export function ProjectsView() {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
         <div className="mb-4 flex items-center justify-between">
-          <h1 className={'text-2xl font-semibold text-primary'}>Projects</h1>
+          <h1 className="text-2xl font-semibold text-primary">Projects</h1>
           <Button
             size="sm"
             className="bg-action text-action-foreground hover:bg-action-hover"
@@ -130,11 +122,11 @@ export function ProjectsView() {
         </div>
 
         {/* Search and Filters */}
-        <Card className={'p-4'}>
+        <Card className="p-4">
           <div className="flex items-center gap-3">
             <div className="relative max-w-md flex-1">
               <Search
-                className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
+                className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tertiary`}
               />
               <Input
                 type="text"
@@ -146,7 +138,7 @@ export function ProjectsView() {
             </div>
 
             <div
-              className={`flex items-center rounded-lg border ${'border-secondary'}`}
+              className={`flex items-center rounded-lg border border-secondary`}
             >
               <Button
                 variant="ghost"
@@ -195,12 +187,10 @@ export function ProjectsView() {
               >
                 <div className="mb-3 flex items-start justify-between">
                   <div className="min-w-0 flex-1">
-                    <h3
-                      className={`mb-1 truncate font-medium ${'text-primary'}`}
-                    >
+                    <h3 className={`mb-1 truncate font-medium text-primary`}>
                       {project.name}
                     </h3>
-                    <p className={'text-sm text-tertiary'}>
+                    <p className="text-sm text-tertiary">
                       {(project.project_types || [])
                         .map((pt) => pt.name)
                         .join(', ')}
@@ -216,20 +206,18 @@ export function ProjectsView() {
                 </div>
 
                 {project.description && (
-                  <p
-                    className={`mb-3 line-clamp-2 text-sm ${'text-secondary'}`}
-                  >
+                  <p className={`mb-3 line-clamp-2 text-sm text-secondary`}>
                     {project.description}
                   </p>
                 )}
 
                 <div className="mb-3">
-                  <p className={'text-xs text-tertiary'}>{project.team.name}</p>
+                  <p className="text-xs text-tertiary">{project.team.name}</p>
                 </div>
 
                 {project.environments && project.environments.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
-                    {sortedEnvironments(project.environments).map((env) => (
+                    {sortEnvironments(project.environments || []).map((env) => (
                       <EnvironmentBadge
                         key={env.slug}
                         name={env.name}
@@ -244,10 +232,10 @@ export function ProjectsView() {
           })}
         </div>
       ) : (
-        <Card className={'overflow-hidden'}>
+        <Card className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className={`border-b ${'border-tertiary bg-secondary'}`}>
+              <thead className={`border-b border-tertiary bg-secondary`}>
                 <tr>
                   <th
                     className={
@@ -286,31 +274,31 @@ export function ProjectsView() {
                   </th>
                 </tr>
               </thead>
-              <tbody className={'divide-y divide-tertiary'}>
+              <tbody className="divide-y divide-tertiary">
                 {filteredProjects.map((project) => {
                   const health = getMockHealth(project.slug)
                   return (
                     <tr
                       key={`table-${project.id}`}
-                      className={`cursor-pointer transition-colors ${'hover:bg-secondary'}`}
+                      className={`cursor-pointer transition-colors hover:bg-secondary`}
                       onClick={() => handleProjectSelect(project.id)}
                     >
-                      <td className={'px-6 py-4 font-medium text-primary'}>
+                      <td className="px-6 py-4 font-medium text-primary">
                         {project.name}
                       </td>
-                      <td className={'px-6 py-4 text-secondary'}>
+                      <td className="px-6 py-4 text-secondary">
                         {(project.project_types || [])
                           .map((pt) => pt.name)
                           .join(', ')}
                       </td>
-                      <td className={'px-6 py-4 text-secondary'}>
+                      <td className="px-6 py-4 text-secondary">
                         {project.team.name}
                       </td>
                       <td className="px-6 py-4">
                         {project.environments &&
                           project.environments.length > 0 && (
                             <div className="flex flex-wrap items-center gap-2">
-                              {sortedEnvironments(project.environments).map(
+                              {sortEnvironments(project.environments || []).map(
                                 (env) => (
                                   <EnvironmentBadge
                                     key={env.slug}
@@ -343,7 +331,7 @@ export function ProjectsView() {
 
       {filteredProjects.length === 0 && viewMode !== 'graph' && (
         <div className="py-12 text-center">
-          <p className={'text-tertiary'}>
+          <p className="text-tertiary">
             No projects found matching your criteria
           </p>
         </div>

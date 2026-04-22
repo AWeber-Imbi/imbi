@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
+import { toast } from 'sonner'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import {
   ArrowLeft,
   Edit2,
@@ -88,7 +89,11 @@ export function ServiceAccountDetail({
   const [newOrgSlug, setNewOrgSlug] = useState('')
   const [newRoleSlug, setNewRoleSlug] = useState('')
 
-  const { data: availableRoles = [], isError: rolesError } = useQuery({
+  const {
+    data: availableRoles = [],
+    isError: rolesError,
+    isLoading: rolesLoading,
+  } = useQuery({
     queryKey: ['roles'],
     queryFn: getRoles,
   })
@@ -110,9 +115,9 @@ export function ServiceAccountDetail({
       setNewOrgSlug('')
       setNewRoleSlug('')
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to add to organization: ${error.response?.data?.detail || error.message}`,
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to add to organization: ${extractApiErrorDetail(error)}`,
       )
     },
   })
@@ -134,10 +139,8 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccount', account.slug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to update role: ${error.response?.data?.detail || error.message}`,
-      )
+    onError: (error: unknown) => {
+      toast.error(`Failed to update role: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -150,9 +153,9 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccount', account.slug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to remove from organization: ${error.response?.data?.detail || error.message}`,
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to remove from organization: ${extractApiErrorDetail(error)}`,
       )
     },
   })
@@ -206,10 +209,8 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to create API key: ${error.response?.data?.detail || error.message}`,
-      )
+    onError: (error: unknown) => {
+      toast.error(`Failed to create API key: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -221,10 +222,8 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to revoke API key: ${error.response?.data?.detail || error.message}`,
-      )
+    onError: (error: unknown) => {
+      toast.error(`Failed to revoke API key: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -237,10 +236,8 @@ export function ServiceAccountDetail({
         queryKey: ['serviceAccountApiKeys', account.slug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to rotate API key: ${error.response?.data?.detail || error.message}`,
-      )
+    onError: (error: unknown) => {
+      toast.error(`Failed to rotate API key: ${extractApiErrorDetail(error)}`)
     },
   })
 
@@ -256,9 +253,9 @@ export function ServiceAccountDetail({
         queryKey: ['clientCredentials', account.slug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to create credential: ${error.response?.data?.detail || error.message}`,
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to create credential: ${extractApiErrorDetail(error)}`,
       )
     },
   })
@@ -271,9 +268,9 @@ export function ServiceAccountDetail({
         queryKey: ['clientCredentials', account.slug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to revoke credential: ${error.response?.data?.detail || error.message}`,
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to revoke credential: ${extractApiErrorDetail(error)}`,
       )
     },
   })
@@ -287,9 +284,9 @@ export function ServiceAccountDetail({
         queryKey: ['clientCredentials', account.slug],
       })
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to rotate credential: ${error.response?.data?.detail || error.message}`,
+    onError: (error: unknown) => {
+      toast.error(
+        `Failed to rotate credential: ${extractApiErrorDetail(error)}`,
       )
     },
   })
@@ -318,7 +315,7 @@ export function ServiceAccountDetail({
       setCopiedId(id)
       setTimeout(() => setCopiedId(null), 2000)
     } catch {
-      alert('Failed to copy to clipboard')
+      toast.error('Failed to copy to clipboard')
     }
   }
 
@@ -359,7 +356,7 @@ export function ServiceAccountDetail({
       expiresInDays !== null &&
       (!Number.isInteger(expiresInDays) || expiresInDays < 1)
     ) {
-      alert('Expiration must be a positive whole number of days.')
+      toast.error('Expiration must be a positive whole number of days.')
       return
     }
 
@@ -412,7 +409,7 @@ export function ServiceAccountDetail({
         <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b px-6 py-5">
           <div>
             <CardTitle>{account.display_name}</CardTitle>
-            <p className={'mt-1 text-secondary'}>{account.slug}</p>
+            <p className="mt-1 text-secondary">{account.slug}</p>
           </div>
           <Button
             onClick={onEdit}
@@ -437,7 +434,7 @@ export function ServiceAccountDetail({
               {account.is_active ? 'Active' : 'Inactive'}
             </div>
             <div
-              className={`flex items-center gap-2 rounded px-3 py-1.5 ${'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'}`}
+              className={`flex items-center gap-2 rounded bg-purple-100 px-3 py-1.5 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400`}
             >
               Service Account
             </div>
@@ -449,7 +446,7 @@ export function ServiceAccountDetail({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
-            <Building2 className={'h-5 w-5 text-secondary'} />
+            <Building2 className="h-5 w-5 text-secondary" />
             <CardTitle>Organization Memberships</CardTitle>
           </div>
           {availableOrgs.length > 0 && (
@@ -468,17 +465,17 @@ export function ServiceAccountDetail({
           {/* Add to Organization Form */}
           {showAddOrg && (
             <div
-              className={`mb-4 rounded-lg border p-4 ${'border-input bg-secondary'}`}
+              className={`mb-4 rounded-lg border border-input bg-secondary p-4`}
             >
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Organization
                   </label>
                   <select
                     value={newOrgSlug}
                     onChange={(e) => setNewOrgSlug(e.target.value)}
-                    className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
                   >
                     <option value="">Select...</option>
                     {availableOrgs.map((org) => (
@@ -489,18 +486,18 @@ export function ServiceAccountDetail({
                   </select>
                 </div>
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Role
                   </label>
-                  {rolesError ? (
-                    <p className={'text-sm text-danger'}>
-                      Failed to load roles
-                    </p>
+                  {rolesLoading ? (
+                    <p className="text-sm text-secondary">Loading roles...</p>
+                  ) : rolesError ? (
+                    <p className="text-sm text-danger">Failed to load roles</p>
                   ) : (
                     <select
                       value={newRoleSlug}
                       onChange={(e) => setNewRoleSlug(e.target.value)}
-                      className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+                      className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
                     >
                       <option value="">Select...</option>
                       {availableRoles.map((role) => (
@@ -550,19 +547,23 @@ export function ServiceAccountDetail({
                 (membership: OrgMembership) => (
                   <div
                     key={membership.organization_slug}
-                    className={`flex items-center justify-between rounded-lg border p-3 ${'border-input bg-secondary'}`}
+                    className={`flex items-center justify-between rounded-lg border border-input bg-secondary p-3`}
                   >
                     <div className="flex-1">
-                      <div className={'text-sm font-medium text-primary'}>
+                      <div className="text-sm font-medium text-primary">
                         {membership.organization_name}
                       </div>
-                      <div className={'text-xs text-tertiary'}>
+                      <div className="text-xs text-tertiary">
                         {membership.organization_slug}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {rolesError ? (
-                        <span className={'text-xs text-danger'}>
+                      {rolesLoading ? (
+                        <span className="text-xs text-secondary">
+                          Loading roles...
+                        </span>
+                      ) : rolesError ? (
+                        <span className="text-xs text-danger">
                           Roles unavailable
                         </span>
                       ) : (
@@ -576,7 +577,7 @@ export function ServiceAccountDetail({
                           }
                           disabled={updateOrgRoleMutation.isPending}
                           aria-label={`Role for ${membership.organization_name}`}
-                          className={`rounded border px-2 py-1 text-xs ${'border-input bg-background text-foreground'}`}
+                          className={`rounded border border-input bg-background px-2 py-1 text-xs text-foreground`}
                         >
                           {availableRoles.map((role) => (
                             <option key={role.slug} value={role.slug}>
@@ -603,7 +604,7 @@ export function ServiceAccountDetail({
                                 }
                               }}
                               disabled={removeOrgMutation.isPending}
-                              className={`rounded p-1.5 ${'text-danger hover:bg-secondary'}`}
+                              className={`rounded p-1.5 text-danger hover:bg-secondary`}
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -619,8 +620,8 @@ export function ServiceAccountDetail({
               )}
             </div>
           ) : (
-            <div className={'py-8 text-center text-tertiary'}>
-              <Building2 className={'mx-auto mb-2 h-8 w-8 text-tertiary'} />
+            <div className="py-8 text-center text-tertiary">
+              <Building2 className="mx-auto mb-2 h-8 w-8 text-tertiary" />
               <div>Not a member of any organization</div>
               <div className="mt-1 text-sm">
                 This service account has no permissions until added to an
@@ -635,7 +636,7 @@ export function ServiceAccountDetail({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
-            <Shield className={'h-5 w-5 text-secondary'} />
+            <Shield className="h-5 w-5 text-secondary" />
             <CardTitle>Client Credentials</CardTitle>
           </div>
           <Button
@@ -652,11 +653,11 @@ export function ServiceAccountDetail({
           {/* Create Credential Form */}
           {showCreateCredential && (
             <div
-              className={`mb-4 rounded-lg border p-4 ${'border-input bg-secondary'}`}
+              className={`mb-4 rounded-lg border border-input bg-secondary p-4`}
             >
               <div className="space-y-3">
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Name <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -667,7 +668,7 @@ export function ServiceAccountDetail({
                   />
                 </div>
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Description
                   </label>
                   <Input
@@ -678,9 +679,9 @@ export function ServiceAccountDetail({
                   />
                 </div>
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Scopes{' '}
-                    <span className={'text-xs text-tertiary'}>
+                    <span className="text-xs text-tertiary">
                       (comma-separated)
                     </span>
                   </label>
@@ -692,9 +693,9 @@ export function ServiceAccountDetail({
                   />
                 </div>
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Expires in (days){' '}
-                    <span className={'text-xs text-tertiary'}>
+                    <span className="text-xs text-tertiary">
                       (leave empty for no expiration)
                     </span>
                   </label>
@@ -738,18 +739,18 @@ export function ServiceAccountDetail({
           {/* Newly Created Credential Banner */}
           {newlyCreatedCredential && (
             <div
-              className={`mb-4 rounded-lg border p-4 ${'border-success bg-success'}`}
+              className={`mb-4 rounded-lg border border-success bg-success p-4`}
             >
-              <div className={'mb-2 font-medium text-success'}>
+              <div className="mb-2 font-medium text-success">
                 Client Credential Created - Copy the secret now, it will not be
                 shown again!
               </div>
               <div className="space-y-2">
                 <div>
-                  <span className={'text-xs text-secondary'}>Client ID</span>
+                  <span className="text-xs text-secondary">Client ID</span>
                   <div className="flex items-center gap-2">
                     <code
-                      className={`flex-1 rounded border px-3 py-2 text-sm ${'border-input bg-background text-success'}`}
+                      className={`flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-success`}
                     >
                       {newlyCreatedCredential.client_id}
                     </code>
@@ -782,12 +783,10 @@ export function ServiceAccountDetail({
                   </div>
                 </div>
                 <div>
-                  <span className={'text-xs text-secondary'}>
-                    Client Secret
-                  </span>
+                  <span className="text-xs text-secondary">Client Secret</span>
                   <div className="flex items-center gap-2">
                     <code
-                      className={`flex-1 rounded border px-3 py-2 text-sm ${'border-input bg-background text-success'}`}
+                      className={`flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-success`}
                     >
                       {newlyCreatedCredential.client_secret}
                     </code>
@@ -822,7 +821,7 @@ export function ServiceAccountDetail({
               </div>
               <button
                 onClick={() => setNewlyCreatedCredential(null)}
-                className={'hover:text-success/80 mt-2 text-sm text-success'}
+                className="hover:text-success/80 mt-2 text-sm text-success"
               >
                 Dismiss
               </button>
@@ -831,19 +830,19 @@ export function ServiceAccountDetail({
 
           {/* Credentials List */}
           {credentialsLoading ? (
-            <div className={'py-4 text-sm text-secondary'}>
+            <div className="py-4 text-sm text-secondary">
               Loading client credentials...
             </div>
           ) : credentialsError ? (
             <div
-              className={`flex items-center gap-2 rounded-lg p-3 ${'bg-danger text-danger'}`}
+              className={`flex items-center gap-2 rounded-lg bg-danger p-3 text-danger`}
             >
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm">Failed to load client credentials</span>
             </div>
           ) : credentials.length === 0 ? (
-            <div className={'py-8 text-center text-tertiary'}>
-              <Shield className={'mx-auto mb-2 h-8 w-8 text-tertiary'} />
+            <div className="py-8 text-center text-tertiary">
+              <Shield className="mx-auto mb-2 h-8 w-8 text-tertiary" />
               <div>No client credentials created yet</div>
               <div className="mt-1 text-sm">
                 Create a credential for OAuth2 client_credentials flow
@@ -862,22 +861,22 @@ export function ServiceAccountDetail({
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className={'text-sm font-medium text-primary'}>
+                      <span className="text-sm font-medium text-primary">
                         {cred.name}
                       </span>
                       <code
-                        className={`rounded px-2 py-0.5 text-xs ${'bg-secondary text-secondary'}`}
+                        className={`rounded bg-secondary px-2 py-0.5 text-xs text-secondary`}
                       >
                         {truncateClientId(cred.client_id)}
                       </code>
                       {cred.revoked && <Badge variant="danger">Revoked</Badge>}
                       {cred.scopes.length > 0 && cred.scopes[0] !== '*' && (
-                        <span className={'text-xs text-tertiary'}>
+                        <span className="text-xs text-tertiary">
                           {cred.scopes.join(', ')}
                         </span>
                       )}
                     </div>
-                    <div className={'mt-1 text-xs text-tertiary'}>
+                    <div className="mt-1 text-xs text-tertiary">
                       Created {formatDate(cred.created_at)}
                       {cred.last_used &&
                         ` | Last used ${formatDate(cred.last_used)}`}
@@ -897,7 +896,7 @@ export function ServiceAccountDetail({
                                 handleRotateCredential(cred.client_id)
                               }
                               disabled={rotateCredentialMutation.isPending}
-                              className={`rounded p-1.5 ${'text-info hover:bg-secondary'}`}
+                              className={`rounded p-1.5 text-info hover:bg-secondary`}
                             >
                               <RotateCw className="h-4 w-4" />
                             </button>
@@ -917,7 +916,7 @@ export function ServiceAccountDetail({
                                 handleRevokeCredential(cred.client_id)
                               }
                               disabled={revokeCredentialMutation.isPending}
-                              className={`rounded p-1.5 ${'text-danger hover:bg-secondary'}`}
+                              className={`rounded p-1.5 text-danger hover:bg-secondary`}
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -940,7 +939,7 @@ export function ServiceAccountDetail({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div className="flex items-center gap-2">
-            <Key className={'h-5 w-5 text-secondary'} />
+            <Key className="h-5 w-5 text-secondary" />
             <CardTitle>API Keys</CardTitle>
           </div>
           <Button
@@ -957,11 +956,11 @@ export function ServiceAccountDetail({
           {/* Create Key Form */}
           {showCreateKey && (
             <div
-              className={`mb-4 rounded-lg border p-4 ${'border-input bg-secondary'}`}
+              className={`mb-4 rounded-lg border border-input bg-secondary p-4`}
             >
               <div className="flex items-end gap-3">
                 <div className="flex-1">
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Key Name
                   </label>
                   <input
@@ -969,7 +968,7 @@ export function ServiceAccountDetail({
                     value={newKeyName}
                     onChange={(e) => setNewKeyName(e.target.value)}
                     placeholder="e.g., production, staging"
-                    className={`w-full rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
+                    className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground`}
                   />
                 </div>
                 <Button
@@ -995,14 +994,14 @@ export function ServiceAccountDetail({
           {/* Newly Created Key Banner */}
           {newlyCreatedKey && (
             <div
-              className={`mb-4 rounded-lg border p-4 ${'border-success bg-success'}`}
+              className={`mb-4 rounded-lg border border-success bg-success p-4`}
             >
-              <div className={'mb-2 font-medium text-success'}>
+              <div className="mb-2 font-medium text-success">
                 API Key Created - Copy it now, it will not be shown again!
               </div>
               <div className="flex items-center gap-2">
                 <code
-                  className={`flex-1 rounded border px-3 py-2 text-sm ${'border-input bg-background text-success'}`}
+                  className={`flex-1 rounded border border-input bg-background px-3 py-2 text-sm text-success`}
                 >
                   {newlyCreatedKey.key_secret}
                 </code>
@@ -1032,7 +1031,7 @@ export function ServiceAccountDetail({
               </div>
               <button
                 onClick={() => setNewlyCreatedKey(null)}
-                className={'hover:text-success/80 mt-2 text-sm text-success'}
+                className="hover:text-success/80 mt-2 text-sm text-success"
               >
                 Dismiss
               </button>
@@ -1041,19 +1040,19 @@ export function ServiceAccountDetail({
 
           {/* Keys List */}
           {keysLoading ? (
-            <div className={'py-4 text-sm text-secondary'}>
+            <div className="py-4 text-sm text-secondary">
               Loading API keys...
             </div>
           ) : keysError ? (
             <div
-              className={`flex items-center gap-2 rounded-lg p-3 ${'bg-danger text-danger'}`}
+              className={`flex items-center gap-2 rounded-lg bg-danger p-3 text-danger`}
             >
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm">Failed to load API keys</span>
             </div>
           ) : apiKeys.length === 0 ? (
-            <div className={'py-8 text-center text-tertiary'}>
-              <Key className={'mx-auto mb-2 h-8 w-8 text-tertiary'} />
+            <div className="py-8 text-center text-tertiary">
+              <Key className="mx-auto mb-2 h-8 w-8 text-tertiary" />
               <div>No API keys created yet</div>
               <div className="mt-1 text-sm">
                 Create an API key to enable programmatic access
@@ -1072,17 +1071,17 @@ export function ServiceAccountDetail({
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className={'text-sm font-medium text-primary'}>
+                      <span className="text-sm font-medium text-primary">
                         {key.name}
                       </span>
                       <code
-                        className={`rounded px-2 py-0.5 text-xs ${'bg-secondary text-secondary'}`}
+                        className={`rounded bg-secondary px-2 py-0.5 text-xs text-secondary`}
                       >
                         {key.key_id.substring(0, 7)}...
                       </code>
                       {key.revoked && <Badge variant="danger">Revoked</Badge>}
                     </div>
-                    <div className={'mt-1 text-xs text-tertiary'}>
+                    <div className="mt-1 text-xs text-tertiary">
                       Created {formatDate(key.created_at)}
                       {key.last_used &&
                         ` | Last used ${formatDate(key.last_used)}`}
@@ -1100,7 +1099,7 @@ export function ServiceAccountDetail({
                               aria-label={`Rotate API key ${key.name}`}
                               onClick={() => handleRotateKey(key.key_id)}
                               disabled={rotateKeyMutation.isPending}
-                              className={`rounded p-1.5 ${'text-info hover:bg-secondary'}`}
+                              className={`rounded p-1.5 text-info hover:bg-secondary`}
                             >
                               <RotateCw className="h-4 w-4" />
                             </button>
@@ -1118,7 +1117,7 @@ export function ServiceAccountDetail({
                               aria-label={`Revoke API key ${key.name}`}
                               onClick={() => handleRevokeKey(key.key_id)}
                               disabled={revokeKeyMutation.isPending}
-                              className={`rounded p-1.5 ${'text-danger hover:bg-secondary'}`}
+                              className={`rounded p-1.5 text-danger hover:bg-secondary`}
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -1153,7 +1152,7 @@ export function ServiceAccountDetail({
                 <Tag className="h-4 w-4" />
                 Slug
               </div>
-              <div className={'text-primary'}>{account.slug}</div>
+              <div className="text-primary">{account.slug}</div>
             </div>
 
             <div>
@@ -1164,7 +1163,7 @@ export function ServiceAccountDetail({
               >
                 Display Name
               </div>
-              <div className={'text-primary'}>{account.display_name}</div>
+              <div className="text-primary">{account.display_name}</div>
             </div>
 
             {account.description && (
@@ -1176,7 +1175,7 @@ export function ServiceAccountDetail({
                 >
                   Description
                 </div>
-                <div className={'text-primary'}>{account.description}</div>
+                <div className="text-primary">{account.description}</div>
               </div>
             )}
 
@@ -1189,7 +1188,7 @@ export function ServiceAccountDetail({
                 <Calendar className="h-4 w-4" />
                 Created
               </div>
-              <div className={'text-primary'}>
+              <div className="text-primary">
                 {formatDate(account.created_at)}
               </div>
             </div>
@@ -1203,7 +1202,7 @@ export function ServiceAccountDetail({
                 <Clock className="h-4 w-4" />
                 Last Authenticated
               </div>
-              <div className={'text-primary'}>
+              <div className="text-primary">
                 {formatDate(account.last_authenticated)}
               </div>
             </div>

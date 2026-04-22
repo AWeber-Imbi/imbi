@@ -98,7 +98,7 @@ export function IconUpload({
     <div className="space-y-3">
       {isImageUrl && value && (
         <div
-          className={`inline-flex items-center gap-3 rounded-lg border p-3 ${'border-input bg-secondary'}`}
+          className={`inline-flex items-center gap-3 rounded-lg border border-input bg-secondary p-3`}
         >
           <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg bg-white">
             <img
@@ -107,14 +107,14 @@ export function IconUpload({
               className="h-full w-full object-cover"
             />
           </div>
-          <div className={'text-sm text-secondary'}>Uploaded icon</div>
+          <div className="text-sm text-secondary">Uploaded icon</div>
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={handleRemove}
             aria-label="Remove uploaded icon"
-            className={'text-danger hover:bg-danger'}
+            className="text-danger hover:bg-danger"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -135,7 +135,7 @@ export function IconUpload({
             variant="outline"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadMutation.isPending}
-            className={'w-full'}
+            className="w-full"
           >
             {uploadMutation.isPending ? (
               <>
@@ -149,7 +149,7 @@ export function IconUpload({
               </>
             )}
           </Button>
-          <p className={'mt-1.5 text-xs text-tertiary'}>
+          <p className="mt-1.5 text-xs text-tertiary">
             PNG, JPG, or SVG - Max {maxSizeKB}KB
           </p>
         </div>
@@ -157,7 +157,7 @@ export function IconUpload({
 
       {error && (
         <div
-          className={`flex items-start gap-2 rounded-lg p-3 ${'border border-danger bg-danger text-danger'}`}
+          className={`flex items-start gap-2 rounded-lg border border-danger bg-danger p-3 text-danger`}
         >
           <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <div className="text-xs">{error}</div>

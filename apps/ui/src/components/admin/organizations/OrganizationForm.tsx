@@ -74,10 +74,10 @@ export function OrganizationForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={'text-base font-medium text-primary'}>
+          <h2 className="text-base font-medium text-primary">
             {isEditing ? 'Edit Organization' : 'Create New Organization'}
           </h2>
-          <p className={'mt-1 text-sm text-secondary'}>
+          <p className="mt-1 text-sm text-secondary">
             {isEditing
               ? 'Update organization information and settings'
               : 'Create a new organization to group projects and control access'}
@@ -105,14 +105,14 @@ export function OrganizationForm({
 
       {/* API Error */}
       {error && (
-        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
+        <div className={`rounded-lg border border-danger bg-danger p-4`}>
           <div className="flex items-start gap-3">
-            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
-              <div className={'font-medium text-danger'}>
+              <div className="font-medium text-danger">
                 Failed to save organization
               </div>
-              <div className={'mt-1 text-sm text-danger'}>
+              <div className="mt-1 text-sm text-danger">
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -130,7 +130,7 @@ export function OrganizationForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Organization Name <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -142,7 +142,7 @@ export function OrganizationForm({
                 />
                 {errors.name && (
                   <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                    className={`mt-1 flex items-center gap-1 text-xs text-danger`}
                   >
                     <AlertCircle className="h-3 w-3" />
                     {errors.name}
@@ -152,7 +152,7 @@ export function OrganizationForm({
 
               {!isEditing && (
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -164,7 +164,7 @@ export function OrganizationForm({
                   />
                   {errors.slug && (
                     <div
-                      className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                      className={`mt-1 flex items-center gap-1 text-xs text-danger`}
                     >
                       <AlertCircle className="h-3 w-3" />
                       {errors.slug}
@@ -175,7 +175,7 @@ export function OrganizationForm({
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Description
               </label>
               <textarea
@@ -184,12 +184,12 @@ export function OrganizationForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of the organization's purpose"
-                className={`w-full resize-none rounded-lg border px-3 py-2 ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
+                className={`w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground`}
               />
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Icon
               </label>
               <IconUpload value={icon} onChange={setIcon} />

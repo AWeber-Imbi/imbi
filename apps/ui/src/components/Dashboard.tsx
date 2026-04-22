@@ -149,7 +149,7 @@ function SortableWidget({ id, children }: SortableWidgetProps) {
       <div
         {...attributes}
         {...listeners}
-        className={`absolute left-2 top-2 z-20 cursor-grab rounded p-1 opacity-0 transition-opacity active:cursor-grabbing group-hover:opacity-100 ${'bg-secondary/80 text-tertiary hover:text-primary'}`}
+        className={`bg-secondary/80 absolute left-2 top-2 z-20 cursor-grab rounded p-1 text-tertiary opacity-0 transition-opacity hover:text-primary active:cursor-grabbing group-hover:opacity-100`}
       >
         <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
           <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
@@ -278,15 +278,15 @@ export function Dashboard({
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className={'text-3xl font-semibold text-primary'}>Dashboard</h1>
-          <p className={'mt-1 text-secondary'}>
+          <h1 className="text-3xl font-semibold text-primary">Dashboard</h1>
+          <p className="mt-1 text-secondary">
             Welcome back! Here's what's happening across your projects.
           </p>
         </div>
         <Button
           onClick={() => setShowWidgetSelector(true)}
           variant="outline"
-          className={'gap-2'}
+          className="gap-2"
         >
           <Settings className="h-4 w-4" />
           Customize
@@ -296,13 +296,13 @@ export function Dashboard({
       {/* Widgets */}
       {selectedWidgets.length === 0 ? (
         <div
-          className={`rounded-lg border p-12 text-center ${'border-border bg-card'}`}
+          className={`rounded-lg border border-border bg-card p-12 text-center`}
         >
-          <div className={'mb-4 text-6xl text-secondary'}>📊</div>
-          <h3 className={'mb-2 text-xl font-medium text-primary'}>
+          <div className="mb-4 text-6xl text-secondary">📊</div>
+          <h3 className="mb-2 text-xl font-medium text-primary">
             No Widgets Selected
           </h3>
-          <p className={'mx-auto mb-4 max-w-md text-secondary'}>
+          <p className="mx-auto mb-4 max-w-md text-secondary">
             Customize your dashboard by selecting widgets to display
           </p>
           <Button

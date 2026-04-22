@@ -123,7 +123,7 @@ export function BlueprintDetail({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>Loading blueprint...</div>
+        <div className="text-sm text-secondary">Loading blueprint...</div>
       </div>
     )
   }
@@ -131,7 +131,7 @@ export function BlueprintDetail({
   if (error || !blueprint) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -203,14 +203,14 @@ export function BlueprintDetail({
       </div>
 
       {/* Blueprint info card */}
-      <div className={`rounded-lg border ${'border-border bg-card'}`}>
+      <div className={`rounded-lg border border-border bg-card`}>
         {/* Title row */}
         <div
-          className={`flex items-start justify-between border-b px-6 py-5 ${'border-tertiary'}`}
+          className={`flex items-start justify-between border-b border-tertiary px-6 py-5`}
         >
           <div className="flex items-center gap-3">
-            <div className={'rounded-lg bg-info p-2'}>
-              <FileJson className={'h-6 w-6 text-info'} />
+            <div className="rounded-lg bg-info p-2">
+              <FileJson className="h-6 w-6 text-info" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -228,7 +228,7 @@ export function BlueprintDetail({
                     : blueprint.type}
                 </LabelChip>
               </div>
-              <p className={'mt-1 text-secondary'}>
+              <p className="mt-1 text-secondary">
                 {blueprint.description || 'No description'}
               </p>
             </div>
@@ -255,54 +255,54 @@ export function BlueprintDetail({
         {/* Metadata row */}
         <div className="flex flex-wrap items-center gap-6 px-6 py-4">
           <div>
-            <div className={'text-xs text-secondary'}>Slug</div>
-            <div className={'font-mono text-sm text-primary'}>
+            <div className="text-xs text-secondary">Slug</div>
+            <div className="font-mono text-sm text-primary">
               {blueprint.slug}
             </div>
           </div>
-          <div className={'h-8 border-l border-tertiary'} />
+          <div className="h-8 border-l border-tertiary" />
           <div>
-            <div className={'text-xs text-secondary'}>Enabled</div>
+            <div className="text-xs text-secondary">Enabled</div>
             <div className="flex items-center gap-1.5">
               {blueprint.enabled ? (
                 <>
                   <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className={'text-sm text-primary'}>Yes</span>
+                  <span className="text-sm text-primary">Yes</span>
                 </>
               ) : (
                 <>
                   <XCircle className="h-4 w-4 text-gray-400" />
-                  <span className={'text-sm text-primary'}>No</span>
+                  <span className="text-sm text-primary">No</span>
                 </>
               )}
             </div>
           </div>
-          <div className={'h-8 border-l border-tertiary'} />
+          <div className="h-8 border-l border-tertiary" />
           <div>
-            <div className={'text-xs text-secondary'}>Priority</div>
-            <div className={'text-sm text-primary'}>{blueprint.priority}</div>
+            <div className="text-xs text-secondary">Priority</div>
+            <div className="text-sm text-primary">{blueprint.priority}</div>
           </div>
-          <div className={'h-8 border-l border-tertiary'} />
+          <div className="h-8 border-l border-tertiary" />
           <div>
-            <div className={'text-xs text-secondary'}>Version</div>
-            <div className={'text-sm text-primary'}>v{blueprint.version}</div>
+            <div className="text-xs text-secondary">Version</div>
+            <div className="text-sm text-primary">v{blueprint.version}</div>
           </div>
-          <div className={'h-8 border-l border-tertiary'} />
+          <div className="h-8 border-l border-tertiary" />
           <div>
-            <div className={'text-xs text-secondary'}>Properties</div>
-            <div className={'text-sm text-primary'}>{properties.length}</div>
+            <div className="text-xs text-secondary">Properties</div>
+            <div className="text-sm text-primary">{properties.length}</div>
           </div>
-          <div className={'h-8 border-l border-tertiary'} />
+          <div className="h-8 border-l border-tertiary" />
           <div>
-            <div className={'text-xs text-secondary'}>Filter</div>
+            <div className="text-xs text-secondary">Filter</div>
             <div className="flex items-center gap-1.5">
               {hasFilter ? (
                 <>
-                  <Filter className={'h-4 w-4 text-warning'} />
-                  <span className={'text-sm text-primary'}>Active</span>
+                  <Filter className="h-4 w-4 text-warning" />
+                  <span className="text-sm text-primary">Active</span>
                 </>
               ) : (
-                <span className={'text-sm text-tertiary'}>None</span>
+                <span className="text-sm text-tertiary">None</span>
               )}
             </div>
           </div>
@@ -311,14 +311,14 @@ export function BlueprintDetail({
 
       {/* Conditional Filter detail */}
       {hasFilter && parsedFilter && (
-        <div className={`rounded-lg border ${'border-border bg-card'}`}>
-          <div className={'border-b border-tertiary px-6 py-4'}>
+        <div className={`rounded-lg border border-border bg-card`}>
+          <div className="border-b border-tertiary px-6 py-4">
             <div className="flex items-center gap-2">
-              <Filter className={'h-4 w-4 text-warning'} />
-              <h3 className={'text-sm font-medium text-primary'}>
+              <Filter className="h-4 w-4 text-warning" />
+              <h3 className="text-sm font-medium text-primary">
                 Conditional Filter
               </h3>
-              <span className={'ml-1 text-xs text-tertiary'}>
+              <span className="ml-1 text-xs text-tertiary">
                 Only applies to matching entities
               </span>
             </div>
@@ -373,30 +373,28 @@ export function BlueprintDetail({
       )}
 
       {/* Schema Properties */}
-      <div className={`rounded-lg border ${'border-border bg-card'}`}>
-        <div className={'border-b border-tertiary px-6 py-4'}>
-          <h3 className={'text-sm font-medium text-primary'}>
+      <div className={`rounded-lg border border-border bg-card`}>
+        <div className="border-b border-tertiary px-6 py-4">
+          <h3 className="text-sm font-medium text-primary">
             Schema Properties
           </h3>
         </div>
 
         {properties.length === 0 ? (
-          <div className={'py-8 text-center text-tertiary'}>
+          <div className="py-8 text-center text-tertiary">
             <FileJson className="mx-auto mb-2 h-8 w-8 opacity-50" />
             <div>No properties defined</div>
           </div>
         ) : (
-          <div className={'divide-y divide-tertiary'}>
+          <div className="divide-y divide-tertiary">
             {properties.map((prop) => {
               const IconComponent = TYPE_ICONS[prop.type] || Type
               return (
                 <div key={prop.name} className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <IconComponent
-                      className={'h-4 w-4 flex-shrink-0 text-tertiary'}
-                    />
+                    <IconComponent className="h-4 w-4 flex-shrink-0 text-tertiary" />
                     <code
-                      className={`rounded px-2 py-1 text-sm font-medium ${'bg-secondary text-info'}`}
+                      className={`rounded bg-secondary px-2 py-1 text-sm font-medium text-info`}
                     >
                       {prop.name}
                     </code>
@@ -408,7 +406,7 @@ export function BlueprintDetail({
                   </div>
 
                   {prop.description && (
-                    <p className={'ml-7 mt-1.5 text-sm text-secondary'}>
+                    <p className="ml-7 mt-1.5 text-sm text-secondary">
                       {prop.description}
                     </p>
                   )}
@@ -451,7 +449,7 @@ export function BlueprintDetail({
                       <div className="ml-7 mt-2 flex flex-wrap gap-4">
                         {activeMaps.map(([name, map]) => (
                           <div key={name}>
-                            <span className={'text-xs text-tertiary'}>
+                            <span className="text-xs text-tertiary">
                               {name}
                             </span>
                             <div className="mt-1 flex flex-wrap gap-1.5">
@@ -488,11 +486,9 @@ export function BlueprintDetail({
                     <div className="ml-7 mt-2 flex flex-wrap gap-4">
                       {prop.defaultValue !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className={'text-xs text-tertiary'}>
-                            Default
-                          </span>
+                          <span className="text-xs text-tertiary">Default</span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
+                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
                           >
                             {prop.defaultValue}
                           </code>
@@ -500,9 +496,9 @@ export function BlueprintDetail({
                       )}
                       {prop.minimum !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className={'text-xs text-tertiary'}>Min</span>
+                          <span className="text-xs text-tertiary">Min</span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
+                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
                           >
                             {prop.minimum}
                           </code>
@@ -510,9 +506,9 @@ export function BlueprintDetail({
                       )}
                       {prop.maximum !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className={'text-xs text-tertiary'}>Max</span>
+                          <span className="text-xs text-tertiary">Max</span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
+                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
                           >
                             {prop.maximum}
                           </code>
@@ -520,11 +516,11 @@ export function BlueprintDetail({
                       )}
                       {prop.minLength !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className={'text-xs text-tertiary'}>
+                          <span className="text-xs text-tertiary">
                             Min length
                           </span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
+                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
                           >
                             {prop.minLength}
                           </code>
@@ -532,11 +528,11 @@ export function BlueprintDetail({
                       )}
                       {prop.maxLength !== undefined && (
                         <div className="flex items-center gap-1.5">
-                          <span className={'text-xs text-tertiary'}>
+                          <span className="text-xs text-tertiary">
                             Max length
                           </span>
                           <code
-                            className={`rounded px-1.5 py-0.5 text-xs ${'bg-secondary text-primary'}`}
+                            className={`rounded bg-secondary px-1.5 py-0.5 text-xs text-primary`}
                           >
                             {prop.maxLength}
                           </code>
@@ -552,26 +548,24 @@ export function BlueprintDetail({
       </div>
 
       {/* Raw JSON Schema (collapsible) */}
-      <div className={`rounded-lg border ${'border-border bg-card'}`}>
+      <div className={`rounded-lg border border-border bg-card`}>
         <button
           onClick={() => setRawSchemaOpen(!rawSchemaOpen)}
-          className={`flex w-full items-center gap-2 px-6 py-4 text-left ${'hover:bg-secondary'} ${rawSchemaOpen ? 'border-b border-tertiary' : ''}`}
+          className={`flex w-full items-center gap-2 px-6 py-4 text-left hover:bg-secondary ${rawSchemaOpen ? 'border-b border-tertiary' : ''}`}
         >
           {rawSchemaOpen ? (
-            <ChevronDown className={'h-4 w-4 text-tertiary'} />
+            <ChevronDown className="h-4 w-4 text-tertiary" />
           ) : (
-            <ChevronRight className={'h-4 w-4 text-tertiary'} />
+            <ChevronRight className="h-4 w-4 text-tertiary" />
           )}
-          <h3 className={'text-sm font-medium text-primary'}>
-            Raw JSON Schema
-          </h3>
-          <span className={'text-xs text-tertiary'}>
+          <h3 className="text-sm font-medium text-primary">Raw JSON Schema</h3>
+          <span className="text-xs text-tertiary">
             {raw.split('\n').length} lines
           </span>
         </button>
         {rawSchemaOpen && (
           <pre
-            className={`overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed ${'text-primary'}`}
+            className={`overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed text-primary`}
           >
             {raw}
           </pre>

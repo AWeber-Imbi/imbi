@@ -1,25 +1,22 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ApiError } from '@/api/client'
-import { Plus, Search, Webhook, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Webhook as WebhookIcon } from 'lucide-react'
 import { Card, CardContent, CardDescription } from '@/components/ui/card'
 import { AdminTable } from '@/components/ui/admin-table'
+import { AdminSection } from './AdminSection'
 import { WebhookForm } from './webhooks/WebhookForm'
 import { WebhookDetail } from './webhooks/WebhookDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listWebhooks,
   deleteWebhook,
   createWebhook,
   updateWebhook,
 } from '@/api/endpoints'
-import type { WebhookCreate } from '@/types'
+import type { Webhook, WebhookCreate } from '@/types'
 
 export function WebhookManagement() {
-  const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
   const {
     viewMode,
@@ -33,42 +30,34 @@ export function WebhookManagement() {
   const orgSlug = selectedOrganization?.slug
 
   const {
-    data: webhooks = [],
+    items: webhooks,
     isLoading,
     error,
-  } = useQuery({
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    Webhook,
+    WebhookCreate,
+    { slug: string; data: WebhookCreate },
+    string
+  >({
     queryKey: ['webhooks', orgSlug],
-    queryFn: () => listWebhooks(orgSlug!),
-    enabled: !!orgSlug,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: (data: WebhookCreate) => createWebhook(orgSlug!, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['webhooks', orgSlug] })
-      goToList()
+    listFn: orgSlug ? () => listWebhooks(orgSlug) : null,
+    createFn: (data) => {
+      if (!orgSlug) throw new Error('No organization selected')
+      return createWebhook(orgSlug, data)
     },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({ slug, data }: { slug: string; data: WebhookCreate }) =>
-      updateWebhook(orgSlug!, slug, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['webhooks', orgSlug] })
-      goToList()
+    updateFn: ({ slug, data }) => {
+      if (!orgSlug) throw new Error('No organization selected')
+      return updateWebhook(orgSlug, slug, data)
     },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (slug: string) => deleteWebhook(orgSlug!, slug),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['webhooks', orgSlug] })
+    deleteFn: (slug) => {
+      if (!orgSlug) throw new Error('No organization selected')
+      return deleteWebhook(orgSlug, slug)
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete webhook: ${error.response?.data?.detail || error.message}`,
-      )
-    },
+    onMutationSuccess: goToList,
+    deleteErrorLabel: 'webhook',
   })
 
   const filteredWebhooks = webhooks.filter((wh) => {
@@ -89,7 +78,7 @@ export function WebhookManagement() {
     [webhooks, selectedSlug],
   )
 
-  const handleDelete = (wh: (typeof webhooks)[number]) => {
+  const handleDelete = (wh: Webhook) => {
     deleteMutation.mutate(wh.slug)
   }
 
@@ -99,30 +88,6 @@ export function WebhookManagement() {
     } else if (selectedSlug) {
       updateMutation.mutate({ slug: selectedSlug, data })
     }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>Loading webhooks...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load webhooks</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
-        </div>
-      </div>
-    )
   }
 
   if (viewMode === 'create' || viewMode === 'edit') {
@@ -148,61 +113,45 @@ export function WebhookManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <div className="relative max-w-md">
-            <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
-            />
-            <Input
-              placeholder="Search webhooks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={'pl-10'}
-            />
-          </div>
-        </div>
-        <Button
-          onClick={goToCreate}
-          className="bg-action text-action-foreground hover:bg-action-hover"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Webhook
-        </Button>
-      </div>
-
+    <AdminSection
+      searchPlaceholder="Search webhooks..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New Webhook"
+      onCreate={goToCreate}
+      isLoading={isLoading}
+      loadingLabel="Loading webhooks..."
+      error={error}
+      errorTitle="Failed to load webhooks"
+    >
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <Card>
           <CardContent className="p-4">
-            <CardDescription className={'text-secondary'}>
+            <CardDescription className="text-secondary">
               Total Webhooks
             </CardDescription>
-            <div className={'mt-1 text-2xl text-primary'}>
+            <div className="mt-1 text-2xl text-primary">
               {filteredWebhooks.length}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <CardDescription className={'text-secondary'}>
+            <CardDescription className="text-secondary">
               With Service
             </CardDescription>
-            <div className={'mt-1 text-2xl text-info'}>
+            <div className="mt-1 text-2xl text-info">
               {filteredWebhooks.filter((w) => w.third_party_service).length}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <CardDescription className={'text-secondary'}>
+            <CardDescription className="text-secondary">
               Total Rules
             </CardDescription>
-            <div
-              className={'mt-1 text-2xl text-purple-600 dark:text-purple-400'}
-            >
+            <div className="mt-1 text-2xl text-purple-600 dark:text-purple-400">
               {filteredWebhooks.reduce((sum, w) => sum + w.rules.length, 0)}
             </div>
           </CardContent>
@@ -224,14 +173,12 @@ export function WebhookManagement() {
                     'flex size-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-900/30'
                   }
                 >
-                  <Webhook
-                    className={'h-4 w-4 text-indigo-600 dark:text-indigo-400'}
-                  />
+                  <WebhookIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                 </div>
                 <div>
-                  <div className={'text-primary'}>{wh.name}</div>
+                  <div className="text-primary">{wh.name}</div>
                   {wh.description && (
-                    <div className={'max-w-xs truncate text-sm text-tertiary'}>
+                    <div className="max-w-xs truncate text-sm text-tertiary">
                       {wh.description}
                     </div>
                   )}
@@ -261,7 +208,7 @@ export function WebhookManagement() {
             cellAlign: 'left',
             render: (wh) =>
               wh.third_party_service?.name || (
-                <span className={'text-tertiary'}>--</span>
+                <span className="text-tertiary">--</span>
               ),
           },
           {
@@ -270,7 +217,7 @@ export function WebhookManagement() {
             headerAlign: 'left',
             cellAlign: 'left',
             render: (wh) => (
-              <span className={'text-secondary'}>{wh.rules.length}</span>
+              <span className="text-secondary">{wh.rules.length}</span>
             ),
           },
         ]}
@@ -288,6 +235,6 @@ export function WebhookManagement() {
               : 'No webhooks created yet.'
         }
       />
-    </div>
+    </AdminSection>
   )
 }

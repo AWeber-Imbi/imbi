@@ -50,7 +50,7 @@ export function EnvironmentDetail({
               <CardTitle>{environment.name}</CardTitle>
             </div>
             {environment.description && (
-              <p className={'mt-1 text-sm text-secondary'}>
+              <p className="mt-1 text-sm text-secondary">
                 {environment.description}
               </p>
             )}
@@ -67,29 +67,29 @@ export function EnvironmentDetail({
         <CardContent className="p-6">
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div className={'text-sm text-secondary'}>Slug</div>
-              <div className={'mt-1 text-primary'}>
+              <div className="text-sm text-secondary">Slug</div>
+              <div className="mt-1 text-primary">
                 <code
-                  className={`rounded px-2 py-1 text-sm ${'bg-secondary text-primary'}`}
+                  className={`rounded bg-secondary px-2 py-1 text-sm text-primary`}
                 >
                   {environment.slug}
                 </code>
               </div>
             </div>
             <div>
-              <div className={'text-sm text-secondary'}>Organization</div>
-              <div className={'mt-1 text-primary'}>
+              <div className="text-sm text-secondary">Organization</div>
+              <div className="mt-1 text-primary">
                 {environment.organization.name}
               </div>
             </div>
             <div>
-              <div className={'text-sm text-secondary'}>Sort Order</div>
-              <div className={'mt-1 text-primary'}>
+              <div className="text-sm text-secondary">Sort Order</div>
+              <div className="mt-1 text-primary">
                 {environment.sort_order ?? 0}
               </div>
             </div>
             <div>
-              <div className={'text-sm text-secondary'}>Label Color</div>
+              <div className="text-sm text-secondary">Label Color</div>
               <div className="mt-1 flex items-center gap-2">
                 {environment.label_color ? (
                   <>
@@ -97,12 +97,12 @@ export function EnvironmentDetail({
                       className="h-6 w-6 rounded border"
                       style={{ backgroundColor: environment.label_color }}
                     />
-                    <span className={'text-primary'}>
+                    <span className="text-primary">
                       {environment.label_color}
                     </span>
                   </>
                 ) : (
-                  <span className={'text-tertiary'}>Not set</span>
+                  <span className="text-tertiary">Not set</span>
                 )}
               </div>
             </div>

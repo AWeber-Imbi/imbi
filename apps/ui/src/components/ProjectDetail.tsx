@@ -33,8 +33,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useOrganization } from '@/contexts/OrganizationContext'
-import { ApiError } from '@/api/client'
-import { sortEnvironments } from '@/lib/utils'
+import { extractApiErrorDetail } from '@/lib/apiError'
+import { sanitizeHttpUrl, sortEnvironments } from '@/lib/utils'
 import {
   listLinkDefinitions,
   listEnvironments,
@@ -232,68 +232,74 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
     }
   }, [initialTab, navigate, project.id])
 
-  // Mock data for aspects not yet available from the API
-  const healthScore = 66
-  const healthTrend = 'down'
+  // Mock data for aspects not yet available from the API. Dev-only so
+  // production builds don't leak hardcoded placeholder content.
+  const isDev = import.meta.env.DEV
+  const healthScore = isDev ? 66 : null
+  const healthTrend = isDev ? 'down' : null
 
   const deploymentStatus: Record<
     string,
     { version: string; status: string; updated: string }
-  > = {
-    'infrastructure-testing': {
-      version: '1962b02',
-      status: 'success',
-      updated: '2m ago',
-    },
-    testing: { version: '1962b02', status: 'success', updated: '2m ago' },
-    staging: { version: '1.0.11', status: 'success', updated: '1h ago' },
-    production: { version: '1.0.10', status: 'success', updated: '3h ago' },
-  }
+  > = isDev
+    ? {
+        'infrastructure-testing': {
+          version: '1962b02',
+          status: 'success',
+          updated: '2m ago',
+        },
+        testing: { version: '1962b02', status: 'success', updated: '2m ago' },
+        staging: { version: '1.0.11', status: 'success', updated: '1h ago' },
+        production: { version: '1.0.10', status: 'success', updated: '3h ago' },
+      }
+    : {}
 
-  const feed = [
-    {
-      user: 'Scott Miller',
-      action: 'deployed in',
-      environment: 'Testing',
-      version: '(1962b02)',
-      time: 'Nov 22, 2025, 12:28 PM',
-    },
-    {
-      user: 'Scott Miller',
-      action: 'deployed in',
-      environment: 'Production',
-      version: '(1.0.11)',
-      time: 'Nov 21, 2025, 4:09 PM',
-    },
-    {
-      user: 'Scott Miller',
-      action: 'deployed in',
-      environment: 'Staging',
-      version: '(1.0.11)',
-      time: 'Nov 21, 2025, 4:08 PM',
-    },
-    {
-      user: 'Scott Miller',
-      action: 'deployed in',
-      environment: 'Testing',
-      version: '(d504611)',
-      time: 'Nov 21, 2025, 4:08 PM',
-    },
-    {
-      user: 'Scott Miller',
-      action: 'deployed in',
-      environment: 'Production',
-      version: '(1.0.10)',
-      time: 'Nov 21, 2025, 3:50 PM',
-    },
-    {
-      user: 'Scott Miller',
-      action: 'deployed in',
-      environment: 'Testing',
-      version: '(089f7fd)',
-      time: 'Nov 21, 2025, 3:45 PM',
-    },
-  ]
+  const feed = isDev
+    ? [
+        {
+          user: 'Scott Miller',
+          action: 'deployed in',
+          environment: 'Testing',
+          version: '(1962b02)',
+          time: 'Nov 22, 2025, 12:28 PM',
+        },
+        {
+          user: 'Scott Miller',
+          action: 'deployed in',
+          environment: 'Production',
+          version: '(1.0.11)',
+          time: 'Nov 21, 2025, 4:09 PM',
+        },
+        {
+          user: 'Scott Miller',
+          action: 'deployed in',
+          environment: 'Staging',
+          version: '(1.0.11)',
+          time: 'Nov 21, 2025, 4:08 PM',
+        },
+        {
+          user: 'Scott Miller',
+          action: 'deployed in',
+          environment: 'Testing',
+          version: '(d504611)',
+          time: 'Nov 21, 2025, 4:08 PM',
+        },
+        {
+          user: 'Scott Miller',
+          action: 'deployed in',
+          environment: 'Production',
+          version: '(1.0.10)',
+          time: 'Nov 21, 2025, 3:50 PM',
+        },
+        {
+          user: 'Scott Miller',
+          action: 'deployed in',
+          environment: 'Testing',
+          version: '(089f7fd)',
+          time: 'Nov 21, 2025, 3:45 PM',
+        },
+      ]
+    : []
 
   const sortedEnvironments = useMemo(
     () => sortEnvironments(project.environments || []),
@@ -323,30 +329,38 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
     enabled: !!orgSlug,
   })
 
-  const linkDefMap = Object.fromEntries(linkDefs.map((ld) => [ld.slug, ld]))
+  const linkDefMap = useMemo(
+    () => Object.fromEntries(linkDefs.map((ld) => [ld.slug, ld])),
+    [linkDefs],
+  )
 
-  const externalLinks = Object.entries(project.links || {})
-    .map(([key, url]) => {
-      const raw = String(url)
-      let safeUrl: string | null = null
-      try {
-        const parsed = new URL(raw)
-        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-          safeUrl = parsed.toString()
-        }
-      } catch {
-        safeUrl = null
-      }
-      if (!safeUrl) return null
-      const def = linkDefMap[key]
-      return {
-        key,
-        url: safeUrl,
-        Icon: getIcon(def?.icon),
-        label: def?.name || key.replace(/_/g, ' '),
-      }
-    })
-    .filter((link): link is NonNullable<typeof link> => link !== null)
+  const externalLinks = useMemo(
+    () =>
+      Object.entries(project.links || {})
+        .map(([key, url]) => {
+          const safeUrl = sanitizeHttpUrl(url)
+          if (!safeUrl) return null
+          const def = linkDefMap[key]
+          return {
+            key,
+            url: safeUrl,
+            Icon: getIcon(def?.icon),
+            label: def?.name || key.replace(/_/g, ' '),
+          }
+        })
+        .filter((link): link is NonNullable<typeof link> => link !== null),
+    [project.links, linkDefMap],
+  )
+
+  const teamOptions = useMemo(
+    () => teams.map((t) => ({ value: t.slug, label: t.name })),
+    [teams],
+  )
+
+  const projectTypeOptions = useMemo(
+    () => projectTypes.map((pt) => ({ value: pt.slug, label: pt.name })),
+    [projectTypes],
+  )
 
   const attributeFields = useMemo(() => {
     if (!projectSchema) return []
@@ -498,42 +512,44 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
             </div>
           </div>
 
-          {/* Deployment Pipeline (mocked) */}
-          <div className="flex items-center gap-2">
-            {sortedEnvironments
-              .filter((env) => !!deploymentStatus[env.slug])
-              .map((env, idx) => {
-                const deployment = deploymentStatus[env.slug]
-                const color = env.label_color
-                return (
-                  <span key={env.slug} className="contents">
-                    {idx > 0 && (
-                      <ArrowRight className="h-4 w-4 text-tertiary" />
-                    )}
-                    {color ? (
-                      <LabelChip
-                        hex={color}
-                        className="rounded-md px-3 py-1.5 text-sm"
-                      >
-                        {env.name}: {deployment.version}
-                      </LabelChip>
-                    ) : (
-                      <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium">
-                        {env.name}: {deployment.version}
-                      </span>
-                    )}
-                  </span>
-                )
-              })}
-            <Button
-              variant="outline"
-              size="sm"
-              className="ml-4 border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
-            >
-              <Rocket className="mr-1 h-4 w-4" />
-              Deploy
-            </Button>
-          </div>
+          {/* Deployment Pipeline (mocked, dev only) */}
+          {isDev && (
+            <div className="flex items-center gap-2">
+              {sortedEnvironments
+                .filter((env) => !!deploymentStatus[env.slug])
+                .map((env, idx) => {
+                  const deployment = deploymentStatus[env.slug]
+                  const color = env.label_color
+                  return (
+                    <span key={env.slug} className="contents">
+                      {idx > 0 && (
+                        <ArrowRight className="h-4 w-4 text-tertiary" />
+                      )}
+                      {color ? (
+                        <LabelChip
+                          hex={color}
+                          className="rounded-md px-3 py-1.5 text-sm"
+                        >
+                          {env.name}: {deployment.version}
+                        </LabelChip>
+                      ) : (
+                        <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium">
+                          {env.name}: {deployment.version}
+                        </span>
+                      )}
+                    </span>
+                  )
+                })}
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-4 border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100"
+              >
+                <Rocket className="mr-1 h-4 w-4" />
+                Deploy
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="-ml-[18px] mt-3 text-secondary">
@@ -552,9 +568,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
             {externalLinks.map(
               ({ key, url, Icon, label: linkLabel }, index) => (
                 <span key={key} className="flex items-center gap-1.5">
-                  {index > 0 && (
-                    <span className={'mr-1.5 text-tertiary'}>|</span>
-                  )}
+                  {index > 0 && <span className="mr-1.5 text-tertiary">|</span>}
                   <a
                     href={url}
                     target="_blank"
@@ -607,10 +621,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                       <span className={`text-sm ${label}`}>Team</span>
                       <InlineSelect
                         value={project.team.slug}
-                        options={teams.map((t) => ({
-                          value: t.slug,
-                          label: t.name,
-                        }))}
+                        options={teamOptions}
                         onCommit={(v) => patch('/team_slug', v)}
                         pending={pendingPath === '/team_slug'}
                       />
@@ -640,10 +651,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                         values={(project.project_types || []).map(
                           (pt) => pt.slug,
                         )}
-                        options={projectTypes.map((pt) => ({
-                          value: pt.slug,
-                          label: pt.name,
-                        }))}
+                        options={projectTypeOptions}
                         onCommit={(v) => patch('/project_type_slugs', v)}
                         pending={pendingPath === '/project_type_slugs'}
                       />
@@ -766,20 +774,10 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                   <CardContent>
                     <div className="space-y-0">
                       {sortedEnvironments.map((env) => {
-                        let url: string | null = null
-                        if (typeof env.url === 'string' && env.url !== '') {
-                          try {
-                            const parsed = new URL(env.url)
-                            if (
-                              parsed.protocol === 'http:' ||
-                              parsed.protocol === 'https:'
-                            ) {
-                              url = parsed.toString()
-                            }
-                          } catch {
-                            url = null
-                          }
-                        }
+                        const url =
+                          typeof env.url === 'string'
+                            ? sanitizeHttpUrl(env.url)
+                            : null
                         const deployment = deploymentStatus[env.slug]
                         return (
                           <div
@@ -794,9 +792,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                               />
                             </div>
                             <div className="flex-1 text-center">
-                              <span
-                                className={'font-mono text-sm text-tertiary'}
-                              >
+                              <span className="font-mono text-sm text-tertiary">
                                 {deployment?.version ?? ''}
                               </span>
                             </div>
@@ -811,9 +807,7 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
                                   }
                                 >
                                   {url}
-                                  <ExternalLink
-                                    className={'h-3 w-3 text-warning'}
-                                  />
+                                  <ExternalLink className="h-3 w-3 text-warning" />
                                 </a>
                               ) : (
                                 <span className={`text-sm ${muted}`}>
@@ -830,91 +824,93 @@ export function ProjectDetail({ project, initialTab }: ProjectDetailProps) {
               )}
             </div>
 
-            {/* Right column: Health & Compliance + Recent Activity */}
-            <div className="space-y-6">
-              {/* Health & Compliance */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Health &amp; compliance</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-4 flex items-center gap-3">
-                    <div
-                      className={`flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg text-2xl font-medium ${
-                        healthScore >= 90
-                          ? 'bg-green-50 text-green-700'
-                          : healthScore >= 80
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : healthScore >= 70
-                              ? 'bg-amber-50 text-amber-700'
-                              : 'bg-red-50 text-red-700'
-                      }`}
-                    >
-                      {healthScore}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        {healthTrend === 'down' ? (
-                          <TrendingDown className="h-4 w-4 text-red-600" />
-                        ) : (
-                          <TrendingUp className="h-4 w-4 text-green-600" />
-                        )}
-                        <span
-                          className={`text-sm ${healthTrend === 'down' ? 'text-red-600' : 'text-green-600'}`}
-                        >
-                          {healthTrend === 'down' ? 'Declining' : 'Improving'}
-                        </span>
+            {/* Right column: Health & Compliance + Recent Activity (dev only) */}
+            {isDev && (
+              <div className="space-y-6">
+                {/* Health & Compliance (mocked, dev only) */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Health &amp; compliance</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="mb-4 flex items-center gap-3">
+                      <div
+                        className={`flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg text-2xl font-medium ${
+                          (healthScore ?? 0) >= 90
+                            ? 'bg-green-50 text-green-700'
+                            : (healthScore ?? 0) >= 80
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : (healthScore ?? 0) >= 70
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-red-50 text-red-700'
+                        }`}
+                      >
+                        {healthScore}
                       </div>
-                      <p className={`text-xs ${muted}`}>Health score</p>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          {healthTrend === 'down' ? (
+                            <TrendingDown className="h-4 w-4 text-red-600" />
+                          ) : (
+                            <TrendingUp className="h-4 w-4 text-green-600" />
+                          )}
+                          <span
+                            className={`text-sm ${healthTrend === 'down' ? 'text-red-600' : 'text-green-600'}`}
+                          >
+                            {healthTrend === 'down' ? 'Declining' : 'Improving'}
+                          </span>
+                        </div>
+                        <p className={`text-xs ${muted}`}>Health score</p>
+                      </div>
                     </div>
-                  </div>
 
-                  <p className={`text-sm ${muted}`}>
-                    Policy scoring and compliance checks will appear here.
-                  </p>
-                </CardContent>
-              </Card>
+                    <p className={`text-sm ${muted}`}>
+                      Policy scoring and compliance checks will appear here.
+                    </p>
+                  </CardContent>
+                </Card>
 
-              {/* Recent Activity (mocked) */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent activity</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {feed.map((item, index) => (
-                      <div key={index} className="flex items-start gap-2.5">
-                        <div className="min-w-0 flex-1">
-                          <p className={`text-sm leading-snug ${value}`}>
-                            <span className="font-medium">{item.user}</span>{' '}
-                            <span className={label}>{item.action}</span>{' '}
-                            <span
-                              style={{
-                                color:
-                                  project.environments?.find(
-                                    (e) => e.name === item.environment,
-                                  )?.label_color || undefined,
-                              }}
-                            >
-                              {item.environment}
-                            </span>
-                          </p>
-                          <div className="mt-0.5 flex items-center gap-1.5">
-                            <span className={`text-xs ${muted}`}>
-                              {item.time}
-                            </span>
-                            <span className={`text-xs ${muted}`}>&bull;</span>
-                            <span className={'font-mono text-xs text-tertiary'}>
-                              {item.version}
-                            </span>
+                {/* Recent Activity (mocked, dev only) */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recent activity</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {feed.map((item, index) => (
+                        <div key={index} className="flex items-start gap-2.5">
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-sm leading-snug ${value}`}>
+                              <span className="font-medium">{item.user}</span>{' '}
+                              <span className={label}>{item.action}</span>{' '}
+                              <span
+                                style={{
+                                  color:
+                                    project.environments?.find(
+                                      (e) => e.name === item.environment,
+                                    )?.label_color || undefined,
+                                }}
+                              >
+                                {item.environment}
+                              </span>
+                            </p>
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                              <span className={`text-xs ${muted}`}>
+                                {item.time}
+                              </span>
+                              <span className={`text-xs ${muted}`}>&bull;</span>
+                              <span className="font-mono text-xs text-tertiary">
+                                {item.version}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
         </TabsContent>
 
@@ -1206,7 +1202,7 @@ function SidebarProjectRow({ rel }: { rel: ProjectRelationship }) {
     <li className="flex items-center gap-2 py-1">
       <Link
         to={`/projects/${rel.project.id}`}
-        className={`truncate text-sm hover:underline ${'text-warning'}`}
+        className={`truncate text-sm text-warning hover:underline`}
       >
         {rel.project.name}
       </Link>
@@ -1232,14 +1228,8 @@ function SettingsTab({ project }: { project: Project }) {
     })
   }
 
-  const mutationErrorHandler = (label: string) => {
-    return (error: ApiError<{ detail?: string }> | Error) => {
-      const detail =
-        error instanceof ApiError
-          ? error.response?.data?.detail || error.message
-          : error.message
-      alert(`Failed to ${label}: ${detail}`)
-    }
+  const mutationErrorHandler = (label: string) => (error: unknown) => {
+    toast.error(`Failed to ${label}: ${extractApiErrorDetail(error)}`)
   }
 
   const deleteMutation = useMutation({
@@ -1274,9 +1264,7 @@ function SettingsTab({ project }: { project: Project }) {
       {linkDefsLoading && (
         <Card>
           <CardContent>
-            <p className={'text-sm text-tertiary'}>
-              Loading link definitions...
-            </p>
+            <p className="text-sm text-tertiary">Loading link definitions...</p>
           </CardContent>
         </Card>
       )}
@@ -1306,14 +1294,7 @@ function SettingsTab({ project }: { project: Project }) {
               { op: 'replace', path: '/environments', value: envData },
             ])
           } catch (error) {
-            const detail =
-              error instanceof ApiError
-                ? (error.response as { data?: { detail?: string } } | undefined)
-                    ?.data?.detail || error.message
-                : error instanceof Error
-                  ? error.message
-                  : 'Failed to save'
-            toast.error(`Save failed: ${detail}`)
+            toast.error(`Save failed: ${extractApiErrorDetail(error)}`)
             throw error
           }
           invalidateProject()
@@ -1325,10 +1306,10 @@ function SettingsTab({ project }: { project: Project }) {
         onPatch={(entries) => patch('/identifiers', entries)}
       />
 
-      <Card className={'border-amber-300'}>
+      <Card className="border-amber-300">
         <CardHeader>
           <CardTitle>Archive project</CardTitle>
-          <CardDescription className={'text-secondary'}>
+          <CardDescription className="text-secondary">
             Archiving the project will make it entirely read only. It will be
             hidden from the dashboard, won&apos;t show up in searches, and will
             be disabled as a dependency for any other projects that are
@@ -1342,10 +1323,10 @@ function SettingsTab({ project }: { project: Project }) {
         </CardContent>
       </Card>
 
-      <Card className={'border-red-300'}>
+      <Card className="border-red-300">
         <CardHeader>
           <CardTitle>Delete project</CardTitle>
-          <CardDescription className={'text-secondary'}>
+          <CardDescription className="text-secondary">
             This action will <strong>permanently delete</strong>{' '}
             <code
               className={
@@ -1363,7 +1344,7 @@ function SettingsTab({ project }: { project: Project }) {
             <Button
               variant="outline"
               size="sm"
-              className={'border-danger bg-red-700 text-white hover:bg-red-800'}
+              className="border-danger bg-red-700 text-white hover:bg-red-800"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={!project.id}
             >
@@ -1371,7 +1352,7 @@ function SettingsTab({ project }: { project: Project }) {
             </Button>
           ) : (
             <div className="space-y-3">
-              <p className={'text-sm text-secondary'}>
+              <p className="text-sm text-secondary">
                 Type{' '}
                 <code
                   className={
@@ -1429,7 +1410,7 @@ function PlaceholderTab({ name }: { name: string }) {
     <Card>
       <CardContent className="py-12 text-center">
         <CardTitle>{name}</CardTitle>
-        <CardDescription className={'text-tertiary'}>
+        <CardDescription className="text-tertiary">
           This tab will be implemented in a future update.
         </CardDescription>
       </CardContent>

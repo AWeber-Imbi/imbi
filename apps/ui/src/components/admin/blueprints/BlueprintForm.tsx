@@ -237,13 +237,21 @@ export function BlueprintForm({
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
 
-  const { data: availableProjectTypes = [], isLoading: ptLoading } = useQuery({
+  const {
+    data: availableProjectTypes = [],
+    isLoading: ptLoading,
+    isError: ptIsError,
+  } = useQuery({
     queryKey: ['projectTypes', orgSlug],
     queryFn: () => listProjectTypes(orgSlug!),
     enabled: !!orgSlug,
   })
 
-  const { data: availableEnvironments = [], isLoading: envLoading } = useQuery({
+  const {
+    data: availableEnvironments = [],
+    isLoading: envLoading,
+    isError: envIsError,
+  } = useQuery({
     queryKey: ['environments', orgSlug],
     queryFn: () => listEnvironments(orgSlug!),
     enabled: !!orgSlug,
@@ -612,7 +620,7 @@ export function BlueprintForm({
   if (isEditing && bpLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>Loading blueprint...</div>
+        <div className="text-sm text-secondary">Loading blueprint...</div>
       </div>
     )
   }
@@ -620,7 +628,7 @@ export function BlueprintForm({
   if (isEditing && bpError) {
     return (
       <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+        className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
       >
         <AlertCircle className="h-5 w-5 flex-shrink-0" />
         <div>
@@ -641,7 +649,7 @@ export function BlueprintForm({
           <CardTitle>
             {isEditing ? 'Edit Blueprint' : 'Create Blueprint'}
           </CardTitle>
-          <p className={'mt-1 text-secondary'}>
+          <p className="mt-1 text-secondary">
             {isEditing
               ? 'Update blueprint configuration and schema'
               : 'Define a new metadata schema blueprint'}
@@ -669,14 +677,14 @@ export function BlueprintForm({
 
       {/* API Error Display */}
       {error && (
-        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
+        <div className={`rounded-lg border border-danger bg-danger p-4`}>
           <div className="flex items-start gap-3">
-            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
-              <div className={'font-medium text-danger'}>
+              <div className="font-medium text-danger">
                 Failed to save blueprint
               </div>
-              <div className={'mt-1 text-sm text-danger'}>
+              <div className="mt-1 text-sm text-danger">
                 {(() => {
                   const detail = error?.response?.data?.detail
                   if (Array.isArray(detail)) {
@@ -706,15 +714,15 @@ export function BlueprintForm({
       )}
 
       {/* Basic Information */}
-      <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
-        <h3 className={'mb-4 text-sm font-medium text-primary'}>
+      <div className={`rounded-lg border border-border bg-card p-6`}>
+        <h3 className="mb-4 text-sm font-medium text-primary">
           Basic Information
         </h3>
 
         <div className="grid grid-cols-2 gap-4">
           {/* Name */}
           <div>
-            <label className={'mb-1.5 block text-sm text-secondary'}>
+            <label className="mb-1.5 block text-sm text-secondary">
               Name <span className="text-red-500">*</span>
             </label>
             <Input
@@ -742,7 +750,7 @@ export function BlueprintForm({
           {/* Slug */}
           {!isEditing && (
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Slug
               </label>
               <Input
@@ -750,10 +758,10 @@ export function BlueprintForm({
                 onChange={(e) => handleSlugChange(e.target.value)}
                 disabled={isLoading}
                 placeholder="auto-generated"
-                className={'font-mono'}
+                className="font-mono"
               />
               {!slugManuallyEdited && name && (
-                <p className={'mt-1 text-xs text-tertiary'}>
+                <p className="mt-1 text-xs text-tertiary">
                   Auto-generated from name
                 </p>
               )}
@@ -767,7 +775,7 @@ export function BlueprintForm({
 
           {/* Kind */}
           <div>
-            <label className={'mb-1.5 block text-sm text-secondary'}>
+            <label className="mb-1.5 block text-sm text-secondary">
               Kind <span className="text-red-500">*</span>
             </label>
             <select
@@ -776,13 +784,13 @@ export function BlueprintForm({
                 setKind(e.target.value as 'node' | 'relationship')
               }
               disabled={isLoading || isEditing}
-              className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+              className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
             >
               <option value="node">Object</option>
               <option value="relationship">Relationship</option>
             </select>
             {isEditing && (
-              <p className={'mt-1 text-xs text-tertiary'}>
+              <p className="mt-1 text-xs text-tertiary">
                 Kind cannot be changed after creation
               </p>
             )}
@@ -791,7 +799,7 @@ export function BlueprintForm({
           {/* Type (node) or Source/Target/Edge (relationship) */}
           {kind === 'node' ? (
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Type <span className="text-red-500">*</span>
               </label>
               <select
@@ -801,7 +809,7 @@ export function BlueprintForm({
                   handleFieldChange('type')
                 }}
                 disabled={isLoading || isEditing}
-                className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
               >
                 <option value="">Select a type...</option>
                 {blueprintTypes.map((t) => (
@@ -819,7 +827,7 @@ export function BlueprintForm({
           ) : (
             <div className="col-span-2 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-end gap-2">
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Source <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -831,7 +839,7 @@ export function BlueprintForm({
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}
                   disabled={isLoading || isEditing}
-                  className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
                   <option value="">Select source...</option>
                   {blueprintTypes.map((t) => (
@@ -846,9 +854,9 @@ export function BlueprintForm({
                   </p>
                 )}
               </div>
-              <div className={'pb-2 text-tertiary'}>→</div>
+              <div className="pb-2 text-tertiary">→</div>
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Relationship Type <span className="text-red-500">*</span>
                 </label>
                 {source &&
@@ -874,7 +882,7 @@ export function BlueprintForm({
                       handleFieldChange('edge')
                     }}
                     disabled={isLoading || isEditing || !source || !target}
-                    className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                    className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     <option value="">
                       {source && target
@@ -894,9 +902,9 @@ export function BlueprintForm({
                   </p>
                 )}
               </div>
-              <div className={'pb-2 text-tertiary'}>→</div>
+              <div className="pb-2 text-tertiary">→</div>
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Target <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -908,7 +916,7 @@ export function BlueprintForm({
                     if (edge && !valid.includes(edge)) setEdge('')
                   }}
                   disabled={isLoading || isEditing}
-                  className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
+                  className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
                   <option value="">Select target...</option>
                   {blueprintTypes.map((t) => (
@@ -928,7 +936,7 @@ export function BlueprintForm({
 
           {/* Priority */}
           <div>
-            <label className={'mb-1.5 block text-sm text-secondary'}>
+            <label className="mb-1.5 block text-sm text-secondary">
               Priority
             </label>
             <Input
@@ -944,7 +952,7 @@ export function BlueprintForm({
               placeholder="0"
               className={''}
             />
-            <p className={'mt-1 text-xs text-tertiary'}>
+            <p className="mt-1 text-xs text-tertiary">
               Higher priority blueprints are applied later and can override
               lower priority ones
             </p>
@@ -952,7 +960,7 @@ export function BlueprintForm({
 
           {/* Description */}
           <div className="col-span-2">
-            <label className={'mb-1.5 block text-sm text-secondary'}>
+            <label className="mb-1.5 block text-sm text-secondary">
               Description
             </label>
             <textarea
@@ -961,7 +969,7 @@ export function BlueprintForm({
               disabled={isLoading}
               placeholder="Brief description of what this blueprint defines"
               rows={3}
-              className={`w-full resize-none rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
+              className={`w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground`}
             />
           </div>
 
@@ -976,12 +984,12 @@ export function BlueprintForm({
               />
               <label
                 htmlFor="blueprint-enabled"
-                className={'cursor-pointer select-none text-sm text-secondary'}
+                className="cursor-pointer select-none text-sm text-secondary"
               >
                 Enabled
               </label>
             </div>
-            <p className={'ml-6 mt-1 text-xs text-tertiary'}>
+            <p className="ml-6 mt-1 text-xs text-tertiary">
               Disabled blueprints are not applied to entities
             </p>
           </div>
@@ -989,11 +997,11 @@ export function BlueprintForm({
       </div>
 
       {/* Conditional Filter */}
-      <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
+      <div className={`rounded-lg border border-border bg-card p-6`}>
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Filter className={'h-4 w-4 text-tertiary'} />
-            <h3 className={'text-sm font-medium text-primary'}>
+            <Filter className="h-4 w-4 text-tertiary" />
+            <h3 className="text-sm font-medium text-primary">
               Conditional Filter
             </h3>
           </div>
@@ -1012,7 +1020,7 @@ export function BlueprintForm({
             />
             <label
               htmlFor="filter-enabled"
-              className={'cursor-pointer select-none text-sm text-secondary'}
+              className="cursor-pointer select-none text-sm text-secondary"
             >
               Enable filter
             </label>
@@ -1021,24 +1029,26 @@ export function BlueprintForm({
 
         {filterEnabled ? (
           <div className="space-y-5">
-            <p className={'text-xs text-tertiary'}>
+            <p className="text-xs text-tertiary">
               Select which project types and environments this blueprint applies
               to. Leave a section unchecked to apply to all.
             </p>
 
             {/* Project Type filter */}
             <div>
-              <label
-                className={'mb-2 block text-sm font-medium text-secondary'}
-              >
+              <label className="mb-2 block text-sm font-medium text-secondary">
                 Project Types
               </label>
               {ptLoading ? (
-                <p className={'text-xs italic text-tertiary'}>
+                <p className="text-xs italic text-tertiary">
                   Loading project types...
                 </p>
+              ) : ptIsError ? (
+                <p className="text-xs italic text-danger">
+                  Failed to load project types
+                </p>
               ) : availableProjectTypes.length === 0 ? (
-                <p className={'text-xs italic text-tertiary'}>
+                <p className="text-xs italic text-tertiary">
                   No project types available
                 </p>
               ) : (
@@ -1075,17 +1085,19 @@ export function BlueprintForm({
 
             {/* Environment filter */}
             <div>
-              <label
-                className={'mb-2 block text-sm font-medium text-secondary'}
-              >
+              <label className="mb-2 block text-sm font-medium text-secondary">
                 Environments
               </label>
               {envLoading ? (
-                <p className={'text-xs italic text-tertiary'}>
+                <p className="text-xs italic text-tertiary">
                   Loading environments...
                 </p>
+              ) : envIsError ? (
+                <p className="text-xs italic text-danger">
+                  Failed to load environments
+                </p>
               ) : availableEnvironments.length === 0 ? (
-                <p className={'text-xs italic text-tertiary'}>
+                <p className="text-xs italic text-tertiary">
                   No environments available
                 </p>
               ) : (
@@ -1121,7 +1133,7 @@ export function BlueprintForm({
             </div>
           </div>
         ) : (
-          <p className={'text-sm text-tertiary'}>
+          <p className="text-sm text-tertiary">
             No filter configured. This blueprint will apply to all entities of
             its type.
           </p>
@@ -1129,12 +1141,10 @@ export function BlueprintForm({
       </div>
 
       {/* JSON Schema Editor */}
-      <div className={`rounded-lg border p-6 ${'border-border bg-card'}`}>
+      <div className={`rounded-lg border border-border bg-card p-6`}>
         <div className="mb-4 flex items-center justify-between">
-          <h3 className={'text-sm font-medium text-primary'}>JSON Schema</h3>
-          <div
-            className={`flex items-center rounded-lg border ${'border-input'}`}
-          >
+          <h3 className="text-sm font-medium text-primary">JSON Schema</h3>
+          <div className={`flex items-center rounded-lg border border-input`}>
             <button
               onClick={() => handleEditorModeSwitch('visual')}
               className={`flex items-center gap-1.5 rounded-l-lg px-3 py-1.5 text-sm transition-colors ${
@@ -1163,7 +1173,7 @@ export function BlueprintForm({
         {/* Schema Error */}
         {(schemaError || (touched.schema && validationErrors.schema)) && (
           <div
-            className={`mb-4 flex items-start gap-2 rounded-lg p-3 ${'bg-danger text-danger'}`}
+            className={`mb-4 flex items-start gap-2 rounded-lg bg-danger p-3 text-danger`}
           >
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <div className="text-xs">
@@ -1176,7 +1186,7 @@ export function BlueprintForm({
         {editorMode === 'visual' && (
           <div className="space-y-3">
             {schemaProperties.length === 0 ? (
-              <div className={'py-8 text-center text-tertiary'}>
+              <div className="py-8 text-center text-tertiary">
                 <div>No properties defined</div>
                 <div className="mt-1 text-sm">
                   Add properties to define the schema
@@ -1188,7 +1198,7 @@ export function BlueprintForm({
                 return (
                   <div
                     key={prop.id}
-                    className={`rounded-lg border ${'border-input bg-secondary'}`}
+                    className={`rounded-lg border border-input bg-secondary`}
                   >
                     {/* Property Row */}
                     <div className="flex items-center gap-3 p-3">
@@ -1253,7 +1263,7 @@ export function BlueprintForm({
                           })
                         }
                         placeholder="Property name"
-                        className={'flex-1 font-mono text-sm'}
+                        className="flex-1 font-mono text-sm"
                       />
 
                       <select
@@ -1263,7 +1273,7 @@ export function BlueprintForm({
                             type: e.target.value as SchemaProperty['type'],
                           })
                         }
-                        className={`w-28 rounded-md border px-2 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+                        className={`w-28 rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground`}
                       >
                         {PROPERTY_TYPES.map((t) => (
                           <option key={t} value={t}>
@@ -1323,7 +1333,7 @@ export function BlueprintForm({
                                   : 'Expand advanced options'
                               }
                               onClick={() => toggleExpandProp(prop.id)}
-                              className={`rounded p-1.5 text-xs ${'text-secondary hover:bg-secondary'}`}
+                              className={`rounded p-1.5 text-xs text-secondary hover:bg-secondary`}
                             >
                               {isExpanded ? (
                                 <ChevronUp className="h-3.5 w-3.5" />
@@ -1345,7 +1355,7 @@ export function BlueprintForm({
                               type="button"
                               aria-label="Remove property"
                               onClick={() => removeProperty(prop.id)}
-                              className={`rounded p-1.5 ${'text-danger hover:bg-danger'}`}
+                              className={`rounded p-1.5 text-danger hover:bg-danger`}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
@@ -1360,13 +1370,11 @@ export function BlueprintForm({
                     {/* Advanced Options */}
                     {isExpanded && (
                       <div
-                        className={`space-y-3 border-t px-3 pb-3 pt-2 ${'border-secondary'}`}
+                        className={`space-y-3 border-t border-secondary px-3 pb-3 pt-2`}
                       >
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label
-                              className={'mb-1 block text-xs text-secondary'}
-                            >
+                            <label className="mb-1 block text-xs text-secondary">
                               Description
                             </label>
                             <Input
@@ -1377,13 +1385,11 @@ export function BlueprintForm({
                                 })
                               }
                               placeholder="Property description"
-                              className={'text-sm'}
+                              className="text-sm"
                             />
                           </div>
                           <div>
-                            <label
-                              className={'mb-1 block text-xs text-secondary'}
-                            >
+                            <label className="mb-1 block text-xs text-secondary">
                               Default Value
                             </label>
                             <Input
@@ -1394,7 +1400,7 @@ export function BlueprintForm({
                                 })
                               }
                               placeholder="Default value"
-                              className={'text-sm'}
+                              className="text-sm"
                             />
                           </div>
                         </div>
@@ -1402,9 +1408,7 @@ export function BlueprintForm({
                         {prop.type === 'string' && (
                           <div className="grid grid-cols-3 gap-3">
                             <div>
-                              <label
-                                className={'mb-1 block text-xs text-secondary'}
-                              >
+                              <label className="mb-1 block text-xs text-secondary">
                                 Format
                               </label>
                               <select
@@ -1414,7 +1418,7 @@ export function BlueprintForm({
                                     format: e.target.value || undefined,
                                   })
                                 }
-                                className={`w-full rounded-md border px-2 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+                                className={`w-full rounded-md border border-input bg-background px-2 py-2 text-sm text-foreground`}
                               >
                                 {STRING_FORMATS.map((f) => (
                                   <option key={f} value={f}>
@@ -1424,9 +1428,7 @@ export function BlueprintForm({
                               </select>
                             </div>
                             <div>
-                              <label
-                                className={'mb-1 block text-xs text-secondary'}
-                              >
+                              <label className="mb-1 block text-xs text-secondary">
                                 Min Length
                               </label>
                               <Input
@@ -1439,13 +1441,11 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={'text-sm'}
+                                className="text-sm"
                               />
                             </div>
                             <div>
-                              <label
-                                className={'mb-1 block text-xs text-secondary'}
-                              >
+                              <label className="mb-1 block text-xs text-secondary">
                                 Max Length
                               </label>
                               <Input
@@ -1458,7 +1458,7 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={'text-sm'}
+                                className="text-sm"
                               />
                             </div>
                           </div>
@@ -1468,9 +1468,7 @@ export function BlueprintForm({
                           prop.type === 'number') && (
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label
-                                className={'mb-1 block text-xs text-secondary'}
-                              >
+                              <label className="mb-1 block text-xs text-secondary">
                                 Minimum
                               </label>
                               <Input
@@ -1483,13 +1481,11 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={'text-sm'}
+                                className="text-sm"
                               />
                             </div>
                             <div>
-                              <label
-                                className={'mb-1 block text-xs text-secondary'}
-                              >
+                              <label className="mb-1 block text-xs text-secondary">
                                 Maximum
                               </label>
                               <Input
@@ -1502,16 +1498,14 @@ export function BlueprintForm({
                                       : undefined,
                                   })
                                 }
-                                className={'text-sm'}
+                                className="text-sm"
                               />
                             </div>
                           </div>
                         )}
 
                         <div>
-                          <label
-                            className={'mb-1 block text-xs text-secondary'}
-                          >
+                          <label className="mb-1 block text-xs text-secondary">
                             Enum Values (comma-separated)
                           </label>
                           <Input
@@ -1547,7 +1541,7 @@ export function BlueprintForm({
                               }
                             }}
                             placeholder="e.g. small, medium, large"
-                            className={'text-sm'}
+                            className="text-sm"
                           />
                         </div>
 
@@ -1624,7 +1618,7 @@ export function BlueprintForm({
                             return (
                               <div key={mapType}>
                                 <div className="mb-1 flex items-center justify-between">
-                                  <label className={'text-xs text-secondary'}>
+                                  <label className="text-xs text-secondary">
                                     {mapLabel}
                                   </label>
                                   <button
@@ -1647,7 +1641,7 @@ export function BlueprintForm({
                                   </button>
                                 </div>
                                 {entries.length === 0 ? (
-                                  <p className={'text-xs italic text-tertiary'}>
+                                  <p className="text-xs italic text-tertiary">
                                     No {mapLabel.toLowerCase()} entries
                                   </p>
                                 ) : (
@@ -1673,7 +1667,7 @@ export function BlueprintForm({
                                           }}
                                           onBlur={() => commit(entries)}
                                           placeholder={keyPh}
-                                          className={'flex-1 text-xs'}
+                                          className="flex-1 text-xs"
                                         />
                                         {isColor ? (
                                           <select
@@ -1691,7 +1685,7 @@ export function BlueprintForm({
                                               })
                                               commit(next)
                                             }}
-                                            className={`rounded-md border px-2 py-1.5 text-xs ${'border-input bg-background text-foreground'}`}
+                                            className={`rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground`}
                                           >
                                             {[
                                               'green',
@@ -1723,7 +1717,7 @@ export function BlueprintForm({
                                             }}
                                             onBlur={() => commit(entries)}
                                             placeholder={valPh}
-                                            className={'flex-1 text-xs'}
+                                            className="flex-1 text-xs"
                                           />
                                         )}
                                         <button
@@ -1759,11 +1753,7 @@ export function BlueprintForm({
               })
             )}
 
-            <Button
-              onClick={addProperty}
-              variant="outline"
-              className={'w-full'}
-            >
+            <Button onClick={addProperty} variant="outline" className="w-full">
               <Plus className="mr-2 h-4 w-4" />
               Add Property
             </Button>
@@ -1781,7 +1771,7 @@ export function BlueprintForm({
             onBlur={() => syncCodeToVisual(rawSchema)}
             rows={20}
             spellCheck={false}
-            className={`w-full resize-y rounded-md border px-4 py-3 font-mono text-sm ${'border-input bg-secondary text-primary'}`}
+            className={`w-full resize-y rounded-md border border-input bg-secondary px-4 py-3 font-mono text-sm text-primary`}
           />
         )}
       </div>

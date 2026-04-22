@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/hooks/useAuth'
 import { getAuthProviders } from '@/api/endpoints'
+import { extractApiErrorDetail } from '@/lib/apiError'
 import { OAuthButton } from '@/components/auth/OAuthButton'
 import { LocalLoginForm } from '@/components/auth/LocalLoginForm'
 import { AuthDivider } from '@/components/auth/AuthDivider'
@@ -81,14 +82,11 @@ export function LoginPage() {
       localStorage.setItem(REMEMBERED_EMAIL_KEY, credentials.email)
     } catch (error: unknown) {
       console.error('[Login] Password login failed:', error)
-      const axiosErr = error as {
-        response?: { data?: { message?: string } }
-        message?: string
-      }
       setLoginError(
-        axiosErr.response?.data?.message ||
-          axiosErr.message ||
+        extractApiErrorDetail(
+          error,
           'Login failed. Please check your credentials.',
+        ),
       )
     }
   }

@@ -109,10 +109,10 @@ export function TeamForm({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className={'text-base font-medium text-primary'}>
+          <h2 className="text-base font-medium text-primary">
             {isEditing ? 'Edit Team' : 'Create New Team'}
           </h2>
-          <p className={'mt-1 text-sm text-secondary'}>
+          <p className="mt-1 text-sm text-secondary">
             {isEditing ? 'Update team information' : 'Create a new team'}
           </p>
         </div>
@@ -138,14 +138,12 @@ export function TeamForm({
 
       {/* API Error */}
       {error && (
-        <div className={`rounded-lg border p-4 ${'border-danger bg-danger'}`}>
+        <div className={`rounded-lg border border-danger bg-danger p-4`}>
           <div className="flex items-start gap-3">
-            <AlertCircle className={'h-5 w-5 flex-shrink-0 text-danger'} />
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-danger" />
             <div>
-              <div className={'font-medium text-danger'}>
-                Failed to save team
-              </div>
-              <div className={'mt-1 text-sm text-danger'}>
+              <div className="font-medium text-danger">Failed to save team</div>
+              <div className="mt-1 text-sm text-danger">
                 {error?.response?.data?.detail ||
                   error?.message ||
                   'An error occurred'}
@@ -160,14 +158,14 @@ export function TeamForm({
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Organization <span className="text-red-500">*</span>
               </label>
               <select
                 value={orgSlug}
                 onChange={(e) => setOrgSlug(e.target.value)}
                 disabled={isEditing || isLoading || organizations.length <= 1}
-                className={`w-full rounded-lg border px-3 py-2 text-sm ${'border-input bg-background text-foreground'} ${isEditing || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
+                className={`w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground ${isEditing || organizations.length <= 1 ? 'cursor-not-allowed opacity-60' : ''} ${
                   errors.organization ? 'border-red-500' : ''
                 }`}
               >
@@ -180,7 +178,7 @@ export function TeamForm({
               </select>
               {errors.organization && (
                 <div
-                  className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                  className={`mt-1 flex items-center gap-1 text-xs text-danger`}
                 >
                   <AlertCircle className="h-3 w-3" />
                   {errors.organization}
@@ -192,7 +190,7 @@ export function TeamForm({
               className={`grid grid-cols-1 gap-4 ${!isEditing ? 'md:grid-cols-2' : ''}`}
             >
               <div>
-                <label className={'mb-1.5 block text-sm text-secondary'}>
+                <label className="mb-1.5 block text-sm text-secondary">
                   Team Name <span className="text-red-500">*</span>
                 </label>
                 <Input
@@ -204,7 +202,7 @@ export function TeamForm({
                 />
                 {errors.name && (
                   <div
-                    className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                    className={`mt-1 flex items-center gap-1 text-xs text-danger`}
                   >
                     <AlertCircle className="h-3 w-3" />
                     {errors.name}
@@ -214,7 +212,7 @@ export function TeamForm({
 
               {!isEditing && (
                 <div>
-                  <label className={'mb-1.5 block text-sm text-secondary'}>
+                  <label className="mb-1.5 block text-sm text-secondary">
                     Slug <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -226,7 +224,7 @@ export function TeamForm({
                   />
                   {errors.slug && (
                     <div
-                      className={`mt-1 flex items-center gap-1 text-xs ${'text-danger'}`}
+                      className={`mt-1 flex items-center gap-1 text-xs text-danger`}
                     >
                       <AlertCircle className="h-3 w-3" />
                       {errors.slug}
@@ -237,7 +235,7 @@ export function TeamForm({
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Description
               </label>
               <textarea
@@ -246,17 +244,17 @@ export function TeamForm({
                 rows={3}
                 disabled={isLoading}
                 placeholder="Brief description of the team's purpose"
-                className={`w-full resize-none rounded-lg border px-3 py-2 ${'border-input bg-background text-foreground placeholder:text-muted-foreground'}`}
+                className={`w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground`}
               />
             </div>
 
             <div>
-              <label className={'mb-1.5 block text-sm text-secondary'}>
+              <label className="mb-1.5 block text-sm text-secondary">
                 Icon
               </label>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <p className={'mb-1.5 text-xs text-tertiary'}>Pick an icon</p>
+                  <p className="mb-1.5 text-xs text-tertiary">Pick an icon</p>
                   <IconPicker
                     value={
                       !icon.startsWith('/') && !icon.startsWith('http')
@@ -267,7 +265,7 @@ export function TeamForm({
                   />
                 </div>
                 <div>
-                  <p className={'mb-1.5 text-xs text-tertiary'}>
+                  <p className="mb-1.5 text-xs text-tertiary">
                     Or upload a custom image
                   </p>
                   <IconUpload

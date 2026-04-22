@@ -148,7 +148,7 @@ export function OAuth2ApplicationForm({
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <h3 className={'text-base font-medium text-primary'}>
+          <h3 className="text-base font-medium text-primary">
             {isEdit ? 'Edit Application' : 'New Application'}
           </h3>
         </div>
@@ -164,7 +164,7 @@ export function OAuth2ApplicationForm({
       {/* Error display */}
       {(validationError || error) && (
         <div
-          className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
+          className={`flex items-center gap-3 rounded-lg border border-danger bg-danger p-4 text-danger`}
         >
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <div className="text-sm">
@@ -175,9 +175,7 @@ export function OAuth2ApplicationForm({
       )}
 
       {/* Form */}
-      <div
-        className={`space-y-4 rounded-lg border p-6 ${'border-border bg-card'}`}
-      >
+      <div className={`space-y-4 rounded-lg border border-border bg-card p-6`}>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Name *</label>
@@ -227,7 +225,7 @@ export function OAuth2ApplicationForm({
               value={appType}
               onChange={(e) => setAppType(e.target.value)}
               disabled={isEdit}
-              className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+              className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
             >
               {APP_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -243,7 +241,7 @@ export function OAuth2ApplicationForm({
               onChange={(e) =>
                 setStatus(e.target.value as 'active' | 'inactive' | 'revoked')
               }
-              className={`w-full rounded-md border px-3 py-2 text-sm ${'border-input bg-background text-foreground'}`}
+              className={`w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground`}
             >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
@@ -275,8 +273,8 @@ export function OAuth2ApplicationForm({
         {/* Secret fields (create mode only) */}
         {!isEdit && (
           <>
-            <div className={'border-t border-secondary pt-4'}>
-              <h4 className={'mb-3 text-sm font-medium text-secondary'}>
+            <div className="border-t border-secondary pt-4">
+              <h4 className="mb-3 text-sm font-medium text-secondary">
                 Secrets
               </h4>
             </div>
@@ -313,7 +311,7 @@ export function OAuth2ApplicationForm({
                   onChange={(e) => setPrivateKey(e.target.value)}
                   placeholder={'-----BEGIN RSA PRIVATE KEY-----\n...'}
                   rows={4}
-                  className={`w-full rounded-md border px-3 py-2 font-mono text-sm ${'border-input bg-background text-foreground'}`}
+                  className={`w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm text-foreground`}
                 />
               </div>
             )}
@@ -334,8 +332,8 @@ export function OAuth2ApplicationForm({
         )}
 
         {isEdit && (
-          <div className={'border-t border-secondary pt-4'}>
-            <p className={'text-sm text-tertiary'}>
+          <div className="border-t border-secondary pt-4">
+            <p className="text-sm text-tertiary">
               Secrets are managed separately below via the Secrets panel.
             </p>
           </div>

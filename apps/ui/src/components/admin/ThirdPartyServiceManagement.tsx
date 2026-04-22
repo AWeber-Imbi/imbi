@@ -1,15 +1,13 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
-import { Plus, Search, Cloud, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Cloud } from 'lucide-react'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { Card, CardContent, CardDescription } from '@/components/ui/card'
 import { AdminTable, type AdminTableColumn } from '@/components/ui/admin-table'
+import { AdminSection } from './AdminSection'
 import { ThirdPartyServiceForm } from './third-party-services/ThirdPartyServiceForm'
 import { ThirdPartyServiceDetail } from './third-party-services/ThirdPartyServiceDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listThirdPartyServices,
   deleteThirdPartyService,
@@ -23,7 +21,6 @@ import type { ThirdPartyService, ThirdPartyServiceCreate } from '@/types'
 type ViewMode = 'list' | 'create' | 'edit' | 'detail'
 
 export function ThirdPartyServiceManagement() {
-  const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
@@ -31,57 +28,40 @@ export function ThirdPartyServiceManagement() {
 
   const orgSlug = selectedOrganization?.slug
 
+  const goToList = () => {
+    setViewMode('list')
+    setSelectedSlug(null)
+  }
+
   const {
-    data: services = [],
+    items: services,
     isLoading,
     error,
-  } = useQuery({
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    ThirdPartyService,
+    ThirdPartyServiceCreate,
+    { slug: string; svc: ThirdPartyServiceCreate },
+    string
+  >({
     queryKey: ['third-party-services', orgSlug],
-    queryFn: () => listThirdPartyServices(orgSlug!),
-    enabled: !!orgSlug,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: (svc: ThirdPartyServiceCreate) =>
-      createThirdPartyService(orgSlug!, svc),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['third-party-services', orgSlug],
-      })
-      setViewMode('list')
-      setSelectedSlug(null)
+    listFn: orgSlug ? () => listThirdPartyServices(orgSlug) : null,
+    createFn: (svc) => {
+      if (!orgSlug) throw new Error('No organization selected')
+      return createThirdPartyService(orgSlug, svc)
     },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({
-      slug,
-      svc,
-    }: {
-      slug: string
-      svc: ThirdPartyServiceCreate
-    }) => updateThirdPartyService(orgSlug!, slug, svc),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['third-party-services', orgSlug],
-      })
-      setViewMode('list')
-      setSelectedSlug(null)
+    updateFn: ({ slug, svc }) => {
+      if (!orgSlug) throw new Error('No organization selected')
+      return updateThirdPartyService(orgSlug, slug, svc)
     },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (slug: string) => deleteThirdPartyService(orgSlug!, slug),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['third-party-services', orgSlug],
-      })
+    deleteFn: (slug) => {
+      if (!orgSlug) throw new Error('No organization selected')
+      return deleteThirdPartyService(orgSlug, slug)
     },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete service: ${error.response?.data?.detail || error.message}`,
-      )
-    },
+    onMutationSuccess: goToList,
+    deleteErrorLabel: 'service',
   })
 
   const filteredServices = services.filter((svc) => {
@@ -125,34 +105,7 @@ export function ThirdPartyServiceManagement() {
   }
 
   const handleCancel = () => {
-    setViewMode('list')
-    setSelectedSlug(null)
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>
-          Loading third-party services...
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load third-party services</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
-        </div>
-      </div>
-    )
+    goToList()
   }
 
   if (viewMode === 'create' || viewMode === 'edit') {
@@ -189,7 +142,7 @@ export function ThirdPartyServiceManagement() {
       render: (svc) => (
         <div className="flex items-center gap-3">
           <div
-            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${'bg-purple-50 dark:bg-purple-900/30'}`}
+            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-50 dark:bg-purple-900/30`}
           >
             {svc.icon ? (
               <EntityIcon
@@ -197,15 +150,13 @@ export function ThirdPartyServiceManagement() {
                 className="h-5 w-5 rounded object-cover"
               />
             ) : (
-              <Cloud
-                className={'h-4 w-4 text-purple-600 dark:text-purple-400'}
-              />
+              <Cloud className="h-4 w-4 text-purple-600 dark:text-purple-400" />
             )}
           </div>
           <div>
-            <div className={'text-primary'}>{svc.name}</div>
+            <div className="text-primary">{svc.name}</div>
             {svc.description && (
-              <div className={'max-w-xs truncate text-sm text-tertiary'}>
+              <div className="max-w-xs truncate text-sm text-tertiary">
                 {svc.description}
               </div>
             )}
@@ -250,72 +201,56 @@ export function ThirdPartyServiceManagement() {
   ]
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <div className="relative max-w-md">
-            <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
-            />
-            <Input
-              placeholder="Search services..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={'pl-10'}
-            />
-          </div>
-        </div>
-        <Button
-          onClick={() => {
-            setSelectedSlug(null)
-            setViewMode('create')
-          }}
-          className="bg-action text-action-foreground hover:bg-action-hover"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Service
-        </Button>
-      </div>
-
+    <AdminSection
+      searchPlaceholder="Search services..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New Service"
+      onCreate={() => {
+        setSelectedSlug(null)
+        setViewMode('create')
+      }}
+      isLoading={isLoading}
+      loadingLabel="Loading third-party services..."
+      error={error}
+      errorTitle="Failed to load third-party services"
+    >
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="p-4">
-            <CardDescription className={'text-secondary'}>
+            <CardDescription className="text-secondary">
               Total Services
             </CardDescription>
-            <div className={'mt-1 text-2xl text-primary'}>
+            <div className="mt-1 text-2xl text-primary">
               {filteredServices.length}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <CardDescription className={'text-secondary'}>
-              Active
-            </CardDescription>
-            <div className={'mt-1 text-2xl text-success'}>
+            <CardDescription className="text-secondary">Active</CardDescription>
+            <div className="mt-1 text-2xl text-success">
               {statusCounts.active}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <CardDescription className={'text-secondary'}>
+            <CardDescription className="text-secondary">
               Evaluating
             </CardDescription>
-            <div className={'mt-1 text-2xl text-info'}>
+            <div className="mt-1 text-2xl text-info">
               {statusCounts.evaluating}
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <CardDescription className={'text-secondary'}>
+            <CardDescription className="text-secondary">
               Deprecated
             </CardDescription>
-            <div className={'mt-1 text-2xl text-warning'}>
+            <div className="mt-1 text-2xl text-warning">
               {statusCounts.deprecated}
             </div>
           </CardContent>
@@ -342,6 +277,6 @@ export function ThirdPartyServiceManagement() {
               : 'No third-party services created yet.'
         }
       />
-    </div>
+    </AdminSection>
   )
 }

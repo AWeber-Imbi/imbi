@@ -1,28 +1,25 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
-import { Plus, Search, Globe, AlertCircle } from 'lucide-react'
+import { Globe } from 'lucide-react'
 import { formatRelativeDate } from '@/lib/formatDate'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { EntityIcon } from '@/components/ui/entity-icon'
 import { AdminTable } from '@/components/ui/admin-table'
 import type { CanDeleteResult } from '@/components/ui/admin-table'
 import { LabelChip } from '@/components/ui/label-chip'
+import { AdminSection } from './AdminSection'
 import { EnvironmentForm } from './environments/EnvironmentForm'
 import { EnvironmentDetail } from './environments/EnvironmentDetail'
 import { useOrganization } from '@/contexts/OrganizationContext'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listEnvironments,
   deleteEnvironment,
   createEnvironment,
   updateEnvironment,
 } from '@/api/endpoints'
-import type { EnvironmentCreate } from '@/types'
+import type { Environment, EnvironmentCreate } from '@/types'
 
 export function EnvironmentManagement() {
-  const queryClient = useQueryClient()
   const { selectedOrganization } = useOrganization()
   const orgSlug = selectedOrganization?.slug
   const {
@@ -35,56 +32,25 @@ export function EnvironmentManagement() {
   const [searchQuery, setSearchQuery] = useState('')
 
   const {
-    data: environments = [],
+    items: environments,
     isLoading,
     error,
-  } = useQuery({
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    Environment,
+    { orgSlug: string; env: EnvironmentCreate },
+    { orgSlug: string; slug: string; env: EnvironmentCreate },
+    { orgSlug: string; slug: string }
+  >({
     queryKey: ['environments', orgSlug],
-    queryFn: () => listEnvironments(orgSlug!),
-    enabled: !!orgSlug,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: ({
-      orgSlug,
-      env,
-    }: {
-      orgSlug: string
-      env: EnvironmentCreate
-    }) => createEnvironment(orgSlug, env),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['environments', orgSlug] })
-      goToList()
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({
-      orgSlug,
-      slug,
-      env,
-    }: {
-      orgSlug: string
-      slug: string
-      env: EnvironmentCreate
-    }) => updateEnvironment(orgSlug, slug, env),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['environments', orgSlug] })
-      goToList()
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: ({ orgSlug, slug }: { orgSlug: string; slug: string }) =>
-      deleteEnvironment(orgSlug, slug),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['environments', orgSlug] })
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete environment: ${error.response?.data?.detail || error.message}`,
-      )
-    },
+    listFn: orgSlug ? () => listEnvironments(orgSlug) : null,
+    createFn: ({ orgSlug, env }) => createEnvironment(orgSlug, env),
+    updateFn: ({ orgSlug, slug, env }) => updateEnvironment(orgSlug, slug, env),
+    deleteFn: ({ orgSlug, slug }) => deleteEnvironment(orgSlug, slug),
+    onMutationSuccess: goToList,
+    deleteErrorLabel: 'environment',
   })
 
   const filteredEnvironments = environments.filter((env) => {
@@ -103,8 +69,6 @@ export function EnvironmentManagement() {
     () => environments.find((e) => e.slug === selectedEnvSlug) || null,
     [environments, selectedEnvSlug],
   )
-
-  type Environment = (typeof environments)[number]
 
   const handleDelete = (env: Environment) => {
     deleteMutation.mutate({ orgSlug: env.organization.slug, slug: env.slug })
@@ -135,33 +99,9 @@ export function EnvironmentManagement() {
     goToList()
   }
 
-  if (isLoading) {
+  if (!orgSlug && !isLoading && !error) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>Loading environments...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load environments</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!orgSlug) {
-    return (
-      <div className={'py-12 text-center text-tertiary'}>
+      <div className="py-12 text-center text-tertiary">
         Select an organization to manage environments.
       </div>
     )
@@ -190,31 +130,17 @@ export function EnvironmentManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <div className="relative max-w-md">
-            <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
-            />
-            <Input
-              placeholder="Search environments..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={'pl-10'}
-            />
-          </div>
-        </div>
-        <Button
-          onClick={goToCreate}
-          className="bg-action text-action-foreground hover:bg-action-hover"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Environment
-        </Button>
-      </div>
-
+    <AdminSection
+      searchPlaceholder="Search environments..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New Environment"
+      onCreate={goToCreate}
+      isLoading={isLoading}
+      loadingLabel="Loading environments..."
+      error={error}
+      errorTitle="Failed to load environments"
+    >
       <AdminTable
         columns={[
           {
@@ -235,13 +161,13 @@ export function EnvironmentManagement() {
                       className="size-5 rounded object-cover"
                     />
                   ) : (
-                    <Globe className={'h-4 w-4 text-success'} />
+                    <Globe className="h-4 w-4 text-success" />
                   )}
                 </div>
                 <div>
-                  <div className={'text-primary'}>{env.name}</div>
+                  <div className="text-primary">{env.name}</div>
                   {env.description && (
-                    <div className={'text-sm text-tertiary'}>
+                    <div className="text-sm text-tertiary">
                       {env.description}
                     </div>
                   )}
@@ -275,7 +201,7 @@ export function EnvironmentManagement() {
             headerAlign: 'center',
             cellAlign: 'center',
             render: (env) => (
-              <span className={'text-secondary'}>{env.sort_order ?? 0}</span>
+              <span className="text-secondary">{env.sort_order ?? 0}</span>
             ),
           },
           {
@@ -319,6 +245,6 @@ export function EnvironmentManagement() {
               : 'No environments created yet.'
         }
       />
-    </div>
+    </AdminSection>
   )
 }

@@ -65,9 +65,9 @@ export function RecentActivity({
 }: RecentActivityProps) {
   if (isLoading) {
     return (
-      <Card className={'p-6'}>
+      <Card className="p-6">
         {!hideHeading && (
-          <h2 className={'mb-6 text-xl text-primary'}>Recent Activity</h2>
+          <h2 className="mb-6 text-xl text-primary">Recent Activity</h2>
         )}
         <div className="py-8 text-center text-muted-foreground">Loading...</div>
       </Card>
@@ -76,9 +76,9 @@ export function RecentActivity({
 
   if (!activities || activities.length === 0) {
     return (
-      <Card className={'p-6'}>
+      <Card className="p-6">
         {!hideHeading && (
-          <h2 className={'mb-6 text-xl text-primary'}>Recent Activity</h2>
+          <h2 className="mb-6 text-xl text-primary">Recent Activity</h2>
         )}
         <div className="py-8 text-center text-muted-foreground">
           No recent activity
@@ -92,7 +92,7 @@ export function RecentActivity({
       {activities.map((activity, index) => (
         <div
           key={index}
-          className={`border-b pb-4 last:border-0 last:pb-0 ${'border-tertiary'}`}
+          className={`border-b border-tertiary pb-4 last:border-0 last:pb-0`}
         >
           <div className="flex gap-3">
             <img
@@ -102,10 +102,10 @@ export function RecentActivity({
             />
 
             <div className="min-w-0 flex-1">
-              <p className={'text-sm leading-relaxed text-secondary'}>
+              <p className="text-sm leading-relaxed text-secondary">
                 <button
                   onClick={() => onUserSelect?.(activity.display_name)}
-                  className={`font-medium ${'text-primary hover:text-info'} transition-colors`}
+                  className={`font-medium text-primary transition-colors hover:text-info`}
                 >
                   {activity.display_name}
                 </button>{' '}
@@ -117,7 +117,7 @@ export function RecentActivity({
                 {activity.project_name && (
                   <button
                     onClick={() => onProjectSelect?.(activity.project_name!)}
-                    className={`font-medium ${'hover:text-info/80 text-info'} transition-colors`}
+                    className={`hover:text-info/80 font-medium text-info transition-colors`}
                   >
                     {activity.project_name}
                   </button>
@@ -138,11 +138,11 @@ export function RecentActivity({
                   activity.what !== 'updated facts' &&
                   '.'}
                 {activity.type === 'OperationsLogEntry' && activity.version && (
-                  <span className={'text-tertiary'}> ({activity.version})</span>
+                  <span className="text-tertiary"> ({activity.version})</span>
                 )}
               </p>
 
-              <p className={'mt-1 text-xs text-tertiary'}>
+              <p className="mt-1 text-xs text-tertiary">
                 {getRelativeTime(
                   activity.occurred_at ||
                     (activity.type === 'ProjectFeedEntry'
@@ -162,7 +162,7 @@ export function RecentActivity({
           <button
             onClick={onLoadMore}
             disabled={isLoadingMore}
-            className={`text-sm ${'hover:text-info/80 text-info'} transition-colors disabled:opacity-50`}
+            className={`hover:text-info/80 text-sm text-info transition-colors disabled:opacity-50`}
           >
             {isLoadingMore ? 'Loading more...' : 'Load more activity'}
           </button>
@@ -172,9 +172,9 @@ export function RecentActivity({
   )
 
   return (
-    <Card className={'p-6'}>
+    <Card className="p-6">
       {!hideHeading && (
-        <h2 className={'mb-6 text-xl text-primary'}>Recent Activity</h2>
+        <h2 className="mb-6 text-xl text-primary">Recent Activity</h2>
       )}
       {activityList}
     </Card>

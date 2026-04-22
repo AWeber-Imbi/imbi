@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { useInlineEdit } from '@/hooks/useInlineEdit'
 import { InlineDisplay } from './InlineDisplay'
@@ -27,11 +27,15 @@ export function InlineText({
   renderValue,
 }: InlineTextProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const edit = useInlineEdit<string>({
-    initial: value ?? '',
-    onCommit: async (next) => {
+  const handleCommit = useCallback(
+    async (next: string) => {
       await onCommit(next === '' ? null : next)
     },
+    [onCommit],
+  )
+  const edit = useInlineEdit<string>({
+    initial: value ?? '',
+    onCommit: handleCommit,
   })
 
   useEffect(() => {

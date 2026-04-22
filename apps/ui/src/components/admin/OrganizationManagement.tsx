@@ -1,26 +1,23 @@
 import { useState, useMemo } from 'react'
+import { Building2 } from 'lucide-react'
+import { formatRelativeDate } from '@/lib/formatDate'
+import { EntityIcon } from '@/components/ui/entity-icon'
 import { AdminTable } from '@/components/ui/admin-table'
 import type { CanDeleteResult } from '@/components/ui/admin-table'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import type { ApiError } from '@/api/client'
-import { Plus, Search, Building2, AlertCircle } from 'lucide-react'
-import { formatRelativeDate } from '@/lib/formatDate'
-import { Button } from '../ui/button'
-import { Input } from '../ui/input'
-import { EntityIcon } from '@/components/ui/entity-icon'
+import { AdminSection } from './AdminSection'
 import { OrganizationForm } from './organizations/OrganizationForm'
 import { OrganizationDetail } from './organizations/OrganizationDetail'
 import { useAdminNav } from '@/hooks/useAdminNav'
+import { useAdminCrud } from '@/hooks/useAdminCrud'
 import {
   listOrganizations,
   deleteOrganization,
   createOrganization,
   updateOrganization,
 } from '@/api/endpoints'
-import type { OrganizationCreate } from '@/types'
+import type { Organization, OrganizationCreate } from '@/types'
 
 export function OrganizationManagement() {
-  const queryClient = useQueryClient()
   const {
     viewMode,
     slug: selectedOrgSlug,
@@ -31,15 +28,26 @@ export function OrganizationManagement() {
   const [searchQuery, setSearchQuery] = useState('')
 
   const {
-    data: organizations = [],
+    items: organizations,
     isLoading,
     error,
-  } = useQuery({
+    createMutation,
+    updateMutation,
+    deleteMutation,
+  } = useAdminCrud<
+    Organization,
+    OrganizationCreate,
+    { slug: string; org: OrganizationCreate },
+    string
+  >({
     queryKey: ['organizations'],
-    queryFn: listOrganizations,
+    listFn: listOrganizations,
+    createFn: createOrganization,
+    updateFn: ({ slug, org }) => updateOrganization(slug, org),
+    deleteFn: deleteOrganization,
+    onMutationSuccess: goToList,
+    deleteErrorLabel: 'organization',
   })
-
-  type Organization = (typeof organizations)[number]
 
   const canDeleteOrganization = (org: Organization): CanDeleteResult => {
     if (organizations.length <= 1) {
@@ -54,35 +62,6 @@ export function OrganizationManagement() {
     }
     return { allowed: true }
   }
-
-  const createMutation = useMutation({
-    mutationFn: createOrganization,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organizations'] })
-      goToList()
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({ slug, org }: { slug: string; org: OrganizationCreate }) =>
-      updateOrganization(slug, org),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organizations'] })
-      goToList()
-    },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteOrganization,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organizations'] })
-    },
-    onError: (error: ApiError<{ detail?: string }>) => {
-      alert(
-        `Failed to delete organization: ${error.response?.data?.detail || error.message}`,
-      )
-    },
-  })
 
   const filteredOrgs = organizations.filter((org) => {
     if (searchQuery) {
@@ -117,38 +96,16 @@ export function OrganizationManagement() {
     goToList()
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className={'text-sm text-secondary'}>Loading organizations...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div
-        className={`flex items-center gap-3 rounded-lg border p-4 ${'border-danger bg-danger text-danger'}`}
-      >
-        <AlertCircle className="h-5 w-5 flex-shrink-0" />
-        <div>
-          <div className="font-medium">Failed to load organizations</div>
-          <div className="mt-1 text-sm">
-            {error instanceof Error ? error.message : 'An error occurred'}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   // Guard for invalid organization slug in URL
   if (
+    !isLoading &&
+    !error &&
     (viewMode === 'edit' || viewMode === 'detail') &&
     !!selectedOrgSlug &&
     !selectedOrg
   ) {
     return (
-      <div className={'rounded-lg border border-tertiary p-4 text-secondary'}>
+      <div className="rounded-lg border border-tertiary p-4 text-secondary">
         Organization not found. It may have been deleted.
       </div>
     )
@@ -177,31 +134,17 @@ export function OrganizationManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
-          <div className="relative max-w-md">
-            <Search
-              className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${'text-tertiary'}`}
-            />
-            <Input
-              placeholder="Search organizations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={'pl-10'}
-            />
-          </div>
-        </div>
-        <Button
-          onClick={goToCreate}
-          className="bg-action text-action-foreground hover:bg-action-hover"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          New Organization
-        </Button>
-      </div>
-
+    <AdminSection
+      searchPlaceholder="Search organizations..."
+      search={searchQuery}
+      onSearchChange={setSearchQuery}
+      createLabel="New Organization"
+      onCreate={goToCreate}
+      isLoading={isLoading}
+      loadingLabel="Loading organizations..."
+      error={error}
+      errorTitle="Failed to load organizations"
+    >
       <AdminTable
         columns={[
           {
@@ -222,13 +165,13 @@ export function OrganizationManagement() {
                       className="size-5 rounded object-cover"
                     />
                   ) : (
-                    <Building2 className={'h-4 w-4 text-info'} />
+                    <Building2 className="h-4 w-4 text-info" />
                   )}
                 </div>
                 <div>
-                  <div className={'text-primary'}>{org.name}</div>
+                  <div className="text-primary">{org.name}</div>
                   {org.description && (
-                    <div className={'text-sm text-tertiary'}>
+                    <div className="text-sm text-tertiary">
                       {org.description}
                     </div>
                   )}
@@ -242,7 +185,7 @@ export function OrganizationManagement() {
             headerAlign: 'center',
             cellAlign: 'center',
             render: (org) => (
-              <code className={'rounded bg-secondary px-2 py-1 text-primary'}>
+              <code className="rounded bg-secondary px-2 py-1 text-primary">
                 {org.slug}
               </code>
             ),
@@ -320,6 +263,6 @@ export function OrganizationManagement() {
             : 'No organizations created yet.'
         }
       />
-    </div>
+    </AdminSection>
   )
 }

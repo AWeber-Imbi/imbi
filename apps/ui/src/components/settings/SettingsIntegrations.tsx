@@ -47,19 +47,19 @@ export function SettingsIntegrations() {
       {integrations.map((integration) => (
         <Card
           key={integration.name}
-          className={'p-6'}
+          className="p-6"
           style={{ borderWidth: '0.5px' }}
         >
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
               <div
-                className={`flex h-12 w-12 items-center justify-center rounded-lg text-xl ${'bg-secondary'}`}
+                className={`flex h-12 w-12 items-center justify-center rounded-lg bg-secondary text-xl`}
               >
                 {integration.icon}
               </div>
               <div>
                 <div className="mb-1 flex items-center gap-2">
-                  <h3 className={'text-[14px] font-medium text-primary'}>
+                  <h3 className="text-[14px] font-medium text-primary">
                     {integration.name}
                   </h3>
                   {integration.connected && (
@@ -72,11 +72,11 @@ export function SettingsIntegrations() {
                     </Badge>
                   )}
                 </div>
-                <p className={'mb-2 text-[12px] text-tertiary'}>
+                <p className="mb-2 text-[12px] text-tertiary">
                   {integration.description}
                 </p>
                 {integration.connected && integration.account && (
-                  <p className={'font-mono text-[12px] text-secondary'}>
+                  <p className="font-mono text-[12px] text-secondary">
                     {integration.account}
                   </p>
                 )}
